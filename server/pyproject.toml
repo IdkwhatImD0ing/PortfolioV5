@@ -1,0 +1,44 @@
+[project]
+name = "portfolio-server"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.116.1",
+    "uvicorn[standard]>=0.32.0",
+    "gunicorn>=23.0.0",
+    "openai>=2.32.0",
+    "openai-agents>=0.14.4",
+    "pinecone[asyncio]>=7.3.0",
+    "retell-sdk>=4.40.0",
+    "python-dotenv>=1.0.0",
+    "pydantic-extra-types>=2.10.5",
+    "orjson>=3.11.1",
+    "websockets>=15.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.24.0",
+    "pytest-mock>=3.14.0",
+    "httpx>=0.28.1",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.24.0",
+    "pytest-mock>=3.14.0",
+    "httpx>=0.28.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "integration: hits real external services (Pinecone, OpenAI, etc.); run manually with `-m integration`",
+]

@@ -1,0 +1,21 @@
+.gcloudignore
+.git
+.gitignore
+__pycache__/
+*.pyc
+.env
+*.env
+gcloud.json
+*.json.bak
+tests/
+docs/
+*.md
+.pytest_cache/
+.mypy_cache/
+
+# Local virtualenv: 75 MB of Windows binaries that are useless in the Linux
+# image, and COPY . . would overwrite the venv the Dockerfile builds.
+.venv/
+# Secret backups written by scripts/pull-secrets.sh.
+.env.*
+*.ipynb

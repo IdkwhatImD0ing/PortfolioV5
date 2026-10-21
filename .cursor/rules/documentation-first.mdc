@@ -1,0 +1,33 @@
+---
+description: Enforce documentation-first development - read docs before implementing, update docs when changing features
+alwaysApply: true
+---
+
+# Documentation-First Development
+
+This project maintains documentation in `docs/` folders within each module:
+- `client/docs/` - Frontend documentation
+- `server/docs/` - Backend documentation  
+- `pinecone/docs/` - Data pipeline documentation
+
+## Before Implementing Features
+
+1. **Read relevant docs first** - Check the `docs/` folder in the module you're working on
+2. **Understand existing patterns** - Documentation explains architecture decisions and conventions
+3. **Look for related docs** - Features may span multiple modules
+
+## When Changing Features
+
+1. **Update documentation** - Any feature change must include corresponding doc updates
+2. **Keep docs in sync** - If you modify behavior, update the relevant `.md` files in `docs/`
+3. **Document new patterns** - When adding new approaches, add documentation explaining them
+
+## Documentation Structure
+
+```
+module/
+  docs/
+    README.md          # Module overview
+    feature-name.md    # Feature-specific docs
+    subfolder/         # Grouped documentation
+```

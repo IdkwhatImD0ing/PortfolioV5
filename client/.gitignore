@@ -1,0 +1,24 @@
+node_modules
+.next
+out
+dist
+.env*.local
+.vercel
+*.tsbuildinfo
+.DS_Store
+
+# LaTeX build artifacts. resume.pdf is committed (served by the site);
+# the anonymized PDF is compiled on demand and shared out-of-band.
+public/resume-anonymized.pdf
+public/resume.aux
+public/resume.log
+public/resume.out
+public/resume.fls
+public/resume.fdb_latexmk
+public/resume.synctex.gz
+public/resume-anonymized.aux
+public/resume-anonymized.log
+public/resume-anonymized.out
+public/resume-anonymized.fls
+public/resume-anonymized.fdb_latexmk
+public/resume-anonymized.synctex.gz

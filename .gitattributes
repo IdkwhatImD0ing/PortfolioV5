@@ -1,0 +1,10 @@
+# Git LFS
+#
+# /sect scene packs: gzip-compressed meshopt GLBs written by
+# blender/xianxia-sect/tools/sect_pack.py (full/ high tier + full/low/ phone
+# tier, about 184 MB in 55 files). Every repack rewrites them and they can't
+# be diffed, so they live in LFS instead of the normal git history.
+# The JSON beside them (manifest, meta, camera, clouds, flyer) stays a normal
+# file because client tests read it. The tests only check that each pack
+# exists, so CI passes with LFS pointer files (no `lfs: true` checkout needed).
+client/public/sect/**/*.glb.gz filter=lfs diff=lfs merge=lfs -text

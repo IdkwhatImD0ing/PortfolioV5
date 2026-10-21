@@ -1,0 +1,342 @@
+/* /sect only. Palette for the fly-through overlays: lacquer ink, gold leaf and rice paper. */
+.sect-root {
+  --sect-ink: #0e0c14;
+  --sect-panel: rgba(18, 14, 24, 0.58);
+  --sect-panel-strong: rgba(18, 14, 24, 0.82);
+  --sect-gold: #e9c77e;
+  --sect-gold-soft: rgba(233, 199, 126, 0.32);
+  --sect-paper: #f5ecdc;
+  --sect-paper-soft: rgba(245, 236, 220, 0.74);
+  --sect-jade: #8fe3c8;
+  --sect-zh: "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, serif;
+  cursor: auto;
+  color: var(--sect-paper);
+}
+
+.sect-root a,
+.sect-root button {
+  cursor: pointer;
+}
+
+.sect-root ::selection {
+  background: rgba(233, 199, 126, 0.35);
+  color: #fff;
+}
+
+/*
+ * Keyboard focus: one gold ring everywhere on /sect (the readers draw the same one). Controls drawn
+ * straight over the scene (.sect-ctl) add a dark halo, so the ring also shows against a pale sky.
+ */
+.sect-root :where(a[href], button, summary, [role="button"], [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--sect-gold);
+  outline-offset: 2px;
+}
+
+.sect-root .sect-ctl:focus-visible {
+  box-shadow: 0 0 0 6px rgba(14, 12, 20, 0.88);
+}
+
+/* The graphics picker's cells (quality-picker.tsx): the radio inside is hidden, so its cell shows the ring. */
+.sect-root .sect-seg:has(input:focus-visible) {
+  outline: 2px solid var(--sect-gold);
+  outline-offset: 2px;
+  z-index: 1;
+}
+
+/* Chinese in the overlays: the same serif as the panels and readers. */
+.sect-zh {
+  font-family: var(--sect-zh);
+}
+
+.sect-veil {
+  background:
+    radial-gradient(60% 50% at 50% 42%, rgba(233, 199, 126, 0.14), transparent 70%),
+    linear-gradient(180deg, #1b1826 0%, #0e0c14 100%);
+}
+
+.sect-panel {
+  background: var(--sect-panel);
+  border: 1px solid var(--sect-gold-soft);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 18px 50px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(10px) saturate(1.1);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+}
+
+/* Gold corner ticks, like the frame of a game dialogue box. */
+.sect-panel::before,
+.sect-panel::after {
+  content: "";
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-color: var(--sect-gold);
+  pointer-events: none;
+}
+.sect-panel::before {
+  top: -1px;
+  left: -1px;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+.sect-panel::after {
+  bottom: -1px;
+  right: -1px;
+  border-bottom: 1px solid;
+  border-right: 1px solid;
+}
+
+/*
+ * Text over the scene always sits on ink: the sky behind it runs from dusk violet to near white, and
+ * bare text measured 1.2-2.4:1 there. A plate is the small dark backing for labels and chips.
+ */
+.sect-plate {
+  background: var(--sect-panel-strong);
+  border: 1px solid var(--sect-gold-soft);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.sect-panel.sect-plate {
+  background: var(--sect-panel-strong);
+}
+
+/* Large type straight on the scene (the intro seal): a tight dark outline plus a soft glow. */
+.sect-text-shadow {
+  text-shadow:
+    0 0 1px rgba(0, 0, 0, 0.9),
+    0 0 6px rgba(0, 0, 0, 0.75),
+    0 1px 14px rgba(0, 0, 0, 0.6);
+}
+
+/* The intro seal floats on a soft pool of ink, so its smaller lines stay readable on a bright sky. */
+.sect-intro-seal {
+  position: relative;
+  isolation: isolate;
+}
+.sect-intro-seal::before {
+  content: "";
+  position: absolute;
+  inset: -1.5rem -3rem -1rem;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(14, 12, 20, 0.62), rgba(14, 12, 20, 0.32) 60%, transparent);
+  pointer-events: none;
+}
+
+.sect-hint-arrow {
+  animation: sect-hint 2.2s ease-in-out infinite;
+}
+
+@keyframes sect-hint {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateY(6px);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sect-hint-arrow {
+    animation: none;
+  }
+}
+
+/* The loading screen's graphics picker comes in softly over the place kept for it. */
+.sect-fade-in {
+  animation: sect-fade-in 0.45s ease-out both;
+}
+
+@keyframes sect-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sect-fade-in {
+    animation: none;
+  }
+}
+
+/* Scrolling popovers (the Places list). */
+.sect-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sect-gold-soft) transparent;
+}
+
+/* "Gathering": a far jump waits for its area to load. */
+.sect-gather {
+  animation: sect-gather 1.4s linear infinite;
+}
+
+@keyframes sect-gather {
+  from {
+    transform: rotate(45deg);
+  }
+  to {
+    transform: rotate(405deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sect-gather {
+    animation: none;
+  }
+}
+
+/*
+ * The main site's voice orb, unchanged, in the sect's gold and jade. Its CSS variables change here,
+ * and (below) the few shapes and colours it hard-codes; the component is the main page's.
+ */
+.sect-orb {
+  --grad: linear-gradient(135deg, #e9c77e 0%, #c98a4b 48%, #6fbfa5 100%);
+  --primary: #e9c77e;
+  --primary-soft: #c98a4b;
+  --accent: #e9c77e;
+  --magenta: #f0b46a;
+  --violet: #8a6a3a;
+  --cyan: #8fe3c8;
+  --line: rgba(233, 199, 126, 0.32);
+  --line-soft: rgba(233, 199, 126, 0.16);
+  --ink: #f5ecdc;
+  --ink-soft: rgba(245, 236, 220, 0.78);
+  --muted: rgba(245, 236, 220, 0.62);
+  /* ▶ and friends as plain glyphs, not blue emoji tiles. */
+  font-variant-emoji: text;
+}
+
+.sect-orb > div:not([role="dialog"]) > button {
+  box-shadow:
+    0 12px 40px rgba(233, 170, 90, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+}
+
+/* The orb's pulse rings: gold, not magenta. */
+.sect-orb > div:not([role="dialog"]) > button::before {
+  border-color: rgba(233, 199, 126, 0.45);
+}
+.sect-orb > div:not([role="dialog"]) > button::after {
+  border-color: rgba(233, 199, 126, 0.22);
+}
+
+/* Gold fills carry dark ink, like the sect's own gold buttons (white on gold measured 1.6-2.9:1). */
+.sect-orb [class*="bg-[image:var(--grad)]"] {
+  color: #1a1306;
+}
+.sect-orb button[class*="bg-[image:var(--grad)]"] svg {
+  color: #1a1306;
+}
+
+/* The "tap to talk" pill: an ink plate, not a pill. */
+.sect-orb > div:not([role="dialog"]) > div:first-child {
+  border-radius: 3px;
+  border-color: var(--sect-gold-soft);
+  background: var(--sect-panel-strong);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* The panel: a sect sheet (square corners, gold ticks, sans text, serif heading). */
+.sect-orb [role="dialog"] {
+  border-radius: 3px;
+  border-color: var(--sect-gold-soft);
+  background: rgba(16, 12, 22, 0.95);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 30px 80px rgba(0, 0, 0, 0.55);
+}
+.sect-orb [role="dialog"]::before,
+.sect-orb [role="dialog"]::after {
+  content: "";
+  position: absolute;
+  z-index: 20;
+  width: 14px;
+  height: 14px;
+  border-color: var(--sect-gold);
+  pointer-events: none;
+}
+.sect-orb [role="dialog"]::before {
+  top: 0;
+  left: 0;
+  border-top: 1px solid;
+  border-left: 1px solid;
+}
+.sect-orb [role="dialog"]::after {
+  bottom: 0;
+  right: 0;
+  border-bottom: 1px solid;
+  border-right: 1px solid;
+}
+.sect-orb [role="dialog"] .font-mono:not(code) {
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+.sect-orb [role="dialog"] header .font-mono {
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+.sect-orb [role="dialog"] h4 {
+  font-family: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  font-size: 1.75rem;
+  letter-spacing: 0;
+}
+.sect-orb [role="dialog"] [class*="rounded-full"]:not([class*="w-1"]):not([class*="w-2"]) {
+  border-radius: 2px;
+}
+.sect-orb [role="dialog"] [class*="rounded-[10px]"],
+.sect-orb [role="dialog"] [class*="rounded-2xl"] {
+  border-radius: 3px;
+}
+.sect-orb [role="dialog"] button[class*="rounded-full"]:hover,
+.sect-orb [role="dialog"] button[class*="rounded-[10px]"]:not([class*="--grad"]):not([class*="danger"]):hover {
+  border-color: var(--sect-gold);
+  background-color: rgba(233, 199, 126, 0.1);
+  color: var(--sect-paper);
+}
+.sect-orb [role="dialog"] input:focus {
+  border-color: var(--sect-gold);
+}
+
+/*
+ * Phones: the area panel spans the bottom, so the orb moves to the top-right corner. Over a reader
+ * (whose header holds its close button there) it sits at the bottom centre, in the gap the reader's
+ * footer leaves between its previous and next buttons. In the page view it keeps to the corner.
+ */
+@media (max-width: 767px) {
+  body:not([data-sect-modal]) .sect-orb > div:not([role="dialog"]) {
+    top: 0.5rem;
+    right: 0.6rem;
+    bottom: auto;
+  }
+  body[data-sect-modal] .sect-orb > div:not([role="dialog"]) {
+    left: calc(50% - 1.5rem);
+    right: auto;
+    bottom: 0.6rem;
+  }
+  body:has(.sc-page) .sect-orb > div:not([role="dialog"]) {
+    top: auto;
+    left: auto;
+    right: 0.75rem;
+    bottom: 0.75rem;
+  }
+  .sect-orb > div:not([role="dialog"]) > button {
+    width: 3rem;
+    height: 3rem;
+  }
+}
+
+/*
+ * The "tap to talk" pill shows on the intro only: at the stops it covered the scene's own objects
+ * (the gate's right lion), and over a reader or the page view it would cover their controls.
+ */
+.sect-root:has(.sect-intro[style*="hidden"]) .sect-orb > div:not([role="dialog"]) > div:first-child,
+body[data-sect-modal] .sect-orb > div:not([role="dialog"]) > div:first-child,
+body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
+  display: none;
+}

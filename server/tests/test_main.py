@@ -1,0 +1,364 @@
+"""
+Tests for main.py - FastAPI endpoints and handlers.
+"""
+
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+
+class TestPingEndpoint:
+    """Tests for the /ping health check endpoint."""
+
+    def test_ping_returns_pong(self, app_client):
+        """Test that /ping returns expected response."""
+        response = app_client.get("/ping")
+        
+        assert response.status_code == 200
+        assert response.json() == {"message": "pong"}
+
+
+class TestWebhookEndpoint:
+    """Tests for the /webhook endpoint."""
+
+    def test_webhook_valid_signature_call_started(self, app_client, mock_retell):
+        """Test webhook with valid signature and call_started event."""
+        payload = {
+            "event": "call_started",
+            "data": {"call_id": "test-call-123"},
+        }
+        
+        response = app_client.post(
+            "/webhook",
+            json=payload,
+            headers={"X-Retell-Signature": "valid-sig"},
+        )
+        
+        assert response.status_code == 200
+        assert response.json() == {"received": True}
+
+    def test_webhook_valid_signature_call_ended(self, app_client, mock_retell):
+        """Test webhook with call_ended event."""
+        payload = {
+            "event": "call_ended",
+            "data": {"call_id": "test-call-123"},
+        }
+        
+        response = app_client.post(
+            "/webhook",
+            json=payload,
+            headers={"X-Retell-Signature": "valid-sig"},
+        )
+        
+        assert response.status_code == 200
+
+    def test_webhook_valid_signature_call_analyzed(self, app_client, mock_retell):
+        """Test webhook with call_analyzed event."""
+        payload = {
+            "event": "call_analyzed",
+            "data": {"call_id": "test-call-123"},
+        }
+        
+        response = app_client.post(
+            "/webhook",
+            json=payload,
+            headers={"X-Retell-Signature": "valid-sig"},
+        )
+        
+        assert response.status_code == 200
+
+    def test_webhook_invalid_signature(self, app_client, mock_retell):
+        """Test webhook rejects invalid signature."""
+        mock_retell.verify.return_value = False
+        
+        payload = {
+            "event": "call_started",
+            "data": {"call_id": "test-call-123"},
+        }
+        
+        response = app_client.post(
+            "/webhook",
+            json=payload,
+            headers={"X-Retell-Signature": "invalid-sig"},
+        )
+        
+        assert response.status_code == 401
+        assert response.json() == {"message": "Unauthorized"}
+
+    def test_webhook_unknown_event(self, app_client, mock_retell):
+        """Test webhook handles unknown event type."""
+        payload = {
+            "event": "unknown_event",
+            "data": {"call_id": "test-call-123"},
+        }
+        
+        response = app_client.post(
+            "/webhook",
+            json=payload,
+            headers={"X-Retell-Signature": "valid-sig"},
+        )
+        
+        assert response.status_code == 200
+
+
+class TestChatEndpoint:
+    """Tests for the /chat SSE endpoint."""
+
+    def test_chat_returns_sse_response(self, app_client):
+        """Test that /chat returns SSE response."""
+        with patch("main.LlmClient") as mock_llm:
+            # Mock the async generator
+            async def mock_generator():
+                from custom_types import TextChatStreamChunk
+                yield TextChatStreamChunk(type="content", content="Hello")
+                yield TextChatStreamChunk(type="done")
+            
+            mock_instance = MagicMock()
+            mock_instance.draft_text_response = mock_generator
+            mock_llm.return_value = mock_instance
+            
+            response = app_client.post(
+                "/chat",
+                json={
+                    "messages": [
+                        {"role": "user", "content": "Hello"}
+                    ]
+                },
+            )
+            
+            assert response.status_code == 200
+            assert response.headers["content-type"].startswith("text/event-stream")
+
+    def test_chat_passes_supports_replace_through(self, app_client):
+        """Only a client that says it handles `replace` chunks gets them.
+
+        Pages loaded before `replace` existed don't send the flag, and must get
+        the refusal appended instead (llm.draft_text_response).
+        """
+        seen = []
+
+        async def draft_text_response(messages, supports_replace):
+            from custom_types import TextChatStreamChunk
+            seen.append(supports_replace)
+            yield TextChatStreamChunk(type="done")
+
+        with patch("main.LlmClient") as mock_llm:
+            mock_llm.return_value.draft_text_response = draft_text_response
+            hi = [{"role": "user", "content": "Hi"}]
+            app_client.post("/chat", json={"messages": hi})
+            app_client.post("/chat", json={"messages": hi, "supports_replace": True})
+
+        assert seen == [False, True]
+
+    def test_chat_request_validation(self, app_client):
+        """Test that /chat validates request body."""
+        # Missing messages field
+        response = app_client.post("/chat", json={})
+        
+        assert response.status_code == 422  # Validation error
+
+    def test_chat_rejects_oversized_requests_before_screening(self, app_client):
+        """/chat is unauthenticated; an oversized body must never reach the guardrail."""
+        from custom_types import MAX_CHAT_MESSAGE_CHARS, MAX_CHAT_MESSAGES
+
+        with patch("main.LlmClient") as mock_llm:
+            too_long = app_client.post(
+                "/chat",
+                json={
+                    "messages": [
+                        {"role": "user", "content": "x" * (MAX_CHAT_MESSAGE_CHARS + 1)}
+                    ]
+                },
+            )
+            too_many = app_client.post(
+                "/chat",
+                json={
+                    "messages": [{"role": "user", "content": "hi"}]
+                    * (MAX_CHAT_MESSAGES + 1)
+                },
+            )
+
+        assert too_long.status_code == 422
+        assert too_many.status_code == 422
+        mock_llm.assert_not_called()
+        # FastAPI's default 422 echoes the rejected input back; encoding a huge
+        # list for that took seconds on the event loop.
+        for response in (too_long, too_many):
+            assert all("input" not in err for err in response.json()["detail"])
+            assert len(response.content) < 1_000
+
+    def test_chat_refuses_an_oversized_body_before_parsing(self, app_client):
+        """The caps only apply after parsing; the body limit bounds the parse."""
+        from custom_types import MAX_CHAT_BODY_BYTES
+
+        with patch("main.LlmClient") as mock_llm:
+            response = app_client.post(
+                "/chat",
+                content=b" " * (MAX_CHAT_BODY_BYTES + 1),
+                headers={"content-type": "application/json"},
+            )
+
+        assert response.status_code == 413
+        mock_llm.assert_not_called()
+
+    def test_chat_empty_messages(self, app_client):
+        """Test /chat with empty messages array."""
+        with patch("main.LlmClient") as mock_llm:
+            async def mock_generator():
+                from custom_types import TextChatStreamChunk
+                yield TextChatStreamChunk(type="done")
+            
+            mock_instance = MagicMock()
+            mock_instance.draft_text_response = mock_generator
+            mock_llm.return_value = mock_instance
+            
+            response = app_client.post(
+                "/chat",
+                json={"messages": []},
+            )
+            
+            assert response.status_code == 200
+
+
+class TestValidateEnvironmentVariables:
+    """Tests for validate_environment_variables function."""
+
+    def test_missing_required_vars_raises(self):
+        """Test that missing required vars raises ValueError."""
+        from main import validate_environment_variables
+        
+        with patch.dict("os.environ", {}, clear=True):
+            with pytest.raises(ValueError) as exc_info:
+                validate_environment_variables()
+            
+            assert "RETELL_API_KEY" in str(exc_info.value)
+            assert "OPENAI_API_KEY" in str(exc_info.value)
+            assert "PINECONE_API_KEY" in str(exc_info.value)
+
+    def test_all_required_vars_set(self):
+        """Test validation passes when all required vars are set."""
+        from main import validate_environment_variables
+        
+        env_vars = {
+            "RETELL_API_KEY": "test-key",
+            "OPENAI_API_KEY": "test-key",
+            "PINECONE_API_KEY": "test-key",
+        }
+        
+        with patch.dict("os.environ", env_vars, clear=True):
+            # Should not raise
+            validate_environment_variables()
+
+    def test_ws_path_value_never_printed(self, capsys):
+        """The websocket path is a secret: startup logs say it's set, never what it is."""
+        from main import validate_environment_variables
+
+        secret_path = "s3cret-ws-path-7f3a9c"
+        env_vars = {
+            "RETELL_API_KEY": "test-key",
+            "OPENAI_API_KEY": "test-key",
+            "PINECONE_API_KEY": "test-key",
+            "OBFUSCATED_WS_PATH": secret_path,
+            "LLM_DEBUG": "1",
+        }
+
+        with patch.dict("os.environ", env_vars, clear=True):
+            validate_environment_variables()
+
+        captured = capsys.readouterr()
+        assert secret_path not in captured.out
+        assert secret_path not in captured.err
+        assert "OBFUSCATED_WS_PATH is set" in captured.out
+        assert "WARNING" not in captured.out
+        # LLM_DEBUG isn't secret, so its value is still shown.
+        assert "LLM_DEBUG is set to: 1" in captured.out
+
+    def test_unset_ws_path_warns(self, capsys):
+        """Without OBFUSCATED_WS_PATH the socket sits on the public default path, so say so."""
+        from main import validate_environment_variables
+
+        env_vars = {
+            "RETELL_API_KEY": "test-key",
+            "OPENAI_API_KEY": "test-key",
+            "PINECONE_API_KEY": "test-key",
+        }
+
+        with patch.dict("os.environ", env_vars, clear=True):
+            validate_environment_variables()
+
+        out = capsys.readouterr().out
+        assert "WARNING: OBFUSCATED_WS_PATH is not set" in out
+        assert "/ws-default/" in out
+
+
+class TestCORSConfiguration:
+    """Tests for CORS middleware configuration."""
+
+    def test_cors_allows_localhost(self, app_client):
+        """Test that CORS allows localhost:3000."""
+        response = app_client.options(
+            "/ping",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        
+        # CORS preflight should succeed
+        assert response.status_code in [200, 204]
+
+    def test_cors_allows_production_domain(self, app_client):
+        """Test that CORS allows production domain."""
+        response = app_client.options(
+            "/ping",
+            headers={
+                "Origin": "https://art3m1s.me",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+
+        assert response.status_code in [200, 204]
+        assert response.headers.get("access-control-allow-origin") == "https://art3m1s.me"
+
+    @pytest.mark.parametrize(
+        "origin",
+        [
+            "https://www.art3m1s.me",
+            "https://v3.art3m1s.me",
+            "https://eatsafely.projects.art3m1s.me",
+            "https://anything-else.art3m1s.me",
+        ],
+    )
+    def test_cors_allows_any_art3m1s_subdomain(self, app_client, origin):
+        """The allow_origin_regex should match the apex and any subdomain depth."""
+        response = app_client.options(
+            "/ping",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert response.status_code in [200, 204]
+        assert response.headers.get("access-control-allow-origin") == origin
+
+    @pytest.mark.parametrize(
+        "origin",
+        [
+            "https://art3m1s.com",          # different TLD
+            "https://evil-art3m1s.me",      # not a subdomain
+            "http://art3m1s.me",            # http (not https)
+            "https://art3m1s.me.evil.com",  # suffix attack
+        ],
+    )
+    def test_cors_rejects_unrelated_origins(self, app_client, origin):
+        """Lookalike origins must NOT be granted CORS access."""
+        response = app_client.options(
+            "/ping",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        # The preflight may still return 200, but the response must NOT include
+        # an Access-Control-Allow-Origin header for the rejected origin.
+        assert response.headers.get("access-control-allow-origin") != origin

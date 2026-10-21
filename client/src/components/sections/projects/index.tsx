@@ -1,0 +1,624 @@
+"use client";
+
+// FocusEvent is aliased so it doesn't shadow the DOM type of the same name.
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FocusEvent as ReactFocusEvent,
+} from "react";
+import { PROJECTS, findProject, type Project } from "@/lib/portfolio-data";
+import { loadFallbackProject } from "@/lib/project-fallback";
+import { prefersReducedMotion, VoiceBus, scrollToSection } from "@/lib/voice-bus";
+import { useIsMobile } from "@/hooks/use-media-query";
+import { cn } from "@/lib/utils";
+import { PROJECT_HASH_PREFIX, STANDOUT_PROJECT_IDS } from "./constants";
+import { FilterBar } from "./filter-bar";
+import { ProjectCard } from "./project-card";
+import { ProjectDetail } from "./project-detail";
+
+/** The unfiltered rail is a fixed hand-picked list, so resolve the ids to
+ *  projects once at module load rather than on every render. */
+const STANDOUT_PROJECTS: Project[] = STANDOUT_PROJECT_IDS.map((id) =>
+  PROJECTS.find((p) => p.id === id),
+).filter((p): p is Project => Boolean(p));
+
+export function ProjectsSection() {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const stickyRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const progressRef = useRef<HTMLElement>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef(0);
+  const railFocusRaf = useRef(0);
+  const railFocusStop = useRef<(() => void) | null>(null);
+
+  /** Tear down a pending rail-focus correction: the frame loop and the
+   *  user-intent listeners that can abort it. */
+  const stopRailFocus = useCallback(() => {
+    cancelAnimationFrame(railFocusRaf.current);
+    railFocusStop.current?.();
+    railFocusStop.current = null;
+  }, []);
+
+  const isMobile = useIsMobile();
+
+  const [filter, setFilter] = useState<string>("all");
+  const [year, setYear] = useState<number | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [openProject, setOpenProject] = useState<Project | null>(null);
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [activeCard, setActiveCard] = useState(0);
+
+  // Single timer so a new message can't be wiped early by an older one's timeout.
+  const transcriptTimer = useRef<number | null>(null);
+  const showTranscript = useCallback((message: string) => {
+    if (transcriptTimer.current) window.clearTimeout(transcriptTimer.current);
+    setTranscript(message);
+    transcriptTimer.current = window.setTimeout(() => {
+      setTranscript(null);
+      transcriptTimer.current = null;
+    }, 2400);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (transcriptTimer.current) window.clearTimeout(transcriptTimer.current);
+    };
+  }, []);
+
+  const pickFilter = (key: string) => {
+    setFilter(key);
+    setYear(null);
+    setFocusId(null);
+  };
+  const pickYear = (y: number) => {
+    setYear(year === y ? null : y);
+    setFocusId(null);
+  };
+
+  // Resolve openId to a Project: curated PROJECTS first, then lazy-load from
+  // the Pinecone corpus for archived ones the agent surfaces.
+  useEffect(() => {
+    if (!openId) {
+      setOpenProject(null);
+      return;
+    }
+    const known = findProject(openId);
+    if (known) {
+      setOpenProject(known);
+      return;
+    }
+    let cancelled = false;
+    loadFallbackProject(openId).then((p) => {
+      if (cancelled) return;
+      if (p) {
+        setOpenProject(p);
+      } else {
+        // Unresolvable id (bad deep link or an agent slug missing from the
+        // corpus): bail out rather than leaving openId set with no modal.
+        setOpenId(null);
+        showTranscript(`Couldn't find project "${openId}".`);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openId, showTranscript]);
+
+  // Deep linking: parse `#project/<id>` on mount + sync hash when modal opens/closes.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash;
+    if (hash.startsWith(PROJECT_HASH_PREFIX)) {
+      const rawId = decodeURIComponent(hash.slice(PROJECT_HASH_PREFIX.length));
+      if (rawId) {
+        const known = findProject(rawId);
+        setOpenId(known?.id ?? rawId);
+        // Defer scroll so the section is laid out by the time we jump.
+        requestAnimationFrame(() => scrollToSection("projects"));
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const currentHash = window.location.hash;
+    if (openId) {
+      const next = `${PROJECT_HASH_PREFIX}${encodeURIComponent(openId)}`;
+      if (currentHash !== next) {
+        // Push when the modal first opens so browser Back closes it; replace
+        // when switching projects so swaps don't pile up history entries.
+        if (currentHash.startsWith(PROJECT_HASH_PREFIX)) {
+          window.history.replaceState(null, "", next);
+        } else {
+          window.history.pushState(null, "", next);
+        }
+      }
+    } else if (currentHash.startsWith(PROJECT_HASH_PREFIX)) {
+      // Clear only our own hash; don't clobber section anchors set by other code.
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+  }, [openId]);
+
+  // Back/Forward: keep the modal in sync with the URL so Back closes a
+  // pushed-open modal and Forward reopens it.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onPopState = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith(PROJECT_HASH_PREFIX)) {
+        const rawId = decodeURIComponent(hash.slice(PROJECT_HASH_PREFIX.length));
+        if (rawId) {
+          const known = findProject(rawId);
+          setOpenId(known?.id ?? rawId);
+        }
+      } else {
+        setOpenId(null);
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  useEffect(
+    () =>
+      VoiceBus.on((cmd) => {
+        // Any agent-driven navigation supersedes a pending rail-focus
+        // correction; otherwise the watcher can yank a programmatic scroll back
+        // to whichever card still holds focus.
+        stopRailFocus();
+        if (cmd.type === "filter") {
+          if (cmd.tag) {
+            setFilter(cmd.tag);
+            setYear(null);
+            setFocusId(null);
+          }
+          if (cmd.year) {
+            setYear(cmd.year);
+            setFilter("all");
+            setFocusId(null);
+          }
+          setOpenId(null);
+          showTranscript(`Filtering by ${cmd.tag ?? cmd.year}.`);
+        }
+        if (cmd.type === "focus") {
+          const project = findProject(cmd.id);
+          if (!project) return;
+          setFocusId(project.id);
+          setFilter("all");
+          setYear(null);
+          setOpenId(null);
+          showTranscript(`Focusing on ${project.name}.`);
+        }
+        if (cmd.type === "open") {
+          // Allow opening any project the agent surfaces, even archived ones
+          // that aren't in the curated PROJECTS array. Known projects keep
+          // their local id (for stable URLs); unknown ones use the raw id and
+          // get lazy-loaded from the Pinecone corpus.
+          const known = findProject(cmd.id);
+          setOpenId(known?.id ?? cmd.id);
+          showTranscript(`Opening ${known?.name ?? cmd.id}.`);
+        }
+        if (cmd.type === "scroll") {
+          setOpenId(null);
+        }
+      }),
+    [showTranscript, stopRailFocus],
+  );
+
+  // Keyed on the *resolved* project, not openId — an id that fails to resolve
+  // must never lock scrolling behind a modal that isn't rendered.
+  useEffect(() => {
+    if (!openProject) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpenId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [openProject]);
+
+  const open = openProject;
+  const isCuratedRail = filter === "all" && !year && !focusId;
+  const isMatch = useCallback(
+    (p: Project) => {
+      if (focusId) return p.id === focusId;
+      if (year && p.year !== year) return false;
+      if (filter === "all") return true;
+      return p.tags.includes(filter);
+    },
+    [focusId, year, filter],
+  );
+  // Re-scan PROJECTS only when the filter actually changes — this component
+  // also re-renders on every frame of a mobile carousel swipe.
+  const railProjects = useMemo(
+    () => (isCuratedRail ? STANDOUT_PROJECTS : PROJECTS.filter(isMatch)),
+    [isCuratedRail, isMatch],
+  );
+  const railHeight = `${Math.max(220, railProjects.length * 26)}vh`;
+
+  useEffect(() => {
+    // Mobile uses a native scroll-snap carousel, not the scroll-jacked rail.
+    if (isMobile) return;
+    const wrap = wrapRef.current;
+    const sticky = stickyRef.current;
+    const track = trackRef.current;
+    const prog = progressRef.current;
+    if (!wrap || !sticky || !track) return;
+
+    let raf = 0;
+    const update = () => {
+      const r = wrap.getBoundingClientRect();
+      const dist = wrap.offsetHeight - window.innerHeight;
+      const p = Math.max(0, Math.min(1, -r.top / Math.max(1, dist)));
+      const max = track.scrollWidth - window.innerWidth + 32;
+      track.style.transform = `translate3d(${-p * Math.max(0, max)}px, 0, 0)`;
+      if (prog) prog.style.width = `${p * 100}%`;
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    // The sticky box is `overflow-hidden`, which still makes it programmatically
+    // scrollable: focusing a card that the rail has translated off-screen makes
+    // the browser scroll *it* to reveal the card, on top of the transform we
+    // already apply. Pin it back to the origin — onRailFocus below drives the
+    // page scroll instead, which is what actually moves the rail.
+    const pinSticky = () => {
+      if (sticky.scrollLeft) sticky.scrollLeft = 0;
+      if (sticky.scrollTop) sticky.scrollTop = 0;
+    };
+
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    sticky.addEventListener("scroll", pinSticky);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      sticky.removeEventListener("scroll", pinSticky);
+    };
+  }, [railProjects.length, isMobile]);
+
+  /** Keyboard equivalent of the scroll-jacked rail: Tab moves focus through the
+   *  cards, and the rail's horizontal offset is a pure function of page scroll,
+   *  so translate "bring this card into view" into the page scroll that does it.
+   *  Only the desktop rail needs this — the mobile carousel is a real scroll
+   *  container, where the browser's own scroll-into-view is already correct. */
+  const onRailFocus = (e: ReactFocusEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    const card = target.closest<HTMLElement>("[data-project-card]");
+    if (!card) return;
+    // Keyboard focus only. A pointer click also focuses the title button, and
+    // correcting then would scroll the page out from under the click — and the
+    // modal that click just opened. `:focus-visible` is exactly that
+    // distinction, so let the browser draw it.
+    if (!target.matches(":focus-visible")) return;
+    // Nothing behind an open modal should move; focus shouldn't be here at all
+    // while it's up, but a stray tab must not drag the background around.
+    if (openId) return;
+
+    // Measured only once the page has stopped moving. The browser runs its own
+    // scroll-into-view for the newly focused card, and globals.css sets
+    // `scroll-behavior: smooth`, so that runs as an animation lasting many
+    // frames. Worse, it is a *vertical* scroll, which is exactly what drives
+    // this rail sideways — bringing a below-the-fold card into view can push it
+    // out of view horizontally. Measuring before it settles reads a position
+    // the browser is still animating away from.
+    stopRailFocus();
+
+    // The watch is bounded by user intent rather than by a timer. A deadline
+    // short enough to avoid fighting a scroll the user started is also short
+    // enough to expire mid-animation on a long jump into the rail — that trade
+    // doesn't exist if the user's own scroll is what calls it off.
+    const abort = () => stopRailFocus();
+    for (const ev of ["wheel", "touchstart", "pointerdown"]) {
+      window.addEventListener(ev, abort, { passive: true });
+    }
+    railFocusStop.current = () => {
+      for (const ev of ["wheel", "touchstart", "pointerdown"]) {
+        window.removeEventListener(ev, abort);
+      }
+    };
+
+    let frames = 0;
+    let lastY = NaN;
+    let stable = 0;
+    let moved = false;
+    const step = () => {
+      const wrap = wrapRef.current;
+      const sticky = stickyRef.current;
+      const track = trackRef.current;
+      if (!wrap || !sticky || !track || !card.isConnected) return stopRailFocus();
+
+      const y = window.scrollY;
+      if (y === lastY) {
+        stable++;
+      } else {
+        if (!Number.isNaN(lastY)) moved = true;
+        stable = 0;
+        lastY = y;
+      }
+
+      // A run of identical frames means nothing is animating. It has to be a
+      // *run*: two frames is within the noise of a dropped frame mid-animation,
+      // and a false settle early in the scroll reads the card as still in view,
+      // right before the rail slides it out. And since a scroll that hasn't
+      // begun looks identical to one that has ended, a still page only ends the
+      // watch once it has actually moved.
+      if (stable >= 5) {
+        // Undo any scroll the browser applied to the clipped sticky box, so the
+        // measurement below reflects the rail transform alone.
+        sticky.scrollLeft = 0;
+        sticky.scrollTop = 0;
+
+        const margin = 32;
+        const r = card.getBoundingClientRect();
+        // If the rail isn't on screen at all, the page has moved on since this
+        // focus (a voice command, a jump to another section) — leave it alone.
+        if (r.bottom < 0 || r.top > window.innerHeight) return stopRailFocus();
+        // How far the card is outside the viewport: positive = off to the right.
+        // The 1px deadband matters: at the end of the rail's travel a card can
+        // sit a fraction of a pixel past the margin, and a sub-pixel overflow
+        // would otherwise buy a scroll of several hundred pixels.
+        const raw =
+          r.right > window.innerWidth - margin
+            ? r.right - (window.innerWidth - margin)
+            : r.left < margin
+              ? r.left - margin
+              : 0;
+        const overflowX = Math.abs(raw) > 1 ? raw : 0;
+
+        if (overflowX) {
+          // Solve for an absolute scroll position rather than nudging by a
+          // delta. update() clamps p to [0,1], so while the page sits outside
+          // the rail's travel the rail doesn't move at all and a relative nudge
+          // silently does nothing — which is exactly where focus lands when you
+          // Tab in from above. Mirror update()'s mapping and invert it:
+          //   p = clamp((scrollY - wrapTop) / dist),  translate = -p * max
+          const dist = wrap.offsetHeight - window.innerHeight;
+          const max = Math.max(0, track.scrollWidth - window.innerWidth + 32);
+          if (dist <= 0 || max <= 0) return stopRailFocus();
+          const wrapTop = wrap.getBoundingClientRect().top + window.scrollY;
+          const clamp = (v: number) => Math.max(0, Math.min(1, v));
+          const translateNow = -clamp((window.scrollY - wrapTop) / dist) * max;
+          const pTarget = clamp(-(translateNow - overflowX) / max);
+          window.scrollTo({
+            top: wrapTop + pTarget * dist,
+            behavior: prefersReducedMotion() ? "instant" : "smooth",
+          });
+          return stopRailFocus();
+        }
+        // Settled after a real scroll with the card in view: nothing to do.
+        if (moved) return stopRailFocus();
+      }
+      // Backstop only — `abort` above is what normally ends this. The cap has
+      // to clear a full-page smooth scroll into the rail, which can run past a
+      // second on a long jump.
+      if (++frames < 180) railFocusRaf.current = requestAnimationFrame(step);
+      else stopRailFocus();
+    };
+    railFocusRaf.current = requestAnimationFrame(step);
+  };
+
+  // Mobile carousel: track which card is centered for the pagination dots.
+  const onCarouselScroll = () => {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(() => {
+      const el = carouselRef.current;
+      if (!el) return;
+      const center = el.scrollLeft + el.clientWidth / 2;
+      let best = 0;
+      let bestDist = Infinity;
+      const cards = el.children;
+      for (let i = 0; i < cards.length; i++) {
+        const card = cards[i] as HTMLElement;
+        const d = Math.abs(card.offsetLeft + card.offsetWidth / 2 - center);
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
+        }
+      }
+      setActiveCard(best);
+    });
+  };
+
+  useEffect(
+    () => () => {
+      cancelAnimationFrame(rafRef.current);
+      stopRailFocus();
+    },
+    [stopRailFocus],
+  );
+
+  const scrollToCard = (i: number) => {
+    const el = carouselRef.current;
+    const card = el?.children[i] as HTMLElement | undefined;
+    card?.scrollIntoView({
+      behavior: prefersReducedMotion() ? "instant" : "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  };
+
+  // When a filter/focus changes the mobile rail, snap back to the first card.
+  useEffect(() => {
+    if (!isMobile) return;
+    carouselRef.current?.scrollTo({ left: 0 });
+    setActiveCard(0);
+  }, [filter, year, focusId, isMobile]);
+
+  const railCount = isCuratedRail
+    ? `${railProjects.length} STANDOUTS`
+    : `${railProjects.length}/${PROJECTS.length}`;
+
+  return (
+    <section id="projects" data-screen-label="03 Projects" className="relative">
+      {isMobile ? (
+        <div className="px-[6vw] pt-[7vh] pb-[6vh]">
+          <span className="inline-flex items-center gap-2.5 font-mono text-[11px] tracking-[0.14em] uppercase text-accent px-3 py-1.5 border border-[rgba(192,132,252,0.35)] rounded-full bg-[rgba(192,132,252,0.08)]">
+            <span className="w-1.5 h-1.5 rounded-full bg-magenta shadow-[0_0_10px_var(--magenta)]" />
+            PROJECTS · {railCount}
+          </span>
+          <h2 className="font-sans text-[clamp(40px,11vw,64px)] -tracking-[0.02em] font-semibold leading-[0.95] mt-4 text-balance">
+            Things I{" "}
+            <em className="font-serif italic font-normal bg-[image:var(--grad)] bg-clip-text text-transparent">
+              shipped.
+            </em>
+          </h2>
+          <p className="font-mono text-[12.5px] text-ink-soft mt-3">
+            Swipe the cards, ask by voice, or filter the archive.
+          </p>
+
+          <FilterBar
+            filter={filter}
+            year={year}
+            focusId={focusId}
+            onPick={pickFilter}
+            onYear={pickYear}
+            className="mt-5"
+          />
+
+          <div
+            ref={carouselRef}
+            onScroll={onCarouselScroll}
+            className="mt-6 flex gap-4 overflow-x-auto snap-x snap-mandatory -mx-[6vw] px-[6vw] pb-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {railProjects.map((p) => (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                match={isCuratedRail || isMatch(p)}
+                isFocus={focusId === p.id}
+                filter={filter}
+                focusId={focusId}
+                sizes="84vw"
+                onOpen={setOpenId}
+                className="snap-center shrink-0 w-[84vw] max-w-[400px] h-[62vh] max-h-[560px]"
+              />
+            ))}
+          </div>
+
+          {railProjects.length > 1 && (
+            <div className="flex justify-center flex-wrap gap-2 mt-5">
+              {railProjects.map((p, i) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => scrollToCard(i)}
+                  aria-label={`Show ${p.name}`}
+                  aria-current={i === activeCard}
+                  className={cn(
+                    "h-2 rounded-full transition-all duration-300",
+                    i === activeCard
+                      ? "w-6 bg-[image:var(--grad)]"
+                      : "w-2 bg-line",
+                  )}
+                />
+              ))}
+            </div>
+          )}
+
+          <div className="mt-4 text-center font-mono text-[11.5px] text-muted tracking-[0.04em] min-h-[18px]">
+            {transcript ? (
+              <span className="text-magenta">↳ {transcript}</span>
+            ) : (
+              <span>
+                {isCuratedRail
+                  ? `${railProjects.length}/${PROJECTS.length} standouts`
+                  : `${railProjects.length}/${PROJECTS.length} match`}
+              </span>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div ref={wrapRef} className="relative" style={{ height: railHeight }}>
+          <div ref={stickyRef} className="sticky top-0 h-screen flex flex-col overflow-hidden">
+            <div className="flex-none px-[8vw] pt-[5vh] pb-[18px] flex justify-between items-end gap-6 z-[5] bg-gradient-to-b from-[rgba(7,6,13,0.85)] from-0% via-[rgba(7,6,13,0.6)] via-70% to-transparent to-100% backdrop-blur-md">
+              <div>
+                <span className="inline-flex items-center gap-2.5 font-mono text-[12px] tracking-[0.14em] uppercase text-accent px-3 py-1.5 border border-[rgba(192,132,252,0.35)] rounded-full bg-[rgba(192,132,252,0.08)]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-magenta shadow-[0_0_10px_var(--magenta)]" />
+                  PROJECTS · {railCount}
+                </span>
+                <h2 className="font-sans text-[clamp(48px,7vw,96px)] -tracking-[0.02em] font-semibold leading-[0.95] mt-3.5 text-balance">
+                  Things I{" "}
+                  <em className="font-serif italic font-normal bg-[image:var(--grad)] bg-clip-text text-transparent">
+                    shipped.
+                  </em>
+                </h2>
+                <FilterBar
+                  filter={filter}
+                  year={year}
+                  focusId={focusId}
+                  onPick={pickFilter}
+                  onYear={pickYear}
+                  className="mt-[18px]"
+                />
+              </div>
+              <div className="min-w-[260px] text-right">
+                <div className="font-mono text-[11px] tracking-[0.14em] text-muted uppercase">
+                  Curated gallery
+                </div>
+                <div className="font-mono text-[12.5px] text-ink-soft mt-1.5">
+                  Ask by voice for any project, or filter the archive.
+                </div>
+              </div>
+            </div>
+
+            <div
+              ref={trackRef}
+              onFocus={onRailFocus}
+              className="flex-auto flex items-center gap-6 px-[8vw] will-change-transform min-h-0"
+            >
+              {railProjects.map((p) => (
+                <ProjectCard
+                  key={p.id}
+                  project={p}
+                  match={isCuratedRail || isMatch(p)}
+                  isFocus={focusId === p.id}
+                  filter={filter}
+                  focusId={focusId}
+                  sizes="460px"
+                  onOpen={setOpenId}
+                  className="flex-none w-[460px] h-[min(58vh,540px)]"
+                />
+              ))}
+              <div className="flex-none w-[8vw]" />
+            </div>
+
+            <div className="flex-none px-[8vw] py-[18px] pb-[4vh] flex justify-between items-end gap-6 bg-gradient-to-t from-[rgba(7,6,13,0.85)] from-0% via-[rgba(7,6,13,0.6)] via-70% to-transparent to-100% font-mono text-[11.5px] text-muted tracking-[0.04em] z-[5]">
+              <div>
+                <span className="text-ink-soft">SCROLL ↓</span> drives gallery →
+              </div>
+              <div className="w-[220px] h-0.5 bg-line rounded-full overflow-hidden">
+                <i
+                  ref={progressRef}
+                  className="block h-full w-0 bg-[image:var(--grad)] transition-[width] duration-150 ease-linear"
+                />
+              </div>
+              <div className="min-w-[200px] text-right">
+                {transcript ? (
+                  <span className="text-magenta">↳ {transcript}</span>
+                ) : (
+                  <span>
+                    {isCuratedRail
+                      ? `${railProjects.length}/${PROJECTS.length} standouts`
+                      : `${railProjects.length}/${PROJECTS.length} match`}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {open && <ProjectDetail project={open} onClose={() => setOpenId(null)} />}
+    </section>
+  );
+}

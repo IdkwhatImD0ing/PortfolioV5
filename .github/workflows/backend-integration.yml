@@ -1,0 +1,52 @@
+name: Backend Integration Tests
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  integration-tests:
+    name: Backend Integration Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Validate required secrets
+        run: |
+          if [ -z "$OPENAI_API_KEY" ] || [ -z "$PINECONE_API_KEY" ]; then
+            echo "Missing OPENAI_API_KEY or PINECONE_API_KEY repository secrets."
+            echo "Configure these in: Settings -> Secrets and variables -> Actions"
+            exit 1
+          fi
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Run backend integration tests
+        run: uv run python run_integration_tests.py --plain
+
+      # The guardrail eval runs the real classifier over labelled cases. Nothing
+      # else in CI executes pytest's `integration` marker, so without this step
+      # the suite would never run anywhere.
+      - name: Run marked integration tests
+        run: uv run pytest tests/ -m integration -v --tb=short

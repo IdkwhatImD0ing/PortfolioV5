@@ -1,0 +1,189 @@
+%-------------------------
+% Resume in Latex
+% Author : Bill Zhang
+% Based off of: https://github.com/sb2nov/resume
+% License : MIT
+%------------------------
+
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage{marvosym}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{verbatim}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\input{glyphtounicode}
+
+%----------FONT OPTIONS----------
+% sans-serif
+% \usepackage[sfdefault]{FiraSans}
+% \usepackage[sfdefault]{roboto}
+% \usepackage[sfdefault]{noto-sans}
+% \usepackage[default]{sourcesanspro}
+
+% serif
+% \usepackage{CormorantGaramond}
+% \usepackage{charter}
+
+\pagestyle{empty}
+
+
+% Adjust margins
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.5in}
+\addtolength{\textheight}{1.0in}
+
+\urlstyle{same}
+
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+% Sections formatting
+\titleformat{\section}{
+  \vspace{-4pt}\scshape\raggedright\large
+}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+
+% Ensure that generate pdf is machine readable/ATS parsable
+\pdfgentounicode=1
+
+%-------------------------
+% Custom commands
+\newcommand{\resumeItem}[1]{
+  \item\small{
+    {#1 \vspace{-2pt}}
+  }
+}
+
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-9pt}
+
+}
+
+
+\newcommand{\resumePositionHeading}[2]{
+  \vspace{1pt}
+  \textit{\small#1} \hfill \textit{\small#2} \vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & #2 \\
+    \end{tabular*}\vspace{-5pt}
+}
+
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
+\renewcommand\labelitemii{$\vcenter{\hbox{\tiny$\bullet$}}$}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-9pt}}
+
+%-------------------------------------------
+%%%%%%  RESUME STARTS HERE  %%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\begin{document}
+
+%----------HEADING----------
+\begin{center}
+    {\Huge\bfseries Bill Zhang} \\ \vspace{1pt}
+    \small 408-585-8267 $|$ \href{mailto:billzhangsc@gmail.com}{\underline{billzhangsc@gmail.com}} $|$
+    \href{https://www.linkedin.com/in/bill-zhang1/}{\underline{in/bill-zhang1/}} $|$
+    \href{https://github.com/IdkwhatImD0ing/}{\underline{github.com/IdkwhatImD0ing/}} $|$ 
+    \href{https://billzhang.tech/}{\underline{billzhang.tech}}
+\end{center}
+
+%-----------EDUCATION-----------
+\section{Education}
+  \resumeSubHeadingListStart
+    \resumeSubheading
+      {University of Southern California}{August 2023 -- May 2025}
+      {Master of Science in Computer Science - Artificial Intelligence}{Los Angeles, CA}
+    \resumeSubheading
+      {University of California, Santa Cruz}{September 2020 -- March 2023}
+      {Bachelor of Science in Computer Science}{Santa Cruz, CA}
+  \resumeSubHeadingListEnd
+
+%-----------EXPERIENCE-----------
+\section{Experience}
+  \resumeSubHeadingListStart
+
+    \resumeSubheading
+      {Software Engineer II}{July 2026 -- Present}
+      {Pinterest}{San Francisco, CA}
+      \resumeItemListStart
+          \resumeItem{Building and deploying \textbf{LLM agent systems} for internal and partner-facing workflows --- agent design, tool use and RAG integration, and production guardrails.}
+          \resumeItem{Partnering with product and engineering teams to scope AI use cases and set the \textbf{evaluation, quality, and cost} bar each solution must clear before launch.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Applied AI Engineer (Forward-Deployed)}{June 2025 -- July 2026}
+      {Scale AI}{San Francisco, CA}
+      \resumeItemListStart
+          \resumeItem{Shipped a production \textbf{multi-agent LLM system automating denied-claim investigations} for a PE-backed healthcare-claims company: an orchestrator routing \textbf{3 specialized sub-agents} across \textbf{20 denial-code policy workflows}, serving \textbf{300--500 weekly users} on up to \textbf{20K claims/week}.}
+          \resumeItem{Designed and owned the \textbf{LLM-as-judge eval harness} (3-dimension rubric + error-analysis loop) that raised QA-audit accuracy \textbf{64\%\,$\rightarrow$\,88\%}; quality results helped close a \textbf{seven-figure} contract expansion.}
+          \resumeItem{Owned evaluation, quality, and cost for an \textbf{LLM clinical decision-support agent at a major US health system} (eight-figure account); built per-patient token/cost accounting and cut full validation-run cost \textbf{$\sim$4$\times$} (\$4.6K\,$\rightarrow$\,$\sim$\$1.2K), validating a \textbf{23$\times$-cheaper} critic model via A/B evals.}
+          \resumeItem{Led agent design for a \textbf{major news publisher's AI agent} (publicly launched Nov 2025); built the agent loop, tool use, and evals for RAG search, summarization, and \textbf{13-language} translation across its 102-year archive, with production guardrails raising jailbreak block rate \textbf{30\%\,$\rightarrow$\,95\%}.}
+          \resumeItem{Hardened an EdTech leader's production agents against \textbf{prompt-injection and jailbreak attacks}, closing \textbf{every red-team finding} and supporting a \textbf{multi-million-dollar} expansion.}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {AI Engineer}{August 2023 -- June 2025}
+      {RingCentral}{Belmont, CA}
+      \resumeItemListStart
+          \resumeItem{Built an LLM analytics + eval pipeline (OpenAI, Pandas, GCP) that raised QA coverage of \textbf{10,000+ weekly} support chats from \textbf{1--2\%\,$\rightarrow$\,100\%}; cut processing time \textbf{8 hours\,$\rightarrow$\,1 hour}.}
+          \resumeItem{Improved answer accuracy \textbf{90\%\,$\rightarrow$\,95\%} and cut escalation rate \textbf{40\%\,$\rightarrow$\,13\%} by adding rubric-based retrieval evals and weekly monitoring (\textbf{20} Looker dashboards).}
+      \resumeItemListEnd
+
+  \resumeSubHeadingListEnd
+
+%-----------PROJECTS-----------
+\section{Projects \& Hackathons}
+    \resumeSubHeadingListStart
+      \resumeProjectHeading
+          {\textbf{Hackathons} $|$ \emph{50+ attended, 36 wins, 10+ events mentored or judged}}{}
+          \resumeItemListStart
+            \resumeItem{Judged \textbf{LA Hacks 2026}. Upcoming: confirmed judge for the \textbf{LA Hacks AI Hackathon}.}
+          \resumeItemListEnd
+      \resumeProjectHeading
+          {\textbf{\href{https://www.slugloop.tech/}{\underline{Slug Loop}}} $|$ \emph{React, Material UI, ExpressJS, C, Azure}}{March 2023 -- Present}
+          \resumeItemListStart
+            \resumeItem{Served \textbf{20,000+ users} with a real-time UCSC bus tracking web app (React, ExpressJS APIs, Azure).}
+            \resumeItem{Placed \textbf{Global Top 10} in the Google Solution Challenge out of \textbf{2,000+ projects} (2023).}
+          \resumeItemListEnd
+      \resumeProjectHeading
+          {\textbf{\href{https://dispatchai.art3m1s.me/}{\underline{DispatchAI}}} $|$ \emph{NextJS, FastAPI, Twilio, RetellAI, Hume, Google Maps}}{June 2024 -- Present}
+          \resumeItemListStart
+            \resumeItem{Built and demoed a low-latency voice agent for emergency call intake + escalation (Twilio + FastAPI + NextJS), including intent routing and structured handoff to responders.}
+            \resumeItem{Won \textbf{Grand Prize} at UC Berkeley AI Hackathon (\textbf{900+ participants}) with RetellAI + Hume and a real-time pipeline (fine-tuned Mistral 7B). \textbf{\$50k total investment}: \$25k SkyDeck grand prize + separate \$25k from AIC.}
+          \resumeItemListEnd
+    \resumeSubHeadingListEnd
+
+%-----------TECHNICAL SKILLS-----------
+\section{Technical Skills}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+     \textbf{Languages}{: Python, TypeScript/JavaScript, SQL, Bash} \\
+     \textbf{LLM / Agents}{: multi-agent orchestration, LLM-as-judge \& offline/online evals, RAG, context engineering, prompt-injection/jailbreak defense, cost \& latency optimization} \\
+     \textbf{Models}{: OpenAI GPT, Google Gemini / Vertex AI, Anthropic Claude} \\
+     \textbf{Infra/Web}{: GCP, Azure/AKS, Kubernetes, Docker, CI/CD, FastAPI, React, NextJS, PostgreSQL}
+    }}
+ \end{itemize}
+
+
+%-------------------------------------------
+\end{document}

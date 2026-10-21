@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "tracks": {
+    "loading": {
+      "src": "/sect/audio/loading.mp3",
+      "duration": 63.944,
+      "loopStart": 6.3105,
+      "loopEnd": 63.644,
+      "bpm": 83.72,
+      "lufs": -17.0,
+      "bytes": 1001732
+    },
+    "gate": {
+      "src": "/sect/audio/gate.mp3",
+      "duration": 74.838313,
+      "loopStart": 0.3,
+      "loopEnd": 74.538313,
+      "bpm": 84.05,
+      "lufs": -17.0,
+      "bytes": 1293068
+    },
+    "mirror": {
+      "src": "/sect/audio/mirror.mp3",
+      "duration": 123.572,
+      "loopStart": 0.3,
+      "loopEnd": 123.272,
+      "bpm": 62.45,
+      "lufs": -17.0,
+      "bytes": 1972268
+    },
+    "forge": {
+      "src": "/sect/audio/forge.mp3",
+      "duration": 66.1945,
+      "loopStart": 0.3,
+      "loopEnd": 65.8945,
+      "bpm": 109.77,
+      "lufs": -17.0,
+      "bytes": 1289804
+    },
+    "arena": {
+      "src": "/sect/audio/arena.mp3",
+      "duration": 78.177708,
+      "loopStart": 0.3,
+      "loopEnd": 77.877708,
+      "bpm": 142.31,
+      "lufs": -17.0,
+      "bytes": 1515356
+    },
+    "mission": {
+      "src": "/sect/audio/mission.mp3",
+      "duration": 115.7965,
+      "loopStart": 0.3,
+      "loopEnd": 115.4965,
+      "bpm": 100.0,
+      "lufs": -17.0,
+      "bytes": 2299388
+    },
+    "library": {
+      "src": "/sect/audio/library.mp3",
+      "duration": 114.293604,
+      "loopStart": 0.3,
+      "loopEnd": 113.993604,
+      "bpm": 75.99,
+      "lufs": -17.0,
+      "bytes": 2114204
+    },
+    "steles": {
+      "src": "/sect/audio/steles.mp3",
+      "duration": 108.880604,
+      "loopStart": 0.3,
+      "loopEnd": 108.580604,
+      "bpm": 66.49,
+      "lufs": -17.0,
+      "bytes": 1695452
+    },
+    "scroll": {
+      "src": "/sect/audio/scroll.mp3",
+      "duration": 97.649396,
+      "loopStart": 0.3,
+      "loopEnd": 97.349396,
+      "bpm": 91.5,
+      "lufs": -17.0,
+      "bytes": 1888508
+    },
+    "formation": {
+      "src": "/sect/audio/formation.mp3",
+      "duration": 126.4465,
+      "loopStart": 64.247708,
+      "loopEnd": 126.1465,
+      "bpm": 62.04,
+      "lufs": -17.0,
+      "bytes": 2161100
+    },
+    "abode": {
+      "src": "/sect/audio/abode.mp3",
+      "duration": 136.713604,
+      "loopStart": 0.3,
+      "loopEnd": 136.413604,
+      "bpm": 70.53,
+      "lufs": -17.0,
+      "bytes": 2244476
+    },
+    "summit": {
+      "src": "/sect/audio/summit.mp3",
+      "duration": 82.466292,
+      "loopStart": 0.3,
+      "loopEnd": 82.166292,
+      "bpm": 85.02,
+      "lufs": -17.0,
+      "bytes": 1537340
+    }
+  }
+}

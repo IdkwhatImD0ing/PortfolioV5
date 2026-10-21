@@ -1,0 +1,86 @@
+# PortfolioV5 .gitignore
+#
+# This repo is public. Commit source, docs, research and the small files the
+# site serves. Ignore anything a script or tool rebuilds, large local-only
+# files, and anything holding secrets or private data.
+# Nested rules also live in client/.gitignore and
+# blender/xianxia-sect/assets/.gitignore. Git LFS rules are in .gitattributes.
+
+# ---------------------------------------------------------------------------
+# Secrets, private data and per-machine settings
+# ---------------------------------------------------------------------------
+*.env
+.env
+.env.*
+!.env.*.example
+*gcloud.json
+.vercel
+# Per-machine Claude Code permission lists (.claude/settings.json is shared).
+**/.claude/settings.local.json
+# IP and SSH port of whichever Vast.ai GPU box is rented right now
+# (blender/xianxia-sect/tools/rblender.py).
+blender/xianxia-sect/tools/remote*.json
+# Personal resume-tailoring skill + its generated outputs (never commit).
+# Path-agnostic on purpose: the old client-new/tailored-resumes/ rule stopped
+# matching when client-new/ was renamed to client/.
+.claude/skills/tailor-resume/
+tailored-resumes/
+
+# ---------------------------------------------------------------------------
+# Dependencies, build output and tool caches (at any depth)
+# ---------------------------------------------------------------------------
+node_modules
+# Next.js build output and TypeScript incremental caches.
+# client/.gitignore covers these under client/; these rules catch strays
+# elsewhere in the tree (see issue #9).
+.next/
+*.tsbuildinfo
+# Python: uv virtualenvs, bytecode, pytest and ruff caches.
+.venv/
+*__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# ---------------------------------------------------------------------------
+# Logs and debug output
+# ---------------------------------------------------------------------------
+*.log
+# Playwright MCP debug artifacts (screenshots, snapshots, console logs).
+.playwright-mcp/
+# Screenshots that browser tools drop at the repo root.
+/*.png
+
+# ---------------------------------------------------------------------------
+# Blender project (blender/xianxia-sect)
+# ---------------------------------------------------------------------------
+# Never commit .blend files: sect_chase.blend is 149 MB, over GitHub's 100 MB
+# file limit. Same for Blender's numbered save backups (.blend1) and
+# in-progress saves (.blend@).
+*.blend
+*.blend[0-9]
+*.blend@
+# Generated output. Everything in out/ is rebuilt by sect/*.py (assemble,
+# chase, scenery, bake_web, bake_trees, export_web, preview_*) and
+# tools/sect_pack.py, or is a local backup or test render. The rented GPU box
+# gets its input from tools/rblender.py uploads, not from git.
+blender/xianxia-sect/out/*
+# ...except the Seedance prompt plan, which client/docs links to.
+!blender/xianxia-sect/out/seedance_prompts.md
+# Tree-bake EXR cache (sect/bake_trees.py), about 1 GB.
+blender/xianxia-sect/bakecache/
+# Third-party downloads in blender/xianxia-sect/assets/ are ignored by that
+# folder's own .gitignore; only its CREDITS.md (licences) is committed.
+
+# ---------------------------------------------------------------------------
+# /sect scene packs (client/public/sect)
+# ---------------------------------------------------------------------------
+# full/ is committed. Its *.glb.gz packs go through Git LFS (.gitattributes);
+# the JSON, sky, flyer and detail files beside them are normal files.
+# proto/ is the first test set (tools/sect_pack.py --profile proto). It is
+# development only: production ignores ?set=proto, and the tests that read it
+# skip when it is absent.
+client/public/sect/proto/
+# Hand-made copies of full/ taken before a repack (an old one was archived on
+# 2026-10-21; nothing reads it).
+client/public/sect/before/
