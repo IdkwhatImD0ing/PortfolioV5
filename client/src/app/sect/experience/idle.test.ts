@@ -289,6 +289,92 @@ describe("planIdle (the gate's banners)", () => {
   });
 });
 
+describe("planIdle (the forge's, the arena's and the mission hall's banners)", () => {
+  const CLOTH_TRIS = 4 * 12 * 2;
+
+  /**
+   * An area's merged scenery: the ground 10 m under its banners and, for each of its hangs, the
+   * pole, the arm out to the hook and a cloth (4 x 12 quads) hanging from the hook, turned along
+   * the arm. The arena also has a hackathon banner, a hotspot of its own, between two of them.
+   */
+  function areaScene(area: string): { root: Object3D; mesh: Mesh; before: number; hotspots: Map<string, Mesh[]>; hot: Mesh | null } {
+    const hangs = BANNER_HANGS[area];
+    const parts: BufferGeometry[] = [];
+    let cx = 0;
+    let cz = 0;
+    for (const h of hangs) {
+      const [x, y, z] = h.hook;
+      const turn = Math.atan2(-h.out[1], h.out[0]);
+      const arm = 0.75 + 0.6 * h.width;
+      const place = (g: BufferGeometry) => g.rotateY(turn).translate(x, y, z);
+      parts.push(
+        place(new PlaneGeometry(h.width, h.length, 4, 12).translate(0, -h.length / 2, 0)),
+        place(new CylinderGeometry(0.07, 0.07, 10.4, 8, 4).translate(-arm, -4.8, 0)),
+        place(new BoxGeometry(arm, 0.06, 0.06).translate(-arm / 2, 0.08, 0)),
+      );
+      cx += x / hangs.length;
+      cz += z / hangs.length;
+    }
+    parts.push(new PlaneGeometry(80, 80, 8, 8).rotateX(-Math.PI / 2).translate(cx, hangs[0].hook[1] - 10, cz));
+    const root = new Group();
+    const mesh = new Mesh(mergeGeometries(parts)!, new MeshBasicMaterial({ name: `baked.${area}_A0` }));
+    mesh.name = `${area}.baked.A0.c3`;
+    root.add(mesh);
+    const hotspots = new Map<string, Mesh[]>();
+    let hot: Mesh | null = null;
+    if (area === "arena") {
+      const [a, b] = hangs;
+      const g = new PlaneGeometry(1.3, 5.2, 4, 12).translate((a.hook[0] + b.hook[0]) / 2, a.hook[1] - 2.6, (a.hook[2] + b.hook[2]) / 2);
+      hot = new Mesh(g, new MeshBasicMaterial({ name: "hotspot.hackathon" }));
+      hot.name = "hotspot.hackathon:0";
+      root.add(hot);
+      hotspots.set("hackathon:0", [hot]);
+    }
+    root.updateMatrixWorld(true);
+    return { root, mesh, before: mesh.geometry.index!.count, hotspots, hot };
+  }
+
+  for (const area of ["forge", "arena", "mission"]) {
+    it(`cuts out every cloth of the ${area} and sways it across itself`, () => {
+      const hangs = BANNER_HANGS[area];
+      const { root, mesh, before, hotspots, hot } = areaScene(area);
+      const plan = planIdle(area, root, hotspots, new Map());
+      // The carved piece, and the arena's hackathon banner by its own shape.
+      expect(plan.sway).toBe(area === "arena" ? 2 : 1);
+      const piece = carvedOf(mesh)!;
+      expect(piece.geometry.index!.count).toBe(CLOTH_TRIS * 3 * hangs.length);
+      expect(mesh.geometry.index!.count).toBe(before - CLOTH_TRIS * 3 * hangs.length);
+      expect(piece.material).not.toBe(mesh.material);
+      // Each carved triangle lies in one banner's space, and every banner gives its own.
+      const pos = piece.geometry.getAttribute("position");
+      const ix = piece.geometry.index!.array;
+      const v = new Vector3();
+      const per = hangs.map(() => 0);
+      for (let t = 0; t < ix.length; t += 3) {
+        const corners = [0, 1, 2].map((k) => v.fromBufferAttribute(pos, ix[t + k]).applyMatrix4(piece.matrixWorld).toArray());
+        const k = hangs.findIndex((h) => corners.every((p) => inHang(h, p[0], p[1], p[2])));
+        expect(k).toBeGreaterThanOrEqual(0);
+        per[k]++;
+      }
+      expect(per).toEqual(hangs.map(() => CLOTH_TRIS));
+      // Level, across the cloth (normal to its arm), full at the tails.
+      const sway = piece.geometry.getAttribute("sectSway");
+      for (let i = 0; i < pos.count; i++) {
+        const p = v.fromBufferAttribute(pos, i).applyMatrix4(piece.matrixWorld);
+        const h = hangs.reduce((a, b) => (Math.hypot(b.hook[0] - p.x, b.hook[2] - p.z) < Math.hypot(a.hook[0] - p.x, a.hook[2] - p.z) ? b : a));
+        expect(sway.getY(i)).toBe(0);
+        expect(sway.getX(i) * h.out[0] + sway.getZ(i) * h.out[1]).toBeCloseTo(0, 6);
+        if (Math.abs(p.y - (h.hook[1] - h.length)) < 1e-3) expect(Math.hypot(sway.getX(i), sway.getZ(i))).toBeCloseTo(1, 5);
+      }
+      // The hackathon banner stays whole, swaying on its own.
+      if (hot) {
+        expect(hot.geometry.getAttribute("sectSway")).toBeDefined();
+        expect(root.children.filter((c) => c.name === `${hot.name}.idle`)).toHaveLength(0);
+      }
+    });
+  }
+});
+
 describe("planIdleSliced", () => {
   it("makes planIdle's plan, letting the browser in between slices", async () => {
     const one = scene();

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  AREA_FRAMES,
   BANNER_HANGS,
   CRANE_GLIDES,
   FILM_TURN_SPEED,
@@ -11,6 +12,7 @@ import {
   bobLift,
   breathe,
   craneFlap,
+  fanHang,
   glideHeading,
   glidePivot,
   fitRing,
@@ -22,6 +24,7 @@ import {
   splitTriangles,
   treeSway,
   wave,
+  type AreaFrame,
   type BannerHang,
   type V3,
 } from "./idle";
@@ -209,6 +212,118 @@ describe("banners merged into the scenery", () => {
 
   it("is empty without banners", () => {
     expect([...hangSway([0, 0, 0, 1, 2, 3], [])].every((v) => v === 0)).toBe(true);
+  });
+});
+
+describe("the forge's, the arena's and the mission hall's merged banners", () => {
+  /**
+   * Read from out/sect_chase.blend with round 5's sun-and-moon cloths: each cloth object's origin
+   * (the hook), its width axis on the ground, and how far its mesh reaches below the hook.
+   */
+  const FILE: Record<string, { hook: V3; out: [number, number]; down: number }[]> = {
+    forge: [
+      { hook: [78.295, 104.59, -322.73], out: [0.5812, 0.8137], down: 5.925 },
+      { hook: [91.489, 104.59, -304.258], out: [-0.5812, -0.8137], down: 5.925 },
+    ],
+    arena: [
+      { hook: [-32.983, 127.96, -452.827], out: [-0.9939, 0.1099], down: 5.167 },
+      { hook: [-28.214, 128.359, -453.486], out: [-0.9665, 0.2567], down: 5.398 },
+      { hook: [-23.597, 128.38, -454.848], out: [-0.9175, 0.3977], down: 5.417 },
+      { hook: [-19.234, 127.931, -456.882], out: [-0.848, 0.5299], down: 5.15 },
+    ],
+    mission: [
+      { hook: [-135.792, 148.59, -584.906], out: [0.7727, -0.6347], down: 5.338 },
+      { hook: [-113.429, 148.59, -603.276], out: [-0.7727, 0.6347], down: 5.333 },
+    ],
+  };
+
+  it("hang where the file's cloths hang", () => {
+    for (const [area, cloths] of Object.entries(FILE)) {
+      const hangs = BANNER_HANGS[area];
+      expect(hangs).toHaveLength(cloths.length);
+      cloths.forEach((c, k) => {
+        const h = hangs[k];
+        for (let i = 0; i < 3; i++) expect(Math.abs(h.hook[i] - c.hook[i])).toBeLessThan(2e-3);
+        for (let i = 0; i < 2; i++) expect(Math.abs(h.out[i] - c.out[i])).toBeLessThan(2e-4);
+        expect(Math.hypot(h.out[0], h.out[1])).toBeCloseTo(1, 9);
+        // The cloth (its tails lifted a little by the baked wind) ends just above its length.
+        expect(c.down).toBeLessThanOrEqual(h.length);
+        expect(c.down).toBeGreaterThan(h.length - 0.1);
+        // Its hook, rod knobs and tails are inside its space.
+        expect(inHang(h, ...h.hook)).toBe(true);
+        for (const s of [-1, 1]) expect(inHang(h, h.hook[0] + s * 0.685 * h.width * h.out[0], h.hook[1] - 0.42 * h.width, h.hook[2] + s * 0.685 * h.width * h.out[1])).toBe(true);
+        expect(inHang(h, h.hook[0], h.hook[1] - c.down, h.hook[2])).toBe(true);
+      });
+    }
+  });
+
+  it("builds the gate's plaza banners as its table lists them", () => {
+    const gate: AreaFrame = { at: [0, 0, 40], yaw: 0 };
+    for (const y of [-30, -20, 0, 14]) {
+      for (const s of [-1, 1]) {
+        const f = fanHang(gate, s * 19.4, y, 0, s < 0 ? 0 : Math.PI, 14, 1.7);
+        const g = BANNER_HANGS.gate.find((h) => Math.sign(h.hook[0]) === s && h.hook[2] === -y)!;
+        for (let i = 0; i < 3; i++) expect(f.hook[i]).toBeCloseTo(g.hook[i], 6);
+        expect(f.out[0]).toBeCloseTo(g.out[0], 9);
+        expect(f.out[1]).toBeCloseTo(g.out[1], 9);
+        expect(f.length).toBeCloseTo(g.length, 9);
+      }
+    }
+  });
+
+  it("pairs the forge's and the mission hall's across the area's axis, arms toward each other", () => {
+    for (const area of ["forge", "mission"] as const) {
+      const [a, b] = BANNER_HANGS[area];
+      const f = AREA_FRAMES[area];
+      const dx = b.hook[0] - a.hook[0];
+      const dz = b.hook[2] - a.hook[2];
+      expect((dx * a.out[0] + dz * a.out[1]) / Math.hypot(dx, dz)).toBeCloseTo(1, 9);
+      expect(b.out[0]).toBeCloseTo(-a.out[0], 9);
+      expect(b.out[1]).toBeCloseTo(-a.out[1], 9);
+      // Halfway between them is the area's axis (local x = 0), in front of its centre.
+      const mx = (a.hook[0] + b.hook[0]) / 2 - f.at[0];
+      const my = -(a.hook[2] + b.hook[2]) / 2 - f.at[1];
+      expect(mx * Math.cos(f.yaw) + my * Math.sin(f.yaw)).toBeCloseTo(0, 6);
+      expect(-mx * Math.sin(f.yaw) + my * Math.cos(f.yaw)).toBeLessThan(-30);
+    }
+  });
+
+  it("leaves the arena's hackathon banners (hotspots of their own) to bannerSway", () => {
+    // Banner 35, the hackathon next to the four, hangs well clear of every one of their spaces.
+    const gap = (13 * Math.PI) / 180;
+    const a = -Math.PI / 2 + gap + ((2 * Math.PI - 2 * gap) * 35) / 39;
+    const h35 = fanHang(AREA_FRAMES.arena, 32.2 * Math.cos(a), 32.2 * Math.sin(a), -0.35, a - Math.PI / 2, 9, 1.3);
+    expect(Math.abs(h35.hook[0] - -37.797)).toBeLessThan(0.01);
+    expect(Math.abs(h35.hook[2] - -452.885)).toBeLessThan(0.01);
+    for (const h of BANNER_HANGS.arena) {
+      for (const dy of [0, 2, 5]) expect(inHang(h, h35.hook[0], h35.hook[1] - dy, h35.hook[2])).toBe(false);
+    }
+  });
+
+  it("keeps every banner's space its own", () => {
+    for (const hangs of Object.values(BANNER_HANGS)) {
+      for (const a of hangs) {
+        for (const b of hangs) {
+          if (a === b) continue;
+          // Farther apart than the two spaces reach out from their hooks.
+          const reach = (h: BannerHang) => Math.hypot(0.685 * h.width + 0.05 * h.length + 0.1, 0.65 * h.width);
+          expect(Math.hypot(a.hook[0] - b.hook[0], a.hook[2] - b.hook[2])).toBeGreaterThan(reach(a) + reach(b));
+        }
+      }
+    }
+  });
+
+  it("swings each tail across its own cloth, level", () => {
+    for (const area of ["forge", "arena", "mission"]) {
+      const hangs = BANNER_HANGS[area];
+      const w = hangSway(hangs.flatMap((h) => [h.hook[0], h.hook[1] - h.length, h.hook[2]]), hangs);
+      hangs.forEach((h, k) => {
+        // (Stored as 32-bit floats.)
+        expect(w[k * 4]).toBeCloseTo(-h.out[1], 6);
+        expect(w[k * 4 + 1]).toBe(0);
+        expect(w[k * 4 + 2]).toBeCloseTo(h.out[0], 6);
+      });
+    }
   });
 });
 

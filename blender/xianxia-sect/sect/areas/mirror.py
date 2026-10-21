@@ -419,8 +419,10 @@ def _garden(coll, root):
 # he has just put it down by the peach-garden pond: a flat dark slate 青石 at the east rim, the pale jade flute (finger
 # holes up, U notch at the blowing end) lying on it, pale on dark so it still reads from the hold, its empty red
 # brocade bag 簫囊 beside it with a gold drawstring, its gold cord, knot, jade bead and tassel hanging over the stone's
-# front edge, and fallen peach petals on the stone, the lawn, the bank and the water. (A red cloth draped over the
-# whole stone read as a red chest from the hold, so the bag lies flat beside the flute.) Builders: sect/lib/flute_props.py (set frame: +x along the flute, -y toward the
+# front edge, a small peach tree 桃 just behind the stone leaning over it, and its fallen petals on the stone, the lawn,
+# the bank and the water. (A red cloth draped over the whole stone read as a red chest from the hold, so the bag lies
+# flat behind the flute; the small tree is what pulls the eye to the stone from the hold and makes the pond read as a
+# peach garden.) Builders: sect/lib/flute_props.py (set frame: +x along the flute, -y toward the
 # hold camera). Every piece rests on what is under it (the stone sunk 0.3-0.45 m into the lawn); static, no hotspot.
 #
 # Placement: the 217 hold camera (mirror.root (8.4, -48.6, 18.5), lens 32) sees the pond's east rim ~51 m off, lower
@@ -434,8 +436,12 @@ FLUTE_ITEM = "jade_flute"
 FLUTE_LOC = (15.75, -0.25)
 FLUTE_YAW = math.radians(-6.0)
 FLUTE_TRI_CAP = 8000                    # per object
-FLUTE_PARTS = ("rock", "bag", "xiao", "tassel", "petals")
-FLUTE_PETALS = (24, 170, 60)            # on the stone and bag, on the ground round it, floating on the pond
+FLUTE_PARTS = ("rock", "bag", "xiao", "tassel", "petals")       # meshes FLUTE + '_' + part, children of FLUTE
+FLUTE_TREE = FLUTE + "_peach"            # the small peach tree: an instance of the peach v3 'mid' prototype (already
+                                         # in the sect: the abode's and the library's peaches), no new prototype
+FLUTE_TREE_AT = (16.3, 2.5)              # mirror.root (x, y): on the lawn 2.7 m behind the stone, clear of the east path
+FLUTE_TREE_H, FLUTE_TREE_SEED, FLUTE_TREE_ROT = 4.2, 3, math.radians(205.0)   # its height, variant, world heading
+FLUTE_PETALS = (24, 170, 60, 70)        # on the stone and bag, round the stone, on the pond, under the tree
 FLUTE_WATER_BOX = (-3.9, -2.15, -1.3, 2.6)     # set frame (x0, x1, y0, y1): the pond along the bank west of the stone
 # what the petals may lie on: object name prefix under mirror.root -> kind
 FLUTE_GROUND = (("lawn", "ground"), ("pond.basin", "ground"), ("pond.stone", "stone"), ("pond.water", "water"),
@@ -443,7 +449,7 @@ FLUTE_GROUND = (("lawn", "ground"), ("pond.basin", "ground"), ("pond.stone", "st
 
 
 def flute_names():
-    return [FLUTE] + ["%s_%s" % (FLUTE, p) for p in FLUTE_PARTS]
+    return [FLUTE] + ["%s_%s" % (FLUTE, p) for p in FLUTE_PARTS] + [FLUTE_TREE]
 
 
 def flute_matrix():
@@ -536,10 +542,19 @@ def _flute(coll, root):
     def keep_off(x, y):
         return cord_x[0] <= x <= cord_x[1] and y < FP.FLUTE_Y + 0.06
 
+    # the small peach tree behind the stone (set frame), its trunk base on the ground under it
+    tp = flute_matrix().inverted() @ V3((FLUTE_TREE_AT[0], FLUTE_TREE_AT[1], 0.0))
+    tg = sampler(tp.x, tp.y)
+    if tg is None or tg[2] != "ground":
+        raise RuntimeError("flute: the peach tree's spot (%.2f, %.2f) is not on the lawn" % FLUTE_TREE_AT)
+    tp.z = tg[0].z
+
     rng = U.rng("mirror.flute.petals", 7)
-    n_top, n_ground, n_water = FLUTE_PETALS
+    n_top, n_ground, n_water, n_tree = FLUTE_PETALS
     spots = FP.scatter_petals(rng, sampler, (0.0, 0.0), n_top, n_ground,
-                              lambda x, y: (sampler(x, y) or (None, None, "set"))[2] == "set", top_sampler, keep_off)
+                              lambda x, y: ((sampler(x, y) or (None, None, "set"))[2] == "set"
+                                            or (x - tp.x) ** 2 + (y - tp.y) ** 2 < 0.3 ** 2),
+                              top_sampler, keep_off, extra=((tp.x, tp.y, 1.0, 0.8, n_tree),))
     spots += FP.scatter_water(rng, sampler, FLUTE_WATER_BOX, n_water)
     # hard surfaces (rim stones, paving, water, the set itself): a petal that clips one anywhere is dropped (the lawn
     # and the bank are soft ground, a petal may dip into them by a hair)
@@ -567,6 +582,10 @@ def _flute(coll, root):
     for part, bm, mats, smooth in parts:
         ob = U.mesh_from_bmesh("%s_%s" % (FLUTE, part), bm, coll, materials=mats, smooth=smooth, parent=em)
         ob["sect_item"] = FLUTE_ITEM
+    tree = N.blossom_tree(coll, height=FLUTE_TREE_H, seed=FLUTE_TREE_SEED, kind="peach", lod="mid", name=FLUTE_TREE,
+                          parent=em,
+                          location=(tp.x, tp.y, tp.z), rotation=FLUTE_TREE_ROT - FLUTE_YAW)
+    tree["sect_item"] = FLUTE_ITEM
     em["petals"] = kept
     em["petals_dropped"] = len(spots) - kept
     return em

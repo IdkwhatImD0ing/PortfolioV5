@@ -31,6 +31,7 @@ import {
   UnsignedByteType,
   Vector2,
   Vector3,
+  Vector4,
   type IUniform,
   type Object3D,
 } from "three";
@@ -52,6 +53,7 @@ import { gradeGlsl, SECT_LOOK, treeLiftGlsl, treeShadeGlsl, type SectLook } from
 import { clumpField, groundNoise, tilingNoise } from "@/lib/sect/noise";
 import type { WaterSurface } from "@/lib/sect/water";
 import { fallGlsl, packWetFalls, selectWetFalls, SHEET, WET, wetArrays, wetRockGlsl, type WetFall } from "@/lib/sect/waterfall";
+import { REFLECT } from "./reflect/plan";
 
 let installedKey = "";
 
@@ -194,17 +196,34 @@ export type SectSurface = "mirror" | "metal" | "glaze";
  * The Heart-Mirror's disc (its glowing face's box as fitted for the pond, lib/sect/water.ts
  * discFromBox): set by createWaterUniforms, read by the mirror surface for its convex face. Radius 0
  * until the mirror's area has loaded (the face is then shaded flat).
+ *
+ * On High and Medium the face also reflects its real surroundings: a cube map captured from just in
+ * front of it (reflect/probe.ts sets these): the map, how far it is faded in (0 = the analytic sky
+ * alone, as on Low), the capture point, and the face's own plane fitted to its triangles
+ * (water.ts discFromTriangles: centre, normal toward the pond, radius).
  */
 export const SECT_MIRROR = {
   uSectMirrorC: { value: new Vector3() },
   uSectMirrorN: { value: new Vector3(0, 0, 1) },
   uSectMirrorR: { value: 0 },
+  tSectMirrorEnv: { value: null as Texture | null },
+  uSectMirrorEnvOn: { value: 0 },
+  uSectMirrorEnvP: { value: new Vector3() },
+  uSectMirrorEnvC: { value: new Vector3() },
+  uSectMirrorEnvN: { value: new Vector3(0, 0, 1) },
+  uSectMirrorEnvR: { value: 1 },
 };
 
 const MIRROR_PARS = /* glsl */ `
 uniform vec3 uSectMirrorC;
 uniform vec3 uSectMirrorN;
 uniform float uSectMirrorR;
+uniform samplerCube tSectMirrorEnv;
+uniform float uSectMirrorEnvOn;
+uniform vec3 uSectMirrorEnvP;
+uniform vec3 uSectMirrorEnvC;
+uniform vec3 uSectMirrorEnvN;
+uniform float uSectMirrorEnvR;
 `;
 
 const MIRROR_FACE = /\.glow\.mirror_face$/i;
@@ -253,9 +272,12 @@ export function surfaceGlsl(kind: SectSurface, s: SectLook["surfaces"] = SECT_LO
   let body: string;
   if (kind === "mirror") {
     const m = s.mirror;
+    const e = REFLECT.mirror.look;
     body = /* glsl */ `
     // A bronze mirror's face is slightly convex: its normal leans outward toward the rim, so the
     // face shows a wide view (sky above, the peaks and ground below) instead of one flat colour.
+    vec3 sFaceN = sN;
+    vec3 sGlow = outgoingLight * ${f(m.glow)};
     float sEdge = 0.0;
     if ( uSectMirrorR > 0.0 ) {
       vec3 sOff = vSectWorld - uSectMirrorC;
@@ -267,9 +289,30 @@ export function surfaceGlsl(kind: SectSurface, s: SectLook["surfaces"] = SECT_LO
     }
     vec3 sF0 = ${glslVec3(hexToLinear(m.f0))};
     vec3 sF = sF0 + ( 1.0 - sF0 ) * sF5;
-    outgoingLight = sF * ( sectEnvSky( sR, ${f(m.rough)} ) + sectEnvSun( sR, ${f(m.rough)} ) ) + outgoingLight * ${f(m.glow)};
+    outgoingLight = sF * ( sectEnvSky( sR, ${f(m.rough)} ) + sectEnvSun( sR, ${f(m.rough)} ) ) + sGlow;
     // Toward the rim the polish gives way to a darker, browner patina.
-    outgoingLight *= mix( vec3( 1.0 ), vec3( 0.62, 0.5, 0.4 ), smoothstep( 0.45, 0.75, sEdge ) );`;
+    outgoingLight *= mix( vec3( 1.0 ), vec3( 0.62, 0.5, 0.4 ), smoothstep( 0.45, 0.75, sEdge ) );
+    if ( uSectMirrorEnvOn > 0.0 ) {
+      // The real surroundings (High and Medium): the cube map captured just in front of the face,
+      // read along the view reflected off a gently convex face, met with a sphere round the capture
+      // point so near things sit where they should; a touch of a blurrier level for the bronze's
+      // polish, bronze-tinted by Fresnel, the sun's glint on top, the patina toward the rim.
+      vec3 eOff = vSectWorld - uSectMirrorEnvC;
+      eOff -= uSectMirrorEnvN * dot( eOff, uSectMirrorEnvN );
+      float eEdge = length( eOff ) / uSectMirrorEnvR;
+      vec3 eN = normalize( sFaceN + eOff / uSectMirrorEnvR * ${f(e.convex)} * sign( dot( sFaceN, uSectMirrorEnvN ) + 1e-4 ) );
+      vec3 eR = reflect( sV, eN );
+      vec3 eP = vSectWorld - uSectMirrorEnvP;
+      float eB = dot( eP, eR );
+      vec3 eDir = eP + eR * ( - eB + sqrt( max( eB * eB - dot( eP, eP ) + ${f(e.parallax * e.parallax)}, 0.0 ) ) );
+      vec3 eEnv = mix( texture( tSectMirrorEnv, eDir, ${f(e.bias)} ).rgb, textureLod( tSectMirrorEnv, eDir, ${f(e.hazeLod)} ).rgb, ${f(e.haze)} );
+      float eF5 = pow( 1.0 - clamp( - dot( sV, eN ), 0.0, 1.0 ), 5.0 );
+      vec3 eF0 = ${glslVec3([...e.f0])};
+      vec3 eF = eF0 + ( 1.0 - eF0 ) * eF5;
+      vec3 eCol = eF * ( eEnv * ${f(e.gain)} + sectEnvSun( eR, ${f(m.rough)} ) * ${f(e.sun)} ) + sGlow * ${f(e.glow)};
+      eCol *= mix( vec3( 1.0 ), vec3( 0.62, 0.5, 0.4 ), smoothstep( ${f(e.patina[0])}, ${f(e.patina[1])}, eEdge ) );
+      outgoingLight = mix( outgoingLight, eCol, uSectMirrorEnvOn );
+    }`;
   } else if (kind === "metal") {
     const m = s.metal;
     body = /* glsl */ `
@@ -382,39 +425,76 @@ uniform vec3 uWaterSkyHigh;
 uniform sampler2D tReflect;
 uniform float uHasReflect;
 uniform mat4 uReflectMatrix;
+uniform vec4 uReflectClamp;
+uniform vec2 uReflectTexel;
+uniform vec2 uPondMin;
+uniform vec2 uPondMax;
+uniform float uWaterTime;
 #define SECT_POND_MIRROR_F0 ${glslVec3(hexToLinear(SECT_LOOK.surfaces.mirror.f0))}
 #define SECT_POND_MIRROR_GLOW ${glslFloat(SECT_LOOK.surfaces.mirror.glow * 0.5)}
 `;
 
-// Open water = level, flat and dark texels at the water height (stones, basin and lily pads are
-// not). The reflected view ray picks up the page's sky (ENV_GLSL, dimmed: the pond is dark and a
-// little rippled); the mirror is an analytic disc of polished bronze that itself reflects the sky
-// (as the mirror's own surface does, surfaceGlsl). The planar-reflection path (tReflect /
-// uHasReflect) is kept but the page no longer feeds it: see addPondReflection in assets.ts.
+// Two paths, picked per frame by uHasReflect.
+//
+// Planar (High and Medium, while the page renders the pond's reflection: reflect/pond.ts): open
+// water is told by geometry alone: on the water plane to within a centimetre (lily pads float 4-5 cm
+// up, stones stand out), level, and inside the open water's bounds (the area's atlas material is
+// shared well beyond the pond). Gentle drifting ripples tilt the normal; the reflected ray, so tilted,
+// reads the mirrored camera's image where it would meet things `reach` metres off; Schlick's Fresnel
+// lays it over the bake, darkened and cooled for a deep pond.
+//
+// Analytic (Low, and whenever no planar reflection was rendered this frame): open water = level,
+// flat and dark texels at the water height. The reflected view ray picks up the page's sky
+// (ENV_GLSL, dimmed: the pond is dark and a little rippled); the mirror is an analytic disc of
+// polished bronze that itself reflects the sky (as the mirror's own surface does, surfaceGlsl).
+const POND = REFLECT.pond.look;
 const WATER_FRAGMENT = /* glsl */ `
   {
     vec3 sectN = normalize( cross( dFdx( vSectWorld ), dFdy( vSectWorld ) ) );
-    float sectW = ( 1.0 - smoothstep( 0.03, 0.07, abs( vSectWorld.y - uWaterLevel ) ) )
-      * smoothstep( 0.97, 0.995, abs( sectN.y ) )
-      * ( 1.0 - smoothstep( 0.05, 0.14, dot( outgoingLight, vec3( 0.2126, 0.7152, 0.0722 ) ) ) );
-    if ( sectW > 0.0 ) {
-      vec3 v = normalize( vSectWorld - cameraPosition );
-      vec3 r = vec3( v.x, - v.y, v.z );
-      // A faint static ripple so the reflection wavers instead of sitting on the water like a decal.
-      vec2 wp = vSectWorld.xz;
-      vec2 ripple = vec2( sin( dot( wp, vec2( 2.3, 1.1 ) ) ) + 0.6 * sin( dot( wp, vec2( -4.1, 3.3 ) ) ),
-                          cos( dot( wp, vec2( -1.3, 2.7 ) ) ) + 0.6 * cos( dot( wp, vec2( 3.7, 4.4 ) ) ) );
-      r.xz += ripple * 0.0045;
-      r = normalize( r );
-      float F = 0.02 + 0.98 * pow( 1.0 - clamp( - v.y, 0.0, 1.0 ), 5.0 );
-      vec3 refl = mix( sectEnvSky( r, 0.25 ), mix( uWaterSkyLow, uWaterSkyHigh, smoothstep( 0.0, 0.5, r.y ) ), 0.25 ) * 0.4;
-      float hit = 0.0;
-      if ( uHasReflect > 0.5 ) {
-        vec4 rp = uReflectMatrix * vec4( vSectWorld, 1.0 );
-        vec4 rc = texture2D( tReflect, rp.xy / rp.w + ripple * 0.0025 );
-        refl = mix( refl, rc.rgb, rc.a );
-        hit = rc.a;
-      } else {
+    if ( uHasReflect > 0.5 ) {
+      vec2 sectIn = step( uPondMin, vSectWorld.xz ) * step( vSectWorld.xz, uPondMax );
+      float sectW = ( 1.0 - smoothstep( 0.008, 0.016, abs( vSectWorld.y - uWaterLevel ) ) )
+        * smoothstep( 0.97, 0.995, abs( sectN.y ) ) * sectIn.x * sectIn.y;
+      if ( sectW > 0.0 ) {
+        vec3 v = normalize( vSectWorld - cameraPosition );
+        vec2 wp = vSectWorld.xz;
+        float wt = uWaterTime;
+        vec2 g = vec2( 0.94, 0.34 ) * cos( dot( wp, vec2( 0.94, 0.34 ) ) * 2.6 - wt * 1.1 );
+        g += vec2( -0.42, 0.91 ) * cos( dot( wp, vec2( -0.42, 0.91 ) ) * 3.9 - wt * 1.4 ) * 0.7;
+        g += vec2( 0.17, -0.98 ) * cos( dot( wp, vec2( 0.17, -0.98 ) ) * 6.1 - wt * 1.9 ) * 0.45;
+        g += vec2( -0.83, -0.56 ) * cos( dot( wp, vec2( -0.83, -0.56 ) ) * 7.7 + wt * 1.6 ) * 0.35;
+        g *= ${glslFloat(POND.slope)} * ( 1.0 - smoothstep( ${glslFloat(POND.calm[0])}, ${glslFloat(POND.calm[1])}, length( vSectWorld - cameraPosition ) ) );
+        vec3 n = normalize( vec3( - g.x, 1.0, - g.y ) );
+        vec3 rr = reflect( v, n );
+        float F = ${glslFloat(POND.f0)} + ${glslFloat(1 - POND.f0)} * pow( 1.0 - clamp( - dot( v, n ), 0.0, 1.0 ), 5.0 );
+        vec4 rp = uReflectMatrix * vec4( vSectWorld + rr * ${glslFloat(POND.reach)}, 1.0 );
+        // Four bilinear taps on a rotated grid: a soft filter over the reduced-resolution image.
+        vec2 ruv = rp.xy / rp.w;
+        vec2 rt = uReflectTexel * 0.6;
+        vec3 rc = 0.25 * (
+          textureLod( tReflect, clamp( ruv + rt * vec2( 1.0, 0.33 ), uReflectClamp.xy, uReflectClamp.zw ), 0.0 ).rgb
+          + textureLod( tReflect, clamp( ruv + rt * vec2( -0.33, 1.0 ), uReflectClamp.xy, uReflectClamp.zw ), 0.0 ).rgb
+          + textureLod( tReflect, clamp( ruv - rt * vec2( 1.0, 0.33 ), uReflectClamp.xy, uReflectClamp.zw ), 0.0 ).rgb
+          + textureLod( tReflect, clamp( ruv - rt * vec2( -0.33, 1.0 ), uReflectClamp.xy, uReflectClamp.zw ), 0.0 ).rgb );
+        vec3 deep = outgoingLight * ${glslVec3([...POND.deep])};
+        outgoingLight = mix( outgoingLight, deep * ( 1.0 - F ) + rc * ( F * ${glslFloat(POND.gain)} ), sectW );
+      }
+    } else {
+      float sectW = ( 1.0 - smoothstep( 0.03, 0.07, abs( vSectWorld.y - uWaterLevel ) ) )
+        * smoothstep( 0.97, 0.995, abs( sectN.y ) )
+        * ( 1.0 - smoothstep( 0.05, 0.14, dot( outgoingLight, vec3( 0.2126, 0.7152, 0.0722 ) ) ) );
+      if ( sectW > 0.0 ) {
+        vec3 v = normalize( vSectWorld - cameraPosition );
+        vec3 r = vec3( v.x, - v.y, v.z );
+        // A faint static ripple so the reflection wavers instead of sitting on the water like a decal.
+        vec2 wp = vSectWorld.xz;
+        vec2 ripple = vec2( sin( dot( wp, vec2( 2.3, 1.1 ) ) ) + 0.6 * sin( dot( wp, vec2( -4.1, 3.3 ) ) ),
+                            cos( dot( wp, vec2( -1.3, 2.7 ) ) ) + 0.6 * cos( dot( wp, vec2( 3.7, 4.4 ) ) ) );
+        r.xz += ripple * 0.0045;
+        r = normalize( r );
+        float F = 0.02 + 0.98 * pow( 1.0 - clamp( - v.y, 0.0, 1.0 ), 5.0 );
+        vec3 refl = mix( sectEnvSky( r, 0.25 ), mix( uWaterSkyLow, uWaterSkyHigh, smoothstep( 0.0, 0.5, r.y ) ), 0.25 ) * 0.4;
+        float hit = 0.0;
         float dn = dot( r, uDiscN );
         if ( uDiscR > 0.0 && dn < -1e-4 ) {
           float t = dot( uDiscC - vSectWorld, uDiscN ) / dn;
@@ -437,9 +517,9 @@ const WATER_FRAGMENT = /* glsl */ `
             hit = face + rim * 0.7;
           }
         }
+        // The mirror's reflection is bright (polished metal); the sky's is Fresnel-weighted.
+        outgoingLight = mix( outgoingLight, refl, mix( F, 0.85, hit ) * sectW );
       }
-      // The mirror's reflection is bright (polished metal); the sky's is Fresnel-weighted.
-      outgoingLight = mix( outgoingLight, refl, mix( F, 0.85, hit ) * sectW );
     }
   }
 `;
@@ -573,6 +653,11 @@ const TREE_SHADE_GLSL = treeShadeGlsl(SECT_LOOK.trees.shade);
 
 export type WaterUniforms = Record<string, IUniform>;
 
+/**
+ * A pond material's water uniforms. The planar path's (tReflect, uHasReflect, uReflectMatrix, the
+ * texture's valid rectangle uReflectClamp and its texel uReflectTexel, the open water's bounds uPondMin / uPondMax and the
+ * ripples' clock uWaterTime) are set each frame by reflect/pond.ts; the rest is the analytic path's.
+ */
 export function createWaterUniforms(w: WaterSurface): WaterUniforms {
   const look = SECT_LOOK.water;
   const glow = linear(look.mirrorGlow).multiplyScalar(look.mirrorGlowGain);
@@ -594,6 +679,11 @@ export function createWaterUniforms(w: WaterSurface): WaterUniforms {
     tReflect: { value: null },
     uHasReflect: { value: 0 },
     uReflectMatrix: { value: new Matrix4() },
+    uReflectClamp: { value: new Vector4(0, 0, 1, 1) },
+    uReflectTexel: { value: new Vector2(0, 0) },
+    uPondMin: { value: new Vector2(...(w.bounds?.min ?? [-1e9, -1e9])) },
+    uPondMax: { value: new Vector2(...(w.bounds?.max ?? [1e9, 1e9])) },
+    uWaterTime: { value: 0 },
   };
 }
 

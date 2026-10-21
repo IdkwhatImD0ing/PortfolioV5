@@ -8,9 +8,10 @@
  * - glow rhythms on clickable things: a light running along the mission tablets, the stele rows,
  *   the library floors and the formation pillars; breathing runes at the gate, the mirror, the jade
  *   scroll and the summit arch; the censer's ember and the abode's wind chimes flicker;
- * - cloth and branches: the arena's banners flutter, and so do the gate's (cut out of the merged
- *   scenery where they hang), the mirror's and the abode's peach trees sway (a vertex offset in
- *   the shader, weighted so poles and trunks stay put).
+ * - cloth and branches: the arena's hackathon banners flutter, and so do the sect's other pole
+ *   banners, at the gate, the forge, the arena and the mission hall (cut out of the merged scenery
+ *   where they hang); the mirror's and the abode's peach trees sway (a vertex offset in the
+ *   shader, weighted so poles and trunks stay put).
  * Nothing moves with reduced motion. planIdleSliced (or planIdle, in one go) runs once per loaded
  * chunk; updateIdle every frame.
  */
@@ -755,8 +756,9 @@ function* planSteps(
       }
     }
   }
-  // The banners merged into the baked scenery (the gate's): their cloth is cut out where it hangs,
-  // onto a copy of its material, and flutters as props.banner's wave did in Blender.
+  // The banners merged into the baked scenery (BANNER_HANGS: the gate's, the forge's, the arena's
+  // four that no hackathon claims, the mission hall's): their cloth is cut out where it hangs, onto
+  // a copy of its material, and flutters as props.banner's wave did in Blender.
   const hangs = BANNER_HANGS[id];
   if (hangs?.length && main) {
     const pieces = yield* carveRegion(main, skip, hangRegion(hangs));

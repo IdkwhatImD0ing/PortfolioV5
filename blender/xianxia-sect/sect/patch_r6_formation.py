@@ -28,8 +28,9 @@ Idempotent: every object (and own mesh) the new build makes carries the property
 them (and empties formation.p.station) before building again, so names and counts come out the same.
 
 Caches: the new pieces have NEW names, so the web caches do not know them: 'PATCH CACHES NEED AUDIT (new formation
-objects)' -> run export_web.py -- audit, then -- chunks,meta --profile full, then bake_web.py -- bakefull --profile
-full --chunks formation before the page shows them.
+objects)' -> run export_web.py -- audit --profile full, then -- chunks,meta --profile full, then bake_web.py --
+bakefull --profile full --chunks formation,backdrop before the page shows them. The backdrop too: its 'proxy.formation'
+stands in for the area wherever the formation chunk is out of range (e.g. from the gate) and still has the old array.
 """
 import argparse
 import math
@@ -60,6 +61,7 @@ OLD_SUBTREES = ("light_pillar", "core_feed", "motes", "floor_dark", "dome.ring",
 OLD_PROTOS = (K + ".p.pillar", K + ".p.satellite")
 RESKIN = ("plaza_edge", "dais_sides")
 WALK_EXEMPT = (K + ".censer",)
+SAMPLES = tuple(K + s for s in (".brazier.0.", ".flag_base.wood.", ".dipper.yaoguang.", ".armillary", ".core."))
 
 
 def log(*a):
@@ -137,10 +139,10 @@ def remove_r6(coll):
     """Everything a previous round-6 build made (tagged objects and their meshes, the station prototype)."""
     obs = [o for o in bpy.data.objects if o.get(AP.TAG)]
     for o in obs:
-        if o.users_collection and not any(c == coll or c.name.startswith(K) or c.name.startswith("_protos")
-                                          for c in o.users_collection):
-            raise RuntimeError("tagged object %s lives outside the formation: %s" % (o.name,
-                                                                                      [c.name for c in o.users_collection]))
+        where = [c.name for c in o.users_collection]
+        if where and not any(c == coll or c.name.startswith(K) or c.name.startswith("_protos")
+                             for c in o.users_collection):
+            raise RuntimeError("tagged object %s lives outside the formation: %s" % (o.name, where))
     n = remove_objects(obs)
     pc = bpy.data.collections.get(K + ".p.station")
     if pc is not None:
@@ -403,6 +405,15 @@ def main():
         parts[key] = parts.get(key, 0) + tris_of(o.data)
     for key in sorted(parts, key=lambda k: -parts[k]):
         log("  tris %-22s %8d" % (key, parts[key]))
+    pc = bpy.data.collections.get(K + ".p.station")
+    if pc is not None:
+        protos = sorted((o for o in pc.all_objects if o.type == 'MESH'), key=lambda o: o.name)
+        log("  station prototype:", ", ".join("%s %d" % (o.name.split(".")[-1], tris_of(o.data)) for o in protos))
+    one = {}
+    for o in coll.all_objects:
+        if o.type == 'MESH' and o.get(AP.TAG) and o.name.startswith(SAMPLES):
+            one[o.name] = tris_of(o.data)
+    log("  pieces:", ", ".join("%s %d" % kv for kv in sorted(one.items())))
     bad = check_walk(coll, root)
     for b in bad[:30]:
         log("WALK BLOCKED", b)
@@ -424,8 +435,9 @@ def main():
             return
         raise SystemExit(1)
     new = sorted(o.name for o in coll.all_objects if o.get(AP.TAG) and (o.parent is None or not o.parent.get(AP.TAG)))
-    log("CACHES NEED AUDIT (new formation objects): %d new top-level pieces (%s ...) - run export_web.py -- audit, "
-        "then -- chunks,meta --profile full, then bake_web.py -- bakefull --profile full --chunks formation"
+    log("CACHES NEED AUDIT (new formation objects): %d new top-level pieces (%s ...) - run export_web.py -- audit "
+        "--profile full, then -- chunks,meta --profile full, then bake_web.py -- bakefull --profile full --chunks "
+        "formation,backdrop"
         % (len(new), ", ".join(new[:12])))
     log("objects in the formation:", n0, "->", len(coll.all_objects))
     if opt.no_save:

@@ -489,6 +489,57 @@ describe("reflective surfaces (sky reflection, Fresnel, sun glint)", () => {
     chunksReal(sh);
   });
 
+  it("reads the planar reflection only where the pond is open water by geometry, the analytic path otherwise", () => {
+    const u = createWaterUniforms({ level: 2, disc: null, bounds: { min: [-3, -4], max: [5, 6] } });
+    expect((u.uPondMin.value as Vector2).toArray()).toEqual([-3, -4]);
+    expect((u.uPondMax.value as Vector2).toArray()).toEqual([5, 6]);
+    expect(u.uHasReflect.value).toBe(0);
+    expect(u.tReflect.value).toBeNull();
+    const mat = new MeshBasicMaterial({ map: new Texture() });
+    mat.name = "baked.mirror_A0";
+    patchMaterial(mat, { lit: true, exposure: 1, water: u });
+    const sh = compile(mat);
+    const fs = sh.fragmentShader;
+    for (const name of ["tReflect", "uReflectMatrix", "uReflectClamp", "uReflectTexel", "uPondMin", "uPondMax", "uWaterTime"]) {
+      expect(sh.uniforms[name], name).toBe(u[name]);
+    }
+    const planar = fs.indexOf("if ( uHasReflect > 0.5 )");
+    const analytic = fs.indexOf("} else {", planar);
+    expect(planar).toBeGreaterThan(0);
+    const planarCode = fs.slice(planar, analytic);
+    // Geometry alone: the water plane to a centimetre, level, inside the bounds; no colour test.
+    expect(planarCode).toContain("smoothstep( 0.008, 0.016, abs( vSectWorld.y - uWaterLevel ) )");
+    expect(planarCode).toContain("step( uPondMin, vSectWorld.xz )");
+    expect(planarCode).not.toContain("dot( outgoingLight");
+    expect(planarCode).toContain("textureLod( tReflect");
+    // No analytic disc where the real reflection is drawn; the analytic path keeps its dark-water test and disc.
+    expect(planarCode).not.toContain("uDiscR");
+    const analyticCode = fs.slice(analytic, fs.indexOf("#include <opaque_fragment>"));
+    expect(analyticCode).toContain("1.0 - smoothstep( 0.05, 0.14, dot( outgoingLight");
+    expect(analyticCode).toContain("uDiscR > 0.0");
+    chunksReal(sh);
+  });
+
+  it("gives the Heart-Mirror's face the captured surroundings, faded in over the sky-only shading", () => {
+    const mat = baked("baked.mirror_A0.glow.mirror_face", { glow: 1.3 });
+    const sh = compile(mat);
+    const fs = sh.fragmentShader;
+    for (const name of ["tSectMirrorEnv", "uSectMirrorEnvOn", "uSectMirrorEnvP", "uSectMirrorEnvC", "uSectMirrorEnvN", "uSectMirrorEnvR"] as const) {
+      expect(sh.uniforms[name], name).toBe(SECT_MIRROR[name]);
+    }
+    expect(fs).toContain("uniform samplerCube tSectMirrorEnv;");
+    // The sky-only shading comes first and stays whole when the cube is off (Low, or before a capture).
+    const sky = fs.indexOf("outgoingLight = sF * ( sectEnvSky( sR");
+    const cube = fs.indexOf("if ( uSectMirrorEnvOn > 0.0 )");
+    expect(sky).toBeGreaterThan(0);
+    expect(cube).toBeGreaterThan(sky);
+    expect(fs).toContain("outgoingLight = mix( outgoingLight, eCol, uSectMirrorEnvOn );");
+    expect(SECT_MIRROR.uSectMirrorEnvOn.value).toBe(0);
+    // Only the face: the rune ring and other glow materials do not read the cube.
+    expect(compile(baked("baked.mirror_A0.glow.rune_cyan", { glow: 2 })).fragmentShader).not.toContain("tSectMirrorEnv");
+    chunksReal(sh);
+  });
+
   it("hands the sky dome's own uniform objects to the reflections, reset to the look's day colours", () => {
     const fog = fogConstantsFromMeta(parseMeta({}));
     const tex = new Texture();

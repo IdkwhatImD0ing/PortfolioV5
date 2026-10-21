@@ -6,28 +6,31 @@ it. Run on the cloud box, on a copy first:
         E:/Github/PortfolioV5/blender/xianxia-sect/out/sect_chase.blend --python-exit-code 1 \
         --python E:/Github/PortfolioV5/blender/xianxia-sect/sect/patch_r7_flute.py [-- DRY_RUN=1]
 
-ADDS six objects to the 'mirror' collection; nothing else changes (no existing object is renamed, moved or removed):
+ADDS seven objects to the 'mirror' collection; nothing else changes (no existing object is renamed, moved or removed):
     mirror.flute          Empty under mirror.root at mirror.FLUTE_LOC (z 0), turned FLUTE_YAW
     mirror.flute_rock     flat dark slate, sunk into the lawn at the pond's east rim (flute_qingshi)
-    mirror.flute_bag      the flute's empty red brocade bag lying flat in front of it (flute_silk, cloth_gold)
+    mirror.flute_bag      the flute's empty red brocade bag lying flat behind it (flute_silk, cloth_gold)
     mirror.flute_xiao     the jade xiao resting on the stone (flute_jade, lacquer_black in the holes and the bore)
     mirror.flute_tassel   gold cord from the front vent hole, knot, jade bead and tassel hanging against the stone
     mirror.flute_petals   fallen peach petals on the stone, the lawn, the bank, the rim stones and the water
+    mirror.flute_peach    a small peach tree (4.2 m; an instance of the existing peach v3 'mid' prototype) behind the stone
 Every one carries obj['sect_item'] = 'jade_flute'. Idempotent: a re-run first removes its own previous output (objects
 tagged so or with those names, and their meshes), then builds the set again under the same names.
 
-Checks before saving (it stops without saving when one fails): the six names exactly (no '.001'); each mesh within
+Checks before saving (it stops without saving when one fails): the seven names exactly (no '.001'); each mesh within
 mirror.FLUTE_TRI_CAP triangles and closed (every edge in two or more faces: bake_web's closed-piece rule); the set at
 least 2 m outside every mist_volume box; no piece intersecting any scene piece but the lawn and the pond basin
 (instances included), nearest distances logged; grounding: the stone's foot below the ground all round, the bag on
 the stone (no overlap, touching), the flute on the stone (no overlap, touching at its two rest points, its ends within
-1.5 cm), the cord and tassel against the stone and the bag, every petal within a few mm over a surface; the 217 hold:
-the flute's ends in
-frame, its length in pixels at 1600x900 and how much of it the hold camera sees (unblocked rays), and how much of it
-the sun reaches (logged).
+1.5 cm), the cord and tassel against the stone and the bag and joined as one chain (no loose piece), every petal
+within a few mm over a surface, the tree's trunk in the lawn and the tree clear of the set and the paving; the 217
+hold: the flute wholly in frame, its length in pixels at 1600x900 (at least 40), how much of it the hold camera sees
+(unblocked rays, at least 60 %) and how much of it the sun reaches (logged). This lane's own materials (flute_*) are
+rebuilt in place on a re-run, so an older patched file gets the current look.
 
 Caches: new objects, so the first run prints 'PATCH CACHES audit-needed' (run the export audit, then chunks,meta, then
-re-bake the mirror chunk); a re-run that rebuilds the same names inside the same world boxes prints 'PATCH CACHES ok'.
+re-bake the mirror chunk; the tree is a new instance of an existing prototype, so the trees bake has to place it too); a
+re-run that rebuilds the same names inside the same world boxes prints 'PATCH CACHES ok'.
 Options after '--': DRY_RUN=1 (build, report, no save).
 """
 import math
@@ -221,9 +224,29 @@ def mist_report(pts):
     return sorted(out)
 
 
-def neighbours(group):
+def tree_parts():
+    """[(label, world verts, polys)] of the small peach tree's instanced meshes (evaluated)."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    out = []
+    for inst in dg.object_instances:
+        if not inst.is_instance or inst.parent is None or inst.parent.original.name != MI.FLUTE_TREE:
+            continue
+        ob = inst.object
+        if ob.type != 'MESH':
+            continue
+        M = inst.matrix_world.copy()
+        me = ob.to_mesh()
+        try:
+            out.append(("%s/%s" % (MI.FLUTE_TREE, ob.original.name), [M @ v.co for v in me.vertices],
+                        [tuple(p.vertices) for p in me.polygons]))
+        finally:
+            ob.to_mesh_clear()
+    return out
+
+
+def neighbours(group, trees):
     """[(label, part, nearest distance, intersects)] for every scene piece (evaluated instances included) whose world
-    box comes within NEAR m of a group mesh's."""
+    box comes within NEAR m of a group mesh's or of the tree's."""
     dg = bpy.context.evaluated_depsgraph_get()
     gnames = {o.name for o in group}
     parts = []
@@ -231,12 +254,16 @@ def neighbours(group):
         if o.type != 'MESH':
             continue
         vs = world_verts(o)
-        parts.append((o, box_of(vs), BVHTree.FromPolygons(vs, [tuple(p.vertices) for p in o.data.polygons]), vs))
+        parts.append((o.name, box_of(vs), BVHTree.FromPolygons(vs, [tuple(p.vertices) for p in o.data.polygons]), vs))
+    for label, vs, ps in trees:
+        parts.append((label, box_of(vs), BVHTree.FromPolygons(vs, ps), vs))
     gbox = box_of([p for _o, _b, _t, vs in parts for p in vs])
     found = []
     for inst in dg.object_instances:
         ob = inst.object
         if ob.type != 'MESH' or ob.original.name in gnames:
+            continue
+        if inst.is_instance and inst.parent is not None and inst.parent.original.name in gnames:
             continue
         M = inst.matrix_world.copy()
         nb = box_of([M @ Vector(c) for c in ob.bound_box])
@@ -249,34 +276,55 @@ def neighbours(group):
             ob.to_mesh_clear()
         label = ob.original.name + ("" if not inst.is_instance else " (instance under %s)" %
                                     (inst.parent.original.name if inst.parent else "?"))
-        for o, b, t, vs in parts:
+        for nm, b, t, vs in parts:
             if box_gap(nb, b) > NEAR:
                 continue
             hit = bool(t.overlap(tree))
             d = min((h[3] for h in (tree.find_nearest(p) for p in vs[::3]) if h[0] is not None), default=9e9)
-            found.append((label, o.name, d, hit))
+            found.append((label, nm, d, hit))
     return found
 
 
 def check_scene(group):
-    pts = [p for o in group if o.type == 'MESH' for p in world_verts(o)]
+    trees = tree_parts()
+    if not trees:
+        raise RuntimeError("%s instances no meshes" % MI.FLUTE_TREE)
+    pts = [p for o in group if o.type == 'MESH' for p in world_verts(o)] + [p for _l, vs, _p in trees for p in vs]
     mists = mist_report(pts)
     for d, nm in mists[:3]:
         log("mist box %-30s nearest set vertex %.2f m" % (nm, d))
     if mists and mists[0][0] < MIST_GAP:
         raise RuntimeError("the set is %.2f m from %s (< %.1f m)" % (mists[0][0], mists[0][1], MIST_GAP))
     bad = []
-    near = sorted(neighbours(group), key=lambda r: r[2])
+    near = sorted(neighbours(group, trees), key=lambda r: r[2])
     for label, part, d, hit in near:
         tag = "INTERSECTS" if hit else "clear"
         if hit or d < 0.3:
-            log("neighbour %-56s ~ %-20s nearest %.3f m  %s" % (label[:56], part, d, tag))
+            log("neighbour %-56s ~ %-34s nearest %.3f m  %s" % (label[:56], part[:34], d, tag))
         if hit and not any(label == g or label.startswith(g + " ") for g in GROUND_OK):
             bad.append((label, part))
     log("neighbours within %.0f m: %d pairs (%d listed above: touching or within 0.3 m)"
         % (NEAR, len(near), sum(1 for r in near if r[3] or r[2] < 0.3)))
     if bad:
         raise RuntimeError("set pieces intersect scene pieces: %s" % bad)
+    # the tree among the set's own pieces (the petals under it, the stone in front of it)
+    ts = [BVHTree.FromPolygons(vs, ps) for _l, vs, ps in trees]
+    for o in group:
+        if o.type == 'MESH' and any(t.overlap(BVHTree.FromPolygons(world_verts(o), [tuple(p.vertices) for p in
+                                                                                     o.data.polygons])) for t in ts):
+            raise RuntimeError("the peach tree intersects %s" % o.name)
+    # its trunk stands in the lawn
+    tree = bpy.data.objects[MI.FLUTE_TREE]
+    base = tree.matrix_world.translation
+    lawn = bpy.data.objects["mirror.lawn"]
+    hit = bvh_obj(lawn).ray_cast(base + Vector((0, 0, 3.0)), Vector((0, 0, -1)), 10.0)
+    if hit[0] is None:
+        raise RuntimeError("no lawn under the peach tree")
+    low = min(p.z for _l, vs, _p in trees for p in vs if (Vector((p.x, p.y)) - Vector((base.x, base.y))).length < 0.6)
+    log("peach tree %s: %d instanced meshes, %d verts; trunk base %.3f m under the lawn (origin %.3f m off it)"
+        % (MI.FLUTE_TREE, len(trees), sum(len(vs) for _l, vs, _p in trees), hit[0].z - low, base.z - hit[0].z))
+    if hit[0].z - low < 0.02 or abs(base.z - hit[0].z) > 0.01:
+        raise RuntimeError("the peach tree's trunk does not stand in the lawn")
 
 
 def check_grounding(root, em):
@@ -331,10 +379,37 @@ def check_grounding(root, em):
             raise RuntimeError("%s intersects the %s (%d pairs)" % (a, b, len(ov)))
     ov = t["tassel"].overlap(t["xiao"])
     log("tassel into the flute's vent hole: %d overlapping face pairs (the cord's tied end)" % len(ov))
+    # the cord, knot, bead and tassel hang as one chain: every loose piece touches the rest (none hangs loose)
+    me = ob["tassel"].data
+    root_of = list(range(len(me.vertices)))
+
+    def find(i):
+        while root_of[i] != i:
+            root_of[i] = root_of[root_of[i]]
+            i = root_of[i]
+        return i
+    for e in me.edges:
+        root_of[find(e.vertices[0])] = find(e.vertices[1])
+    groups = {}
+    for p in me.polygons:
+        groups.setdefault(find(p.vertices[0]), []).append(tuple(p.vertices))
+    pieces = [BVHTree.FromPolygons([v.co for v in me.vertices], ps) for ps in groups.values()]
+    linked, todo = {0}, [0]
+    while todo:
+        a = todo.pop()
+        for b in range(len(pieces)):
+            if b not in linked and pieces[a].overlap(pieces[b]):
+                linked.add(b)
+                todo.append(b)
+    log("tassel chain: %d pieces, %d joined to the cord" % (len(pieces), len(linked)))
+    if len(linked) != len(pieces):
+        raise RuntimeError("tassel: %d of %d pieces hang loose from the cord" % (len(pieces) - len(linked), len(pieces)))
     # the flute's rest: lowest gap to the stone along its length (two contacts), and its ends' gap
     xv = [v.co for v in ob["xiao"].data.vertices]
     gaps = sorted((t["rock"].find_nearest(v)[3], round(v.x, 2)) for v in xv)
-    ends = [min(t["rock"].find_nearest(v)[3] for v in xv if (v.x < -0.85 if e == 0 else v.x > 0.85)) for e in (0, 1)]
+    x0, x1 = min(v.x for v in xv), max(v.x for v in xv)
+    ends = [min(t["rock"].find_nearest(v)[3] for v in xv if (v.x < x0 + 0.06 if e == 0 else v.x > x1 - 0.06))
+            for e in (0, 1)]
     log("flute rests on the stone at x %s (gaps %s m); its ends %.4f / %.4f m over it"
         % ([g[1] for g in gaps[:6]], [round(g[0], 4) for g in gaps[:6]], ends[0], ends[1]))
     if max(ends) > 0.015:
@@ -345,7 +420,7 @@ def check_grounding(root, em):
     if len(pv) % k:
         raise RuntimeError("petal mesh has %d vertices, not a multiple of %d" % (len(pv), k))
     sets = [t[p] for p in ("rock", "bag", "xiao", "tassel")]
-    worst, kinds = 0.0, {}
+    worst = 0.0
     for i in range(0, len(pv), k):
         bottom = pv[i:i + k:2]
         d = min(min([ground.find_nearest(v)[3]] + [s.find_nearest(v)[3] for s in sets]) for v in bottom)
@@ -384,7 +459,6 @@ def check_hold(group):
         C = cam.matrix_world.translation
         sun = [o for o in bpy.data.objects if o.type == 'LIGHT' and o.data.type == 'SUN']
         Ls = (-(sun[0].matrix_world.to_3x3() @ Vector((0, 0, -1)))).normalized() if sun else None
-        names = {o.name for o in group}
         seen = lit = n = 0
         top = sorted(vs, key=lambda p: -p.z)[:len(vs) // 3]
         for p in top[::max(1, len(top) // 60)]:
@@ -408,6 +482,11 @@ def check_hold(group):
         log("217 hold: stone box on screen x %.0f..%.0f y %.0f..%.0f" % (min(c.x for c in cs) * rw, max(c.x for c in cs) * rw,
                                                                        (1 - max(c.y for c in cs)) * rh,
                                                                        (1 - min(c.y for c in cs)) * rh))
+        tps = [world_to_camera_view(sc, cam, p) for _l, vs, _p in tree_parts() for p in vs[::7]]
+        log("217 hold: peach tree on screen x %.0f..%.0f y %.0f..%.0f" % (min(c.x for c in tps) * rw,
+                                                                       max(c.x for c in tps) * rw,
+                                                                       (1 - max(c.y for c in tps)) * rh,
+                                                                       (1 - min(c.y for c in tps)) * rh))
         if length < MIN_PX:
             raise RuntimeError("the flute is only %.0f px long in the hold (< %.0f)" % (length, MIN_PX))
         if seen < MIN_VISIBLE * n:

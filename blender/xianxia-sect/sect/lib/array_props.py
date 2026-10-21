@@ -35,6 +35,7 @@ OCT = 1.0 / math.cos(math.pi / 8)       # octagon circumradius / apothem
 # materials (registered by formation._materials)
 M_MARBLE = "formation_marble_aged"
 M_CARVED = "formation_stone_carved"
+M_PALE = "formation_stone_pale"
 M_BLUE = "formation_paving_bluestone"
 M_INK = "formation_paving_ink"
 M_LEAK = "formation_rune_goldleak"
@@ -51,10 +52,10 @@ M_FLAME = "props_flame"
 PLINTH_A = 3.0                         # apothem of the bottom step (circumradius 3.25)
 PLINTH_TOP = 1.30
 COL_Z0, COL_Z1 = 1.25, 8.85            # column shaft
-COL_A0, COL_A1 = 1.15, 0.95            # apothem at the foot / top (2.3 m / 1.9 m across the flats)
+COL_A0, COL_A1 = 1.30, 1.08            # apothem at the foot / top (2.6 m / 2.16 m across the flats)
 CLOUD_Z = 7.0                          # cloud plate centre
 DEW_Z = (8.66, 9.18)
-EYE_Z, EYE_R = 10.6, 1.1
+EYE_Z, EYE_R = 10.45, 0.9
 DRAGON_Z = (2.75, 6.0)                 # tail .. neck on the column
 DRAGON_TURNS = 1.5
 PLAQUE_Z = 2.25
@@ -370,7 +371,7 @@ def col_surface_r(theta, z):
 
 def _rb(s):
     """Dragon body radius along the body (0 tail .. 1 neck)."""
-    return 0.06 + 0.17 * min(1.0, s / 0.55) ** 0.8
+    return 0.08 + 0.22 * min(1.0, s / 0.55) ** 0.8
 
 
 def _station_dragon(bm):
@@ -382,13 +383,13 @@ def _station_dragon(bm):
         th = math.pi - DRAGON_TURNS * TAU * (1.0 - s)
         z = z0 + (z1 - z0) * s
         rho = col_surface_r(th, z) + 0.72 * _rb(s)
-        pts.append((rho * math.cos(th), rho * math.sin(th), z, _rb(s) / 0.23))
+        pts.append((rho * math.cos(th), rho * math.sin(th), z, _rb(s) / 0.30))
     a = col_apothem(6.2)
-    pts += [(-(a + 0.45), -0.10, 6.22, 0.95), (-(a + 0.78), -0.04, 6.38, 0.9)]
+    pts += [(-(a + 0.62), -0.10, 6.30, 0.95), (-(a + 1.08), -0.04, 6.52, 0.9)]
     out = lambda c: (c.x, c.y, 0.0)                 # noqa: E731  dorsal side: away from the column axis
-    vs = dragon_body(bm, pts, 0.23, out, spikes=(0.06, 0.9, 0.022), spike_h=0.16)
-    head = frame((-1.0, 0.0, -0.22), (0, 0, 1), (-(a + 1.02), -0.02, 6.42))
-    vs += dragon_head(bm, head, 0.95)
+    vs = dragon_body(bm, pts, 0.30, out, spikes=(0.06, 0.9, 0.022), spike_h=0.2)
+    head = frame((-1.0, 0.0, -0.15), (0, 0, 1), (-(a + 1.50), -0.02, 6.60))
+    vs += dragon_head(bm, head, 1.5)
     # legs: hind pair low on the body, fore pair below the neck; paws on the column surface
     path = U.catmull_rom(pts, 5)
     mm = len(path)
@@ -406,7 +407,7 @@ def _station_dragon(bm):
         shoulder = c + rad * 0.05
         fd = (foot - c).normalized()
         toes = [(fd + rad * 0.2 + tg * 0.5 * k).normalized() for k in (-1, 0, 1)]
-        vs += dragon_leg(bm, shoulder, elbow, foot, toes, 0.075)
+        vs += dragon_leg(bm, shoulder, elbow, foot, toes, 0.085)
     return vs
 
 
@@ -445,7 +446,7 @@ def _column_clouds(bm):
     return vs
 
 
-def _cloud_outline(half=1.65, r0=0.44, band=0.26, n=22):
+def _cloud_outline(half=1.75, r0=0.50, band=0.28, n=22):
     """Cloud plate outline (u along the plate, v up): a wavy band ending in two lobed ruyi cloud heads."""
     top = [(u, band + 0.035 * math.sin(u * 3.6)) for u in [-half + 2 * half * i / 12 for i in range(13)]]
     head = []
@@ -476,7 +477,7 @@ def station_proto(pc):
     # ---- column (octagonal, tapering) and its carving: the coiling dragon and cloud scrolls
     bm = bmesh.new()
     oct_lathe(bm, [(0.0, COL_Z0), (COL_A0, COL_Z0), (COL_A1, COL_Z1), (0.0, COL_Z1)])
-    mk("formation.p.station_column", bm, pc, [M_CARVED], smooth=False, bevel=0.03)
+    mk("formation.p.station_column", bm, pc, [M_PALE], smooth=False, bevel=0.03)
     bm = bmesh.new()
     _station_dragon(bm)
     _column_clouds(bm)
@@ -508,13 +509,13 @@ def station_proto(pc):
     # ---- cloud plate piercing the column (broad faces toward +-X), spiral relief on both faces
     bm = bmesh.new()
     out = _cloud_outline()
-    prism_x(bm, out, -0.16, 0.16, matrix=Matrix.Translation((0.0, 0.0, CLOUD_Z)))
+    prism_x(bm, out, -0.18, 0.18, matrix=Matrix.Translation((0.0, 0.0, CLOUD_Z)))
     for sx in (-1.0, 1.0):
         def surf(u, v, h, sx=sx):
-            return Vector((sx * (0.16 + h), u, CLOUD_Z + v))
-        for cu in (-1.83, 1.83):
-            P._relief(bm, _cloud_spiral(cu, 0.02, 0.30, 1.5, 18, 1.0 if cu > 0 else -1.0), 0.06, 0.035, surf)
-        P._relief(bm, [(-1.35 + 2.7 * i / 16, 0.035 * math.sin(i * 1.3)) for i in range(17)], 0.05, 0.03, surf)
+            return Vector((sx * (0.18 + h), u, CLOUD_Z + v))
+        for cu in (-1.93, 1.93):
+            P._relief(bm, _cloud_spiral(cu, 0.02, 0.34, 1.5, 18, 1.0 if cu > 0 else -1.0), 0.07, 0.04, surf)
+        P._relief(bm, [(-1.45 + 2.9 * i / 16, 0.04 * math.sin(i * 1.3)) for i in range(17)], 0.06, 0.035, surf)
     P._outward(bm)
     mk("formation.p.station_cloudplate", bm, pc, [M_MARBLE], smooth=math.radians(35), bevel=0.015)
 
@@ -530,24 +531,24 @@ def station_proto(pc):
 
     # ---- bronze cradle: a cup under the eye and four dragon-claw arms with gold talons
     bm = bmesh.new()
-    lathe(bm, [(0.0, 9.06), (0.48, 9.06), (0.64, 9.24), (0.75, 9.55), (0.80, 9.80), (0.75, 9.85), (0.69, 9.78),
-               (0.40, 9.56), (0.0, 9.50)], 32)
-    lathe(bm, [(0.70, 9.30), (0.79, 9.33), (0.79, 9.40), (0.70, 9.43)], 32, caps=(False, False), mat=1)
+    lathe(bm, [(0.0, 9.06), (0.45, 9.06), (0.60, 9.22), (0.68, 9.50), (0.71, 9.78), (0.66, 9.83), (0.60, 9.75),
+               (0.36, 9.60), (0.0, 9.54)], 32)
+    lathe(bm, [(0.62, 9.28), (0.71, 9.31), (0.71, 9.38), (0.62, 9.41)], 32, caps=(False, False), mat=1)
     for k in range(4):
         ph = math.pi / 4 + k * math.pi / 2
         c, s = math.cos(ph), math.sin(ph)
-        arm = [(0.68, 9.40, 1.0), (1.05, 9.56, 0.95), (1.30, 10.05, 0.85), (1.26, 10.66, 0.72), (1.08, 11.26, 0.6),
-               (0.80, 11.56, 0.5)]
+        arm = [(0.62, 9.40, 1.0), (0.97, 9.55, 0.95), (1.13, 10.0, 0.85), (1.06, 10.5, 0.72), (0.90, 11.0, 0.6),
+               (0.62, 11.24, 0.5)]
         tube(bm, [(r * c, r * s, z, w) for r, z, w in arm], 0.12, 8, 4)
-        P._sphere(bm, 0.09, (0.80 * c, 0.80 * s, 11.56), 10, 6, mat=1)
+        P._sphere(bm, 0.085, (0.62 * c, 0.62 * s, 11.24), 10, 6, mat=1)
         for dk in (-0.32, 0.0, 0.32):
             pa = ph + dk
             ca, sa = math.cos(pa), math.sin(pa)
-            tal = [(0.80, 11.56, 1.0), (0.66, 11.66, 0.8), (0.48, 11.70, 0.55), (0.34, 11.66, 0.2)]
+            tal = [(0.62, 11.24, 1.0), (0.50, 11.33, 0.8), (0.34, 11.37, 0.55), (0.22, 11.34, 0.2)]
             tube(bm, [(r * (c if dk == 0 else ca), r * (s if dk == 0 else sa), z, w) for r, z, w in tal], 0.045, 6, 3,
                  mat=1)
-        for z in (9.85, 10.35):                       # scale rings on the arm
-            r = 1.18 if z < 10 else 1.30
+        for z in (9.80, 10.25):                       # scale rings on the arm
+            r = 1.04 if z < 10 else 1.11
             P._torus(bm, 0.12, 0.03, 10, 5, matrix=Matrix.Translation((r * c, r * s, z)) @
                      Matrix.Rotation(-ph, 4, 'Z').inverted() @ Matrix.Rotation(math.radians(60), 4, 'Y'))
     P._outward(bm)
@@ -555,7 +556,7 @@ def station_proto(pc):
 
     # ---- the jade eye (the station's only glow; the page's idle wave pulses it)
     bm = bmesh.new()
-    P._sphere(bm, EYE_R, (0.0, 0.0, EYE_Z), 48, 24)
+    P._sphere(bm, EYE_R, (0.0, 0.0, EYE_Z), 40, 20)
     mk("formation.p.station_eye", bm, pc, [M_EYE], smooth=True, glow=1.0)
 
 
@@ -586,6 +587,8 @@ def station_plaque(coll, name, parent, trigram):
 
 BRAZIER_RIM = 1.78
 BRAZIER_BED = 1.70
+BRAZIER_K = 1.15                       # the bronze, coals and flame are built at this scale (the marble step is not)
+BRAZIER_SCALE = Matrix.Diagonal((BRAZIER_K, BRAZIER_K, BRAZIER_K, 1.0))
 
 
 def _flame_shape(t):
@@ -714,14 +717,14 @@ def _brazier_bronze():
         c, s = math.cos(th), math.sin(th)
         leg = [(0.40, 1.30, 1.15), (0.58, 1.12, 1.25), (0.70, 0.86, 1.0), (0.64, 0.56, 0.85), (0.62, 0.30, 0.9),
                (0.66, 0.18, 1.05)]
-        tube(bm, [(r * c, r * s, z, w) for r, z, w in leg], 0.085, 8, 4)
+        tube(bm, [(r * c, r * s, z, w) for r, z, w in leg], 0.10, 8, 4)
         P._sphere(bm, 0.15, (0.70 * c, 0.70 * s, 0.11), 12, 6, scale=(1.3, 1.1, 0.75))
         for dk in (-0.35, 0.0, 0.35):                   # toes
             a = th + dk * 0.6
             P._sphere(bm, 0.055, ((0.70 * c + 0.15 * math.cos(a)), (0.70 * s + 0.15 * math.sin(a)), 0.06), 8, 4,
                       scale=(1.4, 1.0, 0.8))
-        P._taotie(bm, th, 1.18, 0.52, 1.2)              # beast mask where the leg meets the bowl
     P._merge(bm, 1e-6)
+    P._xf(bm, BRAZIER_SCALE, bm.verts[:])
     P._outward(bm)
     return bm
 
@@ -735,6 +738,7 @@ def _brazier_step():
 def _brazier_coals():
     bm = bmesh.new()
     _coals(bm, 0.70, BRAZIER_BED, 7731)
+    P._xf(bm, BRAZIER_SCALE, bm.verts[:])
     P._outward(bm)
     return bm
 
@@ -742,11 +746,12 @@ def _brazier_coals():
 def _brazier_flame():
     bm = bmesh.new()
     _flame(bm, BRAZIER_BED + 0.04, 1.25, 4113)
+    P._xf(bm, BRAZIER_SCALE, bm.verts[:])
     P._outward(bm)
     return bm
 
 
-BRAZIER_LIGHT = dict(energy=750.0, color=(1.0, 0.55, 0.22), soft=0.5, z=2.6, shadow=False)
+BRAZIER_LIGHT = dict(energy=750.0, color=(1.0, 0.55, 0.22), soft=0.5, z=2.8, shadow=False)
 
 
 def brazier(coll, name, parent, location, rotation_z):
@@ -755,13 +760,13 @@ def brazier(coll, name, parent, location, rotation_z):
     root = tag(U.empty(name, coll, location=location, rotation=(0.0, 0.0, rotation_z), parent=parent,
                        display_size=1.0))
     step = shared("formation.brazier_step.v1", _brazier_step, [M_MARBLE], smooth=False, bevel=0.012)
-    bronze = shared("formation.brazier_bronze.v1", _brazier_bronze, [M_BRONZE], smooth=math.radians(45))
-    coals = shared("formation.brazier_coals.v1", _brazier_coals, ["molten", "iron"], smooth=math.radians(30))
-    flame = shared("formation.brazier_flame.v1", _brazier_flame, [M_FLAME], smooth=True)
+    bronze = shared("formation.brazier_bronze.v2", _brazier_bronze, [M_BRONZE], smooth=math.radians(45))
+    coals = shared("formation.brazier_coals.v2", _brazier_coals, ["molten", "iron"], smooth=math.radians(30))
+    flame = shared("formation.brazier_flame.v2", _brazier_flame, [M_FLAME], smooth=True)
     obj(name + ".step", step, coll, parent=root)
     obj(name + ".bronze", bronze, coll, parent=root)
     obj(name + ".coals", coals, coll, parent=root, glow=1.2)
-    obj(name + ".flame", flame, coll, parent=root, glow=1.0, shadow=False)
+    obj(name + ".flame", flame, coll, parent=root, glow=0.7, shadow=False)
     ld = bpy.data.lights.new(name + ".light", 'POINT')
     ld.energy = BRAZIER_LIGHT["energy"]
     ld.color = BRAZIER_LIGHT["color"]
@@ -824,7 +829,7 @@ def _arm_dragon(bm, fx, fy, z0):
            P3(rho0 + 0.30, -0.25, z0 + 7.6, 0.9), P3(ARM_R + 0.10, 0.10, ARM_Z - 0.55, 0.85),
            P3(ARM_R + 0.55, 0.40, ARM_Z - 0.75, 0.82)]
     outward = lambda c: (Vector((c.x, c.y, 0.0)).normalized() + Vector((0, 0, 0.3)))  # noqa: E731
-    dragon_body(bm, pts, 0.27, outward, spikes=(0.1, 0.92, 0.03), spike_h=0.2, samples=6, sides=9)
+    dragon_body(bm, pts, 0.33, outward, spikes=(0.1, 0.92, 0.03), spike_h=0.24, samples=6, sides=9)
     # cloud collar half way up
     cpos = Vector(pts[3][:3])
     for k in range(5):
@@ -834,7 +839,7 @@ def _arm_dragon(bm, fx, fy, z0):
     P._torus(bm, 0.34, 0.07, 24, 6, matrix=Matrix.Translation(cpos))
     # head, turned outward and down, just under the ring
     hp = Vector(pts[-1][:3]) + rad * 0.32 - Vector((0, 0, 0.05))
-    dragon_head(bm, frame(rad - Vector((0, 0, 0.35)), (0, 0, 1), hp), 1.15, mat=0, mat_eye=1)
+    dragon_head(bm, frame(rad - Vector((0, 0, 0.35)), (0, 0, 1), hp), 1.35, mat=0, mat_eye=1)
     # fore legs reaching up to grip the ring, hind legs on the body
     for side in (-1.0, 1.0):
         sh = Vector(pts[-2][:3]) + tg * (0.25 * side)
@@ -906,9 +911,9 @@ def armillary_turning(bm_bronze, bm_core):
         P._torus(bm_bronze, 0.13, 0.04, 16, 6, matrix=m, mat=1)
     # sun-fire core and its cage of six bronze hoops
     P._sphere(bm_core, 1.2, (0.0, 0.0, 0.0), 48, 24)
-    for n in ((0, 0, 1), (1, 0, 0), (0, 1, 0), (0.7071, 0.7071, 0), (0.7071, -0.7071, 0), (0, 0.7071, 0.7071)):
-        n = Vector(n)
-        P._torus(bm_bronze, 1.45, 0.03, 48, 5, matrix=frame(n.orthogonal(), n))
+    for n in ((0, 0, 1), (1, 0, 0), (0, 1, 0), (1, 1, 0), (1, -1, 0), (0, 1, 1), (0, 1, -1), (1, 0, 1)):
+        n = Vector(n).normalized()
+        P._torus(bm_bronze, 1.45, 0.045, 48, 6, matrix=frame(n.orthogonal(), n))
 
 
 # ================================================================ Five Element flag drum 五行旗
@@ -918,19 +923,9 @@ DRUM_A, DRUM_H = 0.82, 1.1
 
 def _drum():
     bm = bmesh.new()
-    oct_lathe(bm, [(0.0, -0.05), (DRUM_A + 0.06, -0.05), (DRUM_A + 0.06, 0.10), (DRUM_A, 0.16), (DRUM_A, 0.92),
-                   (DRUM_A + 0.05, 0.98), (DRUM_A + 0.05, DRUM_H), (0.0, DRUM_H)])
-    # carved bands of cloud scrolls round the drum (low relief on every face)
-    for k in range(8):
-        th = k * math.pi / 4
-        nrm = Vector((math.cos(th), math.sin(th), 0.0))
-        tg = Vector((-math.sin(th), math.cos(th), 0.0))
-
-        def surf(u, v, h, nrm=nrm, tg=tg):
-            return nrm * (DRUM_A + h) + tg * u + Vector((0, 0, v))
-        for zc in (0.20, 0.92):
-            P._relief(bm, [(-0.30 + 0.6 * i / 10, zc + 0.025 * math.sin(i * 1.6)) for i in range(11)], 0.035, 0.02,
-                      surf)
+    oct_lathe(bm, [(0.0, -0.05), (DRUM_A + 0.08, -0.05), (DRUM_A + 0.08, 0.08), (DRUM_A + 0.03, 0.12),
+                   (DRUM_A + 0.03, 0.16), (DRUM_A, 0.19), (DRUM_A, 0.90), (DRUM_A + 0.03, 0.93), (DRUM_A + 0.03, 0.97),
+                   (DRUM_A + 0.06, 1.0), (DRUM_A + 0.06, DRUM_H), (0.0, DRUM_H)])
     P._outward(bm)
     return bm
 
@@ -943,7 +938,7 @@ def flag_drum(coll, name, parent, location, face_dir, brigade):
     k = round(ang / (math.pi / 4))
     ang = k * math.pi / 4                                     # the nearest face
     root = tag(U.empty(name, coll, location=location, rotation=(0.0, 0.0, 0.0), parent=parent, display_size=0.8))
-    me = shared("formation.flag_drum.v1", _drum, [M_CARVED], smooth=False, bevel=0.012)
+    me = shared("formation.flag_drum.v2", _drum, [M_CARVED], smooth=False, bevel=0.015)
     obj(name + ".drum", me, coll, parent=root)
     nrm = Vector((math.cos(ang), math.sin(ang), 0.0))
     med = P.sunmoon_medallion(coll, radius=0.30, name=name + ".medallion", parent=root,
@@ -965,32 +960,37 @@ def flag_drum(coll, name, parent, location, face_dir, brigade):
 
 # ================================================================ Big Dipper star-stone 天罡北斗
 
+STONE_HALF = (0.50, 0.27, 0.95)          # star-stone half sizes: 1.0 wide, 0.54 deep, 1.9 tall
+STAR_Z = 1.48                            # the carved star's centre over the platform top
+
+
 def _star_poly(r_out, r_in, rays=7, rot=math.pi / 2):
     return [((r_out if i % 2 == 0 else r_in) * math.cos(rot + math.pi * i / rays),
              (r_out if i % 2 == 0 else r_in) * math.sin(rot + math.pi * i / rays)) for i in range(2 * rays)]
 
 
 def _rough_stone(seed):
-    """Rough-hewn standing stone (0.9 wide x 0.5 deep x 1.6 tall over the platform), its -Y face dressed flatter for
-    the star. Origin at the platform top centre."""
+    """Rough-hewn standing stone (STONE_HALF: 1.0 wide x 0.54 deep x 1.9 tall over the platform), its -Y face dressed
+    flatter for the star. Origin at the platform top centre."""
     rnd = random.Random(seed)
     bm = bmesh.new()
-    vs = P._rbox(bm, (0.45, 0.25, 0.80), (0.0, 0.0, 0.80), p=5.0, segs=20, rings=14)
+    hx, hy, hz = STONE_HALF
+    vs = P._rbox(bm, (hx, hy, hz), (0.0, 0.0, hz), p=5.0, segs=20, rings=14)
     cuts = [(Vector((rnd.uniform(-1, 1), rnd.uniform(-0.6, 0.6), rnd.uniform(0.4, 1.0))).normalized(),
              rnd.uniform(0.36, 0.5)) for _ in range(4)]
     for v in vs:
         p = v.co
-        n = Vector((p.x / 0.45, p.y / 0.25, (p.z - 0.8) / 0.8))
+        n = Vector((p.x / hx, p.y / hy, (p.z - hz) / hz))
         n.normalize()
-        amp = 0.012 if p.y < -0.18 and 0.15 < p.z < 1.5 else 0.045
+        amp = 0.012 if p.y < -(hy - 0.07) and 0.15 < p.z < 2 * hz - 0.1 else 0.045
         d = U.fbm(p, 2.2, 3, seed=seed)
         p += n * (amp * d)
-        p.x *= 1.0 - 0.12 * (p.z / 1.6)                # tapering a little
+        p.x *= 1.0 - 0.12 * (p.z / (2 * hz))          # tapering a little
         for cn, cd in cuts:                           # chipped corners: planar cuts
-            q = Vector((p.x / 0.45, p.y / 0.25, (p.z - 0.8) / 0.8))
+            q = Vector((p.x / hx, p.y / hy, (p.z - hz) / hz))
             e = q.dot(cn) - cd * 2.2
             if e > 0:
-                p -= Vector((cn.x * 0.45, cn.y * 0.25, cn.z * 0.8)) * (e * 0.35)
+                p -= Vector((cn.x * hx, cn.y * hy, cn.z * hz)) * (e * 0.35)
         v.co = p
     P._outward(bm)
     return bm
@@ -1012,21 +1012,21 @@ def star_stone(coll, name, parent, location, face_dir, star_name, variant=0):
     root = tag(U.empty(name, coll, location=location, rotation=(0.0, 0.0, ang), parent=parent, display_size=0.8))
     obj(name + ".platform", shared("formation.star_platform.v1", _star_platform, [M_BLUE], smooth=math.radians(40),
                                    bevel=0.01), coll, parent=root)
-    st = shared("formation.star_stone.v1.%d" % variant, lambda: _rough_stone(311 + 17 * variant), [M_CARVED],
+    st = shared("formation.star_stone.v2.%d" % variant, lambda: _rough_stone(311 + 17 * variant), [M_CARVED],
                 smooth=math.radians(55))
     obj(name + ".stone", st, coll, parent=root, location=(0.0, 0.0, 0.5))
     bm = bmesh.new()
     star = _star_poly(0.24, 0.10)
-    vs = P._prism(bm, star, 0.03, y0=-0.29)
-    P._xf(bm, Matrix.Translation((0.0, 0.0, 0.5 + 1.22)), vs)
-    P._sphere(bm, 0.06, (0.0, -0.29, 0.5 + 1.22), 10, 5, scale=(1.0, 0.5, 1.0))
+    vs = P._prism(bm, star, 0.07, y0=-(STONE_HALF[1] + 0.035))
+    P._xf(bm, Matrix.Translation((0.0, 0.0, 0.5 + STAR_Z)), vs)
+    P._sphere(bm, 0.06, (0.0, -(STONE_HALF[1] + 0.04), 0.5 + STAR_Z), 10, 5, scale=(1.0, 0.5, 1.0))
     P._outward(bm)
     mk(name + ".star", bm, coll, [M_STAR], parent=root, smooth=False, glow=1.0)
     bm = bmesh.new()
     basis = Matrix(((1, 0, 0), (0, 0, -1), (0, 1, 0)))       # glyph up -> +Z, glyph front -> -Y
     for i, ch in enumerate(star_name):
-        text_glyph(bm, ch, 0.17, Matrix.Translation((0.0, -0.262, 0.5 + 0.86 - 0.21 * i)) @ basis.to_4x4(),
-                   extrude=0.008)
+        at = Matrix.Translation((0.0, -(STONE_HALF[1] + 0.012), 0.5 + STAR_Z - 0.42 - 0.23 * i))
+        text_glyph(bm, ch, 0.19, at @ basis.to_4x4(), extrude=0.008)
     mk(name + ".name", bm, coll, ["stone_dark"], parent=root, smooth=False)
     return root
 

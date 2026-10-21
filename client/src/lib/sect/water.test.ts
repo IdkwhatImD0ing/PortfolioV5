@@ -3,9 +3,11 @@ import type { Vec3 } from "./types";
 import {
   buildSkirts,
   discFromBox,
+  discFromTriangles,
   distanceFade,
   dominantFlatLevel,
   fallFeet,
+  flatLevelBounds,
   fxAssetUrl,
   fxTier,
   groundedFalls,
@@ -58,6 +60,49 @@ describe("water", () => {
     expect(waterFresnel(1)).toBeCloseTo(0.02);
     expect(waterFresnel(0)).toBeCloseTo(1);
     expect(waterFresnel(0.34)).toBeGreaterThan(0.1);
+  });
+
+  it("bounds the open water at the level, not the pads floating above it or the stones", () => {
+    // Water 10 x 10 at y = 2, a lily pad 4.5 cm up past the water's edge, a stone top at 2.6.
+    const pad = quad(2.045, 1, 12);
+    const b = flatLevelBounds(new Float32Array([...soup, ...pad]), null, 2);
+    expect(b).not.toBeNull();
+    expect(b!.min).toEqual([0, 0]);
+    expect(b!.max).toEqual([10, 10]);
+    expect(b!.area).toBeCloseTo(100, 5);
+    expect(flatLevelBounds(soup, null, 3)).toBeNull();
+    // A sloping triangle that touches the level is no water.
+    expect(flatLevelBounds(new Float32Array(wall), null, 0)).toBeNull();
+  });
+
+  it("fits a disc to a turned face from its triangles (the rim band does not tilt it)", () => {
+    // A 64-sided disc of radius 3.3 centred at (1, 78, -208), turned 18 degrees about y, plus a rim band.
+    const a = (18 * Math.PI) / 180;
+    const n: Vec3 = [Math.sin(a), 0, Math.cos(a)];
+    const u: Vec3 = [Math.cos(a), 0, -Math.sin(a)];
+    const c: Vec3 = [1, 78, -208];
+    const pt = (r: number, t: number, off = 0): number[] => [
+      c[0] + u[0] * r * Math.cos(t) + n[0] * off,
+      c[1] + r * Math.sin(t),
+      c[2] + u[2] * r * Math.cos(t) + n[2] * off,
+    ];
+    const tris: number[] = [];
+    const seg = 64;
+    for (let i = 0; i < seg; i++) {
+      const t0 = (i / seg) * Math.PI * 2;
+      const t1 = ((i + 1) / seg) * Math.PI * 2;
+      tris.push(...pt(0, 0, 0.2), ...pt(3.3, t0, 0.2), ...pt(3.3, t1, 0.2));
+      tris.push(...pt(3.3, t0, 0.2), ...pt(3.3, t0, 0.08), ...pt(3.3, t1, 0.08));
+    }
+    const d = discFromTriangles(new Float32Array(tris), null, [c[0] + n[0] * 30, 70, c[2] + n[2] * 30]);
+    expect(d).not.toBeNull();
+    for (let k = 0; k < 3; k++) expect(d!.normal[k]).toBeCloseTo(n[k], 4);
+    expect(d!.radius).toBeCloseTo(3.3, 2);
+    expect(d!.center[1]).toBeCloseTo(78, 1);
+    // Seen from behind, the normal turns round.
+    const back = discFromTriangles(new Float32Array(tris), null, [c[0] - n[0] * 30, 70, c[2] - n[2] * 30]);
+    expect(back!.normal[2]).toBeCloseTo(-n[2], 4);
+    expect(discFromTriangles(new Float32Array(9), null, [0, 0, 0])).toBeNull();
   });
 });
 

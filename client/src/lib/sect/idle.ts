@@ -306,12 +306,72 @@ function hangPair(x: number, y: number, z: number, length: number, width: number
 }
 
 /**
- * The banners each area's export merged into its baked scenery, from the area scripts. The gate
- * (gate.py; the area sits at Blender (0, 0, 40), and three (x, y, z) = Blender (x, -z, y)):
+ * Where an area stands (Blender space, z up): its root at `at` (world.py ANCHORS), turned `yaw`
+ * radians about z (camera.area_yaws: local +y points along the flight from the previous area).
+ */
+export interface AreaFrame {
+  at: V3;
+  yaw: number;
+}
+
+/** The areas with fan banners merged into their scenery, besides the gate (which sits unturned at (0, 0, 40)). */
+export const AREA_FRAMES = {
+  /** From the mirror at (-95, 185). */
+  forge: { at: [115, 335, 95], yaw: Math.atan2(-(115 + 95), 335 - 185) },
+  /** From the forge at (115, 335). */
+  arena: { at: [-35, 485, 120], yaw: Math.atan2(-(-35 - 115), 485 - 335) },
+  /** From the arena at (-35, 485). */
+  mission: { at: [-150, 625, 140], yaw: Math.atan2(-(-150 + 35), 625 - 485) },
+} satisfies Record<string, AreaFrame>;
+
+/**
+ * The hang of a props.banner 'fan' banner as banner() builds it, three space. Its pole stands at
+ * (x, y, z) in the area's frame (Blender, z up) with its arm turned `rot` about z from local +x;
+ * the hook is at the arm's end, 0.75 + 0.6 width out, 0.41 m under the pole's top; the cloth is
+ * 0.6 height long unless that would bring its tails within 0.4 m of the ground.
+ */
+export function fanHang(f: AreaFrame, x: number, y: number, z: number, rot: number, height: number, width: number): BannerHang {
+  const arm = 0.75 + 0.6 * width;
+  const length = Math.max(0.5 * width + 0.3, Math.max(0.8, Math.min(0.6 * height, height - 0.35 - 0.46)));
+  const lx = x + arm * Math.cos(rot);
+  const ly = y + arm * Math.sin(rot);
+  const c = Math.cos(f.yaw), s = Math.sin(f.yaw);
+  const bx = f.at[0] + lx * c - ly * s;
+  const by = f.at[1] + lx * s + ly * c;
+  const ox = Math.cos(rot + f.yaw), oy = Math.sin(rot + f.yaw);
+  // Three (x, y, z) = Blender (x, z, -y).
+  return { hook: [bx, f.at[2] + z + height - 0.41, -by], out: [ox, -oy], length, width };
+}
+
+/** arena.py's ring of 40 banners: the pole circle, the band they stand on and the open front's half angle. */
+const ARENA_RING = { r: 32.2, z: -0.35, n: 40, gap: (13 * Math.PI) / 180 };
+
+/**
+ * The arena's banners 36 to 39, the four left of the open front that no hackathon claims (the
+ * others are hotspots, which sway on their own): banner i stands at angle -90 deg + gap +
+ * (360 deg - 2 gap) i / 39 on the ring, its arm along the ring, and its height is the file's (9 m
+ * give or take 0.4, drawn from arena.py's seeded random).
+ */
+const ARENA_DECOR: [number, number][] = [
+  [36, 8.7202],
+  [37, 9.1187],
+  [38, 9.1405],
+  [39, 8.6914],
+];
+
+/**
+ * The banners each area's export merged into its baked scenery, from the area scripts (checked
+ * against the baked chunks: each hang's space holds exactly one banner's cloth and gold rod).
+ * The gate (gate.py; the area sits at Blender (0, 0, 40), and three (x, y, z) = Blender (x, -z, y)):
  * - the plaza's eight, on 14 m poles at x = ±19.4 by y = -30, -20, 0 and 14: 1.7 m cloths, 8.4 m
  *   long, from a hook 13.59 m up at the end of a 1.77 m arm toward the axis;
  * - the stairway's two pairs, on landings 1 and 3 (_stairway), 12 m poles at x = ±9.5: 1.5 m
  *   cloths, 7.2 m long, from a hook 11.59 m up at the end of a 1.65 m arm.
+ * The forge (forge.py): the approach's pair, 10 m poles at x = ±13 by y = -37, arms toward the axis.
+ * The arena (arena.py _build_banners): the four of ARENA_DECOR.
+ * The mission hall (mission.py _props): the plaza's front corners, 9 m poles at x = ±16 by y = -40,
+ * arms toward the axis.
+ * Not yet the formation's flags (being rebuilt).
  */
 export const BANNER_HANGS: Record<string, readonly BannerHang[]> = {
   gate: [
@@ -319,6 +379,12 @@ export const BANNER_HANGS: Record<string, readonly BannerHang[]> = {
     ...hangPair(7.85, 42.95, 59.26, 7.2, 1.5),
     ...hangPair(7.85, 34.31, 74.22, 7.2, 1.5),
   ],
+  forge: [-1, 1].map((s) => fanHang(AREA_FRAMES.forge, s * 13, -37, 0, s < 0 ? 0 : Math.PI, 10, 1.5)),
+  arena: ARENA_DECOR.map(([i, height]) => {
+    const a = -Math.PI / 2 + ARENA_RING.gap + ((2 * Math.PI - 2 * ARENA_RING.gap) * i) / (ARENA_RING.n - 1);
+    return fanHang(AREA_FRAMES.arena, ARENA_RING.r * Math.cos(a), ARENA_RING.r * Math.sin(a), ARENA_RING.z, a - Math.PI / 2, height, 1.3);
+  }),
+  mission: [-1, 1].map((s) => fanHang(AREA_FRAMES.mission, s * 16, -40, 0, s < 0 ? 0 : Math.PI, 9, 1.3)),
 };
 
 // ---- gliding cranes -----------------------------------------------------------------------------

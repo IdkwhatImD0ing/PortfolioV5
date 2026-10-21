@@ -79,6 +79,9 @@ import { fxTier } from "@/lib/sect/water";
 import { fallPickQuads, rayQuad } from "@/lib/sect/waterfall";
 import { drawable, setCardCoverage, setOverlayTier, type LoadedSet, type WorldContext } from "./assets";
 import { createPipeline, type Pipeline } from "./effects";
+import { SectReflections } from "./reflect";
+import { reflectTier } from "./reflect/plan";
+import { SpanTimer } from "./reflect/timer";
 import { Cranes, ForgeFire, FormationFires, IncenseSmoke, Petals } from "./fx";
 import { createGrassDebug, Grass, type GrassDebug } from "./grass";
 import { IDLE_ON, IDLE_TIME, updateIdle } from "./idle";
@@ -1513,6 +1516,83 @@ function Post({
   return null;
 }
 
+/**
+ * Real reflections at the Heart-Mirror stop on High and Medium (reflect/index.ts): the mirror's cube
+ * map and the Still Pond's planar image, drawn after the camera, the sets' visibility and the
+ * decoration have moved this frame and before the composer draws it. Nothing on Low: the water and
+ * the mirror keep their analytic sky. With ?debug=1, window.__sectReflect measures the passes' GPU
+ * time (`mode` "passes") or the whole frame's ("frame"), and can switch either pass off.
+ */
+function Reflections({ sets, quality, ctx, debug }: { sets: LoadedSet[]; quality: Quality; ctx: WorldContext; debug: boolean }) {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const tier = reflectTier(quality);
+  const [refl, setRefl] = useState<SectReflections | null>(null);
+  const probe = useRef<{ timer: SpanTimer | null; mode: "passes" | "frame" }>({ timer: null, mode: "passes" });
+  useLayoutEffect(() => {
+    if (!tier) return;
+    const r = new SectReflections(tier);
+    setRefl(r);
+    const w = window as unknown as { __sectReflect?: unknown };
+    const p = probe.current;
+    let timer: SpanTimer | null = null;
+    if (debug) {
+      const ctx2 = gl.getContext();
+      timer = new SpanTimer(typeof WebGL2RenderingContext !== "undefined" && ctx2 instanceof WebGL2RenderingContext ? ctx2 : null, 120);
+      p.timer = timer;
+      r.timer = p.mode === "passes" ? timer : null;
+      w.__sectReflect = {
+        reflections: r,
+        get mode() {
+          return p.mode;
+        },
+        set mode(m: "passes" | "frame") {
+          p.mode = m;
+          r.timer = m === "passes" ? timer : null;
+          timer?.clear();
+        },
+        gpu: () => timer?.stats() ?? {},
+        timing: () => timer?.available ?? false,
+        clear: () => timer?.clear(),
+      };
+    }
+    return () => {
+      r.dispose();
+      timer?.dispose();
+      p.timer = null;
+      setRefl((cur: SectReflections | null) => (cur === r ? null : cur));
+      if ((w.__sectReflect as { reflections?: unknown } | undefined)?.reflections === r) delete w.__sectReflect;
+    };
+  }, [tier, debug, gl]);
+  const qualityKey = `${tier}|${quality.noCards ? "nc" : ""}|${quality.standIns ? "si" : ""}|${quality.lowTextures ? "lt" : ""}`;
+  // The whole frame's GPU time (debug "frame" mode): from before anything draws to after the composer.
+  useFrame(() => {
+    const t = probe.current.timer;
+    t?.poll();
+    if (t && probe.current.mode === "frame") t.begin("frame");
+  }, -19);
+  // After every default-priority update (grass, idle motion, decoration) and the debug probe's
+  // counter reset, before the composer (priority 1).
+  useFrame((_, delta) => {
+    refl?.update({
+      gl,
+      scene,
+      camera: camera as PerspectiveCamera,
+      sets,
+      time: ctx.waterfallMaterial.uniforms.uTime.value as number,
+      now: performance.now(),
+      dt: delta * 1000,
+      quality: qualityKey,
+      lean: quality.standIns === true || quality.noCards === true,
+    });
+  }, 0.5);
+  useFrame(() => {
+    if (probe.current.timer && probe.current.mode === "frame") probe.current.timer.end();
+  }, 5);
+  return null;
+}
+
 /** Low tier: no postprocessing; the overlay is drawn on top without soft edges. */
 function PlainRender({ overlay, ctx, sets }: { overlay: Scene; ctx: WorldContext; sets: LoadedSet[] }) {
   useEffect(() => {
@@ -2166,6 +2246,7 @@ function SectCanvas(props: SectCanvasProps) {
       <Hotspots store={store} ctx={ctx} sets={sets} meta={meta} moonFromFrame={moonFromFrame} onHover={onHover} onSelect={onSelect} />
       <IdleMotion sets={sets} store={store} />
       {flyer && flyerPath && <Flyer store={store} object={flyer} path={flyerPath} />}
+      {global && <Reflections sets={sets} quality={quality} ctx={ctx} debug={debug} />}
       {quality.post ? (
         <Post quality={quality} ceiling={ceiling} overlay={overlay} meta={meta} ctx={ctx} sets={sets} store={store} />
       ) : (

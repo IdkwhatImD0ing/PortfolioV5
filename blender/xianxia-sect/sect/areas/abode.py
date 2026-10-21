@@ -7,6 +7,8 @@ the gate axis, a waterfall pouring through a notch in the cliff into a misty koi
 the balcony, peach blossom trees, bamboo groves, cliff pines, a big red cliff inscription
 and a resting crane, and the Smiling, Proud Wanderer duet just after it ended (_duet): a stone qin table on the lawn
 at the koi pool's west rim with the qin and the xiao on it, two stone stools and Mo Da's huqin leaning on the table.
+Over it, Xiaolongnü's golden-bell silk ribbon (_ribbon) is tied to the tip of the tea pavilion's front-left hip ridge,
+its two tails hanging in the breeze off the falls with a golden bell at each end.
 Blocking pass: shape, scale and colour coding over detail.
 
 Route: the stair from the formation tops out on a paved arrival landing at the front rim (on
@@ -1672,6 +1674,352 @@ def _duet(coll, root, gz=None):
     return em
 
 
+# --- Xiaolongnü's golden-bell silk ribbon 金铃索 --------------------------------------------------------------------
+# Return of the Condor Heroes: Xiaolongnü 小龙女 fights with a long band of white silk 白绸带 that ends in a small
+# golden ball with a bell inside it, ringing as it flies (金铃索). She has left it on the tea pavilion's front-left
+# flying eave, right over the duet's qin table: the gathered silk is wrapped round the upturned tip of the hip ridge,
+# just outboard of the immortal rider (which keeps it from sliding down the ridge), and pulled down into a knot under
+# the tip; its two tails hang past the balcony's front in the breeze off the falls (RIBBON_WIND), each ending in a
+# gold cap with a golden bell ball on a ring (a crotal bell: a raised band round its middle, a slot across its lower
+# half). The long tail falls ~9 m to a bell ~0.8 m over the lawn west of the table; the short one ends about level
+# with the deck. The ribbon touches nothing but the ridge tip it is tied round (sect/patch_r8_ribbon.py checks it).
+# Static: the breeze is in the shape (the abode's export carries no cloth motion): the tails lean with it and twist
+# as silk does, the long one straightening under its bell.
+#
+# Scale: 0.36 m wide (about 2.5x a real ribbon, like the duet's instruments) with 0.24 m bells, so the 1380 hold
+# (~77 m off) shows a white ribbon ~5 px wide from the eave corner down to just left of the qin table, gold at its ends.
+#
+# The loop is fitted to the ridge mesh in the file (ribbon_section: the convex hull of its cross-section round the
+# loop's plane, RIBBON_LOOP_*), so it hugs the tip RIBBON_LOOP_GAP off it. Frame: abode.root's; the Empty
+# abode.ribbon sits at the knot (no rotation), its two meshes in its frame. Every part is a closed solid (_DGeo) with
+# outward winding (bake_web treats closed pieces as closed: both faces of the silk bake).
+RIBBON = K + ".ribbon"
+RIBBON_ITEM = "golden_bell_ribbon"    # obj['sect_item'] on every object of the group (sect/patch_r8_ribbon.py)
+RIBBON_SILK = K + ".ribbon_silk"
+RIBBON_BELLS = K + ".ribbon_bells"
+RIBBON_TRI_CAP = DUET_TRI_CAP         # per object
+RIBBON_PAVILION = K + ".tea_pavilion"
+RIBBON_CORNER = (-1.0, -1.0)          # (sx, sy) of the pavilion's eave corner: front-left, over the qin table
+RIBBON_LOOP_D = 6.125                 # the loop's plane: m out along the corner's diagonal from the pavilion's axis,
+RIBBON_LOOP_DZ = 4.355                # m over its floor (where the ridge tip turns up, outboard of the immortal),
+RIBBON_LOOP_TILT = math.radians(50.0)  # and how far the tip's axis (the plane's normal) rises out of plan there
+RIBBON_SLAB = 0.08                    # the ridge's section is taken this far either side of the plane (covers the knot)
+RIBBON_LOOP_W = 0.08                  # the gathered silk's width round the tip
+RIBBON_LOOP_GAP = 0.012               # its inner face off the section's convex hull
+RIBBON_KNOT_DROP = 0.09               # the knot pulls the loop into a teardrop: apex this far below the section
+RIBBON_W = 0.36                       # open width of the silk
+RIBBON_T = 0.012                      # its thickness (a closed band)
+RIBBON_DS = 0.06                      # m between a tail's cross-sections
+RIBBON_WIND = (-0.8, -0.6)            # the breeze off the falls, plan (abode.root): away from the falls and the cliff
+RIBBON_TAILS = (   # (name, control points (m along the wind, toward the hold camera, up) from the knot, start offset
+                   # toward the hold camera, twist amplitude deg, its wavelength m, phase rad)
+    # the long tail hangs from the knot, bellies out in the breeze half way down and straightens under its bell
+    ("long", ((0.0, 0.0, 0.0), (0.02, 0.0, -0.7), (0.12, 0.05, -1.8), (0.55, 0.12, -3.0), (1.35, 0.2, -4.1),
+              (2.15, 0.22, -5.0), (2.75, 0.2, -6.0), (3.05, 0.22, -7.1), (3.15, 0.25, -8.1), (3.12, 0.25, -8.7),
+              (3.1, 0.25, -9.0)),
+     -0.022, 40.0, 3.2, 0.0),
+    # the short one is lifted by it, streaming out before its bell pulls it down
+    ("short", ((0.0, 0.0, 0.0), (0.1, 0.08, -0.6), (0.45, 0.25, -1.3), (1.0, 0.4, -1.85), (1.6, 0.48, -2.25),
+               (2.1, 0.5, -2.75), (2.35, 0.5, -3.3), (2.4, 0.5, -3.6)),
+     0.022, 55.0, 2.4, 0.6),
+)
+RIBBON_BELL_R = 0.12                  # golden bell ball (about 5x a real one: a gold glint at the hold)
+RIBBON_MAT = M.variant("abode_ribbon_silk", "cloth_white", colour="#f3f0e8", sheen=0.85, rough=0.5,
+                       translucency=0.2, weave=False)   # white silk: smoother and brighter than the woven cloth
+RIBBON_KNOT = (((0.0, 0.0, 0.0), (0.06, 0.065, 0.06)),          # the knot's lumps: offset (across the tip, along
+               ((0.012, 0.045, 0.02), (0.042, 0.045, 0.04)),     # it, down in the loop's plane) from its centre,
+               ((-0.01, -0.04, 0.015), (0.04, 0.042, 0.045)))    # and radii
+RIBBON_PARTS = ((RIBBON_SILK, (("silk", RIBBON_MAT),)),
+                (RIBBON_BELLS, (("gold", "gold"), ("slot", "lacquer_black"))))
+_RIB_X = (1.0, 0.62, 0.0, -0.62, -1.0, -0.62, 0.0, 0.62)   # a tail's cross-section: x of its half width,
+_RIB_Y = (0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0)       # y of its half thickness (thin edges at +-x)
+
+
+def _rib_basis():
+    """(along the wind, toward the hold camera, up): RIBBON_WIND in plan, its left normal (the hold camera's side of
+    the tails) and +z, unit vectors in abode.root's frame."""
+    w = _dnorm((RIBBON_WIND[0], RIBBON_WIND[1], 0.0))
+    return w, (-w[1], w[0], 0.0), (0.0, 0.0, 1.0)
+
+
+def _lerp3(a, b, t):
+    return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
+
+
+def ribbon_plane(pav_loc):
+    """The loop's plane round the hip ridge's upturned tip at RIBBON_CORNER of the pavilion standing at ``pav_loc``
+    (abode.root's frame): (centre, n = the tip's axis (out and up), u across it (plan), v = n x u, dn = world down
+    in the plane)."""
+    out = _dnorm((RIBBON_CORNER[0], RIBBON_CORNER[1], 0.0))
+    c = (pav_loc[0] + out[0] * RIBBON_LOOP_D, pav_loc[1] + out[1] * RIBBON_LOOP_D, pav_loc[2] + RIBBON_LOOP_DZ)
+    ct, st = math.cos(RIBBON_LOOP_TILT), math.sin(RIBBON_LOOP_TILT)
+    n = (out[0] * ct, out[1] * ct, st)
+    u = _dnorm(_dcross((0.0, 0.0, 1.0), out))
+    return c, n, u, _dcross(n, u), _dnorm(_dadd((0.0, 0.0, -1.0), n, st))
+
+
+def ribbon_section(verts, edges, plane):
+    """(u, v) points of a mesh's cross-section in the slab |n.(p - centre)| <= RIBBON_SLAB round the loop's plane:
+    its vertices there and its edges' crossings of the slab's two faces and middle plane, within 0.6 m of the
+    centre. verts: [(x, y, z)] in abode.root's frame; edges: [(i, j)]."""
+    c, n, u, v, _dn = plane
+    rel = [_dsub(p, c) for p in verts]
+    h = [_ddot(d, n) for d in rel]
+    near = [_ddot(d, d) < 0.36 for d in rel]
+    pts = [(_ddot(d, u), _ddot(d, v)) for d, hp, nr in zip(rel, h, near) if nr and abs(hp) <= RIBBON_SLAB]
+    for i, j in edges:
+        if not (near[i] or near[j]):
+            continue
+        for lv in (-RIBBON_SLAB, 0.0, RIBBON_SLAB):
+            a, b = h[i] - lv, h[j] - lv
+            if a * b < 0.0:
+                d = _lerp3(rel[i], rel[j], a / (a - b))
+                pts.append((_ddot(d, u), _ddot(d, v)))
+    return pts
+
+
+def _hull2d(pts):
+    """Convex hull of 2D points, counter-clockwise (Andrew's monotone chain)."""
+    p = sorted(set((round(x, 6), round(y, 6)) for x, y in pts))
+    if len(p) < 3:
+        return p
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lo, hi = [], []
+    for q in p:
+        while len(lo) >= 2 and cross(lo[-2], lo[-1], q) <= 0.0:
+            lo.pop()
+        lo.append(q)
+    for q in reversed(p):
+        while len(hi) >= 2 and cross(hi[-2], hi[-1], q) <= 0.0:
+            hi.pop()
+        hi.append(q)
+    return lo[:-1] + hi[:-1]
+
+
+def _offset_closed(hull, r, step=math.radians(12.0)):
+    """The curve r outside a counter-clockwise convex polygon: its edges pushed out by r, joined by arcs of radius r
+    round its corners (a point every ``step`` or less)."""
+    out = []
+    m = len(hull)
+    for i in range(m):
+        p0, p1, p2 = hull[i - 1], hull[i], hull[(i + 1) % m]
+        a0 = math.atan2(-(p1[0] - p0[0]), p1[1] - p0[1])      # outward normal of the edge into p1
+        a1 = math.atan2(-(p2[0] - p1[0]), p2[1] - p1[1])      # ... and of the edge out of it
+        da = (a1 - a0) % (2.0 * math.pi)
+        k = max(1, int(math.ceil(da / step)))
+        out.extend((p1[0] + r * math.cos(a0 + da * j / k), p1[1] + r * math.sin(a0 + da * j / k)) for j in range(k + 1))
+    return out
+
+
+def _resample_closed(pts, n):
+    """n points evenly spaced by arc length round a closed 2D polyline."""
+    m = len(pts)
+    seg = [math.dist(pts[i], pts[(i + 1) % m]) for i in range(m)]
+    L = sum(seg)
+    out, i, acc = [], 0, 0.0
+    for k in range(n):
+        s = L * k / n
+        while i < m - 1 and acc + seg[i] < s:
+            acc += seg[i]
+            i += 1
+        t = (s - acc) / seg[i] if seg[i] > 1e-12 else 0.0
+        a, b = pts[i], pts[(i + 1) % m]
+        out.append((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+    return out
+
+
+def ribbon_loop(section, plane, n=28):
+    """The silk loop round the ridge tip: ([(point, outward)] round its inner face (abode.root's frame), the knot's
+    apex). The convex hull of the section and of an apex RIBBON_KNOT_DROP below its lowest point in the plane (the
+    knot pulls the loop down into a teardrop), pushed out RIBBON_LOOP_GAP, n points round."""
+    c, _n, u, v, dn = plane
+    d2 = (_ddot(dn, u), _ddot(dn, v))
+    hull = _hull2d(section)
+    if len(hull) < 3:
+        raise RuntimeError("ribbon: the ridge's section round the loop has %d hull points" % len(hull))
+    low = max(hull, key=lambda p: p[0] * d2[0] + p[1] * d2[1])
+    apex = (low[0] + d2[0] * RIBBON_KNOT_DROP, low[1] + d2[1] * RIBBON_KNOT_DROP)
+    ring = _resample_closed(_offset_closed(_hull2d(hull + [apex]), RIBBON_LOOP_GAP), n)
+    out = []
+    for i, (x, y) in enumerate(ring):
+        a, b = ring[i - 1], ring[(i + 1) % n]
+        tx, ty = b[0] - a[0], b[1] - a[1]
+        ln = math.hypot(tx, ty) or 1.0
+        out.append((_dadd(_dadd(c, u, x), v, y), _dnorm(_dadd(_dadd((0.0, 0.0, 0.0), u, ty / ln), v, -tx / ln))))
+    return out, _dadd(_dadd(c, u, apex[0]), v, apex[1])
+
+
+def _centripetal(pts, per=16):
+    """Centripetal Catmull-Rom through 3D points (no loops or cusps where the spacing changes), ``per`` samples a
+    span, the ends extended straight."""
+    P = [_dadd(pts[0], _dsub(pts[0], pts[1]))] + [tuple(p) for p in pts] + [_dadd(pts[-1], _dsub(pts[-1], pts[-2]))]
+    out = []
+    for i in range(1, len(P) - 2):
+        p0, p1, p2, p3 = P[i - 1], P[i], P[i + 1], P[i + 2]
+        t1 = math.sqrt(max(math.dist(p0, p1), 1e-9))
+        t2 = t1 + math.sqrt(max(math.dist(p1, p2), 1e-9))
+        t3 = t2 + math.sqrt(max(math.dist(p2, p3), 1e-9))
+        for k in range(per):
+            t = t1 + (t2 - t1) * k / per
+            a1 = _lerp3(p0, p1, t / t1)
+            a2 = _lerp3(p1, p2, (t - t1) / (t2 - t1))
+            a3 = _lerp3(p2, p3, (t - t2) / (t3 - t2))
+            b1, b2 = _lerp3(a1, a2, t / t2), _lerp3(a2, a3, (t - t1) / (t3 - t1))
+            out.append(_lerp3(b1, b2, (t - t1) / (t2 - t1)))
+    out.append(P[-2])
+    return out
+
+
+def _resample_path(pts, ds):
+    """(points every ~ds by arc length along a 3D polyline, its length)."""
+    cum = [0.0]
+    for a, b in zip(pts[:-1], pts[1:]):
+        cum.append(cum[-1] + math.dist(a, b))
+    L = cum[-1]
+    n = max(2, int(math.ceil(L / ds)))
+    out, j = [], 0
+    for k in range(n + 1):
+        s = L * k / n
+        while j < len(pts) - 2 and cum[j + 1] < s:
+            j += 1
+        seg = cum[j + 1] - cum[j]
+        out.append(_lerp3(pts[j], pts[j + 1], min(1.0, max(0.0, (s - cum[j]) / seg)) if seg > 1e-12 else 0.0))
+    return out, L
+
+
+def ribbon_tail(start, ctrl, twist, wave, phase):
+    """A tail's cross-sections from the knot to its end, every ~RIBBON_DS: [(centre, tangent, width direction, face
+    normal, half width, cup)]. ctrl: control points (along the wind, toward the hold camera, up) from ``start``. The
+    width starts along the wind (the face to the hold camera), is carried down the tail without turning about it
+    (parallel transport) and twisted by up to ``twist`` deg (wavelength ``wave`` m) away from the knot and the bell;
+    the silk opens from the knot to RIBBON_W over 0.75 m, gathers into the bell's cap over its last 0.4 m and cups a
+    little across its width."""
+    w, c, z = _rib_basis()
+    pts = [_dadd(_dadd(_dadd(start, w, p[0]), c, p[1]), z, p[2]) for p in ctrl]
+    path, L = _resample_path(_centripetal(pts), RIBBON_DS)
+    m = len(path)
+    out, e = [], w
+    for i, p in enumerate(path):
+        s = L * i / (m - 1)
+        t = _dnorm(_dsub(path[min(i + 1, m - 1)], path[max(i - 1, 0)]))
+        e = _dnorm(_dsub(e, tuple(t[k] * _ddot(e, t) for k in range(3))))
+        ramp = _smooth(0.6, 1.6, s) * (1.0 - _smooth(L - 1.2, L - 0.4, s))
+        tau = math.radians(twist) * math.sin(2.0 * math.pi * s / wave + phase) * ramp
+        et = _dadd(tuple(e[k] * math.cos(tau) for k in range(3)), _dcross(t, e), math.sin(tau))
+        hw = 0.5 * RIBBON_W * (0.12 + 0.88 * _smooth(0.0, 0.75, s)) * (1.0 - 0.75 * _smooth(L - 0.4, L - 0.06, s))
+        cup = 0.035 * math.sin(2.0 * math.pi * s / (0.8 * wave) + 2.0 * phase + 1.0) * ramp
+        out.append((p, t, et, _dcross(t, et), hw, cup))
+    return out
+
+
+def _tail_rings(secs):
+    ht = 0.5 * RIBBON_T
+    return [[_dadd(_dadd(p, e, fx * hw), nrm, fy * ht + cup * (1.0 - fx * fx)) for fx, fy in zip(_RIB_X, _RIB_Y)]
+            for p, _t, e, nrm, hw, cup in secs]
+
+
+def _ribbon_bell(g, name, end, tan):
+    """At a tail's end (``end``, its last tangent ``tan``): a gold cap over the gathered silk, a gold ring through the
+    cap's foot and the golden bell ball hanging from it by its own loop (the two interlocked like chain links): a
+    crotal bell with a raised band round its middle and a dark slot across its lower half. Returns the bell's
+    lowest point."""
+    R = RIBBON_BELL_R
+    w, c, z = _rib_basis()
+    cap0 = _dadd(end, tan, -0.07)
+    g.lathe(name + ".cap", ((0.0, 0.0), (0.052, 0.0), (0.062, 0.018), (0.066, 0.06), (0.06, 0.1), (0.04, 0.126),
+                            (0.016, 0.14), (0.0, 0.145)), 12, "gold", _dframe(cap0, tan))
+    rc = _dadd(_dadd(cap0, tan, 0.145), z, -0.02)          # the ring (in the plane of z and toward the camera)
+    g.torus(name + ".ring", 0.03, 0.008, 12, 6, "gold", lambda p: _dadd(_dadd(_dadd(rc, c, p[0]), z, p[1]), w, p[2]))
+    rl = _dadd(rc, z, -0.032)                               # the bell's loop (plane of z and the wind) through it:
+    bc = _dadd(rl, z, -(R + 0.012))                         # 2 cm clear of the ring where they cross, sunk in the bell
+    g.torus(name + ".loop", 0.024, 0.0065, 12, 6, "gold", lambda p: _dadd(_dadd(_dadd(rl, w, p[0]), z, p[1]), c, p[2]))
+    g.lathe(name + ".ball", [(R * math.cos(a), R * math.sin(a)) for a in
+                             (math.radians(-90.0 + 15.0 * k) for k in range(13))], 16, "gold", _dframe(bc, z))
+    g.torus(name + ".band", R, 0.007, 24, 6, "gold", lambda p: _dadd(_dadd(_dadd(bc, w, p[0]), c, p[1]), z, p[2]))
+    rings = []
+    for k in range(15):
+        f = math.radians(-70.0 + 10.0 * k)                  # from the bottom pole toward the camera side and back
+        d = _dadd(tuple(c[i] * math.sin(f) for i in range(3)), z, -math.cos(f))
+        rings.append([_dadd(_dadd(bc, d, R + dr), w, dw) for dr, dw in
+                      ((-0.004, -0.011), (-0.004, 0.011), (0.0025, 0.011), (0.0025, -0.011))])
+    g.solid(name + ".slot", rings, "slot", smooth=False)
+    return _dadd(bc, z, -R)
+
+
+def ribbon_geo(pav_loc, verts, edges):
+    """The ribbon as plain lists in abode.root's frame: (silk _DGeo, bells _DGeo, info), its loop fitted to the ridge
+    mesh (verts in abode.root's frame, edges) round the tip at RIBBON_CORNER of the pavilion standing at pav_loc.
+    info: plane, section, apex, knot (the Empty's place), tails [(name, sections, bell's lowest point)]."""
+    plane = ribbon_plane(pav_loc)
+    _c, nn, u, _v, dn = plane
+    sec = ribbon_section(verts, edges, plane)
+    loop, apex = ribbon_loop(sec, plane)
+    silk, bells = _DGeo(), _DGeo()
+    hb = 0.5 * RIBBON_LOOP_W
+    silk.begin("loop")                     # a band of rectangular section round the tip
+    ids = []
+    for q, o in loop:
+        qo = _dadd(q, o, RIBBON_T)
+        ids.append([silk.v(_dadd(q, nn, -hb)), silk.v(_dadd(q, nn, hb)), silk.v(_dadd(qo, nn, hb)),
+                    silk.v(_dadd(qo, nn, -hb))])
+    for i in range(len(ids)):
+        a, b = ids[i], ids[(i + 1) % len(ids)]
+        for k in range(4):
+            silk.face((a[k], b[k], b[(k + 1) % 4], a[(k + 1) % 4]), "silk")
+    silk.end()
+    knot = _dadd(apex, dn, 0.015)
+    rows = [(math.cos(a), math.sin(a)) for a in (math.radians(-90.0 + 22.5 * k) for k in range(9))]
+    for i, ((ou, on, od), (ru, rn, rd)) in enumerate(RIBBON_KNOT):     # lumps of silk round the crossing
+        kc = _dadd(_dadd(_dadd(knot, u, ou), nn, on), dn, od)
+        silk.lathe("knot.%d" % i, rows, 12, "silk",
+                   lambda p, kc=kc, ru=ru, rn=rn, rd=rd: _dadd(_dadd(_dadd(kc, u, p[0] * ru), nn, p[1] * rn), dn,
+                                                               -p[2] * rd))
+    w, c, _z = _rib_basis()
+    top = _dadd(knot, dn, 0.035)
+    tails = []
+    for name, ctrl, side, twist, wave, phase in RIBBON_TAILS:
+        secs = ribbon_tail(_dadd(top, c, side), ctrl, twist, wave, phase)
+        silk.solid("tail." + name, _tail_rings(secs), "silk")
+        low = _ribbon_bell(bells, "bell." + name, secs[-1][0], secs[-1][1])
+        tails.append((name, secs, low))
+    return silk, bells, dict(plane=plane, section=sec, apex=apex, knot=knot, tails=tails)
+
+
+def ribbon_ridge(root):
+    """(pavilion location, ridge mesh vertices, its edges, the ridge object) in abode.root's frame: the tea pavilion's
+    roof ridges (one mesh: the main and hip ridges with their upturned tips), read from the file through the parent
+    chain (no depsgraph update needed)."""
+    pav = next((o for o in root.children if o.name == RIBBON_PAVILION), None)
+    if pav is None:
+        raise RuntimeError("ribbon: no %s under %s" % (RIBBON_PAVILION, root.name))
+    ridges = [o for o in pav.children_recursive if o.type == 'MESH' and o.name.endswith(".roof.ridges")]
+    if len(ridges) != 1:
+        raise RuntimeError("ribbon: %d '*.roof.ridges' meshes under %s" % (len(ridges), pav.name))
+    wi = U.world_matrix(root).inverted()
+    mr = wi @ U.world_matrix(ridges[0])
+    verts = [tuple(mr @ v.co) for v in ridges[0].data.vertices]
+    return tuple((wi @ U.world_matrix(pav)).translation), verts, [tuple(e.vertices) for e in ridges[0].data.edges], \
+        ridges[0]
+
+
+def _ribbon(coll, root):
+    """Xiaolongnü's ribbon: Empty 'abode.ribbon' under ``root`` at the knot and its two meshes (RIBBON_PARTS), tied
+    round the tip of the tea pavilion's front-left hip ridge (fitted to the file's ridge mesh), every object tagged
+    obj['sect_item'] = RIBBON_ITEM. Returns the Empty."""
+    pav_loc, verts, edges, _ob = ribbon_ridge(root)
+    silk, bells, info = ribbon_geo(pav_loc, verts, edges)
+    k = info["knot"]
+    em = U.empty(RIBBON, coll, location=k, parent=root, display_size=0.5)
+    em["sect_item"] = RIBBON_ITEM
+    for (name, roles), g in zip(RIBBON_PARTS, (silk, bells)):
+        g.verts = [_dsub(p, k) for p in g.verts]
+        ob = U.object_from_mesh(name, _duet_mesh(name, g, roles), coll, parent=em)
+        ob["sect_item"] = RIBBON_ITEM
+    return em
+
+
 def build(collection):
     """Build the Cave Abode at the local origin. Returns the root Empty 'abode.root'."""
     root = U.empty(K + ".root", collection, display_size=4.0)
@@ -1699,6 +2047,8 @@ def build(collection):
                       pines=True, name=K + ".pinnacle", parent=root, location=(x, y, 0.0))
     # the Smiling, Proud Wanderer duet, just left: the qin table scene on the lawn by the koi pool
     _duet(collection, root)
+    # Xiaolongnü's golden-bell silk ribbon, tied to the tea pavilion's eave corner over the duet
+    _ribbon(collection, root)
     return root
 
 

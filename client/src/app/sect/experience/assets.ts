@@ -46,8 +46,8 @@ import { FORMATION_DOME, formationShafts, formationTier, isFormationLinkBeam, ty
 import { applyLook, lookFogConstants, SECT_LOOK } from "@/lib/sect/look";
 import { parseCameraData, parseClouds, parseFlyerPath, parseManifest, parseMeta, resolveAsset } from "@/lib/sect/parse";
 import { combinedProgress, isGzip, meshoptWorkerCount, type Tier } from "@/lib/sect/runtime";
-import type { CameraData, ChunkInfo, CloudPuff, FlyerPath, SectManifest, SectMeta, Waterfall } from "@/lib/sect/types";
-import { discFromBox, dominantFlatLevel, groundedFalls, mistSpots, quadFromCorners, type WaterSurface } from "@/lib/sect/water";
+import type { CameraData, ChunkInfo, CloudPuff, FlyerPath, SectManifest, SectMeta, Vec3, Waterfall } from "@/lib/sect/types";
+import { discFromBox, discFromTriangles, dominantFlatLevel, flatLevelBounds, groundedFalls, mistSpots, quadFromCorners, type WaterSurface } from "@/lib/sect/water";
 import { fxAssetUrl, SHEET, sheetFallAttribute, WET, wetFalls } from "@/lib/sect/waterfall";
 import {
   bakedDetail,
@@ -69,6 +69,7 @@ import {
   type WetRock,
 } from "./materials";
 import { IDLE_ON, planIdleSliced, type IdlePlan } from "./idle";
+import { REFLECT } from "./reflect/plan";
 import {
   disposeObjects,
   measureHotspots,
@@ -166,15 +167,31 @@ export async function loadSectData(base: string, wantFlyer: boolean, signal?: Ab
 
 // ---------------------------------------------------------------------------------------------
 
+/** The Heart-Mirror's polished face, as the cube capture needs it (experience/reflect/). */
+export interface MirrorFace {
+  /** The face's plane fitted to its triangles (water.ts discFromTriangles), its normal toward the pond. */
+  center: Vec3;
+  normal: Vec3;
+  radius: number;
+  /** Where the cube map is captured from: just in front of the face. */
+  capture: Vec3;
+  /** Hidden while capturing: the face and the rune ring lying on it. */
+  hide: Mesh[];
+}
+
 export interface PondReflection {
   /** Water plane height (three y). */
   level: number;
   /** World box of the pond (to skip the reflection render when it is off screen). */
   box: Box3;
+  /** Horizontal extent (x, z) of the open water at `level` (the water shader's bounds). */
+  water: { min: [number, number]; max: [number, number] };
   /** Uniforms of the pond's water materials (tReflect, uHasReflect, uReflectMatrix). */
   uniforms: WaterUniforms[];
   /** The meshes the pond reflects (the Heart-Mirror). */
   mirrorMeshes: Mesh[];
+  /** The mirror's face for its cube capture, or null when the area has none. */
+  mirror: MirrorFace | null;
 }
 
 /** Shared by every set the page loads. Made once per page (createWorldContext). */
@@ -644,14 +661,55 @@ function worldPositions(mesh: Mesh): Float32Array {
 const POND_HOTSPOT = "mirror-pond";
 const MIRROR_HOTSPOT = "mirror";
 
+/** The Heart-Mirror's face material (materials.ts MIRROR_FACE). */
+const MIRROR_FACE_MAT = /\.glow\.mirror_face$/i;
+
+/**
+ * The mirror's polished face for its cube capture: the face's plane from its triangles, the capture
+ * point `front` metres before it, and what to hide while capturing: the face and whatever lies flush
+ * on it (the rune ring), meshes of the mirror hotspot whose box sits within the face's box grown by
+ * 0.3 m. Null without a face.
+ */
+function mirrorFace(mirror: readonly Mesh[], toward: Vec3): MirrorFace | null {
+  const faces = mirror.filter((m) => MIRROR_FACE_MAT.test((m.material as Material).name));
+  if (faces.length === 0) return null;
+  for (const m of faces) m.updateWorldMatrix(true, false);
+  const parts = faces.map((m) => worldPositions(m));
+  const soup = new Float32Array(parts.reduce((a, p) => a + p.length, 0) * 3);
+  let n = 0;
+  for (let k = 0; k < faces.length; k++) {
+    const pos = parts[k];
+    const idx = faces[k].geometry.index;
+    const tri = idx ? idx.count : pos.length / 3;
+    for (let i = 0; i < tri; i++) {
+      const v = idx ? idx.getX(i) : i;
+      soup[n++] = pos[v * 3];
+      soup[n++] = pos[v * 3 + 1];
+      soup[n++] = pos[v * 3 + 2];
+    }
+  }
+  const disc = discFromTriangles(soup.subarray(0, n), null, toward);
+  if (!disc) return null;
+  const faceBox = new Box3();
+  for (const m of faces) faceBox.expandByObject(m);
+  faceBox.expandByScalar(0.3);
+  const hide = mirror.filter((m) => faceBox.containsBox(new Box3().setFromObject(m)));
+  const front = REFLECT.mirror.front;
+  const capture: Vec3 = [disc.center[0] + disc.normal[0] * front, disc.center[1] + disc.normal[1] * front, disc.center[2] + disc.normal[2] * front];
+  return { ...disc, capture, hide };
+}
+
 /**
  * The bake has no reflections. Give the Still Pond one: its water level is the largest level
- * surface in the pond hotspot, and the water shader draws the Heart-Mirror in it as an analytic
- * glowing disc (round and soft, like the film's). A planar render of the mirror's meshes was tried
- * and dropped: at 512 px, cut by the shader's dark-water test, it came out as a torn blob with a
- * red fringe, and it cost a second scene render every frame.
+ * surface in the pond hotspot, and the open water's extent at that level bounds it. On High and
+ * Medium the page renders a real planar reflection into it and a cube map for the Heart-Mirror's
+ * face (experience/reflect/); on Low (and on any frame without that render) the water shader draws
+ * the sky and the Heart-Mirror in it as an analytic glowing disc (round and soft, like the film's).
+ * An earlier planar render was dropped (a torn blob with a red fringe, cut by a dark-water test, at
+ * the cost of a second scene render every frame); reflect/ tells water by geometry instead and
+ * renders only the pond's own rectangle on screen. (Exported for tests.)
  */
-function addPondReflection(
+export function addPondReflection(
   hotspotMeshes: Map<string, Mesh[]>,
   hotspots: Map<string, HotspotEntry>,
   exposure: number,
@@ -667,6 +725,18 @@ function addPondReflection(
     if (lvl && (!best || lvl.area > best.area)) best = lvl;
   }
   if (!best || best.area < 20) return null;
+  // The open water: the level surface's extent (the shader's bounds; lily pads float above it).
+  let water: PondReflection["water"] | null = null;
+  for (const m of pond) {
+    const b = flatLevelBounds(worldPositions(m), m.geometry.index ? m.geometry.index.array : null, best.level);
+    if (!b) continue;
+    if (!water) water = { min: [b.min[0], b.min[1]], max: [b.max[0], b.max[1]] };
+    else {
+      water.min = [Math.min(water.min[0], b.min[0]), Math.min(water.min[1], b.min[1])];
+      water.max = [Math.max(water.max[0], b.max[0]), Math.max(water.max[1], b.max[1])];
+    }
+  }
+  if (!water) return null;
   const mirror = hotspotMeshes.get(MIRROR_HOTSPOT) ?? [];
   const glow = mirror.filter((m) => {
     const c = (m.material as MeshBasicMaterial).color;
@@ -680,7 +750,7 @@ function addPondReflection(
     for (const m of glow) box.expandByObject(m);
     disc = discFromBox(box.min.toArray(), box.max.toArray(), pondBox.getCenter(new Vector3()).toArray());
   }
-  const surface: WaterSurface = { level: best.level, disc };
+  const surface: WaterSurface = { level: best.level, disc, bounds: water };
   const done = new Set<Material>();
   const uniforms: WaterUniforms[] = [];
   for (const m of pond) {
@@ -693,7 +763,8 @@ function addPondReflection(
     // Re-patched with the water; a rock or ground copy keeps its detail.
     patchMaterial(mat, { lit: true, exposure, highlight: hotspots.get(POND_HOTSPOT)?.uniform, water: u, detail: bakedDetail(mat, detail) });
   }
-  return { level: best.level, box: pondBox, uniforms, mirrorMeshes: mirror };
+  const face = mirrorFace(mirror, pondBox.getCenter(new Vector3()).toArray());
+  return { level: best.level, box: pondBox, water, uniforms, mirrorMeshes: mirror, mirror: face };
 }
 
 interface FileProgress {

@@ -15,7 +15,8 @@ Writes out/preview/r6form_<shot>[_tag].png (the wrapper copies new files under o
     approach  chase.cam at frame 1180 (the low approach: paifang, near stations)
     pass      chase.cam at frame 1240 (looking down over the rear half)
     close     from the hold camera's position, 50 mm on the armillary
-    station   a rear station and its brazier from 40 m, 50 mm (the carving, the eye, the fire)
+    station   a rear station and its brazier from the floor 24 m away, 35 mm (the carving, the eye, the fire)
+    eye       from the hold camera's position, 135 mm on the two rear stations (eyes, cradles, cloud plates)
     dipper    from the hold camera's position, 85 mm on the Big Dipper star-stones (west)
     flags     from the hold camera's position, 85 mm on the Five Element Banners (east rim)
     top       orthographic, straight down on the plaza (layout check)
@@ -41,7 +42,7 @@ OUT = os.path.join(ROOT, "out", "preview")
 PREFIX = "r6form"
 CAM = "preview.r6form.cam"
 HOLD = 1208
-ALL = ("hold", "approach", "pass", "close", "station", "dipper", "flags", "top")
+ALL = ("hold", "approach", "pass", "close", "station", "eye", "dipper", "flags", "top")
 FRAMES = dict(approach=1180, **{"pass": 1240})
 
 
@@ -176,9 +177,13 @@ def main():
                 cd.lens = 50.0
                 look_at(cam, ch, local((0.0, 2.0, 8.5)))
             elif shot == "station":
-                cd.lens = 50.0
-                # station 1 (rear right, 67.5 deg) and its brazier, from inside the plaza, front-left and above
-                look_at(cam, local((-6.0, -14.0, 14.0)), local((10.0, 23.0, 5.0)))
+                cd.lens = 35.0
+                # station 1 (rear right, 67.5 deg) and its brazier, from the floor inside the plaza
+                look_at(cam, local((0.0, 6.0, 4.5)), local((11.1, 26.8, 5.8)))
+            elif shot == "eye":
+                cd.lens = 135.0
+                # from the hold camera: the two rear stations' tops (eyes, cradles, cloud plates)
+                look_at(cam, ch, local((0.0, 26.8, 8.0)))
             elif shot == "dipper":
                 cd.lens = 85.0
                 look_at(cam, ch, local((-31.0, 23.0, 1.5)))

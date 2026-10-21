@@ -1,7 +1,8 @@
-import { BoxGeometry, BufferGeometry, Group, type InstancedBufferGeometry, type Material, Mesh, MeshBasicMaterial, type ShaderMaterial, Texture, Vector3 } from "three";
+import { BoxGeometry, BufferGeometry, Float32BufferAttribute, Group, type InstancedBufferGeometry, type Material, Mesh, MeshBasicMaterial, type ShaderMaterial, Texture, Vector3 } from "three";
 import type { GLTF } from "three/addons/loaders/GLTFLoader.js";
 import { describe, expect, it, vi } from "vitest";
 import {
+  addPondReflection,
   disposeSet,
   drawable,
   FILE_RETRY_MS,
@@ -437,5 +438,61 @@ describe("disposeSet (a set freed while the canvas still holds it)", () => {
     disposeSet(ctx, set);
     expect(disposed).toHaveBeenCalledTimes(1);
     expect(ctx.wetRock.untrack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the Still Pond's reflection setup", () => {
+  // A soup mesh at world positions (no index).
+  const soupMesh = (tris: number[], name: string, color = 1) => {
+    const g = new BufferGeometry();
+    g.setAttribute("position", new Float32BufferAttribute(tris, 3));
+    const m = new MeshBasicMaterial({ map: new Texture() });
+    m.name = name;
+    m.color.setScalar(color);
+    return new Mesh(g, m);
+  };
+  const quad = (x0: number, z0: number, s: number, y: number) => [x0, y, z0, x0 + s, y, z0 + s, x0 + s, y, z0, x0, y, z0, x0, y, z0 + s, x0 + s, y, z0 + s];
+  // A vertical disc of radius r at (cx, cy, cz) facing +z (offset `off` along z), as a fan.
+  const disc = (c: [number, number, number], r: number, off = 0) => {
+    const out: number[] = [];
+    for (let i = 0; i < 32; i++) {
+      const a0 = (i / 32) * Math.PI * 2;
+      const a1 = ((i + 1) / 32) * Math.PI * 2;
+      out.push(c[0], c[1], c[2] + off, c[0] + r * Math.cos(a0), c[1] + r * Math.sin(a0), c[2] + off, c[0] + r * Math.cos(a1), c[1] + r * Math.sin(a1), c[2] + off);
+    }
+    return out;
+  };
+
+  it("bounds the open water by geometry and fits the mirror's face for its capture", () => {
+    // Water 10 x 10 at y = 2 from (0, 0), a lily pad 4.5 cm up, a stone top at 2.6; the mirror 20 m north.
+    const water = soupMesh([...quad(0, 0, 10, 2), ...quad(4, 4, 0.5, 2.045), ...quad(12, 0, 1, 2.6)], "baked.mirror_A0");
+    const face = soupMesh(disc([5, 8, -20], 3, 0.2), "baked.mirror_A0.glow.mirror_face", 1.6);
+    const rune = soupMesh(disc([5, 8, -20], 2.9, 0.25), "baked.mirror_A0.glow.rune_cyan", 2);
+    const frame = soupMesh([...disc([5, 8, -20], 3.6, -0.3), 5, 3, -21, 6, 3, -19, 5, 12, -20], "baked.mirror_A0.surface.metal");
+    const hot = new Map<string, Mesh[]>([
+      ["mirror-pond", [water]],
+      ["mirror", [face, rune, frame]],
+    ]);
+    const pond = addPondReflection(hot, new Map(), 1, null, new Set());
+    expect(pond).not.toBeNull();
+    expect(pond!.level).toBeCloseTo(2, 5);
+    expect(pond!.water).toEqual({ min: [0, 0], max: [10, 10] });
+    expect((pond!.uniforms[0].uPondMax.value as { x: number }).x).toBe(10);
+    const m = pond!.mirror!;
+    expect(m).not.toBeNull();
+    // Facing the pond (+z), centred on the face, the capture point just in front of it.
+    expect(m.normal[2]).toBeCloseTo(1, 5);
+    expect(m.radius).toBeCloseTo(3, 1);
+    expect(m.capture[2]).toBeGreaterThan(m.center[2] + 0.1);
+    // The face and the ring on it are hidden while capturing; the frame stays.
+    expect(m.hide).toContain(face);
+    expect(m.hide).toContain(rune);
+    expect(m.hide).not.toContain(frame);
+  });
+
+  it("has no mirror face to capture in an area without one", () => {
+    const water = soupMesh(quad(0, 0, 10, 2), "baked.library_A0");
+    const pond = addPondReflection(new Map([["mirror-pond", [water]]]), new Map(), 1, null, new Set());
+    expect(pond!.mirror).toBeNull();
   });
 });

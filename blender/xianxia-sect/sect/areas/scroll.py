@@ -20,7 +20,9 @@ Layout (local frame, front = -Y, z = 0 walkable top):
   vermilion posts behind it, clamped at the foot by stone slabs with iron bands, a curved sill
   under the slips and a top rail over them, and the Ming Sect's 日 + 月 = 明 on the post heads
   (a gold sun on the left post, a silver crescent moon on the right); a glowing script ring on
-  the paving under it, the posts standing between its two bands;
+  the paving under it, the posts standing between its two bands. Its slips carry Jin Yong
+  (props.JIN_YONG_VERSES, r8): from the right end, one passage after another, each from the top
+  of a new slip, then a blank slip and the verses again (sect/patch_r8_scrolltext.py);
 - the six Holy Fire Tokens of the Ming Sect (圣火令), black tablets with fire inside, standing
   upright in a row in the slots of a black-lacquer stand on a low stone plinth, leaning on its
   back rail, against the right rail of the terrace (they used to float in a fanned stack);
@@ -63,6 +65,7 @@ SCROLL_SCALE = 0.9            # (audit D2, 2026-10-21: at (-10, -4), full size a
 SCROLL_YAW = math.radians(-40.0)   # lay off the left edge of the 1103 hold. Turned 40 deg toward that camera's left,
                               # 0.9x, 6 m right and 10 m back it is all in frame, left of the pavilion, its face 47 deg
                               # off the view, and the flight passes it 21 m off instead of 18)
+SCROLL_TEXT = P.JIN_YONG_VERSES   # what the slips say (r8): Jin Yong, each passage from the top of a new slip
 DESK = (4.0, 14.0)            # stone desk on the terrace, left of the axis walk (keeps x 12 clear)
 STAND_C = (23.2, 8.0)         # the Holy Fire Tokens' stand on the terrace: right of the axis walk, against the right
                               # rail, faces -Y (27 deg off the 1103 hold camera); clear of the route to the side
@@ -206,7 +209,7 @@ def _scroll(coll, root):
     cx, cy, cz = SCROLL_C
     sc = P.bamboo_slip_scroll(coll, SCROLL_W, SCROLL_H, curve=SCROLL_CURVE, glow=True, seed=3, rolled=True,
                               name=_n("jade_scroll"), parent=root, location=(cx, cy, cz),
-                              rotation=(0.0, 0.0, SCROLL_YAW))
+                              rotation=(0.0, 0.0, SCROLL_YAW), passages=SCROLL_TEXT)
     sc.scale = (SCROLL_SCALE,) * 3
     scroll_frame(coll, root)
     # glowing script ring on the paving under it, and motes rising toward it

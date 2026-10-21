@@ -3,16 +3,18 @@
 The Legend of the Condor Heroes: Huang Yaoshi 黄药师, the Eastern Heretic 东邪 and master of Peach Blossom Island 桃花岛,
 carries a jade xiao (end-blown flute) and plays 碧海潮生曲 ("The Tide Rises on the Blue Sea") on it; his island is a
 maze of peach trees laid out on the eight trigrams. Here the pale jade flute lies on a flat dark slate at the pond's
-east rim (pale on dark: the one contrast that still reads at the 217 hold's 52 m), its empty red brocade bag 簫囊 beside
+east rim (pale on dark: the one contrast that still reads at the 217 hold's 52 m), its empty red brocade bag 簫囊 behind
 it with a gold drawstring, its gold cord, knot, jade bead and tassel hanging over the stone's front edge, and fallen
-peach petals on the stone, the lawn, the bank and the water. Nothing floats: the stone is sunk into the lawn, the bag
+peach petals on the stone, the lawn, the bank and the water (mirror.py adds the small peach tree they fell from, an
+instance of a nature.py prototype). Nothing floats: the stone is sunk into the lawn, the bag
 and the flute rest on it, the cord and tassel hang against it, the petals lie on whatever is under them (or float on
 the pond). No text.
 
 Every builder here returns a BMesh in the SET frame: origin on the nominal ground at the stone's centre, +x along the
 flute (its foot end +x), -y toward the 217 hold camera (the stone's front, where the tassel hangs), z up. Every piece is
-a closed solid with outward faces (bake_web's closed-piece rule). Scale: the flute is 1.9 m (about 2.5x a real
-xiao, like the abode's Wanderer xiao) so it is ~55 px long in the hold at 1600 px; petals and cord follow that scale.
+a closed solid with outward faces (bake_web's closed-piece rule). Scale: the flute is 2.09 m (about 2.8x a real
+xiao; the abode's Wanderer xiao is 2.5 m) so it is ~60 px long in the hold at 1600 px, the most the lawn between the
+pond's rim stones and the east path allows (the stone under it is 2.6 m); petals and cord follow that scale.
 """
 import math
 
@@ -42,9 +44,10 @@ ROCK_SEG = 72
 # side rings (outline scale, z) bottom to the top's rim: the foot at -0.34 (sunk 0.2-0.3 m into the lawn and the bank,
 # clear of world.py's terrace rock at -0.4), widest at mid height, a rounded upper edge
 ROCK_RINGS = ((0.955, -0.34), (0.968, -0.27), (0.98, -0.19), (0.99, -0.1), (0.996, -0.02), (1.0, 0.06),
-              (1.0, 0.13), (1.0, 0.2), (0.998, 0.27), (0.993, 0.33), (0.985, 0.385), (0.972, 0.43),
-              (0.952, 0.47), (0.915, 0.503), (0.865, 0.524))
-ROCK_TOP_RINGS = (0.76, 0.66, 0.55, 0.43, 0.30, 0.16)  # flat top (outline scale); z from rock_top_z
+              (1.0, 0.13), (1.0, 0.2), (0.998, 0.27), (0.993, 0.33), (0.985, 0.385), (0.975, 0.43),
+              (0.96, 0.47), (0.94, 0.5), (0.91, 0.525), (0.875, 0.54))
+ROCK_TOP_RINGS = (0.84, 0.74, 0.62, 0.48, 0.33, 0.17)  # the flat top (outline scale; z from rock_top_z) reaches 0.84:
+                                                         # wide enough for the flute's whole length
 
 # ---------------------------------------------------------------- flute bag 簫囊 (the flute's empty brocade sleeve)
 BAG_LEN, BAG_W = 1.5, 0.29    # flattened sleeve; closed end -x, mouth +x
@@ -57,18 +60,20 @@ BAG_MOUTH = 0.07              # half-width where the drawstring gathers it
 BAG_NU, BAG_NV = 64, 10
 
 # ---------------------------------------------------------------- flute 玉簫 (flute frame: axis +x from the blowing end)
-XL = 1.90                     # length
-XR = 0.048                    # outer radius (1:20)
-XB = 0.027                    # bore radius
-XS = 24                       # sides (a 2 x 2 quad patch is 2.3 cm: room for a round hole)
+XL = 2.09                     # length
+XR = 0.05                     # outer radius (1:21)
+XB = 0.028                    # bore radius
+FLUTE_X = 0.07                # the flute's middle (set x): its ends both over the stone's flat top
+XS = 24                       # sides (a 2 x 2 quad patch is 2.6 cm: room for a round hole)
 NOTCH = 0.017                 # U notch 吹口 cut into the blowing end's rim (top), depth along the axis
 NOTCH_HALF = math.radians(36.0)
 BANDS = ((0.030, 0.050), (0.066, 0.074), (XL - 0.074, XL - 0.066), (XL - 0.050, XL - 0.030))   # carved raised rings
 BAND_H = 0.0032
-HOLES = ((1.00, 0.0), (1.10, 0.0), (1.20, 0.0), (1.31, 0.0), (1.42, 0.0), (1.72, -90.0), (1.72, 90.0))
+HOLES = tuple((XL * f, a) for f, a in ((0.526, 0.0), (0.579, 0.0), (0.632, 0.0), (0.689, 0.0), (0.747, 0.0),
+                                        (0.905, -90.0), (0.905, 90.0)))
 # (x from the blowing end, angle deg round the axis: 0 = up, -90 = toward the front) five finger holes on top, the
 # two vent holes near the foot (the thumb hole underneath faces the stone and is not cut)
-HOLE_R = 0.0095               # hole radius on the surface (inside the 2 x 2 patch round its centre vertex)
+HOLE_R = 0.0098               # hole radius on the surface (inside the 2 x 2 patch round its centre vertex)
 HOLE_DEPTH = 0.012
 FLUTE_Y = -0.14               # the flute's axis line (set y): the front half of the top, on dark stone, in front
                               # of the bag (on the back rim it merged with the rim's highlight from the hold)
@@ -104,7 +109,7 @@ def rock_outline(th):
 
 def rock_top_z(s, x, y):
     """Height of the flat top at outline scale ``s`` (0 centre .. ROCK_RINGS[-1][0] rim), a faint dome and ripple."""
-    return ROCK_TOP + 0.008 * (1.0 - (s / 0.84) ** 2) + 0.004 * U.noise3((x, y, 0.0), 1.9, seed=71)
+    return ROCK_TOP + 0.004 * (1.0 - (s / 0.84) ** 2) + 0.003 * U.noise3((x, y, 0.0), 1.9, seed=71)
 
 
 def _rock_lump(x, y, z):
@@ -133,7 +138,8 @@ def _cut_outline(pts):
              (cut[i - 1][1] + 2 * cut[i][1] + cut[(i + 1) % n][1]) / 4) for i in range(n)]
 
 
-RIM_CHIP = {0.385: 0.3, 0.43: 0.6, 0.47: 1.0, 0.503: 1.0, 0.524: 0.6}    # ring z -> share of the rim's uneven height
+RIM_CHIP = {0.385: 0.3, 0.43: 0.6, 0.47: 1.0, 0.5: 1.0, 0.525: 0.8, 0.54: 0.4}    # ring z -> share of the rim's
+                                                                                  # uneven height
 # straight cleavage faces cut into the outline (direction deg, share of the outline's reach that way): a split slab,
 # not a pebble
 ROCK_CUTS = ((14.0, 0.93), (70.0, 0.9), (118.0, 0.94), (163.0, 0.91), (208.0, 0.92), (262.0, 0.95), (318.0, 0.9))
@@ -160,7 +166,7 @@ def rock_bm():
         rings.append(ring)
     for s in ROCK_TOP_RINGS:
         ring = []
-        chip = 0.2 if s == ROCK_TOP_RINGS[0] else 0.0
+        chip = 0.12 if s == ROCK_TOP_RINGS[0] else 0.0
         for th, (ox, oy) in zip(ths, outl):
             x, y = s * ox, s * oy
             ring.append(bm.verts.new((x, y, rock_top_z(s, x, y) + chip * _rim_chip(th))))
@@ -353,7 +359,7 @@ def flute_bm():
         faces = [f for f in c.link_faces]
         if len(faces) != 4:
             raise RuntimeError("flute hole at %.3f: centre vertex has %d faces" % (hx, len(faces)))
-        res = bmesh.ops.inset_region(bm, faces=faces, thickness=0.0012, depth=0.0, use_even_offset=True)
+        bmesh.ops.inset_region(bm, faces=faces, thickness=0.0012, depth=0.0, use_even_offset=True)
         rim_v = {v for f in faces for v in f.verts if v is not c}
         cx = c.co.x
         for v in rim_v:                            # round the inner ring on the surface
@@ -382,11 +388,11 @@ def flute_matrix(rest_bvh):
     hull of the surface under the axis, the segment under the flute's middle: it touches at two points)."""
     pts = []
     for k in range(97):
-        x = -XL / 2 + XL * k / 96
+        x = FLUTE_X - XL / 2 + XL * k / 96
         h = _down(rest_bvh, x, FLUTE_Y)
         if h is None:
             raise RuntimeError("flute: no stone under x %.2f" % x)
-        r = XR + (BAND_H if any(a <= x + XL / 2 <= b for a, b in BANDS) else 0.0)
+        r = XR + (BAND_H if any(a <= x - FLUTE_X + XL / 2 <= b for a, b in BANDS) else 0.0)
         pts.append((x, h[0].z + r))
     hull = []
     for q in pts:                                    # upper hull, left to right (monotone chain)
@@ -396,16 +402,16 @@ def flute_matrix(rest_bvh):
         hull.append(q)
     seg = None
     for a, b in zip(hull[:-1], hull[1:]):
-        if a[0] <= 0.0 <= b[0]:
+        if a[0] <= FLUTE_X <= b[0]:
             seg = (a, b)
     if seg is None:
         raise RuntimeError("flute: no resting segment under the middle")
     (xa, za), (xb, zb) = seg
     slope = (zb - za) / (xb - xa)
-    z0 = za + slope * (0.0 - xa) + 0.0004
+    z0 = za + slope * (FLUTE_X - xa) + 0.0004
     pitch = math.atan(slope)
     rest = (round(xa, 3), round(xb, 3))
-    m = (Matrix.Translation((0.0, FLUTE_Y, z0)) @ Matrix.Rotation(-pitch, 4, 'Y') @
+    m = (Matrix.Translation((FLUTE_X, FLUTE_Y, z0)) @ Matrix.Rotation(-pitch, 4, 'Y') @
          Matrix.Translation((-XL / 2, 0.0, 0.0)) @ Matrix.Rotation(-FLUTE_ROLL, 4, 'X'))
     return m, rest
 
@@ -558,9 +564,9 @@ def tassel_bm(m_flute, both_bvh):
     bm = bmesh.new()
     cord = bmesh.new()
     _tube(cord, pts, CORD_R, sides=8)
-    _settle(cord, both_bvh, Vector((0.0, -0.6, 0.8)).normalized())
+    dc = Vector((0.0, -0.6, 0.8)).normalized()
+    end = pts[-1] + dc * _settle(cord, both_bvh, dc)
     _append(bm, cord, 0)
-    end = pts[-1]
     # knot: a flat diamond hanging under the cord's end, against the stone
     zk0 = end.z + 0.003
     knot = bmesh.new()
@@ -569,6 +575,14 @@ def tassel_bm(m_flute, both_bvh):
              squash_y=KNOT_T / KNOT_W)
     yk = end.y - _settle(knot, both_bvh, Vector((0.0, -1.0, 0.0)))
     _append(bm, knot, 0)
+    # the stone's face bulges out under the cord's end, so the knot settles a few cm in front of it: the cord runs
+    # on over the bulge to the knot's top (without this the knot hung loose, 3 cm off its cord)
+    top = Vector((end.x, yk, zk0))
+    if (top - end).length > 0.002:
+        run = bmesh.new()
+        _tube(run, [end] + [_clear(both_bvh, q, rc) for q in _densify([end, top], 0.008)[1:]], CORD_R, sides=8)
+        _settle(run, both_bvh, Vector((0.0, -1.0, 0.0)))
+        _append(bm, run, 0)
     # jade bead under the knot
     zb = zk0 - KNOT_H - 0.012
     bead = bmesh.new()
@@ -637,12 +651,13 @@ def add_petal(bm, centre, normal, yaw, length, width, cup=0.16):
     return [Vector(centre) + u * pu + v * pv for (pu, pv) in ol]
 
 
-def scatter_petals(rng, sampler, centre, count_top, count_ground, inside_rock, top_sampler, keep_off=None):
+def scatter_petals(rng, sampler, centre, count_top, count_ground, inside_rock, top_sampler, keep_off=None, extra=()):
     """Petal placements [(point, normal, yaw, length, width, where)] in the set frame.
 
     sampler(x, y) -> (point, normal, kind) or None: the scene under a set-frame (x, y) ('ground', 'path', 'stone',
     'water' or 'set' for the flute set). top_sampler(x, y) -> (point, normal) on the stone/bag or None.
-    inside_rock(x, y) -> True under the stone; keep_off(x, y) -> True where no petal may lie on the top (the cord).
+    inside_rock(x, y) -> True under the stone (or by the tree's trunk); keep_off(x, y) -> True where no petal may lie on
+    the top (the cord). extra: ((cx, cy, sigma x, sigma y, count), ...) more ground drifts (under the peach tree).
     Each petal is accepted only when the surface under all its outline
     points is the same kind and within a few millimetres of the petal's plane."""
     out = []
@@ -711,7 +726,7 @@ def scatter_petals(rng, sampler, centre, count_top, count_ground, inside_rock, t
     while n < count_top and tries < count_top * 40:
         tries += 1
         x, y = rng.uniform(-ROCK_A * 0.95, ROCK_A * 0.95), rng.uniform(-ROCK_B * 0.9, ROCK_B * 0.9)
-        if abs(y - FLUTE_Y) < XR + 0.05 and abs(x) < XL / 2 + 0.06:
+        if abs(y - FLUTE_Y) < XR + 0.05 and abs(x - FLUTE_X) < XL / 2 + 0.06:
             continue
         if keep_off is not None and keep_off(x, y):
             continue
@@ -731,6 +746,14 @@ def scatter_petals(rng, sampler, centre, count_top, count_ground, inside_rock, t
         if inside_rock(x, y):
             continue
         n += one("ground", x, y)
+    for ex, ey, sx, sy, cnt in extra:
+        n, tries = 0, 0
+        while n < cnt and tries < cnt * 60:
+            tries += 1
+            x, y = ex + rng.gauss(0.0, sx), ey + rng.gauss(0.0, sy)
+            if inside_rock(x, y):
+                continue
+            n += one("ground", x, y)
     return out
 
 

@@ -121,14 +121,16 @@ DIPPER = [
 ]
 DIPPER_LINKS = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 3)]
 
-AXIS_LANTERNS = [(sx * 3.6, sy * y) for sy in (-1.0, 1.0) for y in (26.0, 37.0) for sx in (-1.0, 1.0)]
+# stone lanterns along the axis walk: two pairs behind the dais, one pair in front (the apron has its own pair)
+AXIS_LANTERNS = [(sx * 3.6, y) for y in (-33.0, 26.0, 37.0) for sx in (-1.0, 1.0)]
 CENSER_Y = -15.2
 
 CORE_Z = AP.ARM_Z       # the turning core's centre (formation.core)
 CORE_SPEED = 0.0025     # rad per frame (the page: 0.06 rad/s at 24 fps)
 
 R6_MATERIALS = ("formation_paving_bluestone", "formation_paving_ink", "formation_marble_aged",
-                "formation_stone_carved", "formation_rune_goldleak", "formation_rune_jade", "formation_rune_star",
+                "formation_stone_carved", "formation_stone_pale", "formation_rune_goldleak", "formation_rune_jade",
+                "formation_rune_star",
                 "formation_rune_sun", "formation_jade_glow_eye")
 
 
@@ -147,12 +149,15 @@ def _materials():
     M.register("formation_paving_ink", builder, **p)
     M.variant("formation_marble_aged", "marble_white", grime=0.5, veins=0.25)
     M.variant("formation_stone_carved", "stone_grey", c1="#8d8a82", moss=0.35)
+    # the stations' columns and dragons: pale weathered limestone, moss on the upward faces
+    M.variant("formation_stone_pale", "stone_grey", c1="#cbc4b4", c2="#aaa291", speck="#6e685d", light="#e6dfcf",
+              light_amt=0.35, moss=0.3, rough=(0.55, 0.8))
     # glows: soft, warm or pale, never fully saturated (bake classes: rune_gold, formation_rune, jade_glow)
     M.variant("formation_rune_goldleak", "rune_gold", colour="#ffbe63", core="#fff0c8", strength=1.0)
-    M.variant("formation_rune_jade", "rune_cyan", colour="#6fd9b4", core="#d6fff0", strength=1.2)
+    M.variant("formation_rune_jade", "rune_cyan", colour="#86d6b8", core="#e2fff2", strength=1.2)
     M.variant("formation_rune_star", "rune_silver", colour="#c8d8ff", core="#f4f8ff", strength=1.6)
     M.variant("formation_rune_sun", "rune_gold", colour="#ffcf80", core="#fff4dc", strength=3.0)
-    M.variant("formation_jade_glow_eye", "jade_glow", strength=0.9)
+    M.variant("formation_jade_glow_eye", "jade_glow", deep="#1b5a45", pale="#8ccdb0", glow="#a6efd0", strength=0.55)
     M.variant("formation_shield", "glass_shield", strength=0.4, cell=14.0)
 
 
@@ -216,7 +221,7 @@ def _floor(coll, root):
     arcs = [(math.pi / 2 + g, 1.5 * math.pi - g), (-math.pi / 2 + g, math.pi / 2 - g)]
     bm_glow, bm_wall = bmesh.new(), bmesh.new()
     AP.jade_channel(bm_glow, bm_wall, R_CHANNEL[0], R_CHANNEL[1], CHANNEL_DEPTH, arcs)
-    AP.mk(U.name(KEY, "channel"), bm_glow, coll, [AP.M_JADE], parent=root, smooth=False, glow=1.0, shadow=False)
+    AP.mk(U.name(KEY, "channel"), bm_glow, coll, [AP.M_JADE], parent=root, smooth=False, glow=0.22, shadow=False)
     AP.mk(U.name(KEY, "channel_walls"), bm_wall, coll, [AP.M_INK], parent=root, smooth=False)
 
 
@@ -232,7 +237,7 @@ def _inlays(coll, root):
     bm_glow, bm_curb, bm_collar = bmesh.new(), bmesh.new(), bmesh.new()
     for t in STATION_ANGLES:
         AP.radial_channel(bm_glow, bm_curb, bm_collar, t, R_RADIAL[0], R_RADIAL[1])
-    AP.mk(U.name(KEY, "radial_channels"), bm_glow, coll, [AP.M_JADE], parent=root, smooth=False, glow=0.85,
+    AP.mk(U.name(KEY, "radial_channels"), bm_glow, coll, [AP.M_JADE], parent=root, smooth=False, glow=0.25,
           shadow=False)
     AP.mk(U.name(KEY, "radial_curbs"), bm_curb, coll, [AP.M_MARBLE], parent=root, smooth=False, bevel=0.025)
     AP.mk(U.name(KEY, "radial_collars"), bm_collar, coll, [AP.M_BRONZE], parent=root, smooth=False, bevel=0.015)
@@ -486,7 +491,7 @@ def _dipper(coll, root):
         p0, p1 = pa + d * 1.3, pb - d * 1.3
         z = Vector((0.0, 0.0, 0.02))
         bm.faces.new([bm.verts.new(v + z) for v in (p0 - n, p1 - n, p1 + n, p0 + n)])
-    AP.mk(U.name(KEY, "dipper.lines"), bm, coll, [AP.M_STAR], parent=root, smooth=False, glow=0.6, shadow=False)
+    AP.mk(U.name(KEY, "dipper.lines"), bm, coll, [AP.M_STAR], parent=root, smooth=False, glow=0.35, shadow=False)
     for i, (py, zh, x, y) in enumerate(DIPPER):
         L = math.hypot(x, y)
         AP.star_stone(coll, "%s.dipper.%s" % (KEY, py), root, (x, y, 0.0), (-x / L, -y / L), zh, variant=i % 3)

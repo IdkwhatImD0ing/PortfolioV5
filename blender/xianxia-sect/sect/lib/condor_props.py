@@ -47,6 +47,11 @@ BIRD_TRIS = 24000      # one object: within the bake's full-detail size near a h
 TEX = 2048             # baked colour map
 NRM_TEX = 1024         # baked normal map (PNG; 2048 is 5.8 MB, over rblender's 5 MB upload limit)
 MAT = "props_condor"
+# The bald head's skin, blood red (ch. 23: 头顶生着个血红的大肉瘤, a big blood-red fleshy crown; like a real
+# red-headed vulture). The model's skin is pinkish grey; this multiplies it, so its creases and scars stay.
+HEAD_RED = (1.35, 0.28, 0.25)
+HEAD_Z = (0.9, 1.1)          # m, model frame: the head mask's ramp (the pinkish feet and legs stay below 0.4 m)
+SKIN_REDNESS = (0.012, 0.04)  # linear red minus green: skin ~0.05-0.08, the grey beak ~0, the black feathers ~0.002
 
 
 def log(*a):
@@ -64,6 +69,13 @@ def _mat_condor(g):
     img = M.scan_image(DIFF_FILE)
     nimg = M.scan_image(NRM_FILE, data=True)
     col = g.image(img, uv) if img is not None else "#1f1c1b"
+    if img is not None:
+        # head skin -> blood red: texels redder than green (the skin, not the grey beak or the black feathers) above
+        # HEAD_Z in the model frame (object coords: bake_web carries them per vertex, so the bake keeps this)
+        r, gr, _b = g.sep(col)
+        skin = g.smooth(g.math('SUBTRACT', r, gr), *SKIN_REDNESS)
+        _x, _y, z = g.sep(g.coord("object_raw"))
+        col = g.mix(col, g.vmath('MULTIPLY', col, HEAD_RED), g.mul(skin, g.smooth(z, *HEAD_Z)))
     nrm = None
     if nimg is not None:
         nm = g.node("ShaderNodeNormalMap", {"Color": g.image(nimg, uv), "Strength": 1.0}, space='TANGENT')
@@ -75,7 +87,7 @@ def _mat_condor(g):
     g.viewport("#2a2523", roughness=0.8)
 
 
-M.register(MAT, _mat_condor)
+M.register(MAT, _mat_condor, overwrite=True)   # overwrite: a file patched before gets the current material
 
 
 # --------------------------------------------------------------------------------------------------------------

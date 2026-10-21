@@ -47,6 +47,7 @@ __all__ = [
     "stone_table", "tea_set", "cushion", "wind_chime", "weapon_rack", "anvil", "ore_pile",
     "crane", "koi", "rune_ring", "light_beam", "light_pillar", "spirit_motes", "shield_dome",
     "showcase", "closeups", "CLASSICS", "TABLET_TEXTS", "TRIGRAMS", "BAGUA_ORDER", "LUOPAN_24",
+    "JIN_YONG_VERSES", "passage_columns",
 ]
 
 # Classical texts used for glyph columns (never English), in traditional characters (ancient
@@ -63,6 +64,21 @@ CLASSICS = [
     "果珍李柰菜重芥薑海鹹河淡鱗潛羽翔龍師火帝鳥官人皇",
 ]
 CLASSICS_ALL = "".join(CLASSICS)
+
+# Jin Yong passages for the Jade Slip Pavilion's great scroll (scroll.jade_scroll, round 8), in this order, traditional
+# characters, no punctuation (bamboo slips carry none). bamboo_slip_scroll(passages=...) starts each one at the top of a
+# new slip column. Sources and where they point in the sect:
+JIN_YONG_VERSES = [
+    "武林至尊寶刀屠龍號令天下莫敢不從倚天不出誰與爭鋒",                       # Heaven Sword and Dragon Saber: the swords at the gate
+    "焚我殘軀熊熊聖火生亦何歡死亦何苦為善除惡惟光明故喜樂悲愁皆歸塵土憐我世人憂患實多",   # the Ming Sect's holy-fire chant: the altars, the tokens
+    "他強由他強清風拂山岡他橫由他橫明月照大江",                               # Nine Yang Manual
+    "重劍無鋒大巧不工",                                                       # Yang Guo's Heavy Iron Sword (the arena)
+    "劍魔獨孤求敗既無敵於天下乃埋劍於斯嗚呼群雄束手長劍空利不亦悲夫",           # Dugu Qiubai's Sword Tomb (the forge)
+    "問世間情是何物直教生死相許",                                             # Return of the Condor Heroes
+    "天之道損有餘而補不足是故虛勝實不足勝有餘",                               # Nine Yin Manual
+    "歸妹趨無妄無妄趨同人同人趨大有",                                         # Dugu Nine Swords (Smiling Proud Wanderer)
+    "俠之大者為國為民",                                                       # Guo Jing (Legend of the Condor Heroes)
+]
 
 TABLET_TEXTS = ["道法自然", "上善若水", "天道酬勤", "厚德載物", "寧靜致遠", "抱元守一", "清靜無為",
                 "紫氣東來", "劍心通明", "太上忘情"]
@@ -4511,14 +4527,44 @@ def jade_tablet(collection, height=0.6, glow=True, cord=0.5, text=None, seed=0, 
 
 # ============================================================ scrolls and books
 
+def passage_columns(passages, n_cols, rows, repeat=True):
+    """Lay ``passages`` out on ``n_cols`` slip columns of ``rows`` characters: the column texts in reading order (the
+    first is the rightmost slip). Punctuation and spaces are dropped (letters only). Each passage starts at the top of
+    a new column and runs down it into the next ones, so a passage's last column may stop part way down. With
+    ``repeat``, when every passage is placed and columns remain, one blank column follows and the passages start
+    again from the first; a passage that no longer fits whole is not begun (the rest stay blank), except a first
+    passage longer than the whole scroll, which is cut at its end. Blank columns are ''. Pure Python (testable)."""
+    texts = [t for t in ("".join(ch for ch in str(p) if ch.isalpha()) for p in passages) if t]
+    out = []
+    while texts:
+        placed = False
+        for j, t in enumerate(texts):
+            gap = 1 if (j == 0 and out) else 0
+            cols = [t[k:k + rows] for k in range(0, len(t), rows)]
+            if len(out) + gap + len(cols) > n_cols:
+                if not out:
+                    out = cols[:n_cols]
+                return out + [""] * (n_cols - len(out))
+            out += [""] * gap + cols
+            placed = True
+        if not (repeat and placed):
+            break
+    return out + [""] * (n_cols - len(out))
+
+
 def bamboo_slip_scroll(collection, width=3.0, height=1.2, curve=0.25, glow=True, seed=0, rolled=True,
-                       text_material=None, name=None, parent=None, location=(0, 0, 0), rotation=(0, 0, 0)):
+                       text_material=None, name=None, parent=None, location=(0, 0, 0), rotation=(0, 0, 0),
+                       passages=None):
     """Unrolled bamboo-slip scroll (zhu jian) of jade slips: ``width`` x ``height`` m, bowed in plan
     so its ends come ``curve``*width toward the viewer (-Y), slips bound by two red silk cords
     woven over and under, each slip carrying a column of glowing classical script (text_material,
     default rune_gold on glowing jade; glow=False: plain jade with ink), and (rolled=True) a tight
     roll of slips at the left end. Origin at the centre, front faces -Y. Returns the root Empty
-    (unique: every slip carries different text)."""
+    (unique: every slip carries different text).
+
+    Text: by default a running CLASSICS text (picked by ``seed``) fills every slip. ``passages`` (a list of strings,
+    e.g. JIN_YONG_VERSES) replaces it: read top to bottom, columns right to left, each passage beginning at the top
+    of a new slip, then a blank slip and the passages again while whole ones fit (passage_columns)."""
     root = _root(collection, name, "slip_scroll", parent, location, rotation)
     pn = root.name
     r = U.rng(seed, "slips")
@@ -4540,6 +4586,8 @@ def bamboo_slip_scroll(collection, width=3.0, height=1.2, curve=0.25, glow=True,
     k = r.randrange(len(text))
     cell = sw * 0.80
     rows = int(height * 0.84 / cell)
+    # passages: slip i (0 = leftmost) carries reading column N - 1 - i (the text starts at the right end)
+    cols = passage_columns(passages, N, rows) if passages else None
     for i in range(N):
         c, a = frame_at(i)
         rot = Matrix.Rotation(-a, 4, 'Z')
@@ -4547,9 +4595,14 @@ def bamboo_slip_scroll(collection, width=3.0, height=1.2, curve=0.25, glow=True,
         _box(bm, (sw, st, height), (0, 0, 0), matrix=m)
         basis = rot.to_3x3() @ Matrix(((1, 0, 0), (0, 0, -1), (0, 1, 0)))
         origin = c + rot.to_3x3() @ Vector((-cell / 2, -st / 2 - 0.0015 * height, rows * cell / 2))
-        col_txt = "".join(text[(k + j) % len(text)] for j in range(rows))
-        k += rows
-        _text_columns(bt, col_txt, 1, rows, cell, origin, basis=basis.to_3x3(), res=1 if cell < 0.15 else 2)
+        if cols is None:
+            col_txt = "".join(text[(k + j) % len(text)] for j in range(rows))
+            k += rows
+        else:
+            col_txt = cols[N - 1 - i]
+        if col_txt:
+            _text_columns(bt, col_txt, 1, len(col_txt), cell, origin, basis=basis.to_3x3(),
+                          res=1 if cell < 0.15 else 2)
     if rolled:
         c0, a0 = frame_at(-0.5)
         axis = c0 + Vector((-pitch * 1.4, -pitch * 0.6, 0))

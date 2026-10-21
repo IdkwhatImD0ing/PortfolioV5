@@ -1,8 +1,10 @@
 /**
- * Still water for /sect. The bake has no reflections, so the pond reads as flat dark teal; the web
- * adds an analytic planar reflection: the sky gradient plus the glowing Heart-Mirror, found by
- * intersecting the reflected view ray with the mirror's disc. Pure geometry helpers here (no
- * three.js) so the water level and disc fitting are testable.
+ * Still water for /sect. The bake has no reflections, so the pond reads as flat dark teal. On High
+ * and Medium the page renders a real planar reflection of the pond and captures the Heart-Mirror's
+ * surroundings into a cube map (experience/reflect/); on Low it keeps an analytic one: the sky
+ * gradient plus the glowing Heart-Mirror, found by intersecting the reflected view ray with the
+ * mirror's disc. Pure geometry helpers here (no three.js) so the water level, the open water's
+ * extent and the disc fitting are testable.
  *
  * Also the life at the waterfall feet (experience/waterfall-fx.tsx): which falls land on ground,
  * where each foot is, the foam skirt's mesh, and the spray and mist-puff motion that the shaders
@@ -17,6 +19,8 @@ export interface WaterSurface {
   level: number;
   /** A glowing disc mirrored in the water, or null. */
   disc: { center: Vec3; normal: Vec3; radius: number } | null;
+  /** Horizontal extent (x, z) of the open water (flatLevelBounds); absent: unbounded. */
+  bounds?: { min: [number, number]; max: [number, number] };
 }
 
 /**
@@ -54,6 +58,110 @@ export function dominantFlatLevel(
   let best: { area: number; sumY: number } | null = null;
   for (const b of bins.values()) if (!best || b.area > best.area) best = b;
   return best ? { level: best.sumY / best.area, area: best.area } : null;
+}
+
+/**
+ * Horizontal extent (x, z) of the near-horizontal triangles within `tol` m of `level`: the open
+ * water of a pond mesh (its lily pads float a few centimetres up, its stones stand out of it), so
+ * the water shader can tell the pond's surface by geometry alone. Null when none lie there.
+ */
+export function flatLevelBounds(
+  positions: ArrayLike<number>,
+  index: ArrayLike<number> | null,
+  level: number,
+  tol = 0.01,
+  minUp = 0.995,
+): { min: [number, number]; max: [number, number]; area: number } | null {
+  const tri = index ? index.length / 3 : positions.length / 9;
+  const min: [number, number] = [Infinity, Infinity];
+  const max: [number, number] = [-Infinity, -Infinity];
+  let area = 0;
+  for (let t = 0; t < tri; t++) {
+    const v = [index ? index[t * 3] : t * 3, index ? index[t * 3 + 1] : t * 3 + 1, index ? index[t * 3 + 2] : t * 3 + 2];
+    let off = false;
+    for (const i of v) if (Math.abs(positions[i * 3 + 1] - level) > tol) off = true;
+    if (off) continue;
+    const [a, b, c] = v;
+    const ux = positions[b * 3] - positions[a * 3], uy = positions[b * 3 + 1] - positions[a * 3 + 1], uz = positions[b * 3 + 2] - positions[a * 3 + 2];
+    const wx = positions[c * 3] - positions[a * 3], wy = positions[c * 3 + 1] - positions[a * 3 + 1], wz = positions[c * 3 + 2] - positions[a * 3 + 2];
+    const nx = uy * wz - uz * wy;
+    const ny = uz * wx - ux * wz;
+    const nz = ux * wy - uy * wx;
+    const len = Math.hypot(nx, ny, nz);
+    if (len < 1e-12 || Math.abs(ny) / len < minUp) continue;
+    area += len / 2;
+    for (const i of v) {
+      const x = positions[i * 3];
+      const z = positions[i * 3 + 2];
+      if (x < min[0]) min[0] = x;
+      if (z < min[1]) min[1] = z;
+      if (x > max[0]) max[0] = x;
+      if (z > max[1]) max[1] = z;
+    }
+  }
+  return area > 0 ? { min, max, area } : null;
+}
+
+/**
+ * A flat disc (the Heart-Mirror's polished face) from its triangles, world-space: the area-weighted
+ * normal of the triangles facing along the face's dominant direction (its rim band does not), turned
+ * toward `toward`; the centre of its vertices' box; and the farthest vertex from that centre within
+ * the plane as the radius. Unlike discFromBox this follows a face turned off the axes. Null for an
+ * empty or degenerate soup.
+ */
+export function discFromTriangles(
+  positions: ArrayLike<number>,
+  index: ArrayLike<number> | null,
+  toward: Vec3,
+): { center: Vec3; normal: Vec3; radius: number } | null {
+  const tri = index ? index.length / 3 : positions.length / 9;
+  const at = (t: number, k: number) => (index ? index[t * 3 + k] : t * 3 + k);
+  const normals: { n: Vec3; area: number }[] = [];
+  let best = -1;
+  for (let t = 0; t < tri; t++) {
+    const a = at(t, 0), b = at(t, 1), c = at(t, 2);
+    const ux = positions[b * 3] - positions[a * 3], uy = positions[b * 3 + 1] - positions[a * 3 + 1], uz = positions[b * 3 + 2] - positions[a * 3 + 2];
+    const wx = positions[c * 3] - positions[a * 3], wy = positions[c * 3 + 1] - positions[a * 3 + 1], wz = positions[c * 3 + 2] - positions[a * 3 + 2];
+    const n: Vec3 = [uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx];
+    const len = Math.hypot(n[0], n[1], n[2]);
+    if (len < 1e-12) continue;
+    normals.push({ n: [n[0] / len, n[1] / len, n[2] / len], area: len / 2 });
+    if (best < 0 || len / 2 > normals[best].area) best = normals.length - 1;
+  }
+  if (best < 0) return null;
+  // The face's direction: the largest triangle's, refined by every triangle (either side) along it.
+  const ref = normals[best].n;
+  const sum: Vec3 = [0, 0, 0];
+  for (const { n, area } of normals) {
+    const d = n[0] * ref[0] + n[1] * ref[1] + n[2] * ref[2];
+    if (Math.abs(d) < 0.9) continue;
+    const s = Math.sign(d) * area;
+    sum[0] += n[0] * s;
+    sum[1] += n[1] * s;
+    sum[2] += n[2] * s;
+  }
+  const sl = Math.hypot(sum[0], sum[1], sum[2]);
+  if (sl < 1e-12) return null;
+  const normal: Vec3 = [sum[0] / sl, sum[1] / sl, sum[2] / sl];
+  const lo: Vec3 = [Infinity, Infinity, Infinity];
+  const hi: Vec3 = [-Infinity, -Infinity, -Infinity];
+  const verts = index ? Array.from(index) : Array.from({ length: positions.length / 3 }, (_, i) => i);
+  for (const i of verts) {
+    for (let k = 0; k < 3; k++) {
+      lo[k] = Math.min(lo[k], positions[i * 3 + k]);
+      hi[k] = Math.max(hi[k], positions[i * 3 + k]);
+    }
+  }
+  const center: Vec3 = [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2];
+  let radius = 0;
+  for (const i of verts) {
+    const d: Vec3 = [positions[i * 3] - center[0], positions[i * 3 + 1] - center[1], positions[i * 3 + 2] - center[2]];
+    const along = d[0] * normal[0] + d[1] * normal[1] + d[2] * normal[2];
+    radius = Math.max(radius, Math.hypot(d[0] - normal[0] * along, d[1] - normal[1] * along, d[2] - normal[2] * along));
+  }
+  const facing = (toward[0] - center[0]) * normal[0] + (toward[1] - center[1]) * normal[1] + (toward[2] - center[2]) * normal[2];
+  if (facing < 0) for (let k = 0; k < 3; k++) normal[k] = -normal[k];
+  return { center, normal, radius };
 }
 
 /**
