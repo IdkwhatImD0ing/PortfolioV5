@@ -151,6 +151,20 @@ export interface HotspotInfo {
   chunk?: string | null;
 }
 
+/**
+ * One hover box of a Jin Yong reference (meta.json "lore", lib/sect/lore.ts). Decorative: never a
+ * hotspot, never clicked. A reference may have several boxes (the two altars, the five banners).
+ */
+export interface LoreBox {
+  id: string;
+  center: Vec3;
+  size: Vec3;
+  /** The content hotspot whose subtree already holds the objects (its label names them), or null. */
+  host: string | null;
+  /** The stop it belongs to, or null. */
+  area: string | null;
+}
+
 /** An area's place in the world and on the camera path (meta.json "areas"). */
 export interface AreaMeta {
   id: string;
@@ -201,6 +215,8 @@ export interface SectMeta {
   waterfalls: Waterfall[];
   beams: LightBeam[];
   hotspots: HotspotInfo[];
+  /** The Jin Yong references' hover boxes (parseMeta: empty when the file has none). Never hotspots. */
+  lore?: LoreBox[];
   /** The areas along the path (may be empty in older files). */
   areas: AreaMeta[];
   /** Blender's vignette strength (0.22 = 22 % corner darkening). */

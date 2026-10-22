@@ -47,7 +47,7 @@ __all__ = [
     "stone_table", "tea_set", "cushion", "wind_chime", "weapon_rack", "anvil", "ore_pile",
     "crane", "koi", "rune_ring", "light_beam", "light_pillar", "spirit_motes", "shield_dome",
     "showcase", "closeups", "CLASSICS", "TABLET_TEXTS", "TRIGRAMS", "BAGUA_ORDER", "LUOPAN_24",
-    "JIN_YONG_VERSES", "passage_columns",
+    "JIN_YONG_VERSES", "JIN_YONG_MANUALS", "passage_columns",
 ]
 
 # Classical texts used for glyph columns (never English), in traditional characters (ancient
@@ -78,6 +78,89 @@ JIN_YONG_VERSES = [
     "天之道損有餘而補不足是故虛勝實不足勝有餘",                               # Nine Yin Manual
     "歸妹趨無妄無妄趨同人同人趨大有",                                         # Dugu Nine Swords (Smiling Proud Wanderer)
     "俠之大者為國為民",                                                       # Guo Jing (Legend of the Condor Heroes)
+]
+
+# Jin Yong martial-arts manuals for the Stele Forest of Techniques (areas/steles.py, round 9): stele(manual=...) carves
+# 'title' in the crown panel, 'cols' on the front (each string one column, read top to bottom, the first column on the
+# right) and 'back' on the back (the novel, then who wields or wrote it). Traditional characters, no punctuation; every
+# character is in simkai.ttf. Move names and mnemonics as the novels give them (where editions differ, the widely
+# cited list); where a novel gives no move names the stele carries a line of the text itself.
+JIN_YONG_MANUALS = [
+    # ---- The Legend of the Condor Heroes 射鵰英雄傳
+    dict(title="降龍十八掌",          # Eighteen Dragon-Subduing Palms: the eighteen moves (Yi Jing names)
+         cols=("亢龍有悔飛龍在天見龍在田", "鴻漸於陸潛龍勿用利涉大川", "突如其來震驚百里或躍在淵",
+               "雙龍取水魚躍於淵時乘六龍", "密雲不雨損則有孚龍戰於野", "履霜冰至羝羊觸藩神龍擺尾"),
+         back=("射鵰英雄傳", "北丐洪七公")),
+    dict(title="打狗棒法",            # Dog-Beating Staff: the eight-word mnemonic and the last move
+         cols=("絆劈纏戳挑引封轉", "天下無狗"),
+         back=("射鵰英雄傳", "丐幫幫主")),
+    dict(title="九陰真經",            # Nine Yin Manual: arts it records (not the scroll's 天之道 line)
+         cols=("移魂大法手揮五弦", "大伏魔拳摧堅神爪", "摧心掌白蟒鞭法", "九陰白骨爪"),
+         back=("射鵰英雄傳", "黃裳")),
+    dict(title="空明拳",              # Zhou Botong's Vacuous Fist: its sixteen-word mnemonic
+         cols=("空朦洞鬆風通容夢", "沖窮中弄童庸弓蟲"),
+         back=("射鵰英雄傳", "老頑童周伯通")),
+    dict(title="桃花島",              # Peach Blossom Island: Huang Yaoshi's arts
+         cols=("落英神劍掌旋風掃葉腿", "蘭花拂穴手彈指神通", "玉簫劍法碧海潮生曲"),
+         back=("射鵰英雄傳", "東邪黃藥師")),
+    # Quanzhen Big Dipper array: each star and the Quanzhen master who takes it (ch. 25), not the bare star names the
+    # formation area's star-stones already carry
+    dict(title="天罡北斗陣",
+         cols=("天樞馬鈺天璇譚處端", "天璣劉處玄天權丘處機", "玉衡王處一開陽郝大通", "搖光孫不二"),
+         back=("射鵰英雄傳", "全真七子")),
+    # ---- The Return of the Condor Heroes 神鵰俠侶
+    dict(title="黯然銷魂掌",          # Yang Guo's Melancholic Palms: the seventeen moves
+         cols=("心驚肉跳杞人憂天無中生有", "拖泥帶水徘徊空谷力不從心", "行屍走肉庸人自擾倒行逆施",
+               "廢寢忘食孤形隻影飲恨吞聲", "六神不安窮途末路面無人色", "想入非非呆若木雞"),
+         back=("神鵰俠侶", "西狂楊過")),
+    dict(title="古墓派",              # the Ancient Tomb's twelve 'littles' (十二少)
+         cols=("少思少念少欲少事少語少笑", "少愁少樂少喜少怒少好少惡", "行此十二少乃養生之都契也"),
+         back=("神鵰俠侶", "小龍女")),
+    dict(title="玉女心經",            # Jade Maiden Heart Sutra: the paired-sword moves of its last chapter
+         cols=("浪跡天涯花前月下", "清飲小酌撫琴按簫", "掃雪烹茶松下對弈", "池邊調鶴"),
+         back=("神鵰俠侶", "林朝英")),
+    dict(title="劍塚",                # Dugu Qiubai's Sword Tomb: the words under his four swords
+         cols=("凌厲剛猛無堅不摧", "弱冠前以之與河朔群雄爭鋒", "紫薇軟劍三十歲前所用", "誤傷義士不祥悔恨無已乃棄之深谷",
+               "重劍無鋒大巧不工", "四十歲前恃之橫行天下", "四十歲後不滯於物草木竹石均可為劍", "自此精修漸進於無劍勝有劍之境"),
+         back=("神鵰俠侶", "劍魔獨孤求敗")),
+    # ---- The Heaven Sword and Dragon Saber 倚天屠龍記
+    dict(title="九陽神功",            # Nine Yang Manual: the line after the scroll's 他強由他強
+         cols=("他自狠來他自惡", "我自一口真氣足"),
+         back=("倚天屠龍記", "張無忌")),
+    dict(title="乾坤大挪移",          # the Ming Sect's Heaven and Earth Great Shift: its seven levels
+         cols=("第一層第二層", "第三層第四層", "第五層第六層", "第七層"),
+         back=("倚天屠龍記", "明教")),
+    dict(title="太極拳",              # Zhang Sanfeng's Taiji Fist: the forms he shows, then its sixteen-word secret
+         cols=("攬雀尾單鞭提手上勢", "白鶴亮翅摟膝勾步", "手揮琵琶進步搬攔錘", "如封似閉十字手抱虎歸山",
+               "虛靈頂勁涵胸拔背", "鬆腰垂臀沉肩墜肘"),
+         back=("倚天屠龍記", "張三丰")),
+    dict(title="太極劍",              # Taiji Sword: its first forms and the 53rd and 54th
+         cols=("三環套月大魁星", "燕子抄水左攔掃", "右攔掃指南針", "持劍歸原"),
+         back=("倚天屠龍記", "張三丰")),
+    dict(title="七傷拳",              # Seven Injuries Fist: its mnemonic as Zhang Wuji recites it
+         cols=("五行之氣調陰陽", "損心傷肺摧肝腸", "藏離精失意恍惚", "三焦齊逆兮魂魄飛揚"),
+         back=("倚天屠龍記", "崆峒派")),
+    dict(title="龍爪手",              # Shaolin Dragon Claw: the moves Kong Xing uses on Bright Peak
+         cols=("捕風式捉影式", "撫琴式鼓瑟式", "批亢式搗虛式", "拿雲式搶珠式", "抱殘式守缺式"),
+         back=("倚天屠龍記", "少林空性")),
+    # ---- The Smiling, Proud Wanderer 笑傲江湖
+    dict(title="獨孤九劍",            # Nine Swords of Dugu: the nine stances
+         cols=("總訣式破劍式破刀式", "破槍式破鞭式破索式", "破掌式破箭式破氣式"),
+         back=("笑傲江湖", "風清揚")),
+    dict(title="華山劍法",            # Huashan swordplay as Feng Qingyang strings it, and its eight-word secret
+         cols=("白虹貫日有鳳來儀", "金雁橫空截劍式", "金玉滿堂鐘鼓齊鳴", "行雲流水任意所至"),
+         back=("笑傲江湖", "令狐沖")),
+    dict(title="沖靈劍法",            # Linghu Chong and Yue Lingshan's own sword: its five moves (沖, not the simplified 冲)
+         cols=("青梅如豆柳葉似眉", "霧中初見雨後乍逢", "同生共死"),
+         back=("笑傲江湖", "令狐沖岳靈珊")),
+    dict(title="吸星大法",            # Star-Sucking Great Method: the words on Ren Woxing's iron bed
+         cols=("當令丹田常如空箱恆似深谷", "空箱可貯物深谷可容水", "若有內息散之於任脈諸穴"),
+         back=("笑傲江湖", "任我行")),
+    # ---- the master stele: the Five Greats of the first and third Mount Hua contests
+    dict(title="華山論劍",
+         cols=("東邪黃藥師西毒歐陽鋒", "南帝段智興北丐洪七公", "中神通王重陽", "東邪黃藥師西狂楊過", "南僧一燈北俠郭靖",
+               "中頑童周伯通"),
+         back=("射鵰英雄傳", "神鵰俠侶")),
 ]
 
 TABLET_TEXTS = ["道法自然", "上善若水", "天道酬勤", "厚德載物", "寧靜致遠", "抱元守一", "清靜無為",
@@ -955,6 +1038,62 @@ def _text_columns(bm, text, n_cols, n_rows, cell, origin, right_to_left=True, re
             m = Matrix.Translation(pos) @ basis.to_4x4()
             _add_mesh(bm, me, m, mat)
     return k
+
+
+def block_cell(lines, width, height, cap):
+    """Cell size _glyph_block uses: the largest square cell (at most ``cap``) that fits every line whole as one
+    column in a ``width`` x ``height`` region. 0.0 when there is nothing to set. Pure Python (testable)."""
+    n = len(lines)
+    L = max((len(t) for t in lines), default=0)
+    if n == 0 or L == 0:
+        return 0.0
+    return min(width / n, height / L, cap)
+
+
+_FRONT_BASIS = ((1, 0, 0), (0, 0, -1), (0, 1, 0))     # rows of the 3x3 basis: right = X, up = Z, normal = -Y
+
+
+def _block_plan(lines, corner, width, height, cap, basis=None, valign="top", inset=0.0):
+    """Where _glyph_block puts each glyph: (cell, [(char, centre Vector, column index, row index)]). Each line is one
+    column read top to bottom, the first line the rightmost column. The region is ``width`` x ``height`` (less
+    ``inset`` on every side) with its top-left corner at ``corner``, in the basis plane (``basis`` columns = right,
+    up, normal; default the XZ plane facing -Y, as _text_columns). The cell is block_cell(); the block is centred
+    across and sits at the top (valign 'top') or in the middle ('center')."""
+    basis = Matrix(basis or _FRONT_BASIS)
+    w, h = width - 2 * inset, height - 2 * inset
+    cell = block_cell(lines, w, h, cap)
+    if cell <= 0:
+        return 0.0, []
+    n, L = len(lines), max(len(t) for t in lines)
+    o = Vector(corner) + basis @ Vector((inset, -inset, 0.0))
+    dx = (w - n * cell) / 2
+    dz = (h - L * cell) / 2 if valign == "center" else 0.0
+    out = []
+    for j, line in enumerate(lines):
+        x = dx + (n - 1 - j + 0.5) * cell
+        for r, ch in enumerate(line):
+            if not ch.isspace():
+                out.append((ch, o + basis @ Vector((x, -(dz + (r + 0.5) * cell), 0.0)), j, r))
+    return cell, out
+
+
+def _glyph_block(bm, lines, corner, width, height, cap, basis=None, valign="top", inset=0.0, res=2, mat=0):
+    """Set ``lines`` as vertical columns of flat glyphs as planned by _block_plan (same arguments). Glyphs are
+    cell * 0.86 KaiTi, as _text_columns. Returns the cell size."""
+    cell, plan = _block_plan(lines, corner, width, height, cap, basis, valign, inset)
+    B = Matrix(basis or _FRONT_BASIS).to_4x4()
+    for ch, pos, _j, _r in plan:
+        _add_mesh(bm, _text_mesh(ch, cell * 0.86, res), Matrix.Translation(pos) @ B, mat)
+    return cell
+
+
+def title_lines(title):
+    """A stele crown title as columns: up to three characters in one column, longer ones in two (the right one the
+    longer). Pure Python (testable)."""
+    if len(title) <= 3:
+        return [title]
+    h = (len(title) + 1) // 2
+    return [title[:h], title[h:]]
 
 
 # ============================================================ geometry-node instancers
@@ -3150,18 +3289,22 @@ def _build_turtle(pc, s, material):
               matrix=S @ Matrix.Diagonal((1.05, 1.75, 1.0, 1)))
     _outward(bm)
     _mk(_nm("turtle.socket"), bm, pc, [material], smooth=False, bevel=0.01 * s)
-    return 0.88 * s
+    return _TURTLE_TOP * s
 
 
-def _build_stele(pc, H, glyph_mat, turtle, seed, material):
+_TURTLE_TOP = 0.88      # bixi socket top (stele slab foot), times s = height / 4
+_XUMIZUO_TOP = 0.50     # the plain base's top, times s
+
+
+def _build_stele(pc, H, glyph_mat, turtle, seed, material, manual=None):
     s = H / 4.0
     if turtle:
         z0 = _build_turtle(pc, s, material)
     else:
         bm = bmesh.new()
-        _xumizuo(bm, 0.85 * s, 0.42 * s, 0.50 * s)
+        _xumizuo(bm, 0.85 * s, 0.42 * s, _XUMIZUO_TOP * s)
         _mk(_nm("stele.base"), bm, pc, [material], smooth=False, bevel=0.01 * s)
-        z0 = 0.50 * s
+        z0 = _XUMIZUO_TOP * s
     W, T = 1.25 * s, 0.32 * s
     zc = 3.3 * s                                      # crown base
     bm = bmesh.new()
@@ -3211,36 +3354,117 @@ def _build_stele(pc, H, glyph_mat, turtle, seed, material):
     _mk(_nm("stele.crown"), bm, pc, [material], smooth=math.radians(40), bevel=0.006 * s)
     # glowing glyphs: columns of classical text (right to left) on the front, title in the crown
     bm = bmesh.new()
-    r = U.rng(seed, "stele")
-    text = CLASSICS[seed % len(CLASSICS)]
-    cols = 6
-    cell = (W - 0.36 * s) / cols
-    rows = int((Hs - 0.42 * s) / cell)
-    origin = Vector((-cols * cell / 2, -T / 2 - 0.003 * s, zc - 0.2 * s))
-    _text_columns(bm, text, cols, rows, cell, origin, offset=r.randrange(len(text)))
-    back = CLASSICS[(seed + 3) % len(CLASSICS)]
-    basis_back = Matrix(((-1, 0, 0), (0, 0, 1), (0, 1, 0)))     # right = -X, up = Z, normal = +Y
-    _text_columns(bm, back, cols - 2, rows - 3, cell, Vector(((cols - 2) * cell / 2, T / 2 + 0.003 * s, zc - 0.35 * s)),
-                  basis=basis_back, offset=r.randrange(len(back)))
-    title = "玄天宝录"
-    _text_columns(bm, title, 2, 2, 0.15 * s, Vector((-0.15 * s, -0.19 * s - 0.004 * s, zc + 0.48 * s)))
+    _stele_glyphs(bm, s, z0, seed, manual)
     g = _mk(_nm("stele.glyphs"), bm, pc, [glyph_mat], smooth=False, glow=1.3)
     U.set_visibility(g, shadow=False)
 
 
+def _stele_glyphs(bm, s, z0, seed, manual=None):
+    """The stele's glyphs into ``bm`` (stele frame; slab foot at ``z0``). manual None: a CLASSICS text picked by
+    ``seed`` fills the front's 6 x rows grid and a 4 x (rows - 3) grid on the back, 玄天宝录 in the crown. A manual
+    (see JIN_YONG_MANUALS): its title in the crown panel, its columns on the front and its back lines on the back, each
+    block as large as fits (front and back at most 1.6x the grid cell) inside the same grids, inset so every glyph
+    stays inside the box of a full grid of classics."""
+    f = _stele_frame(s, z0)
+    cols, rows, cell = f["cols"], f["rows"], f["cell"]
+    if manual is None:
+        r = U.rng(seed, "stele")
+        text = CLASSICS[seed % len(CLASSICS)]
+        _text_columns(bm, text, cols, rows, cell, f["front"], offset=r.randrange(len(text)))
+        btext = CLASSICS[(seed + 3) % len(CLASSICS)]
+        _text_columns(bm, btext, cols - 2, rows - 3, cell, f["back"], basis=f["basis_back"],
+                      offset=r.randrange(len(btext)))
+        _text_columns(bm, "玄天宝录", 2, 2, 0.15 * s, f["crown"])
+        return
+    for _face, args in _manual_blocks(manual, s, f):
+        _glyph_block(bm, *args)
+
+
+def _stele_frame(s, z0):
+    """Where a stele's glyph grids lie (stele frame, slab foot at ``z0``): the front grid (cols x rows cells, top-left
+    corner 'front', facing -Y), the back grid ((cols - 2) x (rows - 3), top-left corner 'back' as seen from behind,
+    basis 'basis_back') and the crown title panel (2 x 2 cells of 0.15 s, top-left corner 'crown')."""
+    W, T = 1.25 * s, 0.32 * s
+    zc = 3.3 * s                                      # crown base
+    cols = 6
+    cell = (W - 0.36 * s) / cols
+    rows = int((zc - z0 - 0.42 * s) / cell)
+    return dict(cols=cols, rows=rows, cell=cell,
+                front=Vector((-cols * cell / 2, -T / 2 - 0.003 * s, zc - 0.2 * s)),
+                back=Vector(((cols - 2) * cell / 2, T / 2 + 0.003 * s, zc - 0.35 * s)),
+                basis_back=Matrix(((-1, 0, 0), (0, 0, 1), (0, 1, 0))),     # right = -X, up = Z, normal = +Y
+                crown=Vector((-0.15 * s, -0.19 * s - 0.004 * s, zc + 0.48 * s)))
+
+
+def _manual_blocks(manual, s, f):
+    """[(face, _block_plan arguments)] of a manual stele (front, back, crown) in the frame ``f`` (_stele_frame): each
+    block inside its classics grid, inset 0.1 cell (crown 0.12 of its 0.15 s cell)."""
+    cols, rows, cell = f["cols"], f["rows"], f["cell"]
+    m = 0.1 * cell
+    return [("front", (manual["cols"], f["front"], cols * cell, rows * cell, 1.6 * cell, None, "top", m)),
+            ("back", (manual.get("back", ()), f["back"], (cols - 2) * cell, (rows - 3) * cell, 1.6 * cell,
+                      f["basis_back"], "top", m)),
+            ("crown", (title_lines(manual["title"]), f["crown"], 0.3 * s, 0.3 * s, 0.15 * s, None, "center",
+                       0.018 * s))]
+
+
+def stele_glyph_plan(height=4.0, turtle_base=True, manual=None):
+    """Every glyph a manual stele (stele(height, turtle_base=..., manual=...)) carves, in the prototype frame, as
+    dict(glyphs=[dict(face 'front'/'back'/'crown', char, centre (Vector), normal (Vector, toward the reader), cell,
+    col, row)], grid=the classics grid cell, rows=the classics grid rows). For patch checks."""
+    b, _res = _bucket(height, 4.0)
+    s = b / 4.0
+    f = _stele_frame(s, (_TURTLE_TOP if turtle_base else _XUMIZUO_TOP) * s)
+    out = []
+    for face, args in _manual_blocks(manual, s, f):
+        c, plan = _block_plan(*args)
+        nrm = Matrix(args[5] or _FRONT_BASIS).col[2].copy()
+        out.extend(dict(face=face, char=ch, centre=p, normal=nrm, cell=c, col=j, row=r) for ch, p, j, r in plan)
+    return dict(glyphs=out, grid=f["cell"], rows=f["rows"])
+
+
+def _manual_key(manual):
+    if not manual.get("title") or not manual.get("cols"):
+        raise ValueError("stele manual needs a 'title' and 'cols': %r" % (manual,))
+    sig = "|".join([manual["title"]] + list(manual["cols"]) + ["/"] + list(manual.get("back", ())))
+    return "m%08x" % (zlib.crc32(sig.encode("utf-8")) & 0xFFFFFFFF)
+
+
+def stele_glyph_mesh(name, height=4.0, turtle_base=True, seed=0, manual=None):
+    """New mesh data (no material, flat) of the glyphs stele(height, turtle_base=..., seed=..., manual=...) puts in
+    its prototype's 'stele.glyphs' object, in the prototype frame: for patch scripts that re-letter a built stele."""
+    b, _res = _bucket(height, 4.0)
+    s = b / 4.0
+    if manual is not None:
+        _manual_key(manual)
+    bm = bmesh.new()
+    _stele_glyphs(bm, s, (_TURTLE_TOP if turtle_base else _XUMIZUO_TOP) * s, seed % 6, manual)
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    U.shade_flat(me)                                  # as _mk(..., smooth=False)
+    me.update()
+    return me
+
+
 def stele(collection, height=4.0, glyph_mat="rune_cyan", turtle_base=True, seed=0, material="stone_dark",
-          name=None, parent=None, location=(0, 0, 0), rotation=(0, 0, 0), scale=1.0):
+          name=None, parent=None, location=(0, 0, 0), rotation=(0, 0, 0), scale=1.0, manual=None):
     """Stone stele (bei), ``height`` m tall in all (default 4 m; 1.36/4*height wide): a dark stone
     slab with a key-fret border, columns of glowing classical text (``glyph_mat``: rune_cyan,
     rune_gold, rune_silver or any emissive material) read top to bottom, right to left, a few
     columns on the back, an arched crown with two coiling relief dragons holding a pearl and a
     four-character title panel. turtle_base=True: it stands on a bixi dragon-turtle (scute shell,
     raised dragon head, clawed feet) on a ground slab, 3.6/4*height long; else on a xumizuo base.
-    ``seed`` picks the text. Origin at the ground centre, front faces -Y. Collection instance."""
+    ``seed`` picks the text. ``manual`` (a dict like those in JIN_YONG_MANUALS: title, cols, back) carves that
+    manual instead: its title in the crown, its columns on the front, its back lines on the back (one prototype per
+    manual; seed then plays no part). Origin at the ground centre, front faces -Y. Collection instance."""
     b, res = _bucket(height, 4.0)
     gm = glyph_mat if isinstance(glyph_mat, str) else glyph_mat.name
-    key = "stele.%s.%s.%d.%d.%s" % (_k(b), gm, turtle_base, seed % 6, material)
-    pc = _proto(key, lambda pc: _build_stele(pc, b, glyph_mat, turtle_base, seed % 6, material))
+    if manual is None:
+        key = "stele.%s.%s.%d.%d.%s" % (_k(b), gm, turtle_base, seed % 6, material)
+    else:
+        key = "stele.%s.%s.%d.%s.%s" % (_k(b), gm, turtle_base, _manual_key(manual), material)
+    pc = _proto(key, lambda pc: _build_stele(pc, b, glyph_mat, turtle_base, seed % 6, material, manual))
     return _place(pc, collection, name, "stele", parent, location, rotation, tuple(res * c for c in _v3(scale)))
 
 

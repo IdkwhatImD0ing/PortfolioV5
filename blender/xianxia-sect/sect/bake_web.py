@@ -1795,10 +1795,23 @@ def build_bake_object(name, items, slot_fn, mats, prop_names, coll, stage=None, 
 def setup_cycles(sc, samples):
     sc.render.engine = "CYCLES"
     prefs = bpy.context.preferences.addons["cycles"].preferences
-    prefs.compute_device_type = "OPTIX"
-    prefs.get_devices()
+    # OptiX first; some rented boxes ship the driver without libnvoptix, and then Cycles would
+    # silently bake on the CPU (about 50x slower), so fall back to CUDA, and fail loudly with no GPU.
+    kind = None
+    for k in ("OPTIX", "CUDA"):
+        try:
+            prefs.compute_device_type = k
+            prefs.get_devices()
+        except (TypeError, ValueError):
+            continue
+        if any(d.type == k for d in prefs.devices):
+            kind = k
+            break
+    if kind is None:
+        raise RuntimeError("no OptiX or CUDA device: refusing to bake on the CPU")
     for d in prefs.devices:
-        d.use = d.type == "OPTIX"
+        d.use = d.type == kind
+    log("cycles device", kind, [d.name for d in prefs.devices if d.use])
     sc.cycles.device = "GPU"
     sc.cycles.samples = samples
     sc.cycles.use_denoising = False

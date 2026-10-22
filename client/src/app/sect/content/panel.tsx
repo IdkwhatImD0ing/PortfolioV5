@@ -6,6 +6,7 @@ import { PORTFOLIO } from "@/lib/portfolio-data";
 import type { AreaId } from "@/lib/sect/areas";
 import { RESUME_HEAD } from "@/lib/sect/content-copy";
 import { areaSummary, type ContentTarget } from "@/lib/sect/content";
+import { LORE, loreLine, type LoreEntry, type LoreId } from "@/lib/sect/lore";
 import { TalkButton, Zh } from "./ui";
 
 export interface AreaPanelProps {
@@ -16,13 +17,18 @@ export interface AreaPanelProps {
   onTalk?: () => void;
   /** Which side of a wide screen the panel sits on; each area has a default. */
   side?: "left" | "right";
+  /**
+   * The Jin Yong references in this place (lib/sect/lore.ts). Sighted visitors find them by hovering
+   * the scene (an aria-hidden card); screen readers get the same names here, visually hidden.
+   */
+  references?: readonly LoreId[];
 }
 
 /**
  * Rendered hidden; the engine fades it in and out through the forwarded ref (style.opacity /
  * style.visibility / style.transform), like the prototype.
  */
-export const AreaPanel = forwardRef<HTMLElement, AreaPanelProps>(function AreaPanel({ area, onOpen, onTalk, side }, ref) {
+export const AreaPanel = forwardRef<HTMLElement, AreaPanelProps>(function AreaPanel({ area, onOpen, onTalk, side, references }, ref) {
   const s = areaSummary(area);
   const talkFirst = area === "gate" || area === "summit";
   return (
@@ -66,6 +72,18 @@ export const AreaPanel = forwardRef<HTMLElement, AreaPanelProps>(function AreaPa
           </a>
         )}
       </div>
+      {references && references.length > 0 && (
+        <ul className="sr-only" aria-label="Jin Yong references in this place">
+          {references.map((id) => {
+            const e: LoreEntry = LORE[id];
+            return (
+              <li key={id}>
+                {e.en} (<span lang="zh-Hant">{e.zh}</span>): {loreLine(e)}.
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 });

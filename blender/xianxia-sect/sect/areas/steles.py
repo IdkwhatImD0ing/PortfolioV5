@@ -8,6 +8,9 @@ Blocking layout (local frame, front = -Y, z = 0 walkable):
   5 rows x 2 columns of tall steles on bixi turtle bases, angled 30 deg toward the aisle so
   their glowing glyph columns face the oncoming camera. One glow colour per row = one skill
   category (cyan, blue, violet, crimson, amber); steles grow taller toward the back (5 -> 7 m).
+  Each stele is a martial-arts manual from Jin Yong's four novels (STELE_MANUALS): the art's name in
+  the crown panel, its moves or mnemonic on the front, the novel and its master on the back; the
+  master stele carves the Five Greats of the Mount Hua contests (華山論劍).
 - Stone lanterns line the aisle between the rows.
 - At the far end, a xumizuo terrace (top z = 1.5) carries a square double-eave stele pavilion
   over the larger gold-glyph master stele (8 m), with the 碑林 plaque on its upper drum.
@@ -92,6 +95,23 @@ ROW_GLYPHS = ("rune_cyan", "steles_rune_blue", "steles_rune_violet", "steles_run
               "steles_rune_amber")
 MASTER_GLYPH = "rune_gold"
 
+# Jin Yong manuals carved on the steles (round 9; props.JIN_YONG_MANUALS, by title). Per row, per column (inner x 12,
+# outer x 19): (west, east), a pair facing each other across the aisle that belong together. The east inner stele of
+# row 0 is the one nearest the camera at the 974 hold.
+STELE_MANUALS = (
+    (("打狗棒法", "降龍十八掌"),    # Hong Qigong's two Beggar Clan arts
+     ("天罡北斗陣", "桃花島")),     # the Quanzhen array and Huang Yaoshi, who fought it
+    (("乾坤大挪移", "吸星大法"),    # two great methods of drawing and turning another's force
+     ("空明拳", "黯然銷魂掌")),     # Zhou Botong and Yang Guo traded these two
+    (("九陰真經", "九陽神功"),      # yin and yang
+     ("劍塚", "獨孤九劍")),         # Dugu Qiubai's swords and his nine swords
+    (("太極拳", "太極劍"),          # Zhang Sanfeng
+     ("七傷拳", "龍爪手")),         # both met on Bright Peak
+    (("古墓派", "玉女心經"),        # the Ancient Tomb
+     ("沖靈劍法", "華山劍法")),     # Linghu Chong
+)
+MASTER_MANUAL = "華山論劍"          # the Five Greats of the first and third Mount Hua contests
+
 
 def _register_materials():
     M.variant("steles_rune_blue", "rune_cyan", colour="#2f7bff", core="#cfe0ff", strength=6.0)
@@ -159,7 +179,9 @@ def build(collection):
                    top_mat="steles_paving_grey", sink=0.3, parent=root,
                    location=(cx, (FIELD_Y0 + FIELD_Y1) * 0.5, 0.0))
 
-    # rows of steles on turtles, angled toward the aisle; one glow colour per row (category)
+    # rows of steles on turtles, angled toward the aisle; one glow colour per row (category); each carves one Jin
+    # Yong manual (STELE_MANUALS)
+    manuals = {m["title"]: m for m in P.JIN_YONG_MANUALS}
     for r, (y, h, glyph) in enumerate(zip(ROWS_Y, ROW_H, ROW_GLYPHS)):
         for c, x in enumerate(COLS_X):
             for side in (-1, 1):
@@ -167,7 +189,8 @@ def build(collection):
                 P.stele(coll, h, glyph, turtle_base=True, seed=seed,
                         name=U.name(KEY, "stele", "r%d" % r), parent=root,
                         location=(side * x, y, FIELD_H),
-                        rotation=(0, 0, -side * STELE_YAW))
+                        rotation=(0, 0, -side * STELE_YAW),
+                        manual=manuals[STELE_MANUALS[r][c][0 if side < 0 else 1]])
 
     # stone lanterns between rows 0/1 and 2/3, at the aisle edge of each field (each lantern is
     # about 22 k triangles, so only two pairs line the aisle itself)
@@ -209,7 +232,8 @@ def build(collection):
     # the larger master stele under it, gold glyphs (all skills)
     # (widened 1.3x so it reads as the larger monument; height stays 8 m)
     P.stele(coll, MASTER_H, MASTER_GLYPH, turtle_base=True, seed=5, name=U.name(KEY, "stele_master"),
-            parent=root, location=(0, PAV_Y + 0.4, floor_z), scale=(1.3, 1.1, 1.0))
+            parent=root, location=(0, PAV_Y + 0.4, floor_z), scale=(1.3, 1.1, 1.0),
+            manual=manuals[MASTER_MANUAL])
 
     # plaque 碑林 centred on the upper drum, under the upper eave (classic double-eave spot)
     drum = _drum_front(pav)

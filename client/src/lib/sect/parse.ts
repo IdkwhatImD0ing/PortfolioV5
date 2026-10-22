@@ -14,6 +14,7 @@ import type {
   Hold,
   HotspotInfo,
   LightBeam,
+  LoreBox,
   PathFrame,
   Quat,
   SectManifest,
@@ -249,6 +250,7 @@ const DEFAULT_META: SectMeta = {
   waterfalls: [],
   beams: [],
   hotspots: [],
+  lore: [],
   areas: [],
   vignette: 0.22,
   exposure: 0.25,
@@ -326,6 +328,25 @@ export function parseMeta(raw: unknown): SectMeta {
         }))
     : [];
 
+  // The Jin Yong references (export_web.py LORE): one entry per reference with its boxes, flattened
+  // to one LoreBox per box. A box without a usable centre and size is dropped.
+  const lore: LoreBox[] = Array.isArray(o.lore)
+    ? o.lore
+        .filter(isObj)
+        .filter((e) => typeof e.id === "string" && e.id.length > 0)
+        .flatMap((e) => {
+          const boxes = Array.isArray(e.boxes) ? e.boxes.filter(isObj) : [e];
+          return boxes.map((b) => ({
+            id: e.id as string,
+            center: vec3(b.center, [NaN, NaN, NaN]),
+            size: vec3(b.size, [NaN, NaN, NaN]),
+            host: optStr(b.hotspot),
+            area: optStr(e.area),
+          }));
+        })
+        .filter((b) => ![...b.center, ...b.size].some((x) => !Number.isFinite(x)) && b.size.every((x) => x >= 0))
+    : [];
+
   const areas: AreaMeta[] = Array.isArray(o.areas)
     ? o.areas
         .filter(isObj)
@@ -389,6 +410,7 @@ export function parseMeta(raw: unknown): SectMeta {
     waterfalls,
     beams,
     hotspots,
+    lore,
     areas,
     vignette: num(tone.vignette, d.vignette),
     exposure: num(tone.exposure, d.exposure),

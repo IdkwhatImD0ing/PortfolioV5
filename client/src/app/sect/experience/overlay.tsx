@@ -15,6 +15,7 @@
  */
 import { forwardRef, memo, useEffect, useRef, useState } from "react";
 import type { HotspotLabel } from "@/lib/sect/content";
+import type { HoverNote } from "@/lib/sect/lore";
 import { TIER_LABELS, type Tier } from "@/lib/sect/runtime";
 import { QualityPicker } from "../quality-picker";
 
@@ -415,9 +416,14 @@ export function Notice({ text, onDismiss }: { text: string; onDismiss: () => voi
 /**
  * The label over the hotspot under the pointer: its name, its Chinese name, and one line about it
  * (lib/sect/content.ts hotspotLabel), cut to two lines so it stays small. The scene moves it and
- * fades it (the page sets its transform and opacity directly, every frame).
+ * fades it (the page sets its transform and opacity directly, every frame). `note`: one quiet extra
+ * line (lib/sect/lore.ts hoverNote), the Jin Yong reference the pointer is on when the hotspot holds
+ * one (the gate's swords) or the hotspot's fixed note (the jade scroll's verses).
  */
-export const HoverLabel = forwardRef<HTMLDivElement, { label: HotspotLabel | null }>(function HoverLabel({ label }, ref) {
+export const HoverLabel = forwardRef<HTMLDivElement, { label: HotspotLabel | null; note?: HoverNote | null }>(function HoverLabel(
+  { label, note },
+  ref,
+) {
   return (
     <div
       ref={ref}
@@ -436,6 +442,21 @@ export const HoverLabel = forwardRef<HTMLDivElement, { label: HotspotLabel | nul
             )}
           </p>
           {label.blurb && <p className="mb-0.5 line-clamp-2 text-[0.75rem] leading-snug text-[var(--sect-paper-soft)]">{label.blurb}</p>}
+          {note && (
+            <p data-sect-note className="mb-0.5 text-[0.7rem] leading-snug text-[var(--sect-paper-soft)]">
+              {note.zh && (
+                <span lang="zh-Hant" className="sect-zh mr-1.5 tracking-[0.08em] text-[var(--sect-gold)]">
+                  {note.zh}
+                </span>
+              )}
+              {note.text}
+              {note.novel && (
+                <>
+                  , from <cite className="italic">{note.novel}</cite>
+                </>
+              )}
+            </p>
+          )}
         </>
       )}
     </div>

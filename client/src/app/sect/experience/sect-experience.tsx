@@ -50,6 +50,7 @@ import { isDragging, isLookingBack, isTurned } from "@/lib/sect/free-look";
 import { PageHistory } from "@/lib/sect/history";
 import { plainUrl, readHistoryState, readerUrl, resolveDeepLink } from "@/lib/sect/links";
 import { lookFogConstants } from "@/lib/sect/look";
+import { hoverNote, loreByArea } from "@/lib/sect/lore";
 import { flightSeconds, navKeyIntent, navKeyTarget, nearestHold, panelSide } from "@/lib/sect/nav";
 import { downloadFraction, flickStop, PORTRAIT_YAW_SECONDS, portraitYaw, posterMatches, type FileProgress } from "@/lib/sect/opening";
 import { resolveAsset } from "@/lib/sect/parse";
@@ -106,6 +107,7 @@ import {
   type SectData,
   type WorldContext,
 } from "./assets";
+import { LoreCard, useLoreCard } from "./lore-card";
 import { installFog } from "./materials";
 import { SectMusic } from "./music";
 import {
@@ -1057,6 +1059,9 @@ export default function SectExperience() {
   // While a reader or the page view is open the orb keeps only its button (its "tap to talk" pill
   // would cover the reader's footer), and the scene stops redrawing behind it (scene.tsx Driver).
   const modalOpen = reader !== null || fallback !== null;
+  // The Jin Yong references' card (lore-card.tsx): nothing of it while a reader, the page view or the
+  // Places list is open.
+  const lore = useLoreCard(modalOpen || placesOpen);
   useEffect(() => {
     if (store) {
       store.modal = modalOpen;
@@ -1579,8 +1584,14 @@ export default function SectExperience() {
   const togglePlaces = useCallback(() => setPlacesOpen((o) => !o), []);
   const closePlaces = useCallback(() => setPlacesOpen(false), []);
 
-  // The hover label: the name, its Chinese name and a line about it (lib/sect/content.ts).
+  // The hover label: the name, its Chinese name and a line about it (lib/sect/content.ts), plus the
+  // Jin Yong reference the hotspot holds under the pointer, or its fixed note (lib/sect/lore.ts).
   const hoverLabel = useMemo(() => (hovered ? hotspotLabel(hovered, ctx?.hotspotMap.get(hovered)?.label) : null), [hovered, ctx]);
+  // Nothing of it before meta.json has the references (today's files show the page as it was).
+  const hasLore = (data?.meta.lore?.length ?? 0) > 0;
+  const hoverLabelNote = useMemo(() => hoverNote(hovered, lore.hosted, hasLore), [hovered, lore.hosted, hasLore]);
+  // The references at each stop, named for screen readers on its panel (only those meta.json has).
+  const loreAt = useMemo(() => loreByArea(data?.meta.lore), [data]);
 
   const gatherInfo = gathering ? areaInfo(gathering) : null;
   const showUi = phase === "ready" && params.ui;
@@ -1619,6 +1630,7 @@ export default function SectExperience() {
               openingReady={openingReady}
               onHover={onHover}
               onSelect={onSelect}
+              onLore={lore.onLore}
               onLookDrag={onLookDrag}
               onRendered={onRendered}
               onDegrade={onDegrade}
@@ -1646,6 +1658,7 @@ export default function SectExperience() {
                   side={shortScreen ? "left" : (sides[h.id] ?? undefined)}
                   onOpen={openReader}
                   onTalk={talk}
+                  references={loreAt[h.id]}
                   ref={panelRef(h.id)}
                 />
               ) : null,
@@ -1671,7 +1684,8 @@ export default function SectExperience() {
           )}
           {/* Not over the intro, the Gathering status or a notice: they share its place on phones. */}
           <RecentreButton visible={lookedBack && !introUp && !gatherInfo && !notice && !modalOpen && !placesOpen} onRecentre={recentre} />
-          <HoverLabel ref={hoverRef} label={hoverLabel} />
+          <HoverLabel ref={hoverRef} label={hoverLabel} note={hoverLabelNote} />
+          <LoreCard ref={lore.ref} id={lore.view.content} visible={lore.view.shown !== null} reducedMotion={reducedMotion} />
           <AreaReader
             key={readerKey}
             target={reader}

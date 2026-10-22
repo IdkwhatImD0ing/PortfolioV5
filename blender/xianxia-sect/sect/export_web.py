@@ -68,7 +68,8 @@ joined by commas (run in order in one Blender session):
                frame range holds the frame where it is nearest the camera (hotspot members: their hotspot's area);
                the range is split face by face (face_assign); pieces seen only farther go to the backdrop
     meta       <site>/meta.json (whole path; hotspots with area/chunk/kind, waterfalls and beams with chunk, areas
-               with holdFrame) and out/web/full/hotspots.md
+               with holdFrame, and the decorative Jin Yong references as "lore" boxes: LORE, never hotspots) and
+               out/web/full/hotspots.md
     standin    <site>/<area>.glb.gz per chunk + backdrop.glb.gz (far set + per-area proxies under 'proxy.<area>'
                Empties, extras {"proxyOf": area}) + manifest.json v2 ("baked": false); stats standin_stats.json
     camcheck   hotspot centres at the holds through Blender's camera vs camera.json maths -> camcheck.json
@@ -2814,6 +2815,117 @@ def build_hotspot_defs():
     return defs
 
 
+# ---- full path: lore (the Jin Yong references; decorative, kind "lore", meta only) -----------------
+# The scene's nods to Jin Yong's novels. The page names one in a small card when the pointer rests on it (a tap on a
+# touch screen); the words live in client/src/lib/sect/lore.ts, keyed by these ids. They are NOT hotspots: LORE stays
+# out of HOTSPOT_DEFS, all_hotspots() and hotspot_members(), so the chunk plan, the bakes (bake_web, bake_trees: no
+# hotspot nodes, no forced pieces, no LOD floors) and sect_pack's hotspot check never see them, and the page never
+# lists, opens or counts them. Only `meta` reads them (build_lore_defs, lore_meta; the bakes never call either) and
+# writes meta.json "lore" (not "hotspots"): [{id, kind: "lore", area, node: null, objects, boxes: [{center, size,
+# hotspot, objects}]}], three space like hotspots[]. Each inner list below is one box: the union of the named objects
+# and everything parented under them (evaluated geometry, LORE_SKIP left out); 'prefix*' expands as in _resolve. A
+# box's `hotspot` is the content hotspot whose subtree already holds its objects (hotspot_members), else null: the
+# page then puts the reference's name in that hotspot's own hover label (the hotspot keeps the click) instead of a
+# card. A box none of whose objects the audit saw (vis_cache 'any', >= MIN_PX) is dropped, as the bake drops them.
+LORE_ELEMENTS = ("wood", "fire", "earth", "metal", "water")        # areas/formation.py ELEMENT_FLAGS keys
+LORE_DIPPER = ("yaoguang", "kaiyang", "yuheng", "tianquan", "tianji", "tianxuan", "tianshu")   # formation.DIPPER
+LORE = (                                     # (id, area, [[object names] per box]), flight order; the patch script
+    ("heaven-sword", "gate", [["gate.sword_monolith"]]),                       # patch_gate_swords: west, 倚天剑
+    ("dragon-saber", "gate", [["gate.sword_monolith.001"]]),                   # east, 屠龙刀
+    ("sun-moon", "gate", [["gate.sun_medallion"], ["gate.moon_medallion"],
+                          ["gate.sunmoon_finial"]]),                          # patch_r5_sunmoon: 日 + 月 = 明
+    ("jade-flute", "mirror", [["mirror.flute_rock", "mirror.flute_xiao", "mirror.flute_bag",
+                                "mirror.flute_tassel"]]),                     # patch_r7_flute: 玉箫 (no petals, no tree)
+    ("five-wheels", "forge", [["forge.five_wheels"]]),                         # patch_five_wheels: 金银铜铁铅五轮
+    ("sword-tomb", "forge", [["forge.sword_tomb"]]),                           # patch_r7_swordtomb: 剑冢
+    ("heavy-iron-sword", "arena", [["arena.sword"]]),                          # patch_heavy_iron_sword: 玄铁重剑
+    ("holy-fire-altar", "mission", [["mission.holy_fire"], ["mission.holy_fire.001"]]),   # patch_holy_fire_altar: 圣火坛
+    ("icefire-island", "library", [["scenery.island.009"]]),                   # patch_r7_icefire: 冰火岛 (library sky)
+    ("holy-fire-tokens", "scroll", [["scroll.slip_stack"]]),                   # patch_holy_fire_tokens, r5_scroll: 圣火令
+    ("five-element-banners", "formation",
+     [["formation.flag.%s" % k, "formation.flag_base.%s" % k] for k in LORE_ELEMENTS]),   # patch_r6_formation: 五行旗
+    ("big-dipper-array", "formation", [["formation.dipper.%s" % s] for s in LORE_DIPPER]),   # 天罡北斗阵 (no floor lines)
+    ("wanderer-duet", "abode", [["abode.duet"]]),                              # patch_r5_duet: 笑傲江湖
+    ("golden-bell-ribbon", "abode", [["abode.ribbon"]]),                       # patch_r8_ribbon: 金铃索
+    ("divine-condor", "summit", [["summit.condor_bird"]]),                     # patch_r7_condor: 神雕
+)
+LORE_SKIP = ("world.cloud.",)                # volume puffs parented to a lore object (the island's steam): sprites
+LORE_DEFS = []                               # full: [{id, area, kind: "lore", metaOnly: True, boxes, names}]
+
+
+def build_lore_defs():
+    """LORE_DEFS from LORE, the names resolved against the file (no box group without objects). Only `meta` calls it
+    (lore_meta); it never touches HOTSPOT_DEFS. Returns (defs, missing [(id, names)])."""
+    defs, miss = [], []
+    for lid, area, groups in LORE:
+        boxes = []
+        for g in groups:
+            res = _resolve(g)
+            if res:
+                boxes.append(res)
+            else:
+                miss.append((lid, g))
+        defs.append(dict(id=lid, area=area, kind="lore", metaOnly=True, boxes=boxes,
+                         names=[n for b in boxes for n in b]))
+    LORE_DEFS[:] = defs
+    if miss:
+        log("WARN lore objects missing:", miss)
+    return defs, miss
+
+
+def _lore_box(names):
+    """World box (Blender) of the named objects and everything parented under them (LORE_SKIP names left out), and
+    the object names it covers; (None, names) when none of them has geometry."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    pts, objs = [], []
+    for nm in names:
+        ob = bpy.data.objects.get(nm)
+        if ob is None:
+            continue
+        for o in [ob] + list(ob.children_recursive):
+            if o.name.startswith(LORE_SKIP) or o.name in objs:
+                continue
+            objs.append(o.name)
+            pts.extend(_object_points(o, dg))
+    if not pts:
+        return None, objs
+    p = np.array(pts)
+    return (p.min(0), p.max(0)), objs
+
+
+def lore_meta(R=None, S=None):
+    """meta.json "lore" entries (three space) for LORE_DEFS (built here when empty). With the gathered records R and
+    their visibility S (load_cache), a box none of whose objects the audit saw (S['any'] at >= MIN_PX) is dropped.
+    Returns (entries, dropped [(id, names, why)])."""
+    if not LORE_DEFS:
+        build_lore_defs()
+    members = hotspot_members()
+    seen = None
+    if R is not None and S is not None:
+        vis = np.asarray(S["any"], bool)
+        if "px_eff" in S:
+            vis = vis & (np.asarray(S["px_eff"], float) >= MIN_PX)
+        seen = set(np.array(R.owner)[vis].tolist())
+    out, dropped = [], []
+    for d in LORE_DEFS:
+        boxes = []
+        for names in d["boxes"]:
+            b, objs = _lore_box(names)
+            if b is None:
+                dropped.append((d["id"], names, "no geometry"))
+                continue
+            if seen is not None and not any(o in seen for o in objs):
+                dropped.append((d["id"], names, "never seen in the audit"))
+                continue
+            host = next((members[o] for o in objs if o in members), None)
+            boxes.append(dict(center=v3((b[0] + b[1]) / 2, 2), size=s3(b[1] - b[0]), hotspot=host, objects=names))
+        if boxes:
+            out.append(dict(id=d["id"], kind="lore", area=d["area"], node=None, objects=d["names"], boxes=boxes))
+    if dropped:
+        log("WARN lore boxes dropped:", dropped)
+    return out, dropped
+
+
 # ---- full path: chunk plan --------------------------------------------------------------------
 
 FULL_SPLIT_DIAG = 500.0        # meshes this long (diagonal) or SPAN_H wide span several areas: the range and the
@@ -3320,6 +3432,9 @@ def cmd_meta_full(a):
         hs.append(dict(id=h["id"], label=h["label"], node=None if h["metaOnly"] else "hotspot." + h["id"],
                        center=v3((b[0] + b[1]) / 2, 2), size=s3(b[1] - b[0]), area=h["area"], chunk=h["area"],
                        kind=h["kind"], objects=h["names"]))
+    # the Jin Yong references: their own list, never in hotspots[] (pages and checks that read hotspots[] as click
+    # targets must not see them)
+    lore, _ = lore_meta(R, S)
     sky = {}
     sky_json = os.path.join(OUT_WEB, "sky_samples.json")
     if os.path.isfile(sky_json):
@@ -3357,6 +3472,7 @@ def cmd_meta_full(a):
         waterfalls=falls,
         beams=beams,
         hotspots=hs,
+        lore=lore,
         areas=areas,
         toneMapping=dict(blender=LOOK["view_transform"] + " / " + LOOK["look"], exposure=LOOK["exposure"],
                          bloomThresholdLuminance=LOOK["bloom_threshold"], vignette=LOOK["vignette_strength"]),
@@ -3372,10 +3488,12 @@ def cmd_meta_full(a):
     counts = collections.Counter(h["id"].split(":")[0] if ":" in h["id"] else ("area" if h["kind"] == "area"
                                                                               else h["id"]) for h in hs)
     log("META hotspots", len(hs), dict(counts), "waterfalls", len(falls), "beams", len(beams))
-    write_hotspots_md(hs)
+    log("META lore", len(lore), "of", len(LORE), "references,", sum(len(e["boxes"]) for e in lore), "boxes",
+        {e["id"]: [b["hotspot"] for b in e["boxes"]] for e in lore})
+    write_hotspots_md(hs, lore)
 
 
-def write_hotspots_md(hs):
+def write_hotspots_md(hs, lore=()):
     L = ["# Hotspots: item -> scene objects", "",
          "Written by `sect/export_web.py --profile full meta`. Ids follow "
          "`client/src/app/sect/content/index.tsx`. Each hotspot is a glTF node `hotspot.<id>` (extras "
@@ -3404,6 +3522,18 @@ def write_hotspots_md(hs):
         ob = h.get("objects") or []
         obs = ", ".join("`%s`" % o for o in ob[:6]) + (" +%d" % (len(ob) - 6) if len(ob) > 6 else "")
         L.append("| `%s` | %s | %s | %s | %s |" % (h["id"], h["label"], h["area"], obs, h["center"]))
+    if lore:
+        L += ["", "## Lore: the Jin Yong references (meta.json `lore[]`, not hotspots)", "",
+              "Decorative: the page names each in a small hover card (words in `client/src/lib/sect/lore.ts`), never "
+              "lists, opens or counts them. No glTF nodes; the bakes and the chunk plan do not know them (export_web "
+              "`LORE`). One row per box. `hotspot`: the content hotspot whose subtree already holds the objects; its "
+              "hover label carries the reference's name and it keeps the click.", "",
+              "| id | area | hotspot | objects | centre (three) | size |", "|---|---|---|---|---|---|"]
+        for e in lore:
+            for b in e["boxes"]:
+                L.append("| `%s` | %s | %s | %s | %s | %s |" % (e["id"], e["area"], b["hotspot"] or "-",
+                                                             ", ".join("`%s`" % o for o in b["objects"]), b["center"],
+                                                             b["size"]))
     p = os.path.join(WORK, "hotspots.md")
     with open(p, "w", encoding="utf-8") as fh:
         fh.write("\n".join(L) + "\n")

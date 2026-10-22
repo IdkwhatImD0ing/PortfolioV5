@@ -59,6 +59,7 @@ import {
 } from "@/lib/sect/free-look";
 import { packPuffs, PUFF_STRIDE, RESORT_DISTANCE2, sortFarToNear } from "@/lib/sect/clouds";
 import { lookFogConstants, puffDensityScale, SECT_LOOK, twilightAmount } from "@/lib/sect/look";
+import { isLoreId, loreUnderPointer, type LoreHit, type LoreId } from "@/lib/sect/lore";
 import { turnKeyIntent } from "@/lib/sect/nav";
 import { boxHits, canStandIn, containedItemAt, onScreenDepth, pickWithBoxes, type BoxHit, type PickBox } from "@/lib/sect/pick";
 import {
@@ -145,6 +146,13 @@ export interface SectCanvasProps {
    */
   onHover: (id: string | null, at: readonly [number, number] | null) => void;
   onSelect: (id: string) => void;
+  /**
+   * The Jin Yong reference under the pointer (meta.json "lore", lib/sect/lore.ts), or null, after
+   * every pick ("hover") and on a tap of a touch screen ("tap"). Never a click target: a hotspot
+   * always wins the pointer, and a reference whose `host` is the hovered hotspot only lends that
+   * hotspot's label its name.
+   */
+  onLore?: (hit: LoreHit | null, how: "hover" | "tap") => void;
   /** A drag on the view has just started turning it (free look). */
   onLookDrag?: () => void;
   onRendered: () => void;
@@ -932,6 +940,11 @@ const PLAIN_PICK_TRIS = 20_000;
  * (and not hidden behind scenery) is picked, so small far objects can be hit. Near the summit the
  * moon itself can be picked. Picks run at most every 50 ms while the pointer moves, and a few
  * times a second while flying.
+ *
+ * After each pick, the Jin Yong references (meta.lore, lib/sect/lore.ts) are tested by their boxes
+ * alone (no meshes of their own): with a hotspot under the pointer, only a reference that hotspot
+ * holds (its label names it); with none, the nearest unhidden reference box, which onLore reports
+ * for its card. A reference is never clicked: a tap on one (touch) only shows its card.
  */
 function Hotspots({
   store,
@@ -941,6 +954,7 @@ function Hotspots({
   moonFromFrame,
   onHover,
   onSelect,
+  onLore,
 }: {
   store: SectStore;
   ctx: WorldContext;
@@ -949,12 +963,17 @@ function Hotspots({
   moonFromFrame: number | null;
   onHover: SectCanvasProps["onHover"];
   onSelect: SectCanvasProps["onSelect"];
+  onLore?: SectCanvasProps["onLore"];
 }) {
   const gl = useThree((s) => s.gl);
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
-  const pointer = useRef({ x: 0, y: 0, inside: false, dirty: false, lastMove: 0 });
+  /** NDC (x, y), the window position (cx, cy, CSS px) and the kind ("mouse", "pen", "touch") of the pointer. */
+  const pointer = useRef({ x: 0, y: 0, cx: 0, cy: 0, kind: "mouse", inside: false, dirty: false, lastMove: 0 });
   const pickRef = useRef<() => string | null>(() => null);
+  /** The reference the last pick found under the pointer (host: the hotspot that holds it). */
+  const loreRef = useRef<{ id: LoreId; host: string | null } | null>(null);
+  const loreBoxes = useMemo(() => (meta.lore ?? []).filter((b) => isLoreId(b.id)), [meta]);
   /** World point of the last hotspot hit (the label sits above it, not above the middle of a pair). */
   const hitPoint = useMemo(() => new Vector3(), []);
   const ray = useMemo(() => new Raycaster(), []);
@@ -1113,10 +1132,19 @@ function Hotspots({
       const p = pointer.current;
       p.x = ((e.clientX - r.left) / r.width) * 2 - 1;
       p.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+      p.cx = e.clientX;
+      p.cy = e.clientY;
       p.inside = true;
+    };
+    /** The kind of pointer that pressed last: a touch or a pen taps references, a mouse hovers them. */
+    let pressedBy = "mouse";
+    const down = (e: PointerEvent) => {
+      pressedBy = e.pointerType || "mouse";
+      pointer.current.kind = pressedBy;
     };
     const move = (e: PointerEvent) => {
       setFrom(e);
+      pointer.current.kind = e.pointerType || "mouse";
       pointer.current.dirty = true;
       wake(store, 200);
     };
@@ -1186,8 +1214,11 @@ function Hotspots({
       hitPoint.copy(near);
       return { id: found.id, distance: dist };
     };
-    const pick = (): string | null => {
+    /** How far along the ray the last pick's hotspot was hit (the references it holds lie there). */
+    let hotDistance = Infinity;
+    const pickHotspot = (): string | null => {
       const p = pointer.current;
+      hotDistance = Infinity;
       // Nothing is under the pointer while a drag turns the view (no label sweeping across).
       if (!p.inside || store.paused || isDragging(store.look)) return null;
       ndc.set(p.x, p.y);
@@ -1257,7 +1288,25 @@ function Hotspots({
         hitPoint.copy(moon.center);
         return MOON_HOTSPOT;
       }
+      hotDistance = best ? best.distance : Infinity;
       return best ? best.id : null;
+    };
+    /**
+     * The Jin Yong reference under the pointer after the hotspot pick `id` (the ray as that pick left
+     * it): with a hotspot, a reference box it holds that the ray enters by its hit; with none, the
+     * nearest reference box in reach that no scenery hides.
+     */
+    const pickLore = (id: string | null): { id: LoreId; host: string | null } | null => {
+      const p = pointer.current;
+      if (loreBoxes.length === 0 || !p.inside || store.paused || isDragging(store.look)) return null;
+      const o = ray.ray.origin;
+      const d = ray.ray.direction;
+      return loreUnderPointer([o.x, o.y, o.z], [d.x, d.y, d.z], loreBoxes, id ? { id, distance: hotDistance } : null, occluded);
+    };
+    const pick = (): string | null => {
+      const id = pickHotspot();
+      loreRef.current = pickLore(id);
+      return id;
     };
     const click = (e: MouseEvent) => {
       // The click that ends a drag (free look) is not a pick.
@@ -1265,17 +1314,25 @@ function Hotspots({
       setFrom(e);
       const id = pick();
       if (id) onSelect(id);
+      else if (pressedBy !== "mouse" && onLore) {
+        // A tap names the reference under it (its card shows for a few seconds); a tap on nothing
+        // hides the card. Neither opens or flies anywhere.
+        const l = loreRef.current;
+        onLore(l && !l.host ? { ...l, at: [e.clientX, e.clientY] } : null, "tap");
+      }
     };
+    el.addEventListener("pointerdown", down);
     el.addEventListener("pointermove", move);
     el.addEventListener("pointerleave", leave);
     el.addEventListener("click", click);
     pickRef.current = pick;
     return () => {
+      el.removeEventListener("pointerdown", down);
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerleave", leave);
       el.removeEventListener("click", click);
     };
-  }, [gl, camera, size, pickables, fallPicks, ray, ndc, onSelect, occ, store, hitPoint, moon, moonFromFrame]);
+  }, [gl, camera, size, pickables, fallPicks, ray, ndc, onSelect, onLore, loreBoxes, occ, store, hitPoint, moon, moonFromFrame]);
 
   const lastPick = useRef(0);
   const corner = useMemo(() => new Vector3(), []);
@@ -1330,6 +1387,12 @@ function Hotspots({
         gl.domElement.style.cursor = lookCursor(id !== null, isDragging(store.look));
       }
       onHover(id, id ? labelAnchor(id) : null);
+      // The reference under the pointer, if any (no glow, no cursor change: the card is the only sign).
+      // A finger never hovers: its card comes from the tap alone (the pointer a lifted finger leaves
+      // behind would bring a dismissed card back); a reference a hotspot holds rides on its label.
+      const l = loreRef.current;
+      const own = l && (l.host !== null || p.kind !== "touch") ? l : null;
+      onLore?.(own ? { ...own, at: [p.cx, p.cy] } : null, "hover");
     } else if (store.hovered && !p.dirty) {
       // Keep the label on the object while the camera moves (hidden while it is behind the camera).
       onHover(store.hovered, labelAnchor(store.hovered));
@@ -2126,6 +2189,7 @@ function SectCanvas(props: SectCanvasProps) {
     openingReady,
     onHover,
     onSelect,
+    onLore,
     onLookDrag,
     onRendered,
     onDegrade,
@@ -2243,7 +2307,16 @@ function SectCanvas(props: SectCanvasProps) {
       <ForgeFire set={forgeSet} store={store} />
       <FormationFires set={formationSet} store={store} meta={meta} tier={decorTier} />
       <IncenseSmoke set={mirrorSet} store={store} />
-      <Hotspots store={store} ctx={ctx} sets={sets} meta={meta} moonFromFrame={moonFromFrame} onHover={onHover} onSelect={onSelect} />
+      <Hotspots
+        store={store}
+        ctx={ctx}
+        sets={sets}
+        meta={meta}
+        moonFromFrame={moonFromFrame}
+        onHover={onHover}
+        onSelect={onSelect}
+        onLore={onLore}
+      />
       <IdleMotion sets={sets} store={store} />
       {flyer && flyerPath && <Flyer store={store} object={flyer} path={flyerPath} />}
       {global && <Reflections sets={sets} quality={quality} ctx={ctx} debug={debug} />}

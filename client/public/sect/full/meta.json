@@ -10429,1300 +10429,7 @@
    "flow": 1.22
   }
  ],
- "beams": [
-  {
-   "name": "formation.light_pillar.column",
-   "base": [
-    65.0,
-    245.0,
-    -1195.0
-   ],
-   "top": [
-    65.0,
-    565.0,
-    -1195.0
-   ],
-   "radius": 1.6,
-   "color": "#6fffd8",
-   "material": "M.light_beam",
-   "nearestM": 31.8,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.light_pillar.core",
-   "base": [
-    65.0,
-    245.0,
-    -1195.0
-   ],
-   "top": [
-    65.0,
-    565.0,
-    -1195.0
-   ],
-   "radius": 0.48,
-   "color": "#6fffd8",
-   "material": "M.light_beam",
-   "nearestM": 33.3,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.core_feed",
-   "base": [
-    65.0,
-    221.55,
-    -1195.0
-   ],
-   "top": [
-    65.0,
-    231.0,
-    -1195.0
-   ],
-   "radius": 0.9,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 106.8,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.core_feed.core",
-   "base": [
-    65.0,
-    221.55,
-    -1195.0
-   ],
-   "top": [
-    65.0,
-    231.0,
-    -1195.0
-   ],
-   "radius": 0.27,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 107.4,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.0",
-   "base": [
-    88.969,
-    234.78,
-    -1181.599
-   ],
-   "top": [
-    69.563,
-    237.387,
-    -1192.449
-   ],
-   "radius": 0.42,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 128.6,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.0.core",
-   "base": [
-    88.969,
-    234.78,
-    -1181.599
-   ],
-   "top": [
-    69.563,
-    237.387,
-    -1192.449
-   ],
-   "radius": 0.13,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 129.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.0",
-   "base": [
-    98.603,
-    223.649,
-    -1169.278
-   ],
-   "top": [
-    91.028,
-    233.655,
-    -1179.849
-   ],
-   "radius": 0.22,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 142.1,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.0.core",
-   "base": [
-    98.603,
-    223.649,
-    -1169.278
-   ],
-   "top": [
-    91.028,
-    233.655,
-    -1179.849
-   ],
-   "radius": 0.07,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 142.3,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.1",
-   "base": [
-    104.51,
-    223.649,
-    -1179.844
-   ],
-   "top": [
-    91.538,
-    233.655,
-    -1180.761
-   ],
-   "radius": 0.22,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 91.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.1.core",
-   "base": [
-    104.51,
-    223.649,
-    -1179.844
-   ],
-   "top": [
-    91.538,
-    233.655,
-    -1180.761
-   ],
-   "radius": 0.07,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 91.2,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.1",
-   "base": [
-    91.424,
-    234.78,
-    -1202.472
-   ],
-   "top": [
-    70.031,
-    237.387,
-    -1196.423
-   ],
-   "radius": 0.42,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 86.6,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.1.core",
-   "base": [
-    91.424,
-    234.78,
-    -1202.472
-   ],
-   "top": [
-    70.031,
-    237.387,
-    -1196.423
-   ],
-   "radius": 0.13,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 87.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.2",
-   "base": [
-    106.949,
-    223.649,
-    -1200.573
-   ],
-   "top": [
-    94.118,
-    233.655,
-    -1202.691
-   ],
-   "radius": 0.22,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 82.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.2.core",
-   "base": [
-    106.949,
-    223.649,
-    -1200.573
-   ],
-   "top": [
-    94.118,
-    233.655,
-    -1202.691
-   ],
-   "radius": 0.07,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 82.9,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.3",
-   "base": [
-    103.655,
-    223.649,
-    -1212.221
-   ],
-   "top": [
-    93.833,
-    233.655,
-    -1203.697
-   ],
-   "radius": 0.22,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 81.2,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.3.core",
-   "base": [
-    103.655,
-    223.649,
-    -1212.221
-   ],
-   "top": [
-    93.833,
-    233.655,
-    -1203.697
-   ],
-   "radius": 0.07,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 81.4,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.2",
-   "base": [
-    78.401,
-    234.78,
-    -1218.969
-   ],
-   "top": [
-    67.551,
-    237.387,
-    -1199.563
-   ],
-   "radius": 0.42,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 91.9,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.2.core",
-   "base": [
-    78.401,
-    234.78,
-    -1218.969
-   ],
-   "top": [
-    67.551,
-    237.387,
-    -1199.563
-   ],
-   "radius": 0.13,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 92.3,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.4",
-   "base": [
-    90.722,
-    223.649,
-    -1228.603
-   ],
-   "top": [
-    80.151,
-    233.655,
-    -1221.028
-   ],
-   "radius": 0.22,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 86.5,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.4.core",
-   "base": [
-    90.722,
-    223.649,
-    -1228.603
-   ],
-   "top": [
-    80.151,
-    233.655,
-    -1221.028
-   ],
-   "radius": 0.07,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 86.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.5",
-   "base": [
-    80.156,
-    223.649,
-    -1234.51
-   ],
-   "top": [
-    79.239,
-    233.655,
-    -1221.538
-   ],
-   "radius": 0.22,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 93.5,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.5.core",
-   "base": [
-    80.156,
-    223.649,
-    -1234.51
-   ],
-   "top": [
-    79.239,
-    233.655,
-    -1221.538
-   ],
-   "radius": 0.07,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 93.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.3",
-   "base": [
-    57.528,
-    234.78,
-    -1221.424
-   ],
-   "top": [
-    63.577,
-    237.387,
-    -1200.031
-   ],
-   "radius": 0.42,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 101.8,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.3.core",
-   "base": [
-    57.528,
-    234.78,
-    -1221.424
-   ],
-   "top": [
-    63.577,
-    237.387,
-    -1200.031
-   ],
-   "radius": 0.13,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 102.3,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.6",
-   "base": [
-    59.427,
-    223.649,
-    -1236.949
-   ],
-   "top": [
-    57.309,
-    233.655,
-    -1224.118
-   ],
-   "radius": 0.22,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 108.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.6.core",
-   "base": [
-    59.427,
-    223.649,
-    -1236.949
-   ],
-   "top": [
-    57.309,
-    233.655,
-    -1224.118
-   ],
-   "radius": 0.07,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 108.2,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.7",
-   "base": [
-    47.779,
-    223.649,
-    -1233.655
-   ],
-   "top": [
-    56.303,
-    233.655,
-    -1223.833
-   ],
-   "radius": 0.22,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 110.4,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.7.core",
-   "base": [
-    47.779,
-    223.649,
-    -1233.655
-   ],
-   "top": [
-    56.303,
-    233.655,
-    -1223.833
-   ],
-   "radius": 0.07,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 110.6,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.4",
-   "base": [
-    41.031,
-    234.78,
-    -1208.401
-   ],
-   "top": [
-    60.437,
-    237.387,
-    -1197.551
-   ],
-   "radius": 0.42,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 119.6,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.4.core",
-   "base": [
-    41.031,
-    234.78,
-    -1208.401
-   ],
-   "top": [
-    60.437,
-    237.387,
-    -1197.551
-   ],
-   "radius": 0.13,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 120.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.8",
-   "base": [
-    31.397,
-    223.649,
-    -1220.722
-   ],
-   "top": [
-    38.972,
-    233.655,
-    -1210.151
-   ],
-   "radius": 0.22,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 121.8,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.8.core",
-   "base": [
-    31.397,
-    223.649,
-    -1220.722
-   ],
-   "top": [
-    38.972,
-    233.655,
-    -1210.151
-   ],
-   "radius": 0.07,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 122.1,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.9",
-   "base": [
-    25.49,
-    223.649,
-    -1210.156
-   ],
-   "top": [
-    38.462,
-    233.655,
-    -1209.239
-   ],
-   "radius": 0.22,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 123.6,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.9.core",
-   "base": [
-    25.49,
-    223.649,
-    -1210.156
-   ],
-   "top": [
-    38.462,
-    233.655,
-    -1209.239
-   ],
-   "radius": 0.07,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 123.8,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.5",
-   "base": [
-    38.576,
-    234.78,
-    -1187.528
-   ],
-   "top": [
-    59.969,
-    237.387,
-    -1193.577
-   ],
-   "radius": 0.42,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 105.2,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.5.core",
-   "base": [
-    38.576,
-    234.78,
-    -1187.528
-   ],
-   "top": [
-    59.969,
-    237.387,
-    -1193.577
-   ],
-   "radius": 0.13,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 105.5,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.10",
-   "base": [
-    23.051,
-    223.649,
-    -1189.427
-   ],
-   "top": [
-    35.882,
-    233.655,
-    -1187.309
-   ],
-   "radius": 0.22,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 109.3,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.10.core",
-   "base": [
-    23.051,
-    223.649,
-    -1189.427
-   ],
-   "top": [
-    35.882,
-    233.655,
-    -1187.309
-   ],
-   "radius": 0.07,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 109.5,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.11",
-   "base": [
-    26.345,
-    223.649,
-    -1177.779
-   ],
-   "top": [
-    36.167,
-    233.655,
-    -1186.303
-   ],
-   "radius": 0.22,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 104.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.11.core",
-   "base": [
-    26.345,
-    223.649,
-    -1177.779
-   ],
-   "top": [
-    36.167,
-    233.655,
-    -1186.303
-   ],
-   "radius": 0.07,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 105.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.6",
-   "base": [
-    51.599,
-    234.78,
-    -1171.031
-   ],
-   "top": [
-    62.449,
-    237.387,
-    -1190.437
-   ],
-   "radius": 0.42,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 103.9,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.6.core",
-   "base": [
-    51.599,
-    234.78,
-    -1171.031
-   ],
-   "top": [
-    62.449,
-    237.387,
-    -1190.437
-   ],
-   "radius": 0.13,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 104.3,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.12",
-   "base": [
-    39.278,
-    223.649,
-    -1161.397
-   ],
-   "top": [
-    49.849,
-    233.655,
-    -1168.972
-   ],
-   "radius": 0.22,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 104.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.12.core",
-   "base": [
-    39.278,
-    223.649,
-    -1161.397
-   ],
-   "top": [
-    49.849,
-    233.655,
-    -1168.972
-   ],
-   "radius": 0.07,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 104.3,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.13",
-   "base": [
-    49.844,
-    223.649,
-    -1155.49
-   ],
-   "top": [
-    50.761,
-    233.655,
-    -1168.462
-   ],
-   "radius": 0.22,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 109.5,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.13.core",
-   "base": [
-    49.844,
-    223.649,
-    -1155.49
-   ],
-   "top": [
-    50.761,
-    233.655,
-    -1168.462
-   ],
-   "radius": 0.07,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 109.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.7",
-   "base": [
-    72.472,
-    234.78,
-    -1168.576
-   ],
-   "top": [
-    66.423,
-    237.387,
-    -1189.969
-   ],
-   "radius": 0.42,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 98.5,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.spoke.7.core",
-   "base": [
-    72.472,
-    234.78,
-    -1168.576
-   ],
-   "top": [
-    66.423,
-    237.387,
-    -1189.969
-   ],
-   "radius": 0.13,
-   "color": "#1effc0",
-   "material": "M.props_beam_link",
-   "nearestM": 99.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.14",
-   "base": [
-    70.573,
-    223.649,
-    -1153.051
-   ],
-   "top": [
-    72.691,
-    233.655,
-    -1165.882
-   ],
-   "radius": 0.22,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 122.6,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.14.core",
-   "base": [
-    70.573,
-    223.649,
-    -1153.051
-   ],
-   "top": [
-    72.691,
-    233.655,
-    -1165.882
-   ],
-   "radius": 0.07,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 122.8,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.15",
-   "base": [
-    82.221,
-    223.649,
-    -1156.345
-   ],
-   "top": [
-    73.697,
-    233.655,
-    -1166.167
-   ],
-   "radius": 0.22,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 102.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.sat_link.15.core",
-   "base": [
-    82.221,
-    223.649,
-    -1156.345
-   ],
-   "top": [
-    73.697,
-    233.655,
-    -1166.167
-   ],
-   "radius": 0.07,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 102.9,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cluster_link.0",
-   "base": [
-    92.725,
-    234.6,
-    -1201.352
-   ],
-   "top": [
-    90.493,
-    234.6,
-    -1182.387
-   ],
-   "radius": 0.34,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 88.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cluster_link.0.core",
-   "base": [
-    92.725,
-    234.6,
-    -1201.352
-   ],
-   "top": [
-    90.493,
-    234.6,
-    -1182.387
-   ],
-   "radius": 0.1,
-   "color": "#ff4a1c",
-   "material": "M.formation_beam_fire",
-   "nearestM": 89.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cluster_link.1",
-   "base": [
-    58.648,
-    234.6,
-    -1222.725
-   ],
-   "top": [
-    77.613,
-    234.6,
-    -1220.493
-   ],
-   "radius": 0.34,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 94.9,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cluster_link.1.core",
-   "base": [
-    58.648,
-    234.6,
-    -1222.725
-   ],
-   "top": [
-    77.613,
-    234.6,
-    -1220.493
-   ],
-   "radius": 0.1,
-   "color": "#3cff5a",
-   "material": "M.formation_beam_wood",
-   "nearestM": 95.1,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cluster_link.2",
-   "base": [
-    37.275,
-    234.6,
-    -1188.648
-   ],
-   "top": [
-    39.507,
-    234.6,
-    -1207.613
-   ],
-   "radius": 0.34,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 114.2,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cluster_link.2.core",
-   "base": [
-    37.275,
-    234.6,
-    -1188.648
-   ],
-   "top": [
-    39.507,
-    234.6,
-    -1207.613
-   ],
-   "radius": 0.1,
-   "color": "#2f6bff",
-   "material": "M.formation_beam_water",
-   "nearestM": 114.5,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cluster_link.3",
-   "base": [
-    71.352,
-    234.6,
-    -1167.275
-   ],
-   "top": [
-    52.387,
-    234.6,
-    -1169.507
-   ],
-   "radius": 0.34,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 112.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cluster_link.3.core",
-   "base": [
-    71.352,
-    234.6,
-    -1167.275
-   ],
-   "top": [
-    52.387,
-    234.6,
-    -1169.507
-   ],
-   "radius": 0.1,
-   "color": "#d8e2f2",
-   "material": "M.formation_beam_metal",
-   "nearestM": 113.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cross_link.0",
-   "base": [
-    91.945,
-    234.6,
-    -1204.108
-   ],
-   "top": [
-    80.113,
-    234.6,
-    -1219.096
-   ],
-   "radius": 0.32,
-   "color": "#ffaa2a",
-   "material": "M.props_beam_gold",
-   "nearestM": 86.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cross_link.0.core",
-   "base": [
-    91.945,
-    234.6,
-    -1204.108
-   ],
-   "top": [
-    80.113,
-    234.6,
-    -1219.096
-   ],
-   "radius": 0.1,
-   "color": "#ffaa2a",
-   "material": "M.props_beam_gold",
-   "nearestM": 87.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cross_link.1",
-   "base": [
-    55.892,
-    234.6,
-    -1221.945
-   ],
-   "top": [
-    40.904,
-    234.6,
-    -1210.113
-   ],
-   "radius": 0.32,
-   "color": "#ffaa2a",
-   "material": "M.props_beam_gold",
-   "nearestM": 109.3,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cross_link.1.core",
-   "base": [
-    55.892,
-    234.6,
-    -1221.945
-   ],
-   "top": [
-    40.904,
-    234.6,
-    -1210.113
-   ],
-   "radius": 0.1,
-   "color": "#ffaa2a",
-   "material": "M.props_beam_gold",
-   "nearestM": 109.6,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cross_link.2",
-   "base": [
-    38.055,
-    234.6,
-    -1185.892
-   ],
-   "top": [
-    49.887,
-    234.6,
-    -1170.904
-   ],
-   "radius": 0.32,
-   "color": "#ffaa2a",
-   "material": "M.props_beam_gold",
-   "nearestM": 106.0,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cross_link.2.core",
-   "base": [
-    38.055,
-    234.6,
-    -1185.892
-   ],
-   "top": [
-    49.887,
-    234.6,
-    -1170.904
-   ],
-   "radius": 0.1,
-   "color": "#ffaa2a",
-   "material": "M.props_beam_gold",
-   "nearestM": 106.3,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cross_link.3",
-   "base": [
-    74.108,
-    234.6,
-    -1168.055
-   ],
-   "top": [
-    89.096,
-    234.6,
-    -1179.887
-   ],
-   "radius": 0.32,
-   "color": "#ffaa2a",
-   "material": "M.props_beam_gold",
-   "nearestM": 95.7,
-   "area": "formation",
-   "chunk": "formation"
-  },
-  {
-   "name": "formation.cross_link.3.core",
-   "base": [
-    74.108,
-    234.6,
-    -1168.055
-   ],
-   "top": [
-    89.096,
-    234.6,
-    -1179.887
-   ],
-   "radius": 0.1,
-   "color": "#ffaa2a",
-   "material": "M.props_beam_gold",
-   "nearestM": 95.9,
-   "area": "formation",
-   "chunk": "formation"
-  }
- ],
+ "beams": [],
  "hotspots": [
   {
    "id": "project:dispatchai",
@@ -12716,21 +11423,20 @@
    "label": "Software Engineer II",
    "node": "hotspot.role:0",
    "center": [
-    -137.98,
-    144.34,
-    -596.14
+    -137.49,
+    145.95,
+    -596.06
    ],
    "size": [
-    1.64378,
-    5.33629,
-    1.49628
+    4.10703,
+    2.60001,
+    3.40881
    ],
    "area": "mission",
    "chunk": "mission",
    "kind": "item",
    "objects": [
-    "mission.role_tablet",
-    "mission.tablet_halo"
+    "mission.role_tablet"
    ]
   },
   {
@@ -12738,21 +11444,20 @@
    "label": "Applied AI Engineer (Forward-Deployed)",
    "node": "hotspot.role:1",
    "center": [
-    -135.67,
-    144.34,
-    -598.04
+    -133.01,
+    145.95,
+    -599.75
    ],
    "size": [
-    1.64377,
-    5.33629,
-    1.49634
+    4.10703,
+    2.60001,
+    3.40881
    ],
    "area": "mission",
    "chunk": "mission",
    "kind": "item",
    "objects": [
-    "mission.role_tablet.001",
-    "mission.tablet_halo.001"
+    "mission.role_tablet.001"
    ]
   },
   {
@@ -12760,21 +11465,20 @@
    "label": "AI Engineer",
    "node": "hotspot.role:2",
    "center": [
-    -133.35,
-    144.34,
-    -599.95
+    -128.53,
+    145.95,
+    -603.43
    ],
    "size": [
-    1.64377,
-    5.33629,
-    1.49628
+    4.10703,
+    2.60001,
+    3.40881
    ],
    "area": "mission",
    "chunk": "mission",
    "kind": "item",
    "objects": [
-    "mission.role_tablet.002",
-    "mission.tablet_halo.002"
+    "mission.role_tablet.002"
    ]
   },
   {
@@ -12782,21 +11486,20 @@
    "label": "Co-founder + CFO",
    "node": "hotspot.role:3",
    "center": [
-    -131.03,
-    144.34,
-    -601.85
+    -124.04,
+    145.95,
+    -607.11
    ],
    "size": [
-    1.64377,
-    5.33629,
-    1.49628
+    4.10704,
+    2.60001,
+    3.40881
    ],
    "area": "mission",
    "chunk": "mission",
    "kind": "item",
    "objects": [
-    "mission.role_tablet.003",
-    "mission.tablet_halo.003"
+    "mission.role_tablet.003"
    ]
   },
   {
@@ -12804,21 +11507,20 @@
    "label": "Founder",
    "node": "hotspot.role:4",
    "center": [
-    -128.71,
-    144.34,
-    -603.76
+    -135.25,
+    143.04,
+    -597.9
    ],
    "size": [
-    1.64379,
-    5.33629,
-    1.49628
+    4.10703,
+    2.60001,
+    3.40881
    ],
    "area": "mission",
    "chunk": "mission",
    "kind": "item",
    "objects": [
-    "mission.role_tablet.004",
-    "mission.tablet_halo.004"
+    "mission.role_tablet.004"
    ]
   },
   {
@@ -12826,21 +11528,20 @@
    "label": "CS Instructor + Teaching Assistant",
    "node": "hotspot.role:5",
    "center": [
-    -126.39,
-    144.34,
-    -605.66
+    -130.77,
+    143.04,
+    -601.59
    ],
    "size": [
-    1.64378,
-    5.33629,
-    1.49628
+    4.10703,
+    2.60001,
+    3.40881
    ],
    "area": "mission",
    "chunk": "mission",
    "kind": "item",
    "objects": [
-    "mission.role_tablet.005",
-    "mission.tablet_halo.005"
+    "mission.role_tablet.005"
    ]
   },
   {
@@ -12848,21 +11549,20 @@
    "label": "Hackathon Mainstay",
    "node": "hotspot.role:6",
    "center": [
-    -124.07,
-    144.34,
-    -607.56
+    -126.29,
+    143.04,
+    -605.27
    ],
    "size": [
-    1.64378,
-    5.33629,
-    1.49628
+    4.10704,
+    2.60001,
+    3.40881
    ],
    "area": "mission",
    "chunk": "mission",
    "kind": "item",
    "objects": [
-    "mission.role_tablet.006",
-    "mission.tablet_halo.006"
+    "mission.role_tablet.006"
    ]
   },
   {
@@ -13056,14 +11756,14 @@
    "label": "01 Mic input",
    "node": "hotspot.arch:0",
    "center": [
-    90.31,
-    227.98,
+    90.21,
+    225.67,
     -1180.85
    ],
    "size": [
-    5.17122,
-    15.95,
-    5.17114
+    8.3707,
+    11.44144,
+    8.16504
    ],
    "area": "formation",
    "chunk": "formation",
@@ -13077,14 +11777,14 @@
    "label": "02 LLM agent",
    "node": "hotspot.arch:1",
    "center": [
-    92.91,
-    227.98,
+    92.65,
+    225.67,
     -1202.89
    ],
    "size": [
-    4.69064,
-    15.95,
-    4.69067
+    7.92094,
+    11.44144,
+    7.40625
    ],
    "area": "formation",
    "chunk": "formation",
@@ -13099,13 +11799,13 @@
    "node": "hotspot.arch:2",
    "center": [
     79.15,
-    227.98,
-    -1220.31
+    225.67,
+    -1220.21
    ],
    "size": [
-    5.17122,
-    15.95,
-    5.17114
+    8.16508,
+    11.44144,
+    8.37073
    ],
    "area": "formation",
    "chunk": "formation",
@@ -13120,13 +11820,13 @@
    "node": "hotspot.arch:3",
    "center": [
     57.11,
-    227.98,
-    -1222.91
+    225.67,
+    -1222.65
    ],
    "size": [
-    4.69064,
-    15.95,
-    4.69067
+    7.40628,
+    11.44144,
+    7.9209
    ],
    "area": "formation",
    "chunk": "formation",
@@ -13140,14 +11840,14 @@
    "label": "05 Sections react",
    "node": "hotspot.arch:4",
    "center": [
-    39.69,
-    227.98,
+    39.79,
+    225.67,
     -1209.15
    ],
    "size": [
-    5.17122,
-    15.95,
-    5.17114
+    8.3707,
+    11.44144,
+    8.16504
    ],
    "area": "formation",
    "chunk": "formation",
@@ -13161,14 +11861,14 @@
    "label": "06 Voice reply",
    "node": "hotspot.arch:5",
    "center": [
-    37.09,
-    227.98,
+    37.35,
+    225.67,
     -1187.11
    ],
    "size": [
-    4.69064,
-    15.95,
-    4.69067
+    7.92094,
+    11.44144,
+    7.40625
    ],
    "area": "formation",
    "chunk": "formation",
@@ -13183,13 +11883,13 @@
    "node": "hotspot.arch:6",
    "center": [
     50.85,
-    227.98,
-    -1169.69
+    225.67,
+    -1169.79
    ],
    "size": [
-    5.17122,
-    15.95,
-    5.17114
+    8.16508,
+    11.44144,
+    8.37073
    ],
    "area": "formation",
    "chunk": "formation",
@@ -13204,13 +11904,13 @@
    "node": "hotspot.arch:7",
    "center": [
     72.89,
-    227.98,
-    -1167.09
+    225.67,
+    -1167.35
    ],
    "size": [
-    4.69064,
-    15.95,
-    4.69067
+    7.40628,
+    11.44144,
+    7.9209
    ],
    "area": "formation",
    "chunk": "formation",
@@ -13430,12 +12130,12 @@
    "node": "hotspot.gate",
    "center": [
     0.0,
-    51.38,
+    52.59,
     12.0
    ],
    "size": [
     35.09325,
-    23.35234,
+    25.7703,
     6.67594
    ],
    "area": "gate",
@@ -13812,13 +12512,13 @@
    "node": "hotspot.formation",
    "center": [
     65.0,
-    238.0,
+    230.5,
     -1195.0
    ],
    "size": [
-    29.44948,
-    17.83957,
-    29.44946
+    13.03247,
+    10.63428,
+    10.75952
    ],
    "area": "formation",
    "chunk": "formation",
@@ -13942,6 +12642,650 @@
    "objects": [
     "summit.crane",
     "summit.crane.001"
+   ]
+  }
+ ],
+ "lore": [
+  {
+   "id": "heaven-sword",
+   "kind": "lore",
+   "area": "gate",
+   "node": null,
+   "objects": [
+    "gate.sword_monolith"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -16.0,
+      47.8,
+      25.0
+     ],
+     "size": [
+      6.40472,
+      15.6,
+      6.40472
+     ],
+     "hotspot": "gate-swords",
+     "objects": [
+      "gate.sword_monolith"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "dragon-saber",
+   "kind": "lore",
+   "area": "gate",
+   "node": null,
+   "objects": [
+    "gate.sword_monolith.001"
+   ],
+   "boxes": [
+    {
+     "center": [
+      16.0,
+      47.8,
+      25.0
+     ],
+     "size": [
+      6.40472,
+      15.6,
+      6.40472
+     ],
+     "hotspot": "gate-swords",
+     "objects": [
+      "gate.sword_monolith.001"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sun-moon",
+   "kind": "lore",
+   "area": "gate",
+   "node": null,
+   "objects": [
+    "gate.sun_medallion",
+    "gate.moon_medallion",
+    "gate.sunmoon_finial"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -4.06,
+      57.52,
+      12.28
+     ],
+     "size": [
+      2.00605,
+      2.00605,
+      0.22783
+     ],
+     "hotspot": "gate",
+     "objects": [
+      "gate.sun_medallion"
+     ]
+    },
+    {
+     "center": [
+      4.06,
+      57.52,
+      12.25
+     ],
+     "size": [
+      2.00605,
+      2.00605,
+      0.17015
+     ],
+     "hotspot": "gate",
+     "objects": [
+      "gate.moon_medallion"
+     ]
+    },
+    {
+     "center": [
+      0.0,
+      64.07,
+      12.0
+     ],
+     "size": [
+      2.23284,
+      2.808,
+      0.89024
+     ],
+     "hotspot": "gate",
+     "objects": [
+      "gate.sunmoon_finial"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "jade-flute",
+   "kind": "lore",
+   "area": "mirror",
+   "node": null,
+   "objects": [
+    "mirror.flute_rock",
+    "mirror.flute_xiao",
+    "mirror.flute_bag",
+    "mirror.flute_tassel"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -80.82,
+      70.15,
+      -191.98
+     ],
+     "size": [
+      2.94305,
+      1.02333,
+      2.32283
+     ],
+     "hotspot": null,
+     "objects": [
+      "mirror.flute_rock",
+      "mirror.flute_xiao",
+      "mirror.flute_bag",
+      "mirror.flute_tassel"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "five-wheels",
+   "kind": "lore",
+   "area": "forge",
+   "node": null,
+   "objects": [
+    "forge.five_wheels"
+   ],
+   "boxes": [
+    {
+     "center": [
+      88.44,
+      96.18,
+      -345.5
+     ],
+     "size": [
+      4.9564,
+      2.35,
+      0.74677
+     ],
+     "hotspot": null,
+     "objects": [
+      "forge.five_wheels"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sword-tomb",
+   "kind": "lore",
+   "area": "forge",
+   "node": null,
+   "objects": [
+    "forge.sword_tomb"
+   ],
+   "boxes": [
+    {
+     "center": [
+      125.77,
+      96.49,
+      -322.46
+     ],
+     "size": [
+      9.02081,
+      3.57416,
+      9.31717
+     ],
+     "hotspot": null,
+     "objects": [
+      "forge.sword_tomb"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "heavy-iron-sword",
+   "kind": "lore",
+   "area": "arena",
+   "node": null,
+   "objects": [
+    "arena.sword"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -62.98,
+      118.15,
+      -510.65
+     ],
+     "size": [
+      10.05525,
+      79.92195,
+      15.11203
+     ],
+     "hotspot": "arena",
+     "objects": [
+      "arena.sword"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "holy-fire-altar",
+   "kind": "lore",
+   "area": "mission",
+   "node": null,
+   "objects": [
+    "mission.holy_fire",
+    "mission.holy_fire.001"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -113.54,
+      142.45,
+      -620.0
+     ],
+     "size": [
+      8.44479,
+      5.00999,
+      8.44482
+     ],
+     "hotspot": null,
+     "objects": [
+      "mission.holy_fire"
+     ]
+    },
+    {
+     "center": [
+      -152.18,
+      142.45,
+      -588.27
+     ],
+     "size": [
+      8.44479,
+      5.00999,
+      8.44482
+     ],
+     "hotspot": null,
+     "objects": [
+      "mission.holy_fire.001"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "icefire-island",
+   "kind": "lore",
+   "area": "library",
+   "node": null,
+   "objects": [
+    "scenery.island.009"
+   ],
+   "boxes": [
+    {
+     "center": [
+      328.21,
+      275.12,
+      -994.23
+     ],
+     "size": [
+      80.79724,
+      100.7063,
+      79.95612
+     ],
+     "hotspot": null,
+     "objects": [
+      "scenery.island.009"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "holy-fire-tokens",
+   "kind": "lore",
+   "area": "scroll",
+   "node": null,
+   "objects": [
+    "scroll.slip_stack"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -113.44,
+      206.95,
+      -1066.65
+     ],
+     "size": [
+      4.75269,
+      4.01442,
+      4.57471
+     ],
+     "hotspot": null,
+     "objects": [
+      "scroll.slip_stack"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "five-element-banners",
+   "kind": "lore",
+   "area": "formation",
+   "node": null,
+   "objects": [
+    "formation.flag.wood",
+    "formation.flag_base.wood",
+    "formation.flag.fire",
+    "formation.flag_base.fire",
+    "formation.flag.earth",
+    "formation.flag_base.earth",
+    "formation.flag.metal",
+    "formation.flag_base.metal",
+    "formation.flag.water",
+    "formation.flag_base.water"
+   ],
+   "boxes": [
+    {
+     "center": [
+      97.4,
+      227.89,
+      -1166.53
+     ],
+     "size": [
+      4.91537,
+      15.87801,
+      5.47632
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.flag.wood",
+      "formation.flag_base.wood"
+     ]
+    },
+    {
+     "center": [
+      103.6,
+      227.89,
+      -1175.56
+     ],
+     "size": [
+      5.00603,
+      15.87801,
+      5.49744
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.flag.fire",
+      "formation.flag_base.fire"
+     ]
+    },
+    {
+     "center": [
+      107.57,
+      227.89,
+      -1185.8
+     ],
+     "size": [
+      4.83222,
+      15.87801,
+      5.4613
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.flag.earth",
+      "formation.flag_base.earth"
+     ]
+    },
+    {
+     "center": [
+      108.72,
+      227.89,
+      -1196.71
+     ],
+     "size": [
+      5.08728,
+      15.87801,
+      5.48413
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.flag.metal",
+      "formation.flag_base.metal"
+     ]
+    },
+    {
+     "center": [
+      107.36,
+      227.89,
+      -1207.6
+     ],
+     "size": [
+      5.01748,
+      15.87801,
+      5.5144
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.flag.water",
+      "formation.flag_base.water"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "big-dipper-array",
+   "kind": "lore",
+   "area": "formation",
+   "node": null,
+   "objects": [
+    "formation.dipper.yaoguang",
+    "formation.dipper.kaiyang",
+    "formation.dipper.yuheng",
+    "formation.dipper.tianquan",
+    "formation.dipper.tianji",
+    "formation.dipper.tianxuan",
+    "formation.dipper.tianshu"
+   ],
+   "boxes": [
+    {
+     "center": [
+      81.19,
+      221.19,
+      -1235.81
+     ],
+     "size": [
+      3.3756,
+      2.45685,
+      3.37549
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.dipper.yaoguang"
+     ]
+    },
+    {
+     "center": [
+      72.78,
+      221.18,
+      -1232.1
+     ],
+     "size": [
+      3.07837,
+      2.44803,
+      3.07837
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.dipper.kaiyang"
+     ]
+    },
+    {
+     "center": [
+      66.93,
+      221.18,
+      -1230.8
+     ],
+     "size": [
+      2.73642,
+      2.4379,
+      2.73633
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.dipper.yuheng"
+     ]
+    },
+    {
+     "center": [
+      60.91,
+      221.19,
+      -1231.01
+     ],
+     "size": [
+      2.87705,
+      2.45685,
+      2.87695
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.dipper.tianquan"
+     ]
+    },
+    {
+     "center": [
+      59.1,
+      221.18,
+      -1236.85
+     ],
+     "size": [
+      2.93747,
+      2.44803,
+      2.9375
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.dipper.tianji"
+     ]
+    },
+    {
+     "center": [
+      50.78,
+      221.18,
+      -1236.9
+     ],
+     "size": [
+      3.29775,
+      2.4379,
+      3.29785
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.dipper.tianxuan"
+     ]
+    },
+    {
+     "center": [
+      49.7,
+      221.19,
+      -1229.55
+     ],
+     "size": [
+      3.43011,
+      2.45685,
+      3.43018
+     ],
+     "hotspot": null,
+     "objects": [
+      "formation.dipper.tianshu"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "wanderer-duet",
+   "kind": "lore",
+   "area": "abode",
+   "node": null,
+   "objects": [
+    "abode.duet"
+   ],
+   "boxes": [
+    {
+     "center": [
+      195.06,
+      251.37,
+      -1344.67
+     ],
+     "size": [
+      5.18231,
+      2.95523,
+      3.01648
+     ],
+     "hotspot": null,
+     "objects": [
+      "abode.duet"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "golden-bell-ribbon",
+   "kind": "lore",
+   "area": "abode",
+   "node": null,
+   "objects": [
+    "abode.ribbon"
+   ],
+   "boxes": [
+    {
+     "center": [
+      194.59,
+      255.62,
+      -1348.41
+     ],
+     "size": [
+      3.76289,
+      9.6689,
+      3.71521
+     ],
+     "hotspot": null,
+     "objects": [
+      "abode.ribbon"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "divine-condor",
+   "kind": "lore",
+   "area": "summit",
+   "node": null,
+   "objects": [
+    "summit.condor_bird"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -26.42,
+      329.24,
+      -1462.14
+     ],
+     "size": [
+      2.52078,
+      1.70325,
+      2.06946
+     ],
+     "hotspot": null,
+     "objects": [
+      "summit.condor_bird"
+     ]
+    }
    ]
   }
  ],
@@ -14220,6 +13564,110 @@
    "power": 4000.0,
    "powerUnit": "W (Blender point light)",
    "area": "library"
+  },
+  {
+   "name": "formation.brazier.0.light",
+   "type": "POINT",
+   "position": [
+    86.47,
+    222.8,
+    -1182.99
+   ],
+   "color": "#ffc481",
+   "power": 750.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
+  },
+  {
+   "name": "formation.brazier.1.light",
+   "type": "POINT",
+   "position": [
+    88.67,
+    222.8,
+    -1201.69
+   ],
+   "color": "#ffc481",
+   "power": 750.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
+  },
+  {
+   "name": "formation.brazier.2.light",
+   "type": "POINT",
+   "position": [
+    77.01,
+    222.8,
+    -1216.47
+   ],
+   "color": "#ffc481",
+   "power": 750.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
+  },
+  {
+   "name": "formation.brazier.3.light",
+   "type": "POINT",
+   "position": [
+    58.31,
+    222.8,
+    -1218.67
+   ],
+   "color": "#ffc481",
+   "power": 750.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
+  },
+  {
+   "name": "formation.brazier.4.light",
+   "type": "POINT",
+   "position": [
+    43.53,
+    222.8,
+    -1207.01
+   ],
+   "color": "#ffc481",
+   "power": 750.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
+  },
+  {
+   "name": "formation.brazier.5.light",
+   "type": "POINT",
+   "position": [
+    41.33,
+    222.8,
+    -1188.31
+   ],
+   "color": "#ffc481",
+   "power": 750.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
+  },
+  {
+   "name": "formation.brazier.6.light",
+   "type": "POINT",
+   "position": [
+    52.99,
+    222.8,
+    -1173.53
+   ],
+   "color": "#ffc481",
+   "power": 750.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
+  },
+  {
+   "name": "formation.brazier.7.light",
+   "type": "POINT",
+   "position": [
+    71.69,
+    222.8,
+    -1171.33
+   ],
+   "color": "#ffc481",
+   "power": 750.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
   },
   {
    "name": "abode.cave_light",

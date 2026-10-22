@@ -1523,7 +1523,11 @@ def compare_file(name, res, tier, post=None, codec=None):
             rb = ref["nodes"].get(nn, {}).get("box") if ref else None
             d, tol = _box_diff(rb or e["box"], q["box"])
             if d > tol:
-                probs.append("%s: node %s moved %.3f m (tolerance %.3f)" % (name, nn, d, tol))
+                # dropping zero-area triangles (the post step) can pull a box in at an edge; only growth is wrong
+                b0 = rb or e["box"]
+                grow = max(max(b0[0][k] - q["box"][0][k], q["box"][1][k] - b0[1][k]) for k in range(3))
+                if not (dropped > 0 and grow <= tol):
+                    probs.append("%s: node %s moved %.3f m (tolerance %.3f)" % (name, nn, d, tol))
             if rb:
                 # against the raw file: simplification may pull a box in by its (sub-pixel) error, never more
                 d2 = _box_diff(e["box"], q["box"])[0]
