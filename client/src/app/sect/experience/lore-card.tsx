@@ -19,6 +19,7 @@ import {
   LORE_CARD_IDLE,
   loreCardStep,
   loreCardWake,
+  loreNovel,
   placeLoreCard,
   type LoreCardEvent,
   type LoreCardState,
@@ -32,6 +33,7 @@ export const LoreCard = forwardRef<HTMLDivElement, { id: LoreId | null; visible:
   ref,
 ) {
   const e: LoreEntry | null = id ? LORE[id] : null;
+  const novel = e ? loreNovel(e) : null;
   return (
     <div
       ref={ref}
@@ -54,9 +56,9 @@ export const LoreCard = forwardRef<HTMLDivElement, { id: LoreId | null; visible:
           </p>
           <p className="mt-0.5 text-[0.75rem] leading-snug text-[var(--sect-paper-soft)]">
             {e.what}
-            {e.novel && (
+            {novel && (
               <>
-                , from <cite className="italic">{e.novel}</cite>
+                , from <cite className="italic">{novel}</cite>
               </>
             )}
           </p>

@@ -107,6 +107,30 @@ bakecache/full/<chunk>/ (box only).
     verify    Imports raw/backdrop.glb and the baked chunks (+ <area>_trees.glb when present), shows per frame the
               chunks whose need range holds it (their proxies hidden), renders bake/verify/hold_<frame>.png.
 
+Quality (--quality dev|production, table BAKE_QUALITY, shared with bake_trees.py): dev (the default) is the fast bake
+for development, unchanged. production is for one final bake once the content is final and changes only noise
+settings: atlas samples 768 (dev 160), vertex colours 1024 (dev 256), the denoiser's guide passes albedo 64 / normal 16
+(dev 16 / 4), adaptive sampling off (dev keeps the scene's: Cycles' default, threshold 0.01), denoisers pinned to High.
+Same chunk plan, LODs, texel density, atlas sizes, files and brightness (clamp and bounces unchanged). --samples /
+--vc-samples still override. A run's first line says which ("BAKE quality production samples 768 vc 1024 ..."), and
+each chunk's bake_meta.json and bake/chunks/<id>.json store it (quality, bake_settings).
+
+    ... sect_chase.blend --python bake_web.py -- bakefull,water --profile full --quality production
+
+Expected minutes per chunk on one RTX 5090 (CUDA), post step included. Dev = the last full bake (47 min with setup).
+Production scales the sampling part of each pass (a pass costs about 12 s before it samples) and assumes the dev
+texels took all their samples. If adaptive sampling stopped many dev texels at its 64-sample minimum, the atlas passes
+take up to 2.5x longer than this (whole bake up to ~3.5 h): the first chunk's "baked atlases in N s" line tells.
+
+    chunk      dev  production        chunk      dev  production
+    gate       3.4   9.3              scroll     3.3   6.6
+    mirror     2.3   5.6              formation  2.5   5.3
+    forge      3.7   9.0              abode      3.0   7.5
+    arena      2.9   6.1              steles     4.4   9.5
+    mission    3.5   7.3              summit     5.5  14.3
+    library    4.2   9.1              backdrop   2.9   3.9
+    all chunks + ~5 min setup: dev 47 min, production about 1 h 40 min (worst case about 3.5 h)
+
 Colour: atlases and vertex colours are display-referred sRGB (AgX Punchy + grade baked in); the web draws
 them unlit with no tone mapping. Lighting for the bake = the scene's sun + sky, with the sky fill raised
 x1.4 and warmed, plus a soft warm fill sun from the sun's side (stands in for the film's golden haze
@@ -1792,7 +1816,69 @@ def build_bake_object(name, items, slot_fn, mats, prop_names, coll, stage=None, 
 
 # ---- lighting / render setup ------------------------------------------------------------------
 
-def setup_cycles(sc, samples):
+# Bake quality (--quality dev|production; one table for bake_web.py and bake_trees.py). 'dev' is the fast bake used
+# while the content still changes: exactly the values every bake used before the switch. 'production' is for one
+# final bake once the content is final. It raises only what sets the noise; the chunk plan, LODs, texel density,
+# atlas sizes, UV packing and download size are the same in both, and so is the brightness: light clamping
+# (BAKE_CLAMP_INDIRECT) and the bounce counts (BAKE_BOUNCES) stay as they are, because a higher clamp or more bounces
+# change how bright the bake is (and a higher clamp adds fireflies), they do not take noise away.
+#   samples / vc_samples   atlas and vertex-colour samples per profile (--samples / --vc-samples override). Production
+#                          768 atlas (4.8x dev: noise x0.46 before the denoiser; 1024 would cut it only 13 % more for
+#                          ~20 extra minutes), 1024 vertex colours (4x: noise halved; they get no denoiser, so the most)
+#   albedo / normal        samples of the denoiser's guide passes (albedo 16 -> 64, normal 4 -> 16): cleaner guides
+#                          let the denoiser keep edges; a few seconds per chunk
+#   tree_mesh / tree_albedo / tree_sprite   bake_trees.py: mesh-variant bakes 128 -> 512, their albedo guide 8 -> 32,
+#                          card sprites 48 -> 192 (all 4x, noise halved)
+#   adaptive               None leaves the scene's own setting (Cycles default: on, noise threshold 0.01, at least 64
+#                          samples per texel; Cycles bakes use adaptive sampling since 3.0, so a dev texel may stop
+#                          between 64 and its sample count). False turns it off: every texel gets all its samples.
+#   denoise_pin            pin the denoisers to their best settings (compositor Denoise node quality High; the tree
+#                          sprites' Cycles denoiser OIDN, prefilter Accurate, quality High, albedo + normal guides).
+#                          These are today's defaults already; production pins them so a changed default cannot lower
+#                          them. The atlases' denoiser already runs HDR + albedo + normal guides, prefilter Accurate.
+BAKE_QUALITY = {
+    "dev": dict(samples=dict(proto=512, full=160), vc_samples=dict(proto=512, full=256), albedo=16, normal=4,
+                tree_mesh=128, tree_albedo=8, tree_sprite=48, adaptive=None, denoise_pin=False),
+    "production": dict(samples=dict(proto=768, full=768), vc_samples=dict(proto=1024, full=1024), albedo=64, normal=16,
+                       tree_mesh=512, tree_albedo=32, tree_sprite=192, adaptive=False, denoise_pin=True),
+}
+BAKE_BOUNCES = dict(max=6, diffuse=3, glossy=1, transmission=4, transparent=8)
+BAKE_CLAMP_INDIRECT = 4.0      # fireflies (white speckles on red lacquer and roof tiles): a few very bright indirect paths
+
+
+def bake_settings(a, sc=None):
+    """The effective noise settings of this run: logged at the start, stored in every chunk's bake_meta.json and
+    bake/chunks/<id>.json. Adaptive sampling is read from the scene when the quality leaves it alone (dev)."""
+    Q = BAKE_QUALITY[a.quality]
+    sc = sc or bpy.context.scene
+    cy = getattr(sc, "cycles", None)
+    if Q["adaptive"] is None:
+        if cy is None:
+            adaptive = "scene"
+        elif cy.use_adaptive_sampling:
+            adaptive = "on %g" % cy.adaptive_threshold + (" min %d" % cy.adaptive_min_samples
+                                                          if cy.adaptive_min_samples else "")
+        else:
+            adaptive = "off"
+    else:
+        adaptive = "on" if Q["adaptive"] else "off"
+    return dict(quality=a.quality, samples=a.samples, vc_samples=a.vc_samples, albedo_samples=Q["albedo"],
+                normal_samples=Q["normal"], adaptive=adaptive, clamp_indirect=BAKE_CLAMP_INDIRECT,
+                bounces=dict(BAKE_BOUNCES),
+                denoise="OIDN hdr+albedo+normal prefilter Accurate quality %s"
+                        % ("High" if Q["denoise_pin"] else "default"))
+
+
+def log_bake_quality(a):
+    s = bake_settings(a)
+    b = s["bounces"]
+    log("quality", s["quality"], "samples", s["samples"], "vc", s["vc_samples"], "albedo", s["albedo_samples"],
+        "normal", s["normal_samples"], "adaptive", s["adaptive"], "clamp_indirect", s["clamp_indirect"],
+        "bounces %d/%d/%d/%d/%d" % (b["max"], b["diffuse"], b["glossy"], b["transmission"], b["transparent"]),
+        "denoise", s["denoise"])
+
+
+def setup_cycles(sc, samples, quality="dev"):
     sc.render.engine = "CYCLES"
     prefs = bpy.context.preferences.addons["cycles"].preferences
     # OptiX first; some rented boxes ship the driver without libnvoptix, and then Cycles would
@@ -1815,13 +1901,25 @@ def setup_cycles(sc, samples):
     sc.cycles.device = "GPU"
     sc.cycles.samples = samples
     sc.cycles.use_denoising = False
-    sc.cycles.max_bounces = 6
-    sc.cycles.diffuse_bounces = 3
-    sc.cycles.glossy_bounces = 1
-    sc.cycles.transmission_bounces = 4
-    sc.cycles.transparent_max_bounces = 8
+    B = BAKE_BOUNCES
+    sc.cycles.max_bounces = B["max"]
+    sc.cycles.diffuse_bounces = B["diffuse"]
+    sc.cycles.glossy_bounces = B["glossy"]
+    sc.cycles.transmission_bounces = B["transmission"]
+    sc.cycles.transparent_max_bounces = B["transparent"]
     # fireflies (white speckles on red lacquer and roof tiles) come from a few very bright indirect paths
-    sc.cycles.sample_clamp_indirect = 4.0
+    sc.cycles.sample_clamp_indirect = BAKE_CLAMP_INDIRECT
+    Q = BAKE_QUALITY[quality]
+    if Q["adaptive"] is not None:              # dev leaves the scene's own setting
+        sc.cycles.use_adaptive_sampling = Q["adaptive"]
+    if Q["denoise_pin"]:
+        # only renders that turn use_denoising on use these (the tree sprites); bakes denoise in post_scene
+        for k, v in (("denoiser", "OPENIMAGEDENOISE"), ("denoising_prefilter", "ACCURATE"),
+                     ("denoising_quality", "HIGH"), ("denoising_input_passes", "RGB_ALBEDO_NORMAL")):
+            try:
+                setattr(sc.cycles, k, v)
+            except Exception as e:
+                log("WARN could not pin", k, v, e)
 
 
 def bake_lighting(sc):
@@ -2189,7 +2287,7 @@ def cmd_bake(a):
 
     # bake: COMBINED into the atlases, DIFFUSE COLOR into the albedo guides, COMBINED into vertex colours
     os.makedirs(CACHE_DIR, exist_ok=True)
-    setup_cycles(sc, a.samples)
+    setup_cycles(sc, a.samples, a.quality)
     deselect_all()
     ob_at.select_set(True)
     bpy.context.view_layer.objects.active = ob_at
@@ -2200,7 +2298,7 @@ def cmd_bake(a):
     log("baked atlases in", T["bake_atlas"], "s")
     for tn, k in img_nodes:
         tn.image = albedo[k]
-    sc.cycles.samples = 16
+    sc.cycles.samples = BAKE_QUALITY[a.quality]["albedo"]
     t1 = time.time()
     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, uv_layer="bake", margin=BAKE_MARGIN,
                         margin_type="EXTEND", use_clear=True, target="IMAGE_TEXTURES")
@@ -2241,7 +2339,7 @@ def cmd_bake(a):
                                    rho=round(it.rho, 2) if it.rho else None))
     hot_labels = {h[0]: h[1] for h in EW.all_hotspots()}
     meta = dict(atlases=atlases, hotspots=hot_labels, samples=a.samples, vc_samples=a.vc_samples,
-                light=BAKE_LIGHT, times=T, gscale=gscale,
+                quality=a.quality, bake_settings=bake_settings(a, sc), light=BAKE_LIGHT, times=T, gscale=gscale,
                 tris=dict(atlas=int(sum(ma(it.mesh).np for it in items_at)),
                           vc=int(sum(ma(it.mesh).np for it in items_vc))),
                 polys_atlas=len(C_at["ls"]), polys_vc=len(C_vc["ls"]))
@@ -2276,7 +2374,7 @@ def preview(im, path, size=1024):
 
 # ---- post: denoise, grade, export -------------------------------------------------------------
 
-def post_scene(size, exposure, sat, denoise=True):
+def post_scene(size, exposure, sat, denoise=True, quality="dev"):
     from sect.lib import look as LK
     LOOK = LK.LOOK
     post = bpy.data.scenes.get("bakepost") or bpy.data.scenes.new("bakepost")
@@ -2316,6 +2414,18 @@ def post_scene(size, exposure, sat, denoise=True):
             dn.inputs["Prefilter"].default_value = "Accurate"
         except Exception:
             pass
+        if BAKE_QUALITY[quality]["denoise_pin"]:
+            # High is already the default for a final render (the node follows the scene's final quality); pin it
+            try:
+                post.render.compositor_denoise_final_quality = "HIGH"
+            except Exception as e:
+                log("WARN could not pin the scene's denoise quality:", e)
+            q = dn.inputs.get("Quality")
+            if q is not None:
+                try:
+                    q.default_value = "High"
+                except Exception as e:
+                    log("WARN could not pin the Denoise node's quality:", e)
         src = dn.outputs["Image"]
     grade = N.new("CompositorNodeColorBalance")
     LK._inp(grade, "Type").default_value = "Offset/Power/Slope (ASC-CDL)"
@@ -2405,7 +2515,7 @@ def cmd_post(a):
         if a.skip_atlas:
             pngs.append(os.path.join(tex_dir, at["name"] + ".png"))
             continue
-        post, n_im, n_al = post_scene((at["size"], at["size"]), a.exposure, a.sat, denoise=True)
+        post, n_im, n_al = post_scene((at["size"], at["size"]), a.exposure, a.sat, denoise=True, quality=a.quality)
         n_im.image = bpy.data.images.load(os.path.join(CACHE_DIR, at["name"] + ".exr"), check_existing=False)
         n_al.image = bpy.data.images.load(os.path.join(CACHE_DIR, at["name"] + "_albedo.exr"), check_existing=False)
         t1 = time.time()
@@ -3061,6 +3171,24 @@ FAR_TRIS_FULL = 360_000        # backdrop far set
 PROXY_TRIS_FULL = 30_000       # backdrop proxy per area (records; the area's terrain faces come on top)
 PROXY_MIN_DIAG = 3.0
 PROXY_MAX_RECS = 900
+PROXY_WHOLE_PARTS = ("stairs", "rails", "piers", "arch", "foot_landing", "foot_rail", "rest_landing", "rest_rail",
+                     "rest_pier", "bridge.deck", "bridge.boards", "bridge.posts")
+                               # round 11 (S3): these parts of world.link.<a>_<b> go into the area proxies whole
+                               # (proxy_whole), on top of PROXY_TRIS_FULL: about 63k triangles in all (the 8 stairways
+                               # after patch_r11_links, 57k, and the chain bridge's planks and posts)
+
+
+def proxy_whole(name, inst=False):
+    """True for a link's structure (world.link.<a>_<b>.<part>, part in PROXY_WHOLE_PARTS, not an instance): the
+    backdrop's area proxies carry it undecimated. Each link stair belongs to one area chunk, so wherever that chunk
+    is not loaded (after a jump or a fresh load, while chunks stream in, always on phones, and when the quality
+    ladder turns stand-ins on) the proxy draws it; decimated to the area's 30k budget the parapets turned into shards
+    and white teeth, then popped into the real stair when the chunk came. The archways and pavilions on a link
+    (.foot_gate, .rest_pavilion) and the stepping stones keep the area's LOD rules."""
+    if inst or not name.startswith("world.link."):
+        return False
+    link, _, part = name[len("world.link."):].partition(".")
+    return "_" in link and part in PROXY_WHOLE_PARTS
 FAR_MIN_PX_FULL = 3.0
 _FC = {}                       # full-path session state (full_ctx)
 
@@ -3287,7 +3415,7 @@ def _bake_setup(F, a):
         return
     F["hidden_fx"] = hide_for_bake(F["sc"])
     bake_lighting(F["sc"])
-    setup_cycles(F["sc"], a.samples)
+    setup_cycles(F["sc"], a.samples, a.quality)
     F["lit"] = True
     log("bake lighting set; hid", F["hidden_fx"], "flyer/volume/fx objects")
 
@@ -3895,7 +4023,7 @@ def bake_chunk(F, cid, a):
     log(cid, "baked atlases in", T["bake_atlas"], "s")
     for tn, j in img_nodes:
         tn.image = albedo[j]
-    sc.cycles.samples = 16
+    sc.cycles.samples = BAKE_QUALITY[a.quality]["albedo"]
     t1 = time.time()
     bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, uv_layer="bake", margin=BAKE_MARGIN,
                         margin_type="EXTEND", use_clear=True, target="IMAGE_TEXTURES")
@@ -3905,7 +4033,7 @@ def bake_chunk(F, cid, a):
         # island edges where the surface turns, not only where the albedo changes
         for tn, j in img_nodes:
             tn.image = normals[j]
-        sc.cycles.samples = 4
+        sc.cycles.samples = BAKE_QUALITY[a.quality]["normal"]
         t1 = time.time()
         try:
             bpy.ops.object.bake(type="NORMAL", normal_space="OBJECT", normal_r="POS_X", normal_g="POS_Y",
@@ -3954,7 +4082,8 @@ def bake_chunk(F, cid, a):
                 gscale=gscale, units=units, tris=dict(atlas=int(sum(_tris(it.mesh) for it in items)),
                                                       vc=int(sum(_tris(it.mesh) for it in items_vc))),
                 missing_hotspots=missing_hot, need=plan["need"], hold=plan["hold"], vc_small=vc_info,
-                vc_samples=a.vc_samples, normal_guide=bool(normals))
+                vc_samples=a.vc_samples, normal_guide=bool(normals), quality=a.quality,
+                bake_settings=bake_settings(a, sc))
     dump(os.path.join(cdir, "items.json"), items_json, indent=None)
     dump(os.path.join(cdir, "items_vc.json"), vc_json, indent=None)
     bpy.data.libraries.write(os.path.join(cdir, "export.blend"), {ob_at} | ({ob_vc} if ob_vc is not None else set()),
@@ -3966,6 +4095,7 @@ def bake_chunk(F, cid, a):
     bpy.data.collections.remove(occ_coll)
     T["bake_total"] = round(time.time() - t0, 1)
     out = dict(id=cid, atlases=atlases, gscale=gscale, units=units, times=T, items=len(items),
+               quality=a.quality, bake_settings=meta["bake_settings"],
                tris_blender=meta["tris"]["atlas"] + meta["tris"]["vc"], tris_vc=meta["tris"]["vc"],
                vc_small=vc_info, missing_hotspots=missing_hot, hidden=len(hid), occluders=len(occ_objs),
                dedupe=F.get("check", {}).get("dedupe", {}).get(cid, {}))
@@ -4065,8 +4195,19 @@ def bake_backdrop(F, a):
         items.append(_full_item(F, i, me, "vc", "far"))
     log("backdrop far set", len(far_idx), "records,", tot_far + used_far, "tris (slender", int(sl.sum()), ")")
     tot_px = {}
+    link_px = {}
     for kk, cid in enumerate(ids):
         idx = np.nonzero(grp == kk)[0]
+        # (round 11, S3) the link stairs' structure goes in whole, outside the budget (proxy_whole)
+        whole = np.array([proxy_whole(R.name[i], bool(R.inst[i])) for i in idx], bool)
+        wt = 0
+        for i in idx[whole]:
+            me = F["picker"].get(R.tkey[i], 1.0)
+            if me is not None and len(me.polygons):
+                items.append(_full_item(F, i, me, "vc", "proxy." + cid))
+                wt += _tris(me)
+        link_px[cid] = dict(records=int(whole.sum()), tris=int(wt))
+        idx = idx[~whole]
         cand = idx[diag[idx] >= PROXY_MIN_DIAG]
         score = diag[cand] * np.where([R.top[i] == cid for i in cand], 3.0, 1.0)
         cand = cand[np.argsort(-score)][:PROXY_MAX_RECS]
@@ -4080,15 +4221,17 @@ def bake_backdrop(F, a):
                                   isl_cap=ISLAND_FLOOR_SHARE_PROXY * bp)
         for i, me in picked:
             items.append(_full_item(F, i, me, "vc", "proxy." + cid))
-        tot_px[cid] = int(totp + used_px[kk])
-        log("proxy", cid, len(cand), "records,", totp, "+", used_px[kk], "terrain tris")
+        tot_px[cid] = int(totp + used_px[kk] + wt)
+        log("proxy", cid, len(cand), "records,", totp, "+", used_px[kk], "terrain tris +", wt, "whole link tris in",
+            link_px[cid]["records"], "records")
+    log("proxies: whole link structure", sum(v["tris"] for v in link_px.values()), "tris", json.dumps(link_px))
     _clean_items(items, "backdrop")
     T["lod"] = round(time.time() - t0, 1)
     if a.plan_only:
         out = dict(id="backdrop", plan_only=True, items=len(items),
                    tris_blender=int(sum(ma(it.mesh).np for it in items)), far_tris=int(tot_far + used_far),
-                   proxy_tris=tot_px, split_far=int(used_far), islands=F.get("check", {}).get("islands", {}),
-                   prev=_prev_chunk_stats("backdrop"), times=T)
+                   proxy_tris=tot_px, proxy_link_tris=link_px, split_far=int(used_far),
+                   islands=F.get("check", {}).get("islands", {}), prev=_prev_chunk_stats("backdrop"), times=T)
         dump(os.path.join(BAKE_OUT, "plan_backdrop.json"), out)
         log("PLAN backdrop triangles", out["tris_blender"], "(last bake %s)" % out["prev"].get("tris_blender"),
             "far", out["far_tris"], "proxies", json.dumps(tot_px))
@@ -4147,6 +4290,7 @@ def bake_backdrop(F, a):
     items_json = [dict(kind="vc", index=j, zone=it.zone, hot="", top=it.top, owner=it.owner, name=it.name)
                   for j, it in enumerate(items)]
     meta = dict(chunk="backdrop", atlases=[], vc_samples=a.vc_samples, light=BAKE_LIGHT,
+                quality=a.quality, bake_settings=bake_settings(a, sc),
                 tris=dict(vc=int(sum(ma(it.mesh).np for it in items))))
     dump(os.path.join(cdir, "items.json"), items_json, indent=None)
     bpy.data.libraries.write(os.path.join(cdir, "export.blend"), {ob_vc}, fake_user=True)
@@ -4155,7 +4299,7 @@ def bake_backdrop(F, a):
         bpy.data.objects.remove(o)
     bpy.data.collections.remove(occ_coll)
     out = dict(id="backdrop", items=len(items), tris_blender=meta["tris"]["vc"], hidden=len(hid),
-               occluders=len(occ_objs))
+               occluders=len(occ_objs), quality=a.quality, bake_settings=meta["bake_settings"], proxy_link_tris=link_px)
     if not a.no_post:
         t1 = time.time()
         try:
@@ -4221,6 +4365,9 @@ def cmd_bakefull(a):
         old["chunks"][r["id"]] = r
     old["light"] = BAKE_LIGHT
     old["samples"] = a.samples
+    # the last run's quality; a partial run can mix qualities: each chunk's own entry says which it was baked at
+    old["quality"] = a.quality
+    old["bake_settings"] = bake_settings(a, F["sc"])
     dump(p, old, indent=1)
 
 
@@ -4237,7 +4384,7 @@ def _post_atlas_pngs(atlases, cdir, a):
         if a.skip_atlas and os.path.isfile(p):
             pngs.append(p)
             continue
-        post, n_im, n_al = post_scene((at["size"], at["size"]), a.exposure, a.sat, denoise=True)
+        post, n_im, n_al = post_scene((at["size"], at["size"]), a.exposure, a.sat, denoise=True, quality=a.quality)
         n_im.image = bpy.data.images.load(os.path.join(cdir, at["name"] + ".exr"), check_existing=False)
         n_al.image = bpy.data.images.load(os.path.join(cdir, at["name"] + "_albedo.exr"), check_existing=False)
         nrm = _normal_guide(post, os.path.join(cdir, at["name"] + "_normal.exr"))
@@ -5059,12 +5206,17 @@ def main():
     ap.add_argument("--proxy-tris", type=int, default=PROXY_TRIS_FULL, help="full backdrop: per-area proxy")
     ap.add_argument("--camera-json", default="", help="full verify: camera.json (default out/web/full/site)")
     ap.add_argument("--water-max", type=float, default=2500.0, help="water: farthest waterfall/beam kept (m)")
-    ap.add_argument("--samples", type=int, default=0, help="atlas samples (proto 512, full 160)")
+    ap.add_argument("--quality", default="dev", choices=sorted(BAKE_QUALITY),
+                    help="dev: the fast bake (default); production: one final bake, less noise, same files and sizes "
+                         "(BAKE_QUALITY; about 2x the time, see 'Quality' in the docstring)")
+    ap.add_argument("--samples", type=int, default=0,
+                    help="atlas samples (default from --quality: dev proto 512 / full 160, production 768)")
     ap.add_argument("--plan-only", action="store_true",
                     help="bake / bakefull: stop after LOD, atlas grouping and unwrap (bakefull: bake/plan_<chunk>.json, "
                          "bake/plan_stats.json with the range normal / border / island checks; no bake, no post)")
     ap.add_argument("--debug-proxy", action="store_true", help="bake: save the unwrap proxies (out/web/bake/debug)")
-    ap.add_argument("--vc-samples", type=int, default=0, help="vertex colour samples (proto 512, full 256)")
+    ap.add_argument("--vc-samples", type=int, default=0,
+                    help="vertex colour samples (default from --quality: dev proto 512 / full 256, production 1024)")
     ap.add_argument("--atlas-tris", type=int, default=0, help="proto: 1M for both areas; full: per chunk (700k)")
     ap.add_argument("--vc-tris", type=int, default=220_000)
     ap.add_argument("--max-atlases", type=float, default=3.0, help="texel budget in 4096^2 atlases")
@@ -5097,8 +5249,10 @@ def main():
         RAW = os.path.join(ROOT, "out", d, "raw")
         CACHE_DIR = os.path.join(ROOT, "bakecache", d)
         log("test outputs:", BAKE_OUT, RAW, CACHE_DIR)
-    a.samples = a.samples or (160 if full else 512)
-    a.vc_samples = a.vc_samples or (256 if full else 512)
+    Q = BAKE_QUALITY[a.quality]
+    a.samples = a.samples or Q["samples"][PROFILE]
+    a.vc_samples = a.vc_samples or Q["vc_samples"][PROFILE]
+    log_bake_quality(a)
     a.atlas_tris = a.atlas_tris or (FULL_ATLAS_TRIS if full else 1_000_000)
     a.out = EW.fix_path(a.out)
     a.glb_dir = EW.fix_path(a.glb_dir) if a.glb_dir else RAW

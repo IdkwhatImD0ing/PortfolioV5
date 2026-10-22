@@ -153,13 +153,18 @@ export function openingMegabytes(raw: unknown, low: boolean): number | null {
  * the things the panel talks about sit off that narrower view. Once the camera has come to rest at
  * such a stop on a portrait screen, the view turns this far (degrees, positive turns left) toward
  * them, as a drag would turn it; the next scroll swings it back. Measured on a 390 x 844 phone with
- * the panel up (share of each item hotspot clear of the panel and the top bar):
+ * the panel up (share of each item hotspot clear of the panel and the top bar), as turns from the
+ * path's own view:
  * - mirror: the Heart Mirror 26% and the censer 0% at 0; both 100% from 10.
  * - mission: the first two experience entries 0% and the third 38% at 0; all seven 100% at 10, the
  *   hall 81% and its bell 72%.
+ * Both stops' framing (framing.ts STOP_FRAMING, every screen) now turns them 8 degrees left (and the
+ * mission hall 2 up), so the portrait turn adds the rest: 2 at the mirror (10 in all); 5 at the
+ * mission hall, where 10 in all left the first post (Pinterest) cut by the left edge and 13 puts the
+ * whole board in with a margin either side.
  * The arena's banners sit off both edges, so no turn helps there.
  */
-export const PORTRAIT_YAW_DEG: Readonly<Record<string, number>> = { mirror: 10, mission: 10 };
+export const PORTRAIT_YAW_DEG: Readonly<Record<string, number>> = { mirror: 2, mission: 5 };
 
 /** The turn (radians, positive left) for a stop on a portrait screen; 0 when it needs none. */
 export function portraitYaw(holdId: string | null, portrait: boolean): number {

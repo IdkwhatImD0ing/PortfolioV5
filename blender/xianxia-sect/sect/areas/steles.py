@@ -85,7 +85,10 @@ WALK_Y0, WALK_Y1 = 9.0, 12.0   # cross walk between the stele fields and the ter
 OUT_TOP = -0.34                # paving laid on the world terrace (grass at -0.4)
 BACK_Y0, BACK_Y1 = COURT_Y1, 40.0  # walk behind the back wall, joining both rear gates
 FORE_X = 9.0                   # arrival forecourt half width
-FORE_Y0 = -57.0
+FORE_Y0 = -56.0                # its outer edge: the arrival line (AREA['arrival'] y). Round 11: it ran 1 m further
+                               # out, under the library stair's last tread (world.py lands the stair at the arrival
+                               # point), and the two lay in one plane over 5 m2: they z-fought on the web and baked a
+                               # dark band across that tread. Now the tread meets the paving edge to edge
 ENTRY_GATE_Y = -50.0
 FLIGHT_YS = (-15.0, 1.0)       # three-step flights from the aisle up into each stele field
 FLIGHT_W = 3.0

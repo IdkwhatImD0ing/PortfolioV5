@@ -82,6 +82,19 @@ plan gives it (chunks.npz: the area where it is nearest the camera; never split)
 - Card textures: transparent texels get the colour of the nearest leaves (push-pull fill per sprite), so mipmaps and
   alpha-tested edges show no dark fringes. Material names start with 'trees.mesh' / 'trees.needle' / 'trees.cards'
   (sect_pack.py).
+Quality (--quality dev|production, bake_web.BAKE_QUALITY; bake_web.py -- trees passes its own --quality on): dev (the
+default) is unchanged. production bakes the mesh variants at 512 samples (dev 128), their albedo guide at 32 (dev 8)
+and the card sprites at 192 (dev 48), with adaptive sampling off and the denoisers pinned to High. Slot sizes, sprite
+sizes, files and brightness stay the same. Production mesh bakes and sprites carry QUALITY_TAG ('.qp') in their cache
+names, so they never reuse dev renders; the sun-visibility cache is shared. The build's first line says which
+("BAKE TREES quality production mesh 512 ..."), trees_stats.json stores it (bake_settings).
+Expected time on one RTX 5090: the dev build took 39 min = 30 min sun ray casts (not sample-bound; 0 when sunvis.npz is
+cached on the box) + 1.5 min mesh bakes + 5.3 min sprites + 1 min export. Production: mesh bakes about 6 min (up to 12
+if adaptive sampling had stopped dev texels early), sprites up to about 21 min, the rest unchanged: about 1 h cold,
+about 30 min with the ray-cast cache.
+
+    ... sect_chase.blend --python bake_trees.py -- build --quality production
+
 Caches on the box (bakecache/trees_full, not copied back): sun visibility per record key, mesh bakes, sprites;
 --fresh ignores them. Mesh-bake names carry NEEDLE_TAG / TWIG_TAG (needle pines) and LIGHT_TAG (shade variant), sprite
 names TWIG_TAG (twig-card pines) and LIGHT_TAG (shade variant), so a change there re-bakes only what it affects.
@@ -115,9 +128,31 @@ SPRITE_PX = 128
 SLOT_PX = {"pine": 384, "blossom": 320, "shrub": 160, "grass": 64, "lotus": 64, "bamboo": 192}
 REMOVE_MATS = ("M.nature_pine_needle", "M.nature_shrub_leaf", "M.nature_flower_azalea", "M.nature_flower_peach",
                "M.nature_bamboo_leaf")
-MESH_SAMPLES = 128
-SPRITE_SAMPLES = 48
+# Sample counts come from bake_web.BAKE_QUALITY by --quality (dev: mesh variants 128, their albedo guide 8, card
+# sprites 48; production: 512, 32, 192). Production bakes and sprites carry QUALITY_TAG in their cache names.
+QUALITY_TAG = dict(dev="", production=".qp")
 GROUND = (0.11, 0.13, 0.06)
+
+
+def tq(a):
+    """This run's row of bake_web.BAKE_QUALITY (tree_mesh, tree_albedo, tree_sprite, adaptive, denoise_pin)."""
+    return BW.BAKE_QUALITY[getattr(a, "quality", "dev")]
+
+
+def tree_settings(a):
+    """The effective tree bake settings: logged at the start of a build, stored in trees_stats.json."""
+    Q = tq(a)
+    q = getattr(a, "quality", "dev")
+    return dict(quality=q, mesh_samples=Q["tree_mesh"], albedo_samples=Q["tree_albedo"],
+                sprite_samples=Q["tree_sprite"],
+                adaptive="scene default" if Q["adaptive"] is None else ("on" if Q["adaptive"] else "off"),
+                denoise="pinned High" if Q["denoise_pin"] else "default", cache_tag=QUALITY_TAG[q])
+
+
+def log_tree_quality(a):
+    s = tree_settings(a)
+    log("TREES quality", s["quality"], "mesh", s["mesh_samples"], "albedo", s["albedo_samples"], "sprites",
+        s["sprite_samples"], "adaptive", s["adaptive"], "denoise", s["denoise"], "cache tag", repr(s["cache_tag"]))
 
 
 def mesh_nb(fam):
@@ -237,10 +272,10 @@ def sun_visibility(sc, pts, radius, sdir):
 class Rig:
     """New scene with the sect sky (rotatable), sun lamp, fill sun, ground plane, Cycles GPU, AgX + grade."""
 
-    def __init__(self, src, exposure, sat):
+    def __init__(self, src, exposure, sat, quality="dev"):
         from sect.lib import look as LK
         self.sc = sc = bpy.data.scenes.new("trees.proto")
-        BW.setup_cycles(sc, MESH_SAMPLES)
+        BW.setup_cycles(sc, BW.BAKE_QUALITY[quality]["tree_mesh"], quality)
         sc.view_settings.view_transform = LK.LOOK["view_transform"]
         sc.view_settings.look = LK.LOOK["look"]
         sc.view_settings.exposure = exposure
@@ -378,7 +413,7 @@ def variant_az(v, nb):
 def cmd_trees(a):
     if EW.PROFILE == "full":           # bake_web.py -- trees --profile full: the full-path build (see main())
         fa = full_args(["build"] + list(getattr(a, "extra", None) or []))
-        for k in ("exposure", "sat", "tree_near"):
+        for k in ("exposure", "sat", "tree_near", "quality"):
             if hasattr(a, k):
                 setattr(fa, k, getattr(a, k))
         sc = bpy.context.scene
@@ -495,7 +530,8 @@ def cmd_trees(a):
         r["var"] = nb if v < 0.5 else int(round(az / (2 * math.pi / nb))) % nb
 
     # ---- prototype scene: bake mesh variants, render card sprites
-    rig = Rig(sc, a.exposure, a.sat)
+    log_tree_quality(a)
+    rig = Rig(sc, a.exposure, a.sat, a.quality)
     os.makedirs(TCACHE, exist_ok=True)
     os.makedirs(TREES_OUT, exist_ok=True)
     used_mesh = sorted({(r["fam"], r["var"]) for r in recs if r["cls"] == "mesh"})
@@ -541,12 +577,12 @@ def cmd_trees(a):
             alb = bpy.data.images.new("tree_alb.%s" % fam, spx, spx, alpha=False, float_buffer=True)
             for tn in fam_nodes.get(fam, []):
                 tn.image = alb
-            rig.sc.cycles.samples = 8
+            rig.sc.cycles.samples = tq(a)["tree_albedo"]
             with rig.ctx(ob):
                 bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, uv_layer="bake", margin=4,
                                     margin_type="EXTEND", use_clear=True, target="IMAGE_TEXTURES")
             images[(fam, "albedo")] = alb
-            rig.sc.cycles.samples = MESH_SAMPLES
+            rig.sc.cycles.samples = tq(a)["tree_mesh"]
             nb = mesh_nb(fam)
             for (f2, v) in used_mesh:
                 if f2 != fam:
@@ -578,7 +614,7 @@ def cmd_trees(a):
         alb[y:y + sz, x:x + sz] = pixels(images[(fam, "albedo")])
     p_lin = save_float(big, "trees_mesh_lin", os.path.join(TCACHE, "trees_mesh_lin.exr"))
     p_alb = save_float(alb, "trees_mesh_alb", os.path.join(TCACHE, "trees_mesh_alb.exr"))
-    post, n_im, n_al = BW.post_scene((W, H), a.exposure, a.sat, denoise=True)
+    post, n_im, n_al = BW.post_scene((W, H), a.exposure, a.sat, denoise=True, quality=a.quality)
     n_im.image = bpy.data.images.load(p_lin, check_existing=False)
     n_al.image = bpy.data.images.load(p_alb, check_existing=False)
     p_mesh_png = BW.run_post(post, os.path.join(TREES_OUT, "trees_mesh.png"))
@@ -596,7 +632,7 @@ def cmd_trees(a):
     rig.sc.render.film_transparent = True
     rig.sc.render.resolution_x = rig.sc.render.resolution_y = SPRITE_PX
     rig.sc.render.resolution_percentage = 100
-    rig.sc.cycles.samples = SPRITE_SAMPLES
+    rig.sc.cycles.samples = tq(a)["tree_sprite"]
     rig.sc.cycles.use_denoising = True
     ims = rig.sc.render.image_settings
     ims.file_format = "PNG"
@@ -739,7 +775,7 @@ def cmd_trees(a):
     export_trees(path, made)
     st = EW.glb_stats(path)
     T["total"] = round(time.time() - t0, 1)
-    out = dict(glb=st, blender_tris=tri_total, stats=dict(stats), times=T,
+    out = dict(glb=st, blender_tris=tri_total, stats=dict(stats), times=T, bake_settings=tree_settings(a),
                mesh_variants=[list(k) for k in used_mesh], card_variants=[list(k) for k in used_card],
                atlas=dict(mesh=[W, H], cards=[SW, SH]),
                lit_share=round(float(np.mean([r["vis"] >= 0.5 for r in recs])), 3),
@@ -1919,6 +1955,7 @@ def card_object(name, lst, R, C, uvs, mat):
 
 
 def full_build(a, sc, P):
+    log_tree_quality(a)
     T = {}
     t0 = time.time()
     R, recs, ids = P["R"], P["recs"], P["ids"]
@@ -2039,10 +2076,11 @@ def full_build(a, sc, P):
         r["cvar"] = CARD_NB if v < 0.5 else int(round(az / (2 * math.pi / CARD_NB))) % CARD_NB
 
     # ---- mesh variants: bake every (family, variant) any chunk uses (cached EXRs)
-    rig = Rig(sc, a.exposure, a.sat)
+    rig = Rig(sc, a.exposure, a.sat, a.quality)
     rig.shade_sun = a.shade_sun
     rig.sc.cycles.transparent_max_bounces = TREE_TRANSPARENT_BOUNCES
     ltag = light_tag(a)
+    qtag = QUALITY_TAG[a.quality]      # production renders never reuse dev caches (and dev never reuses production's)
     used_mesh = sorted({(r["fam"], r["mvar"]) for r in recs if r["cls"] == "mesh"})
     fam_uv, fam_tag = {}, {}
     for fam, me in fam_mesh.items():
@@ -2082,7 +2120,7 @@ def full_build(a, sc, P):
     def cache_path(fam, v):
         # the shade variant's lighting: its own tag (light_tag; none with --shade-sun 0, the old bake)
         lt_ = "." + ltag if v == mesh_nb(fam) and ltag else ""
-        return os.path.join(FULL_CACHE, "mesh", "%s.%s%s.exr" % (fam_tag[fam], v, lt_))
+        return os.path.join(FULL_CACHE, "mesh", "%s.%s%s%s.exr" % (fam_tag[fam], v, lt_, qtag))
 
     for fam in fam_mesh:
         for v in ["albedo"] + [v for f2, v in used_mesh if f2 == fam]:
@@ -2122,13 +2160,13 @@ def full_build(a, sc, P):
                     alb = bpy.data.images.new("tree_alb.%s" % fam, spx, spx, alpha=False, float_buffer=True)
                     for tn in fam_nodes.get(fam, []):
                         tn.image = alb
-                    rig.sc.cycles.samples = 8
+                    rig.sc.cycles.samples = tq(a)["tree_albedo"]
                     with rig.ctx(ob):
                         bpy.ops.object.bake(type="DIFFUSE", pass_filter={"COLOR"}, uv_layer="bake", margin=4,
                                             margin_type="EXTEND", use_clear=True, target="IMAGE_TEXTURES")
                     bake_px[(fam, "albedo")] = pixels(alb)
                     save_float(bake_px[(fam, "albedo")], "c", cache_path(fam, "albedo"))
-                rig.sc.cycles.samples = MESH_SAMPLES
+                rig.sc.cycles.samples = tq(a)["tree_mesh"]
                 nb = mesh_nb(fam)
                 for (f2, v) in used_mesh:
                     if f2 != fam or (fam, v) in bake_px:
@@ -2164,7 +2202,7 @@ def full_build(a, sc, P):
             gpos[(fam, v)] = (x, y, sz)
         p_lin = save_float(big, "trees_full_lin", os.path.join(FULL_CACHE, "trees_mesh_lin.exr"))
         p_alb = save_float(alb, "trees_full_alb", os.path.join(FULL_CACHE, "trees_mesh_alb.exr"))
-        post, n_im, n_al = BW.post_scene((W, H), a.exposure, a.sat, denoise=True)
+        post, n_im, n_al = BW.post_scene((W, H), a.exposure, a.sat, denoise=True, quality=a.quality)
         n_im.image = bpy.data.images.load(p_lin, check_existing=False)
         n_al.image = bpy.data.images.load(p_alb, check_existing=False)
         p_all = BW.run_post(post, os.path.join(FULL_CACHE, "trees_mesh_all.png"))
@@ -2187,7 +2225,7 @@ def full_build(a, sc, P):
     cam_ob.data.type = "ORTHO"
     rig.sc.render.film_transparent = True
     rig.sc.render.resolution_percentage = 100
-    rig.sc.cycles.samples = SPRITE_SAMPLES
+    rig.sc.cycles.samples = tq(a)["tree_sprite"]
     rig.sc.cycles.use_denoising = True
     ims = rig.sc.render.image_settings
     ims.file_format = "PNG"
@@ -2226,6 +2264,7 @@ def full_build(a, sc, P):
                                   ".cn0" if a.no_crown_normals else "")
         if v == CARD_NB and ltag:
             tag += "." + ltag
+        tag += qtag
         return os.path.join(FULL_CACHE, "sprites", "%s.v%d.%s.%d%s.png" % (fam, v, vw, px, tag))
     spr, spr_scale = {}, {}
     rendered = 0
@@ -2287,7 +2326,7 @@ def full_build(a, sc, P):
     tot = dict(triangles=sum(f["glb"]["triangles"] for f in files.values() if "glb" in f),
                bytes=sum(f["glb"]["bytes"] for f in files.values() if "glb" in f),
                draw_calls=sum(f["glb"]["draw_calls"] for f in files.values() if "glb" in f))
-    out = dict(files=files, totals=tot, times=T, records=len(recs),
+    out = dict(files=files, totals=tot, times=T, records=len(recs), bake_settings=tree_settings(a),
                lit_share=round(float(np.mean([r["vis"] >= 0.5 for r in recs])), 3),
                mesh_variants=len(used_mesh), card_keys=len(need_px),
                card_keys_hold=sum(1 for x in need_px.values() if x >= a.hold_sprite_px),
@@ -2770,6 +2809,9 @@ def full_args(argv):
     ap.add_argument("--sat", type=float, default=1.15)
     ap.add_argument("--only", default="", help="build: chunk ids (and/or 'backdrop') to write; default all")
     ap.add_argument("--fresh", action="store_true", help="ignore the caches in bakecache/trees_full")
+    ap.add_argument("--quality", default="dev", choices=sorted(BW.BAKE_QUALITY),
+                    help="dev: the fast bake (default); production: 4x samples for mesh bakes and sprites, adaptive "
+                         "sampling off, own cache names (bake_web.BAKE_QUALITY)")
     ap.add_argument("--frames", default="", help="verify: Blender frames (default: the 11 hold frames)")
     ap.add_argument("--res", default="1280x720")
     ap.add_argument("--max-chunks", type=int, default=0,

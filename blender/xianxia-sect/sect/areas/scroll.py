@@ -14,8 +14,8 @@ Layout (local frame, front = -Y, z = 0 walkable top):
   walk on the pavilion axis (x 12) to the foot of the pavilion's front stair;
 - the way out: side steps off the terrace's right edge, a paved exit walk east through a
   one-bay gate to the depart point where the stair to the formation starts;
-- the focal object: a colossal unrolled jade bamboo-slip scroll (22 x 9 m at 0.9x, slightly
-  curved, glowing script) left of the axis, turned 40 deg toward the 1103 hold camera, held high
+- the focal object: a colossal unrolled jade bamboo-slip scroll (22 x 9 m at 0.86x, slightly
+  curved, glowing script) left of the axis, its face square to the 1103 hold view (r10), held high
   in a standing frame (round 2026-10-21 r5: it used to float with nothing holding it): two
   vermilion posts behind it, clamped at the foot by stone slabs with iron bands, a curved sill
   under the slips and a top rail over them, and the Ming Sect's 日 + 月 = 明 on the post heads
@@ -28,7 +28,7 @@ Layout (local frame, front = -Y, z = 0 walkable top):
   back rail, against the right rail of the terrace (they used to float in a fanned stack);
 - an ancient pine leaning over the back edge, bamboo and a blossom tree for colour, scholar rocks
   on low stone pedestals.
-The camera glides along the scroll's face (almost reading it), then passes its right end
+The camera flies in toward the scroll's face, holds square to it (1103), then turns past its right end
 toward the pavilion.
 """
 
@@ -58,20 +58,40 @@ K = "scroll"
 PAV = (12.0, 29.5)            # two-storey pavilion centre: back right, on the cliff edge (r ~ 39 m)
 PAV_R = 5.8                   # pavilion column circumradius (its platform reaches ~7.5 m)
 LANTERN_LIFT = 0.16           # the eave-corner lanterns' lift (r5): cord top 3 cm into the lower eave's soffit
-SCROLL_C = (-4.0, 6.0, 13.0)  # centre of the scroll (held by its frame, sect/patch_r5_scroll.py)
+# The 1103 hold as the site shows it (r10): chase.cam's place and heading there, in this area's frame (read from
+# out/sect_chase.blend; sect/patch_r10_scroll_face.py checks the file still agrees), and the client's stop framing on
+# top of it (client/src/lib/sect/framing.ts STOP_FRAMING.scroll: the view turns 6 deg left, no pitch, easing in over
+# the last FRAMING_REACH frames before the hold and out over as many after it; hold_turn).
+HOLD_FRAME = 1103
+HOLD_CAM = (0.20, -38.11, 15.66)
+HOLD_HEADING = math.radians(77.27)  # chase.cam's view direction in plan at the hold (atan2 of its forward y, x)
+HOLD_TURN = (6.0, 0.0)              # framing.ts STOP_FRAMING.scroll: yaw (deg, + = left, about world up), pitch (deg)
+FRAMING_REACH = 48                  # framing.ts FRAMING_REACH_FRAMES
+SCROLL_C = (-8.2, 12.0, 11.5)   # centre of the scroll (held by its frame, sect/patch_r5_scroll.py)
 SCROLL_W, SCROLL_H = 22.0, 9.0
 SCROLL_CURVE = 0.08           # bow of the scroll in plan (props.bamboo_slip_scroll curve: ends come 0.08 W forward)
-SCROLL_SCALE = 0.9            # (audit D2, 2026-10-21: at (-10, -4), full size and square to the axis, 49 % of it
-SCROLL_YAW = math.radians(-40.0)   # lay off the left edge of the 1103 hold. Turned 40 deg toward that camera's left,
-                              # 0.9x, 6 m right and 10 m back it is all in frame, left of the pavilion, its face 47 deg
-                              # off the view, and the flight passes it 21 m off instead of 18)
+SCROLL_SCALE = 0.86           # r10 (owner, 2026-10-22: "the jade slip does not seem to be facing the user"): it used to
+                              # stand at (-4, 6, 13), 0.9x, turned -40 deg (audit D2), its face ~30 deg off square to the
+                              # hold view. Square to the turned hold view it is wider on screen, so to stay whole in the
+                              # frame, 35 px clear of the pavilion at the hold and never over it on the approach it moved
+                              # 6 m back, 4 m left and 1.5 m down (posts as long as the panel is tall) and shrank to 0.86x;
+                              # its glyph cells are 11.8-12.1 px tall at 1600 x 900 (13-17 px before, turned away)
+SCROLL_YAW = HOLD_HEADING + math.radians(HOLD_TURN[0]) - math.pi / 2   # its front (-Y) looks straight back along the
+                              # turned hold view: the face lies parallel to the picture, both ends equally tall (-6.7 deg)
 SCROLL_TEXT = P.JIN_YONG_VERSES   # what the slips say (r8): Jin Yong, each passage from the top of a new slip
 DESK = (4.0, 14.0)            # stone desk on the terrace, left of the axis walk (keeps x 12 clear)
 STAND_C = (23.2, 8.0)         # the Holy Fire Tokens' stand on the terrace: right of the axis walk, against the right
                               # rail, faces -Y (27 deg off the 1103 hold camera); clear of the route to the side
                               # steps (y -6 .. -1) and 3.8 m in front of the peach (r5: the stack floated at (21, -3, 6.5))
-RING_C = (SCROLL_C[0], SCROLL_C[1] + 1.0)   # the rune rings on the paving under the scroll
-RING_SCRIPT, RING_TRIGRAM = (9.0, 0.9), (6.4, 0.45)   # (radius to the band's centre, band width)
+RING_REF_SCALE = 0.9          # the scroll scale the rune rings' radii (and FRAME_RING_R) were laid out for
+RING_K = SCROLL_SCALE / RING_REF_SCALE   # r10: the rings (object scale in x and y) shrink with the scroll, so its
+                                         # posts keep their place between the two bands
+RING_BACK = 1.0               # the rings' centre lies this far (m at RING_REF_SCALE) behind the scroll's centre line
+RING_C = (SCROLL_C[0] - RING_K * RING_BACK * math.sin(SCROLL_YAW),
+          SCROLL_C[1] + RING_K * RING_BACK * math.cos(SCROLL_YAW))   # the rune rings on the paving under the scroll
+RING_SCRIPT, RING_TRIGRAM = (9.0, 0.9), (6.4, 0.45)   # (radius to the band's centre, band width) at RING_K 1; the
+                                                      # paving shows them RING_K times that (ring_bands)
+MOTES_TOP = 19.0              # the motes rise to this height (it was SCROLL_C z + 6 when the scroll stood at z 13)
 
 TERRACE_X = (-27.0, 27.0)
 TERRACE_Y = (-19.0, 24.0)     # the pavilion's own platform stands behind the back edge
@@ -212,14 +232,29 @@ def _scroll(coll, root):
                               rotation=(0.0, 0.0, SCROLL_YAW), passages=SCROLL_TEXT)
     sc.scale = (SCROLL_SCALE,) * 3
     scroll_frame(coll, root)
-    # glowing script ring on the paving under it, and motes rising toward it
-    P.rune_ring(coll, RING_SCRIPT[0], RING_SCRIPT[1], "script", seed=8, spin=0.02, groove=True, name=_n("ring"),
-                parent=root, location=(RING_C[0], RING_C[1], 0.0))
-    P.rune_ring(coll, RING_TRIGRAM[0], RING_TRIGRAM[1], "trigram", seed=9, spin=-0.03, name=_n("ring_in"),
-                parent=root, location=(RING_C[0], RING_C[1], 0.0))
-    P.spirit_motes(coll, 260, ((cx - 12, cy - 4, 0.6), (cx + 12, cy + 4, cz + 6)), seed=5, size=0.07,
+    # glowing script ring on the paving under it (shrunk with the scroll: RING_K), and motes rising toward it
+    for nm, (r, w), kind, seed, spin, groove in ((_n("ring"), RING_SCRIPT, "script", 8, 0.02, True),
+                                                 (_n("ring_in"), RING_TRIGRAM, "trigram", 9, -0.03, False)):
+        ring = P.rune_ring(coll, r, w, kind, seed=seed, spin=spin, groove=groove, name=nm, parent=root,
+                           location=(RING_C[0], RING_C[1], 0.0))
+        ring.scale = (RING_K, RING_K, 1.0)     # in plan only: they keep their 8 mm lift over the paving
+    P.spirit_motes(coll, 260, ((cx - 12, cy - 4, 0.6), (cx + 12, cy + 4, MOTES_TOP)), seed=5, size=0.07,
                    rise=0.15, name=_n("motes"), parent=root)
     return sc
+
+
+def hold_turn(frame):
+    """The client's stop-framing turn at path frame ``frame`` as (yaw, pitch) in radians (framing.ts framingAt for this
+    stop): HOLD_TURN times a smoothstep weight, 1 at HOLD_FRAME, 0 from FRAMING_REACH frames away. The view is turned
+    by yaw about world up (+ = left) and then by pitch about its own right axis (free-look.ts composeLook)."""
+    x = 1.0 - abs(frame - HOLD_FRAME) / float(FRAMING_REACH)
+    w = 0.0 if x <= 0.0 else 1.0 if x >= 1.0 else x * x * (3.0 - 2.0 * x)
+    return math.radians(HOLD_TURN[0]) * w, math.radians(HOLD_TURN[1]) * w
+
+
+def ring_bands():
+    """The two rune rings' bands on the paving as (inner, outer) radii in m from RING_C: (trigram, script)."""
+    return tuple((RING_K * (r - w / 2.0), RING_K * (r + w / 2.0)) for r, w in (RING_TRIGRAM, RING_SCRIPT))
 
 
 # ---- the scroll's standing frame (r5) --------------------------------------------------------------------------------
@@ -229,13 +264,14 @@ def _scroll(coll, root):
 # slabs bound with iron (jiagan shi, as at a temple's flagpoles), on stone plinths. The post heads carry the Ming
 # Sect's 日 + 月 = 明: a gold sun on the left post, a silver crescent moon on the right, the scroll between them.
 # Everything is built in the scroll's own frame (the Empty scroll.scroll_frame shares jade_scroll's place, turn and
-# 0.9 scale; numbers below are in those unscaled units, front = -Y, the slips' arc through the origin). The posts
-# stand in the paving between the two rune rings (RING_TRIGRAM's outer edge 6.63 m, RING_SCRIPT's inner 8.55 m from
-# RING_C), which fixes how far out along the arc each one is (frame_points).
+# SCROLL_SCALE; numbers below are in those unscaled units, front = -Y, the slips' arc through the origin). The posts
+# stand in the paving between the two rune rings (RING_TRIGRAM's outer edge and RING_SCRIPT's inner edge, ring_bands),
+# which fixes how far out along the arc each one is (frame_points). r10: the rings' centre lies RING_BACK straight
+# behind the scroll's centre (it used to be 1 m toward +Y whatever the turn), so the two posts stand symmetrically.
 FRAME = K + ".scroll_frame"
 FRAME_ITEM = "r5_scroll_frame"     # obj['sect_item'] on every frame object (patch_r5_scroll.py finds them by it)
-FRAME_RING_R = 7.59                # m (root frame) from RING_C to each post's centre: midway between the two ring bands
-FRAME_POST_R = 0.42                # post radius at its foot (tapers 7 % to its head): 0.76 m across at 0.9 x
+FRAME_RING_R = 7.59 * RING_K       # m (root frame) from RING_C to each post's centre: midway between the two ring bands
+FRAME_POST_R = 0.42                # post radius at its foot (tapers 7 % to its head): 0.84 m across unscaled
 FRAME_POST_GAP = 0.22              # slips' centre line -> the post's front face (the binding cords reach 0.14 back)
 FRAME_SILL = (-0.26, 0.30, 0.48)   # sill under the slips: radial front, back (+ = behind the slips) and height
 FRAME_TOP = (-0.20, 0.28, 0.40)    # top rail over them

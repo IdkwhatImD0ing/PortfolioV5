@@ -351,3 +351,20 @@ production target below is kept only for reference.
 volumetric shadows, motion blur, AgX view transform, compositor bloom (Glare node), subtle
 vignette. Output PNG frames, then an H.264 MP4 for viewing plus an all-keyframe MP4 for
 scroll-scrubbing on the website.
+
+## 7. Web light bake (/sect)
+
+The website's scene is light-baked in Cycles on the rented cloud GPU, never on the PC:
+`sect/bake_web.py -- bakefull,water --profile full` (areas + backdrop, water),
+`sect/bake_trees.py -- build` (vegetation), then `tools/sect_pack.py --profile full`.
+
+- `--quality dev` (the default) is the fast bake for development: atlas 160 samples,
+  vertex colours 256, trees 128 / sprites 48. About 47 min (areas) + 39 min (trees,
+  30 of them sun ray casts that are cached on the box) on one RTX 5090.
+- `--quality production` is for one final bake once the content is final. It changes
+  only noise: atlas 768, vertex colours 1024, trees 512 / sprites 192, denoiser guide
+  passes 4x, adaptive sampling off, denoisers pinned to High. Same files, sizes, chunk
+  plan and brightness. About 1 h 40 min (areas; worst case 3.5 h) + 30-60 min (trees).
+- One table, `BAKE_QUALITY` in `bake_web.py`, holds both. `--samples` / `--vc-samples`
+  still override. Each run logs `BAKE quality ...` first and each chunk's JSON records it.
+  `sect_pack.py --quality` is unrelated (WebP quality).

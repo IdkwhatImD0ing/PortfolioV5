@@ -2624,6 +2624,9 @@ def balustrade(name, collection, points, height=1.1, post_spacing=1.8, mat="marb
 
 _balustrade = balustrade     # stairs() has a parameter named balustrade
 
+RAMP_BODY_TOP = -0.02        # stairs(): the yubu ramp body's top, relative to the nosing line (was +0.015)
+RAMP_BODY_TOP_OLD = 0.015    # what builds before round 11 made (patch_r11_areas.py lowers those bodies)
+
 
 def _ramp_relief(n_x, n_y, w, L):
     """Height field (0-1) of carved cloud scrolls and a dragon-like ridge for the yubu ramp."""
@@ -2746,12 +2749,15 @@ def stairs(name, collection, width, height, run_per_step=0.33, ramp=True, balust
                 rf.append((a, a + 1, a + nx_ + 2, a + nx_ + 1))
         ramp_ob = U.mesh_from_pydata(_child(root, "ramp"), rv, rf, collection, materials=[mat],
                                      smooth=math.radians(60), parent=root)
-        # body under the relief (sloped block between the inner stringers)
+        # body under the relief (sloped block between the inner stringers). Its top runs 2 cm under the nosing line,
+        # at least 4 cm below the relief's lowest point (nosing + 0.02): at +0.015 it lay 5 mm under the flat parts of
+        # the relief, and the two z-fought on the web beyond ~180 m (round 11; patch_r11_areas.py lowers built ones)
         verts.clear()
         faces.clear()
-        sloped_block(-hr, hr, 0.015)
-        U.mesh_from_pydata(_child(root, "ramp_body"), verts, faces, collection, materials=[mat],
-                           smooth=False, parent=root)
+        sloped_block(-hr, hr, RAMP_BODY_TOP)
+        body = U.mesh_from_pydata(_child(root, "ramp_body"), verts, faces, collection, materials=[mat],
+                                  smooth=False, parent=root)
+        _recalc_normals(body)        # sloped_block's winding faces inward (the steps get the same recalc above)
     if balustrade:
         for sx in (-1, 1):
             x = sx * (hw - sw * 0.5)

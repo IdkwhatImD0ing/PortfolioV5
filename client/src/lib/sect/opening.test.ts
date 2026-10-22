@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { fovForAspect } from "./camera-path";
+import { STOP_FRAMING } from "./framing";
 import { downloadFraction, flickStop, openingMegabytes, PORTRAIT_YAW_DEG, portraitYaw, POSTER, posterBox, posterMatches, type DownloadGroup } from "./opening";
 import { buildScrollMap, FLIGHT_SCROLL } from "./scroll-map";
 
@@ -143,8 +144,10 @@ describe("openingMegabytes", () => {
 
 describe("portraitYaw", () => {
   it("turns toward the items at the stops that need it, on portrait screens only", () => {
-    expect(portraitYaw("mirror", true)).toBeCloseTo(10 * DEG, 9);
-    expect(portraitYaw("mission", true)).toBeCloseTo(10 * DEG, 9);
+    // 10 and 13 degrees from the path's own view in all, 8 of them the stops' framing on every screen.
+    expect(portraitYaw("mirror", true) + STOP_FRAMING.mirror.yaw * DEG).toBeCloseTo(10 * DEG, 9);
+    expect(portraitYaw("mission", true) + STOP_FRAMING.mission.yaw * DEG).toBeCloseTo(13 * DEG, 9);
+    expect(portraitYaw("mirror", true)).toBeGreaterThan(0);
     expect(portraitYaw("mirror", false)).toBe(0);
     expect(portraitYaw("gate", true)).toBe(0);
     expect(portraitYaw(null, true)).toBe(0);

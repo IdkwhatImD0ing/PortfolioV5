@@ -2,8 +2,8 @@
  * Idle motion for the areas, as plain math (the scene applies it, experience/idle.ts): the film's
  * turning rings fitted from the baked geometry, glow rhythms (breathing, a wave running along a row,
  * a flicker), the per-vertex weights that let a banner's cloth flutter and a tree sway while
- * their poles and trunks stay put (with where the banners merged into the scenery hang), and the
- * gliding loop and wing beat of the baked cranes.
+ * their poles and trunks stay put (with where the banners merged into the scenery hang, and where
+ * the flags merged into it fly), and the gliding loop and wing beat of the baked cranes.
  *
  * Pure: plain arrays, no three.js.
  */
@@ -322,6 +322,8 @@ export const AREA_FRAMES = {
   arena: { at: [-35, 485, 120], yaw: Math.atan2(-(-35 - 115), 485 - 335) },
   /** From the arena at (-35, 485). */
   mission: { at: [-150, 625, 140], yaw: Math.atan2(-(-150 + 35), 625 - 485) },
+  /** From the scroll at (-125, 1045). */
+  formation: { at: [65, 1195, 220], yaw: Math.atan2(-(65 + 125), 1195 - 1045) },
 } satisfies Record<string, AreaFrame>;
 
 /**
@@ -371,7 +373,7 @@ const ARENA_DECOR: [number, number][] = [
  * The arena (arena.py _build_banners): the four of ARENA_DECOR.
  * The mission hall (mission.py _props): the plaza's front corners, 9 m poles at x = ±16 by y = -40,
  * arms toward the axis.
- * Not yet the formation's flags (being rebuilt).
+ * The formation's Five Element Banners fly from their poles' tops instead: FLAG_FLIES.
  */
 export const BANNER_HANGS: Record<string, readonly BannerHang[]> = {
   gate: [
@@ -385,6 +387,162 @@ export const BANNER_HANGS: Record<string, readonly BannerHang[]> = {
     return fanHang(AREA_FRAMES.arena, ARENA_RING.r * Math.cos(a), ARENA_RING.r * Math.sin(a), ARENA_RING.z, a - Math.PI / 2, height, 1.3);
   }),
   mission: [-1, 1].map((s) => fanHang(AREA_FRAMES.mission, s * 16, -40, 0, s < 0 ? 0 : Math.PI, 9, 1.3)),
+};
+
+// ---- flags flying from their poles' tops, merged into the baked scenery -------------------------
+
+/**
+ * A props.banner 'qi' flag (one big character) that the web export merged into its area's baked
+ * scenery: the cloth flies out level from hoist rings on the pole's top, its hoist edge a few
+ * centimetres off the pole. Three space. In the bake the cloth and the lacquered pole share the
+ * area's atlas meshes, and the pole has no vertex between halfway up and its top cap; the gold
+ * rings and finial are in the metal meshes, close round the pole.
+ */
+export interface FlagFly {
+  /** The pole's axis (x, z). */
+  pole: [number, number];
+  /** Horizontal unit direction (x, z) the cloth flies out along, from the pole. */
+  out: [number, number];
+  /** The hoist edge's distance (m) from the pole's axis, and the heights of its top and bottom rows. */
+  hoist: number;
+  hoistTop: number;
+  hoistBottom: number;
+  /** The cloth's highest and lowest points (its flame teeth, the drooping fly) and how far out it reaches. */
+  top: number;
+  bottom: number;
+  reach: number;
+  /** How far the cloth reaches off its plane (the baked billow and the wave at the baked frame). */
+  billow: number;
+  /** Within this distance (m) of the pole's axis only the hoist edge is cloth: the rings and the finial are there. */
+  clear: number;
+  /** The hoist rings' centres (heights), and how far above and below a centre a ring reaches (with room). */
+  rings: number[];
+  ringHalf: number;
+}
+
+/**
+ * The fly of a props.banner 'qi' flag as banner() builds it, three space: its pole stands at
+ * (x, y, z) in the area's frame (Blender, z up), the root turned `rot` about z and scaled `scale`
+ * (the flag flies along the root's +x). Cloth: from (0.07, height - 0.32) on the root, `width` out
+ * and 0.8 width tall, with flame teeth 0.16 of its height on its free edges; the wind squeezes the
+ * fly in by up to 5% and drops it by 10% of the height. Rings (0.075 m round, 0.012 thick) at
+ * height - 0.34 - 0.25 width k, k = 0..3.
+ */
+export function qiFlag(f: AreaFrame, x: number, y: number, z: number, rot: number, height: number, width: number, scale: number): FlagFly {
+  const L = Math.max(0.3, Math.min(0.8 * width, height - 1.2));
+  const teeth = 0.16 * L;
+  const u = (width + teeth) / width;
+  const c = Math.cos(f.yaw), s = Math.sin(f.yaw);
+  const bx = f.at[0] + x * c - y * s;
+  const by = f.at[1] + x * s + y * c;
+  const ox = Math.cos(rot + f.yaw), oy = Math.sin(rot + f.yaw);
+  const foot = f.at[2] + z;
+  const hoistTop = foot + scale * (height - 0.32);
+  const hoistBottom = hoistTop - scale * L;
+  // Three (x, y, z) = Blender (x, z, -y).
+  return {
+    pole: [bx, -by],
+    out: [ox, -oy],
+    hoist: 0.07 * scale,
+    hoistTop,
+    hoistBottom,
+    top: hoistTop + scale * teeth,
+    bottom: hoistBottom - scale * (teeth + 0.1 * L * u * u),
+    reach: scale * (0.07 + (width + teeth) * (1 - 0.05 * u)),
+    billow: scale * width * (0.07 * u + 0.035 * u * u + 0.15),
+    clear: scale * (0.075 + 0.012) + 0.01,
+    rings: [0, 1, 2, 3].map((k) => foot + scale * (height - 0.34 - 0.25 * width * k)),
+    ringHalf: scale * 0.012 + 0.005,
+  };
+}
+
+/**
+ * Inside the space a flag's cloth fills and nothing else. Out from its hoist edge, between its
+ * teeth's tips and its drooping fly, and no farther off its plane than its billow. Close round the
+ * pole (`clear`) only the hoist edge counts: a vertex in the cloth's plane, between its top and
+ * bottom rows, clear of the rings' heights. Every triangle of a ring or the finial has a corner off
+ * that plane (they go round the pole), so none of them is cut out with the cloth.
+ */
+export function inFly(f: FlagFly, x: number, y: number, z: number): boolean {
+  if (y < f.bottom - 0.2 || y > f.top + 0.05) return false;
+  const dx = x - f.pole[0];
+  const dz = z - f.pole[1];
+  const along = dx * f.out[0] + dz * f.out[1];
+  if (along < f.hoist - 0.008 || along > f.reach + 0.15) return false;
+  const across = dz * f.out[0] - dx * f.out[1];
+  if (Math.abs(across) > f.billow + 0.1) return false;
+  if (Math.hypot(along, across) >= f.clear) return true;
+  if (Math.abs(across) > 0.02 || y > f.hoistTop + 0.01 || y < f.hoistBottom - 0.01) return false;
+  return f.rings.every((r) => Math.abs(y - r) > f.ringHalf);
+}
+
+/** A flag's own offset in the flutter's phase, so neighbours do not swing in step. */
+const flyPhase = (f: FlagFly) => f.pole[0] * 0.9 + f.pole[1] * 0.37;
+
+/**
+ * Share of a flag's swing that goes up and down rather than across the cloth. The formation's
+ * flags face the camera at their stop, where a swing across the cloth (toward the camera, on baked
+ * unlit colour) barely changes the picture; the rise and fall of the fly shows as a ripple running
+ * along its edges.
+ */
+export const FLY_LIFT = 0.5;
+
+/**
+ * Per-vertex flutter for flag cloth cut from the merged scenery (y-up world positions, xyz
+ * triples), with props.banner's 'qi' wave weights: each vertex follows the flag whose space it is
+ * in (else the nearest pole) and moves along that cloth's normal, and FLY_LIFT as much up, times
+ * (distance out from the pole's rings / the cloth's reach)^1.2, so the hoist edge holds and the
+ * fly swings most. The phase falls going out, so the ripple runs from the pole to the fly. Same
+ * layout as bannerSway.
+ */
+export function flySway(positions: ArrayLike<number>, flies: readonly FlagFly[]): Float32Array {
+  const n = Math.floor(positions.length / 3);
+  const out = new Float32Array(n * 4);
+  if (!flies.length) return out;
+  for (let i = 0; i < n; i++) {
+    const x = positions[i * 3], y = positions[i * 3 + 1], z = positions[i * 3 + 2];
+    let f = flies.find((c) => inFly(c, x, y, z));
+    if (!f) {
+      let best = Infinity;
+      for (const c of flies) {
+        const d = (x - c.pole[0]) ** 2 + (z - c.pole[1]) ** 2;
+        if (d < best) {
+          best = d;
+          f = c;
+        }
+      }
+    }
+    const g = f!;
+    const along = (x - g.pole[0]) * g.out[0] + (z - g.pole[1]) * g.out[1];
+    const w = Math.min(1, Math.max(0, (along - g.clear) / (g.reach - g.clear))) ** 1.2;
+    out[i * 4] = -g.out[1] * w;
+    out[i * 4 + 1] = FLY_LIFT * w;
+    out[i * 4 + 2] = g.out[0] * w;
+    out[i * 4 + 3] = -along * 1.6 + y * 0.25 + flyPhase(g);
+  }
+  return out;
+}
+
+/**
+ * The formation's Five Element Banners 五行旗 (formation.py ELEMENT_FLAGS and _flags): on drums
+ * 1.1 m tall (array_props.DRUM_H) at 10, 24, 38, 52 and 66 degrees round a 45 m circle, the root
+ * turned half round (every flag flies toward the area's -x, one wind) and scaled 1.4, 10 m poles,
+ * 3.3 m cloths. Wood, fire, earth, metal, water.
+ */
+export const FIVE_ELEMENT_FLAGS: readonly FlagFly[] = [10, 24, 38, 52, 66].map((deg) => {
+  const t = (deg * Math.PI) / 180;
+  return qiFlag(AREA_FRAMES.formation, 45 * Math.cos(t), 45 * Math.sin(t), 1.1, Math.PI, 10, 3.3, 1.4);
+});
+
+/**
+ * The flags each chunk's export merged into its baked scenery (checked against the baked chunks:
+ * each flag's space holds its cloth and nothing of its pole, rings or finial). The export put the
+ * metal and water flags' cloth (and the water flag's pole) into the cave abode's chunk, so the
+ * abode cuts them out too: a space only ever finds cloth in the chunk that has it.
+ */
+export const FLAG_FLIES: Record<string, readonly FlagFly[]> = {
+  formation: FIVE_ELEMENT_FLAGS,
+  abode: FIVE_ELEMENT_FLAGS,
 };
 
 // ---- gliding cranes -----------------------------------------------------------------------------

@@ -14,6 +14,8 @@ import {
   rayQuad,
   selectWetFalls,
   sheetFallAttribute,
+  STREAM,
+  streamFlow,
   WET,
   wetAmount,
   wetArrays,
@@ -136,7 +138,7 @@ describe("sheetFallAttribute", () => {
     }
   });
 
-  it("measures a stream along its flow from the head (the higher end), with a negative length", () => {
+  it("measures a stream along its flow from the head (the higher end), its z the share to its foot", () => {
     // Two-vertex rows down a 3-4-5 slope: 10 rows of 5 m.
     const pos: number[] = [];
     const uv: number[] = [];
@@ -147,9 +149,113 @@ describe("sheetFallAttribute", () => {
       if (r < 10) idx.push(r * 2, r * 2 + 1, r * 2 + 2, r * 2 + 1, r * 2 + 3, r * 2 + 2);
     }
     const a = sheetFallAttribute({ positions: pos, uvs: uv, index: idx, stream: true });
-    for (let r = 0; r <= 10; r++) expect(a[r * 8 + 1]).toBeCloseTo(r * 5, 4);
-    expect(a[2]).toBeCloseTo(-50, 4);
+    for (let r = 0; r <= 10; r++) {
+      expect(a[r * 8 + 1]).toBeCloseTo(r * 5, 4);
+      // z < 0 marks a stream: -(1 + share of its length from the head), so the shader fades the foot.
+      expect(a[r * 8 + 2]).toBeCloseTo(-(1 + r / 10), 5);
+    }
     expect(a[3]).toBeCloseTo(2, 4);
+  });
+
+  /**
+   * A 4 m wide stream strip in two-vertex rows through the given row centres (x, y), from the first
+   * row to the last; with uv1, its seconds count from the first row (as bake_web writes them).
+   */
+  function strip(centres: [number, number][], withUv1: boolean) {
+    const pos: number[] = [];
+    const uv: number[] = [];
+    const uv1: number[] = [];
+    const idx: number[] = [];
+    let s = 0;
+    centres.forEach(([x, y], r) => {
+      if (r > 0) s += Math.hypot(x - centres[r - 1][0], y - centres[r - 1][1]);
+      pos.push(x, y, -2, x, y, 2);
+      uv.push(0, r / (centres.length - 1), 1, r / (centres.length - 1));
+      uv1.push(-2, s / FALL.streamSpeed, 2, s / FALL.streamSpeed);
+      if (r < centres.length - 1) idx.push(r * 2, r * 2 + 1, r * 2 + 2, r * 2 + 1, r * 2 + 3, r * 2 + 2);
+    });
+    return sheetFallAttribute({ positions: pos, uvs: uv, index: idx, stream: true, uv1: withUv1 ? uv1 : null });
+  }
+
+  /** Every stretch steeper than STREAM.levelDeg carries its pattern downhill, at its true length. */
+  function expectDownhill(order: [number, number][], below: (r: number) => number) {
+    for (let r = 1; r < order.length; r++) {
+      const [x0, y0] = order[r - 1];
+      const [x1, y1] = order[r];
+      if (Math.abs(y1 - y0) < Math.tan((STREAM.levelDeg * Math.PI) / 180) * Math.abs(x1 - x0)) continue;
+      // The pattern moves toward larger `below`: from the higher row to the lower one.
+      const downhill = y1 < y0 ? below(r) - below(r - 1) : below(r - 1) - below(r);
+      expect(downhill).toBeCloseTo(Math.hypot(x1 - x0, y1 - y0), 3);
+    }
+  }
+
+  it("runs a stream downhill on every stretch, over a crest and whichever end its rows start from", () => {
+    // Down a slope, level, up a 35 m cliff (the stretches that flowed up), down two more, up 1 m.
+    const centres: [number, number][] = [[0, 60], [10, 55], [20, 55], [30, 90], [40, 70], [50, 40], [60, 41]];
+    for (const withUv1 of [false, true]) {
+      for (const order of [centres, [...centres].reverse()]) {
+        const a = strip(order, withUv1);
+        const below = (r: number) => a[r * 8 + 1];
+        expect(Math.min(...order.map((_, r) => below(r)))).toBeCloseTo(0, 4);
+        expectDownhill(order, below);
+        // The level stretch keeps going the way the water came down the first slope: toward the cliff.
+        const lv = order.findIndex(([x]) => x === 10);
+        const lv2 = order.findIndex(([x]) => x === 20);
+        expect(below(lv2) - below(lv)).toBeCloseTo(10, 3);
+        // The foot is the lower end (x = 60, y 41 against 60), whichever way the rows run.
+        const foot = order.findIndex(([x]) => x === 60);
+        const head = order.findIndex(([x]) => x === 0);
+        expect(a[foot * 8 + 2]).toBeCloseTo(-2, 5);
+        expect(a[head * 8 + 2]).toBeCloseTo(-1, 5);
+        // Metres across still come from UV1 when it is there.
+        if (withUv1) expect(a[0]).toBeCloseTo(-2, 5);
+      }
+    }
+  });
+
+  it("runs random streams downhill on every steep stretch, with or without UV1, either way round", () => {
+    let seed = 7;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return seed / 2147483648;
+    };
+    for (let t = 0; t < 40; t++) {
+      const centres: [number, number][] = [];
+      let x = 0;
+      let y = 200 * rnd();
+      for (let r = 0; r < 24; r++) {
+        centres.push([x, y]);
+        x += 5 + 50 * rnd();
+        y += (rnd() - 0.5) * (rnd() < 0.3 ? 300 : 8);
+      }
+      for (const withUv1 of [false, true]) {
+        for (const order of [centres, [...centres].reverse()]) {
+          const a = strip(order, withUv1);
+          expectDownhill(order, (r) => a[r * 8 + 1]);
+          for (let r = 0; r < order.length; r++) {
+            expect(a[r * 8 + 1]).toBeGreaterThanOrEqual(0);
+            expect(a[r * 8 + 2]).toBeLessThanOrEqual(-1);
+            expect(a[r * 8 + 2]).toBeGreaterThanOrEqual(-2);
+          }
+        }
+      }
+    }
+  });
+
+  it("measures a sheet from world height when its UV1 seconds grow upward (exported upside down)", () => {
+    const m = merge(sheet(0, 10, 2, 5, 0));
+    const n = m.positions.length / 3;
+    const uv1 = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      uv1[i * 2] = (m.uvs[i * 2] - 0.5) * 2;
+      uv1[i * 2 + 1] = Math.sqrt((2 * Math.max(m.positions[i * 3 + 1] - 5, 0)) / 9.81);
+    }
+    const a = sheetFallAttribute({ positions: m.positions, uvs: m.uvs, index: m.index, uv1 });
+    for (let i = 0; i < n; i++) {
+      expect(a[i * 4 + 1]).toBeCloseTo(10 - m.positions[i * 3 + 1], 4);
+      expect(a[i * 4]).toBeCloseTo(uv1[i * 2], 5);
+    }
+    expect(a[2]).toBeCloseTo(5, 4);
   });
 
   it("uses Blender's UV1 (metres across, seconds since the lip) when present", () => {
@@ -167,6 +273,50 @@ describe("sheetFallAttribute", () => {
     }
     expect(a[2]).toBeCloseTo(5, 3);
     expect(a[3]).toBeCloseTo(3, 4);
+  });
+});
+
+describe("streamFlow", () => {
+  const at = (pts: [number, number][]): Vec3[] => pts.map(([x, y]) => [x, y, 0]);
+
+  it("pours down both sides of a crest and into both sides of a dip", () => {
+    // world.stream's shape: down, a 101 m cliff up (it flowed up it), down the far side.
+    const f = streamFlow(at([[0, 70], [20, 45], [40, 146], [60, 113], [80, 20]]));
+    expect(f.dirs).toEqual([1, -1, 1, 1]);
+    // Row 1 is the dip both sides run into, row 2 the crest they leave; the smallest value is 0.
+    expect(f.along[1]).toBeGreaterThan(f.along[0]);
+    expect(f.along[1]).toBeGreaterThan(f.along[2]);
+    expect(f.along[2]).toBe(0);
+    expect(f.along[4] - f.along[2]).toBeCloseTo(Math.hypot(20, 33) + Math.hypot(20, 93), 6);
+  });
+
+  it("keeps level stretches going the way the water was going, not back and forth over small bumps", () => {
+    // Down a slope onto a floor with 0.3-1 m bumps every 20 m (under 3 degrees), then down again.
+    const f = streamFlow(at([[0, 60], [20, 40], [40, 40.5], [60, 40.2], [80, 41], [100, 40.4], [120, 20]]));
+    expect(f.dirs).toEqual([1, 1, 1, 1, 1, 1]);
+    // A 30 m cliff at the far (higher) end instead: the water off it keeps going across the floor.
+    const g = streamFlow(at([[0, 70], [20, 40], [40, 40.5], [60, 40.2], [80, 41], [100, 71]]));
+    expect(g.dirs).toEqual([1, -1, -1, -1, -1]);
+  });
+
+  it("runs a level strip toward its lower end, and gives the foot share 1 at the lower end", () => {
+    const f = streamFlow(at([[0, 10], [20, 10.5], [40, 10.2], [60, 10.9]]));
+    expect(f.dirs).toEqual([-1, -1, -1]);
+    expect(f.share[3]).toBe(0);
+    expect(f.share[0]).toBe(1);
+    expect(f.along[0]).toBeCloseTo(60, 1);
+    const g = streamFlow(at([[0, 30], [10, 20], [20, 10]]));
+    expect(g.share).toEqual([0, 0.5, 1]);
+    expect(streamFlow(at([[0, 5]]))).toEqual({ dirs: [], along: [0], share: [0] });
+  });
+
+  it("follows the slope above STREAM.levelDeg, and treats gentler stretches as level", () => {
+    const rise = (deg: number) => 20 * Math.tan((deg * Math.PI) / 180);
+    // Down a cliff, then a gentle climb of (levelDeg - 1) and a steeper one of (levelDeg + 1).
+    const gentle = streamFlow(at([[0, 100], [20, 0], [40, rise(STREAM.levelDeg - 1)]]));
+    expect(gentle.dirs).toEqual([1, 1]);
+    const steep = streamFlow(at([[0, 100], [20, 0], [40, rise(STREAM.levelDeg + 1)]]));
+    expect(steep.dirs).toEqual([1, -1]);
   });
 });
 

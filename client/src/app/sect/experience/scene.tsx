@@ -38,6 +38,7 @@ import {
 } from "three";
 import { BVH_MS_PER_KTRI, bvhCostMs, bvhWanted, deferUpload, mayBuildBvh, mayPostBvh, updateBvhRate, uploadWaitedMs } from "@/lib/sect/background-work";
 import { fovForAspect, samplePath, sampleCamera } from "@/lib/sect/camera-path";
+import { framingAt } from "@/lib/sect/framing";
 import {
   clampLook,
   composeLook,
@@ -212,12 +213,15 @@ function CameraRig({ store }: { store: SectStore }) {
     if (!store.paused && turnByKeys(look, delta)) wake(store, 250);
     const at = { targetU: store.targetU, flight: store.flight ? store.flight.t0 : null, override: store.frameOverride };
     if (followPath(look, at, performance.now() / 1000, store.reducedMotion)) wakeForRecenter(store);
-    // The tilt that keeps the view short of straight up or down depends on the path's own pitch.
-    look.limits = lookLimits(s.q);
+    // A few stops turn the view a little to centre their subject (lib/sect/framing.ts), easing in
+    // over the frames before the hold and out after it; the free look turns on top of that.
+    const framed = composeLook(s.q, framingAt(store.camera.holds, frame));
+    // The tilt that keeps the view short of straight up or down depends on the view's own pitch.
+    look.limits = lookLimits(framed);
     const c = clampLook(look, look.limits);
     look.yaw = c.yaw;
     look.pitch = c.pitch;
-    const q = composeLook(s.q, look);
+    const q = composeLook(framed, look);
     camera.quaternion.set(q[0], q[1], q[2], q[3]);
     const cam = camera as PerspectiveCamera;
     const fov = fovForAspect(s.fovY, store.camera.refAspect, size.width / Math.max(size.height, 1));

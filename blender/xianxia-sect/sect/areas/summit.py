@@ -53,6 +53,19 @@ ARCH_DEPTH = 1.5          # thickness along Y
 ARCH_PLINTH_H = 1.0
 PINE_AZ = math.radians(50)     # pine position (angle from +X) on the rim: left of the moon line
 PINE_R = 36.5
+TERRACE_SEGS = 128        # the terrace lathe's segments
+# moon-silver trigram ring inlaid in the outer paving (props.rune_ring: band 29.6..31.4, 8 mm over the floor) and the
+# dark stone channel under it. The channel is a ring of the terrace's own top (stone_dark faces), not a separate
+# groove sheet: rune_ring(groove=True) laid one 3 mm over the paving, and the two z-fought over ~290 m2 on the web
+# (round 11). The channel's edges are TERRACE_SEGS-gons, so its radii keep the rune band (and its border rings) on
+# dark stone even at the chord midpoints (31.45 * cos(pi / 128) = 31.44).
+RING_R, RING_W = 30.5, 1.8
+CHANNEL_R = (29.57, 31.45)
+# The stair from the abode (world.py: STAIR_W 5 m walkway, its parapets outside it) tops out at AREA['arrival'] with
+# its last tread flat on the rim, 0.5 m onto the terrace. The terrace's top is cut away under that tread (|x| < 2.5,
+# y < -38.5), so the tread is the only surface there and meets the paving edge to edge at the arrival line (round 11:
+# the two lay in one plane over 2.3 m2, z-fought on the web and baked a dark band across the tread).
+ARRIVAL_HW = 2.5
 
 # --- moon -----------------------------------------------------------------------------
 # world.py puts the moon at compass azimuth 22.5 deg, elevation 16 deg (look.MOON_AZIMUTH).
@@ -114,25 +127,64 @@ CAMERA_HINTS = [
 # geometry helpers
 # --------------------------------------------------------------------------------------
 
-def _terrace(coll, root):
-    """Round marble terrace: paving annulus (quads, concentric rings) and a moulded skirt."""
+TERRACE_MATS = ["marble_white", "marble_paving", "stone_dark"]
+TERRACE_SMOOTH = math.radians(35)
+
+
+def _arrival_cut(bm):
+    """Cut the terrace's top away under the abode stair's last tread (ARRIVAL_HW, AREA['arrival']): bisect the top
+    faces near the arrival along x = +-ARRIVAL_HW and the arrival line, then delete the faces under the tread.
+    Returns how many faces were deleted."""
+    ay = AREA["arrival"][1]
+
+    def top(f):
+        return f.normal.z > 0.9 and f.calc_center_median().z > -0.01
+
+    for co, no in (((ARRIVAL_HW, 0.0, 0.0), (1.0, 0.0, 0.0)), ((-ARRIVAL_HW, 0.0, 0.0), (1.0, 0.0, 0.0)),
+                   ((0.0, ay, 0.0), (0.0, 1.0, 0.0))):
+        fs = [f for f in bm.faces if top(f) and abs(f.calc_center_median().x) < ARRIVAL_HW + 2.0
+              and f.calc_center_median().y < ay + 2.0]
+        geom = list({v for f in fs for v in f.verts}) + list({e for f in fs for e in f.edges}) + fs
+        bmesh.ops.bisect_plane(bm, geom=geom, plane_co=co, plane_no=no, dist=1e-5)
+        bm.normal_update()                      # the faces the cut made have no normal yet
+    kill = [f for f in bm.faces if top(f) and abs(f.calc_center_median().x) < ARRIVAL_HW
+            and f.calc_center_median().y < ay]
+    bmesh.ops.delete(bm, geom=kill, context='FACES')
+    return len(kill)
+
+
+def _terrace_bm():
+    """BMesh of the round marble terrace: paving annulus (quads, concentric rings), the dark stone channel ring under
+    the rune ring (CHANNEL_R, material 2), a moulded skirt (material 0), and no top under the abode stair's last
+    tread (_arrival_cut)."""
     bm = bmesh.new()
     R = TERRACE_R
+    c0, c1 = CHANNEL_R
     prof = [(R - 0.9, -TERRACE_DEPTH), (R - 0.45, -TERRACE_DEPTH + 0.35), (R - 0.45, -0.55),
             (R - 0.15, -0.42), (R, -0.3), (R, 0.0)]
+    rings = []
     r = R - 1.5
     while r > MID_R - 1.5:
-        prof.append((r, 0.0))
+        rings.append(r)
         r -= 2.5
-    prof.append((MID_R - 2.0, 0.0))
-    U.bm_lathe(bm, prof, segments=128, cap_start=False, cap_end=False)
+    rings.append(MID_R - 2.0)
+    rings = sorted([x for x in rings if not c0 - 1e-6 <= x <= c1 + 1e-6] + [c0, c1], reverse=True)
+    prof += [(x, 0.0) for x in rings]
+    U.bm_lathe(bm, prof, segments=TERRACE_SEGS, cap_start=False, cap_end=False)
     bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-4)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
     for f in bm.faces:
-        f.material_index = 1 if (f.normal.z > 0.9 and f.calc_center_median().z > -0.01) else 0
-    ob = U.mesh_from_bmesh(U.name(KEY, "terrace"), bm, coll, materials=["marble_white", "marble_paving"],
-                           smooth=math.radians(35), parent=root)
-    return ob
+        c = f.calc_center_median()
+        top = f.normal.z > 0.9 and c.z > -0.01
+        f.material_index = (2 if c0 < math.hypot(c.x, c.y) < c1 else 1) if top else 0
+    _arrival_cut(bm)
+    return bm
+
+
+def _terrace(coll, root):
+    """Round marble terrace (_terrace_bm)."""
+    return U.mesh_from_bmesh(U.name(KEY, "terrace"), _terrace_bm(), coll, materials=TERRACE_MATS,
+                             smooth=TERRACE_SMOOTH, parent=root)
 
 
 def _crescent_mesh(name, coll, root):
@@ -416,9 +468,9 @@ def build(collection):
                      [(sx * 13.0, ARCH_Y, 0.0), (sx * wing_x, ARCH_Y, 0.0)],
                      end_drum="start", parent=root)
 
-    # 5. moon-silver trigram ring inlaid in the outer paving
-    P.rune_ring(collection, radius=30.5, width=1.8, kind="trigram", material="rune_silver", seed=2,
-                groove=True, name=U.name(KEY, "ring"), parent=root)
+    # 5. moon-silver trigram ring inlaid in the outer paving, over the terrace's dark channel ring (no groove sheet)
+    P.rune_ring(collection, radius=RING_R, width=RING_W, kind="trigram", material="rune_silver", seed=2,
+                groove=False, name=U.name(KEY, "ring"), parent=root)
 
     # 6. lone ancient pine on a rock knob at the NE rim, leaning out over the void
     px, py = PINE_R * math.cos(PINE_AZ), PINE_R * math.sin(PINE_AZ)

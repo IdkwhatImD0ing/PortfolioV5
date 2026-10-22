@@ -1293,8 +1293,9 @@ export interface SheetOptions {
 /**
  * Waterfall sheets and streams (water GLBs and the corner quads), in the main fogged pass. Reads
  * the per-vertex `aFall` (lib/sect/waterfall.ts: metres across, metres below the lip, height, lip
- * width; assets.ts prepareWaterSheets adds it at load) and the vertex colour (r a per-sheet seed, g the
- * flow / 2, b the layer: 0 core, 0.5 side curtain, 1 front veil).
+ * width; a stream's z < 0 says where its foot is; assets.ts prepareWaterSheets adds it at load)
+ * and the vertex colour (r a per-sheet seed, g the flow / 2, b the layer: 0 core, 0.5 side
+ * curtain, 1 front veil).
  *
  * Every pattern rides the water: its phase is rate x (seconds since the lip - time), so streaks
  * fall exactly as fast as the water there (gravity with drag: they speed up and stretch on the way
@@ -1380,8 +1381,10 @@ void main() {
   float H = max( abs( vFall.z ), 0.01 );
   float stream = vFall.z < 0.0 ? 1.0 : 0.0;
   float W = max( vFall.w, 0.1 );
-  float below = clamp( vFall.y, 0.0, H );
-  float p = below / H;
+  // Sheets: metres below the lip, p the share of the height. Streams: metres along the flow (it runs
+  // downhill both ways off a crest), p from z = -( 1 + the share of the strip from its head ).
+  float below = stream > 0.5 ? max( vFall.y, 0.0 ) : clamp( vFall.y, 0.0, H );
+  float p = stream > 0.5 ? clamp( H - 1.0, 0.0, 1.0 ) : below / H;
   float x = vFall.x;
   float seed = vSeed.x;
   float curtain = 1.0 - abs( vSeed.z * 2.0 - 1.0 );
@@ -1430,8 +1433,10 @@ void main() {
   float e = min( vUv.x, 1.0 - vUv.x ) * W;
   float band = clamp( 0.16 * W, 0.4, 3.5 ) * ( 1.0 + 0.8 * q );
   float side = smoothstep( 0.0, band * 0.7, e + ( ( ste - 0.45 ) * 1.2 + ( nAe - 0.5 ) * 1.4 ) * band );
-  // A crisp lip (0.4 m), its line a little uneven; the water reaches the pool.
-  float ends = smoothstep( 0.0, 0.4, below + ( nB - 0.5 ) * 0.25 ) * ( 1.0 - smoothstep( ${f(1 - SHEET.footFade)}, 1.0, p ) );
+  // A crisp lip (0.4 m), its line a little uneven; the water reaches the pool. A stream fades out at
+  // its foot (its lower end) only: its smallest metres along the flow may be on a crest mid-strip.
+  float head = stream > 0.5 ? 1.0 : smoothstep( 0.0, 0.4, below + ( nB - 0.5 ) * 0.25 );
+  float ends = head * ( 1.0 - smoothstep( ${f(1 - SHEET.footFade)}, 1.0, p ) );
   float shape = side * ends * mix( 1.0, 0.72, curtain ) * mix( 1.0, 0.35, veil );
   a *= shape;
   vec3 col = mix( mix( uGlass, uColor, 0.55 ), uFoam, white );

@@ -11,10 +11,11 @@ import {
   MeshBasicMaterial,
   type Object3D,
   PlaneGeometry,
+  TorusGeometry,
   Vector3,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { BANNER_HANGS, inCylinder, inHang, splitTriangles, type Cylinder } from "@/lib/sect/idle";
+import { BANNER_HANGS, FIVE_ELEMENT_FLAGS, FLY_LIFT, inCylinder, inFly, inHang, splitTriangles, type Cylinder } from "@/lib/sect/idle";
 import { planIdle, planIdleSliced } from "./idle";
 import type { HotspotEntry } from "./prepare";
 
@@ -373,6 +374,98 @@ describe("planIdle (the forge's, the arena's and the mission hall's banners)", (
       }
     });
   }
+});
+
+describe("planIdle (the formation's Five Element flags)", () => {
+  const COLS = 12;
+  const ROWS = 8;
+  const CLOTH_TRIS = COLS * ROWS * 2;
+
+  /**
+   * The flags as the bake leaves them: in the atlas mesh the plaza's ground, each pole (16 sides,
+   * vertices only halfway up and at its top cap) and each cloth (12 x 8 quads from its hoist edge
+   * to its fly, in the plane of its pole); in a metal mesh each pole's four hoist rings.
+   */
+  function flagScene(): { root: Object3D; atlas: Mesh; metal: Mesh; atlasTris: number; metalIndex: number[] } {
+    const cloth: BufferGeometry[] = [];
+    const rings: BufferGeometry[] = [];
+    for (const f of FIVE_ELEMENT_FLAGS) {
+      const turn = Math.atan2(-f.out[1], f.out[0]);
+      const w = f.reach - f.hoist;
+      const h = f.hoistTop - f.hoistBottom;
+      cloth.push(
+        new PlaneGeometry(w, h, COLS, ROWS)
+          .translate(f.hoist + w / 2, f.hoistBottom + h / 2, 0)
+          .rotateY(turn)
+          .translate(f.pole[0], 0, f.pole[1]),
+        new CylinderGeometry(0.07, 0.091, 6.972, 16, 1).translate(f.pole[0], f.hoistTop - 1.4 * 9.68 + 7 + 6.972 / 2, f.pole[1]),
+      );
+      for (const y of f.rings) rings.push(new TorusGeometry(0.105, 0.0168, 6, 16).rotateX(Math.PI / 2).translate(f.pole[0], y, f.pole[1]));
+    }
+    const [p] = FIVE_ELEMENT_FLAGS;
+    cloth.push(new PlaneGeometry(120, 120, 6, 6).rotateX(-Math.PI / 2).translate(p.pole[0], 220, p.pole[1]));
+    const root = new Group();
+    const atlas = new Mesh(mergeGeometries(cloth)!, new MeshBasicMaterial({ name: "baked.formation_A0" }));
+    atlas.name = "formation.baked.A0.c1";
+    const metal = new Mesh(mergeGeometries(rings)!, new MeshBasicMaterial({ name: "baked.vc.surface.metal" }));
+    metal.name = "formation.baked.vc.surface.metal.c0";
+    root.add(atlas, metal);
+    root.updateMatrixWorld(true);
+    return { root, atlas, metal, atlasTris: atlas.geometry.index!.count / 3, metalIndex: Array.from(metal.geometry.index!.array) };
+  }
+
+  for (const area of ["formation", "abode"]) {
+    it(`cuts out every flag's cloth in the ${area}'s chunk and nothing of its pole or rings`, () => {
+      const { root, atlas, metal, atlasTris, metalIndex } = flagScene();
+      const plan = planIdle(area, root, new Map(), new Map());
+      const piece = carvedOf(atlas)!;
+      expect(plan.sway).toBe(1);
+      expect(piece.geometry.index!.count / 3).toBe(CLOTH_TRIS * FIVE_ELEMENT_FLAGS.length);
+      expect(atlas.geometry.index!.count / 3).toBe(atlasTris - CLOTH_TRIS * FIVE_ELEMENT_FLAGS.length);
+      // The rings stay whole, in their own mesh.
+      expect(carvedOf(metal)).toBeUndefined();
+      expect(Array.from(metal.geometry.index!.array)).toEqual(metalIndex);
+      // Each carved triangle lies in one flag's space, and every flag gives its own.
+      const pos = piece.geometry.getAttribute("position");
+      const ix = piece.geometry.index!.array;
+      const v = new Vector3();
+      const per = FIVE_ELEMENT_FLAGS.map(() => 0);
+      for (let t = 0; t < ix.length; t += 3) {
+        const corners = [0, 1, 2].map((k) => v.fromBufferAttribute(pos, ix[t + k]).applyMatrix4(piece.matrixWorld).toArray());
+        const k = FIVE_ELEMENT_FLAGS.findIndex((f) => corners.every((p) => inFly(f, p[0], p[1], p[2])));
+        expect(k).toBeGreaterThanOrEqual(0);
+        per[k]++;
+      }
+      expect(per).toEqual(FIVE_ELEMENT_FLAGS.map(() => CLOTH_TRIS));
+      // Still at the hoist edge, a full swing at the fly, across the cloth and FLY_LIFT up.
+      const sway = piece.geometry.getAttribute("sectSway");
+      let hoist = 0;
+      let fly = 0;
+      for (let i = 0; i < pos.count; i++) {
+        const p = v.fromBufferAttribute(pos, i).applyMatrix4(piece.matrixWorld);
+        const f = FIVE_ELEMENT_FLAGS.find((c) => inFly(c, p.x, p.y, p.z))!;
+        const along = (p.x - f.pole[0]) * f.out[0] + (p.z - f.pole[1]) * f.out[1];
+        const level = Math.hypot(sway.getX(i), sway.getZ(i));
+        expect(sway.getX(i) * f.out[0] + sway.getZ(i) * f.out[1]).toBeCloseTo(0, 6);
+        expect(sway.getY(i)).toBeCloseTo(FLY_LIFT * level, 6);
+        if (Math.abs(along - f.hoist) < 1e-3) hoist = Math.max(hoist, level);
+        if (Math.abs(along - f.reach) < 1e-3) fly = Math.max(fly, level);
+      }
+      expect(hoist).toBe(0);
+      expect(fly).toBeCloseTo(1, 5);
+      // The scenery keeps its material; the cloth sways on a copy.
+      expect(piece.material).not.toBe(atlas.material);
+      expect((atlas.material as MeshBasicMaterial).userData.sectSway).toBeUndefined();
+    });
+  }
+
+  it("leaves the flags alone in other areas", () => {
+    const { root, atlas, atlasTris } = flagScene();
+    const plan = planIdle("scroll", root, new Map(), new Map());
+    expect(plan.sway).toBe(0);
+    expect(carvedOf(atlas)).toBeUndefined();
+    expect(atlas.geometry.index!.count / 3).toBe(atlasTris);
+  });
 });
 
 describe("planIdleSliced", () => {

@@ -26,11 +26,11 @@ beams are built here.
 
 Walking route (docs/architecture-audit.md 1.9 and 4): the stair from the scroll ends at the arrival (0, -62) on the
 terrace grass; three low steps climb onto a paved front apron flanked by two stone lanterns, which runs to the plaza
-rim and the paifang. A white paved strip on the axis crosses the floor to the core dais, which has three short flights
-(one per tier, the tier tops are the landings) at each compass point; on the top tier the walk goes round the
-armillary's pedestal between its dragon pillars. Behind the dais the strip runs on to a one-bay rear gate in a 12 m
-opening of the balustrade, then a rear apron and three steps down to the depart point (0, 62), where the stair to the
-abode starts. The two aprons reach about 4 m past the footprint radius, still well inside world.py's terrace
+rim and the paifang. A white paved strip on the axis, flush in the floor, crosses it to the core dais, which has three
+short flights (one per tier, the tier tops are the landings) at each compass point; on the top tier the walk goes
+round the armillary's pedestal between its dragon pillars. Behind the dais the strip runs on to a one-bay rear gate in
+a 12 m opening of the balustrade, then a rear apron and three steps down to the depart point (0, 62), where the stair
+to the abode starts. The two aprons reach about 4 m past the footprint radius, still well inside world.py's terrace
 (footprint + TERRACE_PAD). Nothing new stands on the axis strip (|x| <= 2) except the censer, which the walk passes.
 
 Local frame: origin = plaza centre, z = 0 walkable top, front faces -Y.
@@ -85,7 +85,11 @@ REAR_GATE_Y = 46.5      # one-bay rear gate on the back axis
 APRON_Y = 61.0          # outer edge of the front / rear aprons (top z 0); steps go down to +-62
 APRON_HW = (7.0, 6.0)   # half widths of the front and rear aprons
 STRIP_HW = 2.0          # half width of the white axis strip across the floor
-STRIP_Z = 0.004
+# The strip lies flush in the floor (round 11): the bluestone floor and the ink bands are cut away under it, so it is
+# the only surface there. It used to lie 4 mm over the uncut floor, and the two z-fought over ~250 m2 on the web.
+STRIP_Z = 0.0
+STRIP_FOOT = R_DAIS + 0.9   # the strip ends 0.9 m in front of the dais' bottom tier (the foot of its 0.99 m flights)
+FLOOR_SEGS = 192        # segments of every floor ring (the strip's outer end follows the R_DARK FLOOR_SEGS-gon)
 
 # station k sits at angle 22.5 + 45 k degrees (from +X, counter-clockwise), so the front axis
 # (-Y, 270 deg) falls in the gap between stations 5 and 6. Its trigram (bagua bars, plaque) in this order.
@@ -198,27 +202,56 @@ def _axis_gap(r, half=AXIS_CLEAR):
 
 # ---------------------------------------------------------------------------- floor
 
-def _floor(coll, root):
-    """Bluestone plaza, the polished ink-stone bands (trigrams, chant) and the recessed jade channel ring, which
-    stops either side of the axis walk (plain ink stone there, under the walk)."""
+def _axis_cut(bm, hw=STRIP_HW, foot=STRIP_FOOT):
+    """Cut the floor away under the white axis strip (x -hw..hw, |y| >= foot, out to the floor's R_DARK edge): bisect
+    along x = +-hw and y = +-foot, then delete the faces inside. The strip (_route) fills the hole exactly."""
+    for co, no in (((hw, 0.0, 0.0), (1.0, 0.0, 0.0)), ((-hw, 0.0, 0.0), (1.0, 0.0, 0.0)),
+                   ((0.0, foot, 0.0), (0.0, 1.0, 0.0)), ((0.0, -foot, 0.0), (0.0, 1.0, 0.0))):
+        bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=co, plane_no=no,
+                               dist=1e-5)
+    kill = []
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if abs(c.x) < hw and abs(c.y) > foot:
+            kill.append(f)
+    bmesh.ops.delete(bm, geom=kill, context='FACES')
+    return len(kill)
+
+
+def _floor_bm():
+    """BMesh of the bluestone floor rings (the bands, the channel and the axis strip left out)."""
     bm = bmesh.new()
     rings = [(R_DAIS - 0.5, R_BAGUA[0]), (R_CHANNEL[1], R_CHANT[0])]
     rs = [R_CHANT[1] + 3.0 * i for i in range(8)] + [R_DARK]
     rs = sorted(set(r for r in rs if r <= R_DARK))
     rings += list(zip(rs[:-1], rs[1:]))
     for r0, r1 in rings:
-        _annulus(bm, r0, r1, 0.0, 192)
-    AP.mk(U.name(KEY, "floor"), bm, coll, [AP.M_BLUE], parent=root, smooth=False)
+        _annulus(bm, r0, r1, 0.0, FLOOR_SEGS)
+    _axis_cut(bm)
+    return bm
 
+
+def _floor_band_bm():
+    """BMesh of the polished ink-stone bands (trigrams, chant) and the plain ink stone across the jade channel
+    either side of the axis walk (the axis strip itself left out)."""
     g = _axis_gap(0.5 * sum(R_CHANNEL))
     bm = bmesh.new()
-    _annulus(bm, R_BAGUA[0], R_BAGUA[1], 0.0, 192)
-    _annulus(bm, R_CHANT[0], R_CHANT[1], 0.0, 192)
+    _annulus(bm, R_BAGUA[0], R_BAGUA[1], 0.0, FLOOR_SEGS)
+    _annulus(bm, R_CHANT[0], R_CHANT[1], 0.0, FLOOR_SEGS)
     for ac in (math.pi / 2, 1.5 * math.pi):
         P._annulus(bm, R_CHANNEL[0], R_CHANNEL[1], 6, 0.0, ac - g, ac + g)
-    AP.mk(U.name(KEY, "floor_band"), bm, coll, [AP.M_INK], parent=root, smooth=False)
+    _axis_cut(bm)
+    return bm
 
-    arcs = [(math.pi / 2 + g, 1.5 * math.pi - g), (-math.pi / 2 + g, math.pi / 2 - g)]
+
+def _floor(coll, root):
+    """Bluestone plaza, the polished ink-stone bands (trigrams, chant) and the recessed jade channel ring, which
+    stops either side of the axis walk (plain ink stone there, beside the walk). Both are cut away under the white
+    axis strip, which lies flush in them (_route)."""
+    AP.mk(U.name(KEY, "floor"), _floor_bm(), coll, [AP.M_BLUE], parent=root, smooth=False)
+    AP.mk(U.name(KEY, "floor_band"), _floor_band_bm(), coll, [AP.M_INK], parent=root, smooth=False)
+    g = _axis_gap(0.5 * sum(R_CHANNEL))
+    arcs =[(math.pi / 2 + g, 1.5 * math.pi - g), (-math.pi / 2 + g, math.pi / 2 - g)]
     bm_glow, bm_wall = bmesh.new(), bmesh.new()
     AP.jade_channel(bm_glow, bm_wall, R_CHANNEL[0], R_CHANNEL[1], CHANNEL_DEPTH, arcs)
     AP.mk(U.name(KEY, "channel"), bm_glow, coll, [AP.M_JADE], parent=root, smooth=False, glow=0.22, shadow=False)
@@ -348,13 +381,34 @@ def _dais_stairs(coll, root, tiers):
             i += 1
 
 
-def _arc_slab(name, coll, root, hw, r_arc, y_end, sign, top, bottom=None,
-              mats=("marble_white", "marble_paving")):
-    """Slab x -hw..hw between the circle r_arc (that edge follows the arc, so it meets a round
-    edge without overlapping it) and the straight edge y = sign * y_end. Top face at ``top`` gets
-    mats[1]; bottom=None builds only the top face (a floor inlay)."""
-    xs = [-hw + 2.0 * hw * i / 16 for i in range(17)]
-    ring = [(x, sign * math.sqrt(r_arc * r_arc - x * x)) for x in xs] + [(hw, sign * y_end), (-hw, sign * y_end)]
+def _gon_arc(hw, r, sign, segs):
+    """Points (x, y), x from -hw to hw, on the sign side of the regular ``segs``-gon of radius r whose vertices sit at
+    angles 2 pi k / segs (as _annulus builds its rings): the polygon's own vertices plus its crossings at x = +-hw."""
+    step = 2.0 * math.pi / segs
+    xs = {-hw, hw}
+    for k in range(segs):
+        x, y = r * math.cos(step * k), r * math.sin(step * k)
+        if abs(x) < hw - 1e-9 and y * sign > 0:
+            xs.add(x)
+    out = []
+    for x in sorted(xs):
+        a = math.atan2(sign * math.sqrt(max(0.0, r * r - x * x)), x)      # the circle's point at x lies on edge k
+        k = math.floor(a / step)
+        x0, y0 = r * math.cos(step * k), r * math.sin(step * k)
+        x1, y1 = r * math.cos(step * (k + 1)), r * math.sin(step * (k + 1))
+        u = 0.0 if abs(x1 - x0) < 1e-12 else (x - x0) / (x1 - x0)
+        out.append((x, y0 + u * (y1 - y0)))
+    return out
+
+
+def _arc_slab_geom(hw, r_arc, y_end, sign, top, bottom=None, segs=None):
+    """(verts, faces, material indices) of _arc_slab."""
+    if segs:
+        arc = _gon_arc(hw, r_arc, sign, segs)
+    else:
+        xs = [-hw + 2.0 * hw * i / 16 for i in range(17)]
+        arc = [(x, sign * math.sqrt(r_arc * r_arc - x * x)) for x in xs]
+    ring = arc + [(hw, sign * y_end), (-hw, sign * y_end)]
     area = sum(ring[i][0] * ring[(i + 1) % len(ring)][1] - ring[(i + 1) % len(ring)][0] * ring[i][1]
                for i in range(len(ring)))
     if area < 0:
@@ -371,8 +425,24 @@ def _arc_slab(name, coll, root, hw, r_arc, y_end, sign, top, bottom=None,
             k2 = (k + 1) % n
             faces.append((k, n + k, n + k2, k2))
             mi.append(0)
+    return verts, faces, mi
+
+
+def _arc_slab(name, coll, root, hw, r_arc, y_end, sign, top, bottom=None,
+              mats=("marble_white", "marble_paving"), segs=None):
+    """Slab x -hw..hw between the circle r_arc (that edge follows the arc, so it meets a round
+    edge without overlapping it; segs: follow the segs-gon _annulus builds instead, to meet such a
+    ring's edge exactly) and the straight edge y = sign * y_end. Top face at ``top`` gets
+    mats[1]; bottom=None builds only the top face (a floor inlay)."""
+    verts, faces, mi = _arc_slab_geom(hw, r_arc, y_end, sign, top, bottom, segs)
     return U.mesh_from_pydata(U.name(KEY, name), verts, faces, coll, materials=list(mats),
                               material_indices=mi, smooth=False, parent=root)
+
+
+def _axis_walk_geom(sign):
+    """(verts, faces, material indices) of one half of the white axis strip (sign -1: front, +1: back): from the
+    floor's R_DARK edge (its FLOOR_SEGS-gon) to STRIP_FOOT, flush in the floor (STRIP_Z), filling _axis_cut's hole."""
+    return _arc_slab_geom(STRIP_HW, R_DARK, STRIP_FOOT, sign, STRIP_Z, None, FLOOR_SEGS)
 
 
 def _route(coll, root):
@@ -388,11 +458,12 @@ def _route(coll, root):
     A.stairs(U.name(KEY, "depart_steps"), coll, 8.0, 0.4, ramp=False, balustrade=False, parent=root,
              location=(0.0, APRON_Y, -0.4), rotation_z=math.pi)
     # white strip on x 0 from the floor's edge to the foot of each dais flight (0.99 m run
-    # from the bottom tier at r 11); the rim beyond R_DARK is already white paving
-    foot = R_DAIS + 0.9
+    # from the bottom tier at r 11), flush in the floor (cut away under it); the rim beyond R_DARK is already white
+    # paving
     for sign in (-1.0, 1.0):
-        _arc_slab("axis_walk", coll, root, STRIP_HW, R_DARK, foot, sign, STRIP_Z,
-                  mats=("marble_paving", "marble_paving"))
+        verts, faces, mi = _axis_walk_geom(sign)
+        U.mesh_from_pydata(U.name(KEY, "axis_walk"), verts, faces, coll, materials=["marble_paving", "marble_paving"],
+                           material_indices=mi, smooth=False, parent=root)
 
 
 # ---------------------------------------------------------------------------- armillary and core

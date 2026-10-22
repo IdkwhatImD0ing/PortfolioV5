@@ -27,8 +27,13 @@ export const NOVELS = {
 export interface LoreEntry {
   /** Chinese name, in traditional characters as the novels were first printed. */
   zh: string;
-  /** English name. */
+  /**
+   * English name, faithful to every character (倚天劍 is the Heaven-Reliant Sword, not just the Heaven
+   * Sword); where a literal name would be clumsy, the usual English name, and `what` says the rest.
+   */
   en: string;
+  /** The shorter name the novel's English title uses for it ("Heaven Sword"), when `en` is fuller. */
+  short?: string;
   /** What it is, in a few plain words (the card's line adds the novel). */
   what: string;
   /** The novel it comes from, or null when the line says it all. */
@@ -41,15 +46,17 @@ export interface LoreEntry {
 export const LORE = {
   "heaven-sword": {
     zh: "倚天劍",
-    en: "Heaven Sword",
-    what: "The Dragon Saber's only rival",
+    en: "Heaven-Reliant Sword",
+    short: "Heaven Sword",
+    what: "The Dragon-Slaying Saber's only rival",
     novel: NOVELS.heavenSword,
     area: "gate",
   },
   "dragon-saber": {
     zh: "屠龍刀",
-    en: "Dragon Saber",
-    what: "Its holder rules the martial world",
+    en: "Dragon-Slaying Saber",
+    short: "Dragon Saber",
+    what: "The blade whose holder rules the martial world",
     novel: NOVELS.heavenSword,
     area: "gate",
   },
@@ -69,13 +76,13 @@ export const LORE = {
   },
   "five-wheels": {
     zh: "金銀銅鐵鉛五輪",
-    en: "Five Wheels",
-    what: "The Golden Wheel Lama's weapons",
+    en: "Five Metal Wheels",
+    what: "Gold, silver, copper, iron and lead",
     novel: NOVELS.condorReturn,
     area: "forge",
   },
   "sword-tomb": {
-    zh: "劍冢",
+    zh: "劍塚",
     en: "Sword Tomb",
     what: "Where Dugu Qiubai buried his swords",
     novel: NOVELS.condorReturn,
@@ -83,15 +90,15 @@ export const LORE = {
   },
   "heavy-iron-sword": {
     zh: "玄鐵重劍",
-    en: "Heavy Iron Sword",
+    en: "Black Iron Heavy Sword",
     what: "Dugu Qiubai's edgeless sword",
     novel: NOVELS.condorReturn,
     area: "arena",
   },
   "holy-fire-altar": {
-    zh: "聖火壇",
-    en: "Holy Fire Altar",
-    what: "The Ming Sect's sacred flame",
+    zh: "聖火",
+    en: "Holy Flame",
+    what: "The fire the Ming Sect worships",
     novel: NOVELS.heavenSword,
     area: "mission",
   },
@@ -104,7 +111,7 @@ export const LORE = {
   },
   "holy-fire-tokens": {
     zh: "聖火令",
-    en: "Holy Fire Tokens",
+    en: "Holy Flame Tablets",
     what: "The Ming Sect's tokens of command",
     novel: NOVELS.heavenSword,
     area: "scroll",
@@ -118,22 +125,22 @@ export const LORE = {
   },
   "big-dipper-array": {
     zh: "天罡北斗陣",
-    en: "Big Dipper Array",
-    what: "Quanzhen's seven-star formation",
+    en: "Big Dipper Formation",
+    what: "Seven Quanzhen masters, one per star",
     novel: NOVELS.condorLegend,
     area: "formation",
   },
   "wanderer-duet": {
     zh: "笑傲江湖",
-    en: "The Wanderer's Duet",
+    en: "Laughing Proudly in the Jianghu",
     what: "Qu Yang and Liu Zhengfeng's duet",
     novel: NOVELS.wanderer,
     area: "abode",
   },
   "golden-bell-ribbon": {
     zh: "金鈴索",
-    en: "Golden Bell Ribbon",
-    what: "Xiaolongnü's silk ribbon",
+    en: "Golden Bell Rope",
+    what: "Xiaolongnü's white silk ribbon",
     novel: NOVELS.condorReturn,
     area: "abode",
   },
@@ -154,9 +161,24 @@ export function isLoreId(id: string): id is LoreId {
   return Object.prototype.hasOwnProperty.call(LORE, id);
 }
 
-/** The card's one line: what it is and the novel it comes from. */
+/**
+ * True when the novel's title already says the reference's name (the Heaven Sword and the Dragon
+ * Saber are the title of Heaven Sword and Dragon Saber), so naming the novel would repeat it. The
+ * title uses the short names, so they are the ones looked for.
+ */
+function titled(e: LoreEntry): boolean {
+  return e.novel !== null && e.novel.toLowerCase().includes((e.short ?? e.en).toLowerCase());
+}
+
+/** The novel the card names after its line: none when the line says it all or the title names it. */
+export function loreNovel(e: LoreEntry): string | null {
+  return titled(e) ? null : e.novel;
+}
+
+/** The card's one line: what it is and the novel it comes from (unless the title already names it). */
 export function loreLine(e: LoreEntry): string {
-  return e.novel ? `${e.what}, from ${e.novel}` : e.what;
+  const novel = loreNovel(e);
+  return novel ? `${e.what}, from ${novel}` : e.what;
 }
 
 /** Content hotspots whose hover label always carries a quiet extra line (the jade scroll's verses). */
@@ -172,9 +194,14 @@ export interface HoverNote {
   novel?: string;
 }
 
-/** The line a reference adds to the label of the hotspot that holds it ("倚天劍 Heaven Sword, from ..."). */
+/**
+ * The line a reference adds to the label of the hotspot that holds it: its name and novel ("玄鐵重劍
+ * Black Iron Heavy Sword, from ..."), or its name and line when the title names it ("倚天劍
+ * Heaven-Reliant Sword, the Dragon-Slaying Saber's only rival"), or the line alone with no novel.
+ */
 export function loreNote(id: LoreId): HoverNote {
   const e: LoreEntry = LORE[id];
+  if (titled(e)) return { zh: e.zh, text: `${e.en}, ${e.what.charAt(0).toLowerCase()}${e.what.slice(1)}` };
   return e.novel ? { zh: e.zh, text: e.en, novel: e.novel } : { zh: e.zh, text: e.what };
 }
 

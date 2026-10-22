@@ -21,6 +21,10 @@ does not. ``build(scene, anchors)`` creates
   corbelled stone piers 15-20 m apart where it falls away;
   a level arched bridge (library to steles), a stepped chain bridge to the arena and floating
   stepping stones from it. ``build_connectors`` prints one ``WORLD LINK`` report line per link.
+  No two of their faces share a plane, and none shares one with the range (round 11: the web draws
+  every baked face double-sided, so those z-fought): landings are flush with the treads and carry
+  their walls inset, and the range sinks SINK m under the stairs where it lay at their level
+  (sink_under_links).
 
 World coordinates: metres, Z up, +Y north (direction of travel).
 """
@@ -372,7 +376,11 @@ class Range:
 # =========================================================================================
 
 def _mesh_np(name, coll, verts, faces, materials, mat_idx=None, smooth=True):
-    """Mesh object from numpy verts (n,3) and quad faces (m,4)."""
+    """Mesh object from numpy verts (n,3) and quad faces (m,4). smooth=False flat-shades every face. (Round 11:
+    it used to leave the faces alone, and faces made through the mesh API are smooth in Blender 5: every link
+    stair box (treads, parapets, landings, walls, piers) and chain-bridge plank shaded as a pillow, its normals
+    averaged round 90 deg corners. That baked a light-to-dark ramp into each 1.6 m parapet box (the scales on
+    the curves) and into every tread.)"""
     me = bpy.data.meshes.new(name)
     nv, nf = len(verts), len(faces)
     me.vertices.add(nv)
@@ -391,8 +399,7 @@ def _mesh_np(name, coll, verts, faces, materials, mat_idx=None, smooth=True):
     me.validate(clean_customdata=False)
     for m in materials:
         me.materials.append(M.get(m) if isinstance(m, str) else m)
-    if smooth:
-        me.polygons.foreach_set("use_smooth", np.ones(len(me.polygons), bool))
+    me.polygons.foreach_set("use_smooth", np.full(len(me.polygons), bool(smooth)))
     ob = bpy.data.objects.new(name, me)
     coll.objects.link(ob)
     return ob
@@ -1005,6 +1012,19 @@ REST_LANDING = 9.0         # that landing's length (m)
 REST_DEPTH = 8.5           # how far its terrace reaches out beside the stair
 RAIL_W, RAIL_H = 0.4, 1.0  # parapet width, and height over the nosing line
 COPING = 0.6               # parapet tops fall this much to the outer edge (a coping, not a floor)
+# (round 11: all baked materials draw double-sided on the web, so two faces in one plane z-fight whichever way they
+# face. The landings shared faces with their own walls and treads, and the treads lay on the terrace grass)
+REVEAL = 0.02              # landing walls (rest_rail, foot_rail) stand this far in from their slab's outer faces and
+WALL_SINK = 0.1            # ends, their bottoms this far down in the slab: no wall face lies in a slab face's plane
+SINK = 0.05                # the range sinks this far under a stairway's walking surfaces where it lay at their level
+SINK_UP = 0.03             # ... range vertices from SINK under to this far over a walking level count as at it
+SINK_REACH = 0.45          # ... a vertex inside the stair's own footprint takes the lowest walking level this near
+                           # (XY). Only vertices inside the footprint move (the areas' steps and rails stand on the
+                           # range just outside it). A 2.5 m grid triangle stays within 5 mm of an unmoved corner only
+                           # within 0.354 m of it: beside the treads every unmoved corner is past the parapets, 0.4 m
+                           # out, so no range face lies within 5 mm under a tread; along a landing's open edge a
+                           # corner just outside can leave a sliver up to 0.354 m wide (sink_under_links)
+SINK_END = 0.4             # ... and the footprint reaches this far past a stair's bare ends (no foot landing there)
 # supports (W4, 2026-10-21; _supports): a pier every 4.8 m with a round-headed arcade and tie arches every 12 m down
 # read as a Roman aqueduct in about 10 of 35 audit frames. Now: few heavy tapered piers with stepped corbel heads,
 # and a solid footing under the lower stretches
@@ -1322,6 +1342,19 @@ def _strip(c, nl, qa, qb, l0, l1):
     return [c[qa] + nl[qa] * l0, c[qb] + nl[qb] * l0, c[qb] + nl[qb] * l1, c[qa] + nl[qa] * l1]
 
 
+def _strip_l(c, nl, qa, qb, l0, l1):
+    """_strip with its laterals per station: l0 = (at a, at b) < l1 = (at a, at b)."""
+    return [c[qa] + nl[qa] * l0[0], c[qb] + nl[qb] * l0[1], c[qb] + nl[qb] * l1[1], c[qa] + nl[qa] * l1[0]]
+
+
+def _chord_lateral(c, nl, a, b):
+    """Per station (centres c (m, 2), left normals nl (m, 2)): the lateral t at which the station's
+    line c + t nl crosses the straight line through points a and b."""
+    d = np.asarray(b, float) - np.asarray(a, float)
+    r = np.asarray(a, float)[None, :] - np.asarray(c, float)
+    return (-r[:, 0] * d[1] + r[:, 1] * d[0]) / (-nl[:, 0] * d[1] + nl[:, 1] * d[0])
+
+
 def _prism(q4, zb, zt):
     """8 corners: the 4 xy corners (CCW from above) at zb, then at zt (scalars or per corner)."""
     zb = np.broadcast_to(np.asarray(zb, float), (4,))
@@ -1330,40 +1363,78 @@ def _prism(q4, zb, zt):
            [(float(p[0]), float(p[1]), float(z)) for p, z in zip(q4, zt)]
 
 
-def _prisms_obj(name, coll, prisms, material, under=None, solids=()):
+def _prisms_obj(name, coll, prisms, material, under=None, solids=(), smooth_solids=False):
     """One mesh object from closed 8-corner prisms (see _prism) and closed quad solids ((verts,
     faces), see _ribbon). ``under``: a second material for the prisms' bottom faces (the stairs'
-    undersides)."""
-    verts, faces, mats = [], [], []
+    undersides) and the solids' (with ``smooth_solids``; their first face of every four, _ribbon's
+    bottoms). Every face is flat-shaded, except with ``smooth_solids``: the solids then shade smooth
+    along their run, sharp along the corners of their cross-section and round their end caps
+    (_ribbon_sharp)."""
+    verts, faces, mats, smooth, sharp = [], [], [], [], []
     for c in prisms:
         base = len(verts)
         verts.extend(c)
         faces.extend(tuple(base + i for i in f) for f in _BOX_FACES)
         mats.extend([1 if under else 0] + [0] * (len(_BOX_FACES) - 1))
+        smooth.extend([False] * len(_BOX_FACES))
     for sv, sf in solids:
         base = len(verts)
         verts.extend(sv)
         faces.extend(tuple(base + i for i in f) for f in sf)
-        mats.extend([0] * len(sf))
+        m = len(sv) // 4
+        mats.extend([1 if (under and smooth_solids and k < 4 * (m - 1) and k % 4 == 0) else 0 for k in range(len(sf))])
+        smooth.extend([bool(smooth_solids)] * len(sf))
+        if smooth_solids:
+            sharp.extend((base + a, base + b) for a, b in _ribbon_sharp(m))
     if not faces:
         return None
-    return _mesh_np(name, coll, np.array(verts), np.array(faces), [material] + ([under] if under else []),
-                    mat_idx=mats if under else None, smooth=False)
+    ob = _mesh_np(name, coll, np.array(verts), np.array(faces), [material] + ([under] if under else []),
+                  mat_idx=mats if under else None, smooth=False)
+    if smooth_solids and any(smooth):
+        me = ob.data
+        if len(me.polygons) != len(smooth) or len(me.vertices) != len(verts):
+            _log("WARN", name, "lost faces in validate: left flat-shaded")
+            return ob
+        me.polygons.foreach_set("use_smooth", np.array(smooth, bool))
+        ev = np.empty(len(me.edges) * 2, np.int32)
+        me.edges.foreach_get("vertices", ev)
+        ev = np.sort(ev.reshape(-1, 2), axis=1)
+        keys = {(min(a, b), max(a, b)) for a, b in sharp}
+        flags = np.array([(int(a), int(b)) in keys for a, b in ev], bool)
+        at = me.attributes.get("sharp_edge") or me.attributes.new("sharp_edge", "BOOLEAN", "EDGE")
+        at.data.foreach_set("value", flags)
+        me.update()
+    return ob
+
+
+def _ribbon_sharp(m):
+    """Sharp edges of a _ribbon solid over m stations, as pairs of its own vertex indices: the four
+    lengthwise corner edges and the edges round both end caps. The edges across the run, between
+    one station's faces and the next's, stay smooth."""
+    out = [(4 * i + k, 4 * (i + 1) + k) for i in range(m - 1) for k in range(4)]
+    for i in (0, m - 1):
+        p = 4 * i
+        out += [(p, p + 1), (p + 2, p + 3), (p, p + 2), (p + 1, p + 3)]
+    return out
 
 
 def _ribbon(c, nl, l0, l1, zb, zt):
     """One closed solid along stations (centres c (m, 2), left normals nl (m, 2)) between lateral
-    l0 < l1: bottom zb (m,) or (m, 2) for the l0 and l1 sides, top zt (m,). No inner end faces
-    (a row of prisms would bake their hidden ends into the atlas). Returns (verts, faces)."""
+    l0 < l1 (scalars or (m,) per station): bottom zb and top zt, each (m,) or (m, 2) for the l0 and
+    l1 sides. No inner end faces (a row of prisms would bake their hidden ends into the atlas).
+    Returns (verts, faces); face 4 i is segment i's bottom (_prisms_obj, _ribbon_sharp)."""
     m = len(c)
     zb = np.asarray(zb, float)
     zb = np.stack([zb, zb], axis=1) if zb.ndim == 1 else zb
     zt = np.asarray(zt, float)
+    zt = np.stack([zt, zt], axis=1) if zt.ndim == 1 else zt
+    l0 = np.asarray(l0, float).reshape(-1, 1)
+    l1 = np.asarray(l1, float).reshape(-1, 1)
     a, b = c + nl * l0, c + nl * l1
     verts = []
     for i in range(m):            # per station: l0 bottom, l1 bottom, l0 top, l1 top
         verts += [(a[i][0], a[i][1], zb[i, 0]), (b[i][0], b[i][1], zb[i, 1]),
-                  (a[i][0], a[i][1], zt[i]), (b[i][0], b[i][1], zt[i])]
+                  (a[i][0], a[i][1], zt[i, 0]), (b[i][0], b[i][1], zt[i, 1])]
     faces = []
     for i in range(m - 1):
         p, q = 4 * i, 4 * (i + 1)
@@ -1492,7 +1563,13 @@ def _supports(rng_, nm, s, xy, yaw, nl, lat, zs, soffit, skip, foot=0.0):
         zt = sb[sl] + 0.3
         zb = np.stack([np.minimum(g3[2, sl], g3[0, sl]), np.minimum(g3[1, sl], g3[0, sl])], axis=1) - FOOTING_SINK
         zb = np.minimum(zb, zt[:, None] - 0.5)
-        solids.append(_ribbon(xy[sl], nl[sl], -w, w, zb, zt))
+        # (round 11: its end faces stand REVEAL in from the samples, where the treads' faces are; in
+        # their plane they z-fought where the footing starts under a flight)
+        cc = xy[sl].copy()
+        for i, sg in ((0, 1.0), (-1, -1.0)):
+            a = float(yaw[k0] if i == 0 else yaw[k1])
+            cc[i] += sg * REVEAL * np.array([math.cos(a), math.sin(a)])
+        solids.append(_ribbon(cc, nl[sl], -w, w, zb, zt))
         foot_m += float(s[k1] - s[k0])
         foot_h = max(foot_h, float((zt[:, None] - zb).max()))
     # treads under the GRID mesh anywhere across the stair (the plan read the PLAN_GRID mesh)
@@ -1619,45 +1696,64 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True):
     zs = _level_at(plan, s)
     soffit = lambda q: np.minimum(_nosing(plan, s, z0, z1, q) - STAIR_DEPTH, _level_at(plan, q) - 0.6)
 
-    # treads: one prism per stretch between centreline samples and risers
-    cuts = np.unique(np.concatenate([s, sr]))
+    # treads: one prism per stretch between centreline samples and risers. Round 11: none over the
+    # foot landing, whose slab is the floor there, flush with the first tread (the treads lay 4 mm
+    # over it and z-fought with it); and no sample within 1 cm of a riser or of the foot (it cut a
+    # tread a few mm long, whose riser face stood mm from the next one's: z-fighting risers)
+    foot = P["foot"] if gate else 0.0
+    fixed = np.concatenate([sr, [foot] if foot else []])
+    s_cut = s[np.abs(s[:, None] - fixed[None, :]).min(axis=1) > 0.01] if len(fixed) else s
+    cuts = np.unique(np.concatenate([[0.0, L], s_cut, fixed]))
     cuts = cuts[np.concatenate([[True], np.diff(cuts) > 1e-4])]
     c, nlq, _ = _frame(s, xy, yaw, cuts)
     zc = _level_at(plan, 0.5 * (cuts[:-1] + cuts[1:]))
     sb = soffit(cuts)
     treads = []
     for k in range(len(cuts) - 1):
+        if cuts[k + 1] <= foot + 1e-6:
+            continue
         q4 = _strip(c, nlq, k, k + 1, -STAIR_W * 0.5, STAIR_W * 0.5)
         treads.append(_prism(q4, [sb[k], sb[k + 1], sb[k + 1], sb[k]], zc[k]))
-    # parapets: solid side walls from the soffit to RAIL_H over the nosing line, every 2 samples;
-    # open beside the rest pavilion's terrace
+    # parapets: solid side walls from the soffit to RAIL_H over the nosing line, the coping falling
+    # COPING m to the outer edge (steeper than 45 deg: not a floor); open beside the rest
+    # pavilion's terrace. Round 11: each is one continuous solid per run (_ribbon) through every
+    # centreline sample, shaded smooth along the run and sharp at its corners. It was a separate
+    # box every 2 samples, each baked with its own shade: light and dark scales round the bends.
+    # The run breaks exactly at the rest landing's ends: the box rows broke on the nearest box,
+    # up to 1.1 m wider than the opening, and ran 0.5 m over the slab at each end (its inner face
+    # in the parapet's plane)
     side = 1.0 if P["info"]["meander"] >= 0.0 else -1.0
-    rest_span = None
+    rest_span = rest_open = None
     if plan["rest_k"] is not None:
         k = plan["rest_k"]
         mid = 0.5 * (sr[k] + sr[k + 1])
         rest_span = (mid - REST_LANDING * 0.5 + 0.5, mid + REST_LANDING * 0.5 - 0.5)
+        rest_open = (rest_span[0] - 0.5, rest_span[1] + 0.5)          # the slab's ends, qa and qb below
     # (the parapets start where the first flight starts: the foot landing that carries the
     # archway stays one open landing; before, they ran through it from the depart edge and cut
     # it into a centre lane and two dead strips)
-    foot = P["foot"] if gate else 0.0
-    st = np.unique(np.concatenate([s[::2], [L], [foot] if foot else []]))
+    keys = np.array([L] + ([foot] if foot else []) + (list(rest_open) if rest_open else []))
+    st = np.unique(np.concatenate([s[np.abs(s[:, None] - keys[None, :]).min(axis=1) > 0.2], keys]))
     c2, nl2, _ = _frame(s, xy, yaw, st)
     top2 = _nosing(plan, s, z0, z1, st) + RAIL_H
     bot2 = soffit(st)
     rails = []
-    for k in range(len(st) - 1):
-        for sd in (-1.0, 1.0):
-            if rest_span and sd == side and st[k + 1] > rest_span[0] and st[k] < rest_span[1]:
+    for sd in (-1.0, 1.0):
+        keep = st[:-1] >= foot - 1e-6                 # segment k runs from st[k] to st[k + 1]
+        if rest_open and sd == side:
+            keep &= ~((st[:-1] >= rest_open[0] - 1e-6) & (st[1:] <= rest_open[1] + 1e-6))
+        l0, l1 = (STAIR_W * 0.5, lat) if sd > 0 else (-lat, -STAIR_W * 0.5)
+        zt = np.stack([top2, top2 - COPING] if sd > 0 else [top2 - COPING, top2], axis=1)
+        k = 0
+        while k < len(keep):
+            if not keep[k]:
+                k += 1
                 continue
-            if st[k + 1] <= foot + 1e-6:
-                continue
-            l0, l1 = (STAIR_W * 0.5, lat) if sd > 0 else (-lat, -STAIR_W * 0.5)
-            q4 = _strip(c2, nl2, k, k + 1, l0, l1)
-            # the coping falls COPING m to the outer edge (steeper than 45 deg: not a floor)
-            ci, co = (0.0, COPING) if sd > 0 else (COPING, 0.0)
-            rails.append(_prism(q4, [bot2[k], bot2[k + 1], bot2[k + 1], bot2[k]],
-                                [top2[k] - ci, top2[k + 1] - ci, top2[k + 1] - co, top2[k] - co]))
+            k0 = k
+            while k < len(keep) and keep[k]:
+                k += 1
+            sl = slice(k0, k + 1)                     # stations k0 .. k (segments k0 .. k - 1)
+            rails.append(_ribbon(c2[sl], nl2[sl], l0, l1, bot2[sl], zt[sl]))
     # supports (W4): corbelled piers at most PIER_SPAN[1] apart where the treads stand > PIER_GAP over
     # the ground, a footing under the lower stretches (_supports)
     on_bridge = np.zeros(n, bool)
@@ -1678,18 +1774,30 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True):
         intr = hs + (crown - hs) * np.sqrt(np.maximum(0.0, 1.0 - x * x))
         bot = np.maximum(intr, h - 1.0)
         topa = soffit(s) + 0.3
+        # (round 11: its sides stand REVEAL inside the parapets' outer faces; flush with them, the
+        # two shared a 0.3 m band along the whole bridge, where the arch reaches up into the stair)
         for k in range(k0, k1):
-            q4 = _strip(xy, nl, k, k + 1, -lat, lat)
+            q4 = _strip(xy, nl, k, k + 1, -lat + REVEAL, lat - REVEAL)
             arch_pr.append(_prism(q4, [bot[k], bot[k + 1], bot[k + 1], bot[k]],
                                   [topa[k], topa[k + 1], topa[k + 1], topa[k]]))
     # (the treads' and parapets' undersides in the supports' stone: a white soffit read as a lit band
     # under every flight)
     objs = [_prisms_obj(nm + ".stairs", coll, treads, "marble_white", under="world_pier_stone"),
-            _prisms_obj(nm + ".rails", coll, rails, "marble_white", under="world_pier_stone"),
+            _prisms_obj(nm + ".rails", coll, [], "marble_white", under="world_pier_stone", solids=rails,
+                        smooth_solids=True),
             _prisms_obj(nm + ".piers", coll, piers, "world_pier_stone", solids=footing),
             _prisms_obj(nm + ".arch", coll, arch_pr, "world_pier_stone")]
     extras = []
     foot_drop = 0.0
+    # walking surfaces (sink_under_links): XY points every 0.15 x 0.25 m with their floor level over
+    # the treads from the first flight on, then over the foot and rest landings (pads: their
+    # outlines and levels)
+    qw = np.unique(np.concatenate([np.arange(foot, L, 0.15), [L]]))
+    cw_, nw_, _ = _frame(s, xy, yaw, qw)
+    lw = np.linspace(-STAIR_W * 0.5, STAIR_W * 0.5, 21)
+    walk_xy = [(cw_[:, None, :] + nw_[:, None, :] * lw[None, :, None]).reshape(-1, 2)]
+    walk_z = [np.repeat(_level_at(plan, qw), len(lw))]
+    pads = []
     # (the foot landing's depth and parapet, and whether the rest terrace stands on a pier, read the
     # PLAN_GRID mesh like the riser plan, so a finer range leaves them as they were)
     # foot landing + archway (W3)
@@ -1698,20 +1806,31 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True):
         hw = FOOT_GATE["width"] * 0.5 + 0.6
         q4 = [cf[0] - nf[0] * hw, cf[1] - nf[1] * hw, cf[1] + nf[1] * hw, cf[0] + nf[0] * hw]
         g, _, _ = _ground(rng_, np.array([p[0] for p in q4]), np.array([p[1] for p in q4]), grid=PLAN_GRID)
-        objs.append(_prisms_obj(nm + ".foot_landing", coll, [_prism(q4, float(g.min()) - 0.6, z0 - 0.004)],
+        # (round 11: its top is the floor from the area's edge to the first riser, flush with the
+        # depart point and the first tread; it lay 4 mm under treads that ran over it, and the two
+        # z-fought)
+        objs.append(_prisms_obj(nm + ".foot_landing", coll, [_prism(q4, float(g.min()) - 0.6, z0)],
                                 "marble_white"))
+        qf = np.linspace(0.0, FOOT_FLAT, 34)
+        cfq, nfq, _ = _frame(s, xy, yaw, qf)
+        lf = np.linspace(-hw, hw, 46)
+        walk_xy.append((cfq[:, None, :] + nfq[:, None, :] * lf[None, :, None]).reshape(-1, 2))
+        walk_z.append(np.full(len(qf) * len(lf), z0))
+        pads.append((np.array(q4, float), z0))
         foot_drop = z0 - float(g.min())
         if foot_drop > 0.5:
             # the landing stands over falling ground: a parapet along its two sides and across its
-            # back corners beside the first flight (the front, toward the area, stays open)
-            cb, nb, _ = _frame(s, xy, yaw, [0.0, FOOT_FLAT - RAIL_W, FOOT_FLAT])
-            zb_, top = float(g.min()) - 0.6, z0 + RAIL_H
+            # back corners beside the first flight (the front, toward the area, stays open). It
+            # stands on the slab REVEAL in from the slab's faces, WALL_SINK down into it (round 11:
+            # the walls shared the slab's side, back and bottom faces)
+            cb, nb, _ = _frame(s, xy, yaw, [REVEAL, FOOT_FLAT - REVEAL - RAIL_W, FOOT_FLAT - REVEAL])
+            zb_, top, ho = z0 - WALL_SINK, z0 + RAIL_H, hw - REVEAL
             walls = []
             for sd in (-1.0, 1.0):
-                l0, l1 = (hw - RAIL_W, hw) if sd > 0 else (-hw, -hw + RAIL_W)
+                l0, l1 = (ho - RAIL_W, ho) if sd > 0 else (-ho, -ho + RAIL_W)
                 cop = [top, top, top - COPING, top - COPING] if sd > 0 else [top - COPING, top - COPING, top, top]
                 walls.append(_prism(_strip(cb, nb, 0, 2, l0, l1), zb_, cop))
-                l0, l1 = (lat, hw - RAIL_W) if sd > 0 else (-hw + RAIL_W, -lat)
+                l0, l1 = (lat, ho - RAIL_W) if sd > 0 else (-ho + RAIL_W, -lat)
                 walls.append(_prism(_strip(cb, nb, 1, 2, l0, l1), zb_, [top, top - COPING, top - COPING, top]))
             objs.append(_prisms_obj(nm + ".foot_rail", coll, walls, "marble_white"))
         if A is not None:
@@ -1731,17 +1850,43 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True):
         zl = float(lev[k + 1])
         qa, qb = rest_span[0] - 0.5, rest_span[1] + 0.5
         cr, nr, ar = _frame(s, xy, yaw, [qa, qb, 0.5 * (qa + qb)])
-        l0, l1 = (STAIR_W * 0.5 - 0.2, lat + REST_DEPTH) if side > 0 else (-lat - REST_DEPTH, -STAIR_W * 0.5 + 0.2)
-        q4 = _strip(cr, nr, 0, 1, l0, l1)
-        objs.append(_prisms_obj(nm + ".rest_landing", coll, [_prism(q4, zl - STAIR_DEPTH, zl - 0.004)], "marble_white"))
-        lo, hi = (lat + REST_DEPTH - RAIL_W, lat + REST_DEPTH) if side > 0 else (-lat - REST_DEPTH, -lat - REST_DEPTH + RAIL_W)
-        zt, zo = zl + RAIL_H, zl + RAIL_H - COPING
-        wall = [_prism(_strip(cr, nr, 0, 1, lo, hi), zl - STAIR_DEPTH,
-                       [zt, zt, zo, zo] if side > 0 else [zo, zo, zt, zt])]
-        e0, e1 = (lat, lat + REST_DEPTH) if side > 0 else (-lat - REST_DEPTH, -lat)
-        for a_, b_, cop in ((qa, qa + RAIL_W, [zo, zt, zt, zo]), (qb - RAIL_W, qb, [zt, zo, zo, zt])):
+        # the slab (round 11): its inner edge follows the stair's side through every centreline
+        # sample, edge to edge with the treads and flush with them; its outer edge is the straight
+        # line it always had. It used to run straight 0.2 m in under the treads, 4 mm down: one
+        # plane on the web, and on a bend a gap on one side of the stair
+        A_, B_ = cr[0] + nr[0] * side * (lat + REST_DEPTH), cr[1] + nr[1] * side * (lat + REST_DEPTH)
+        qs = np.concatenate([[qa], s[(s > qa + 0.2) & (s < qb - 0.2)], [qb]])
+        cq, nq, _ = _frame(s, xy, yaw, qs)
+        l_in = np.full(len(qs), side * STAIR_W * 0.5)
+        l_out = _chord_lateral(cq, nq, A_, B_)
+        slab = _ribbon(cq, nq, *((l_in, l_out) if side > 0 else (l_out, l_in)),
+                       np.full(len(qs), zl - STAIR_DEPTH), np.full(len(qs), zl))
+        objs.append(_prisms_obj(nm + ".rest_landing", coll, [], "marble_white", solids=[slab]))
+        pads.append((np.vstack([cq + nq * l_in[:, None], (cq + nq * l_out[:, None])[::-1]]), zl))
+        qd = np.linspace(qa, qb, int((qb - qa) / 0.15) + 2)
+        cd_, nd_, _ = _frame(s, xy, yaw, qd)
+        for cc, nn, lo_ in zip(cd_, nd_, _chord_lateral(cd_, nd_, A_, B_)):
+            lr = np.linspace(side * STAIR_W * 0.5, lo_, max(2, int(abs(lo_ - side * STAIR_W * 0.5) / 0.25) + 2))
+            walk_xy.append(cc[None, :] + nn[None, :] * lr[:, None])
+            walk_z.append(np.full(len(lr), zl))
+        # its rail stands on the slab REVEAL in from the slab's faces, WALL_SINK down into it
+        # (round 11: the walls shared the slab's outer, end and bottom faces exactly): a side wall
+        # along the straight outer edge, and at each end a wall from the line of the stair's
+        # parapet (which stops at the slab's ends) out to it
+        mo = np.array([-(B_ - A_)[1], (B_ - A_)[0]]) / float(np.linalg.norm(B_ - A_))
+        mo = mo if float(mo @ (cr[2] - A_)) > 0.0 else -mo           # the outer edge's normal, toward the stair
+        zt, zo, zw = zl + RAIL_H, zl + RAIL_H - COPING, zl - WALL_SINK
+        cw, nw, _ = _frame(s, xy, yaw, [qa + REVEAL, qb - REVEAL])
+        t_out = _chord_lateral(cw, nw, A_ + mo * REVEAL, B_ + mo * REVEAL)
+        t_in = _chord_lateral(cw, nw, A_ + mo * (REVEAL + RAIL_W), B_ + mo * (REVEAL + RAIL_W))
+        lo, hi = (t_in, t_out) if side > 0 else (t_out, t_in)
+        wall = [_prism(_strip_l(cw, nw, 0, 1, lo, hi), zw, [zt, zt, zo, zo] if side > 0 else [zo, zo, zt, zt])]
+        for a_, b_, cop in ((qa + REVEAL, qa + REVEAL + RAIL_W, [zo, zt, zt, zo]),
+                            (qb - REVEAL - RAIL_W, qb - REVEAL, [zt, zo, zo, zt])):
             cc, nn, _ = _frame(s, xy, yaw, [a_, b_])
-            wall.append(_prism(_strip(cc, nn, 0, 1, e0, e1), zl - STAIR_DEPTH, cop))
+            e_in = np.full(2, side * lat)
+            e_out = _chord_lateral(cc, nn, A_ + mo * (REVEAL + RAIL_W), B_ + mo * (REVEAL + RAIL_W))
+            wall.append(_prism(_strip_l(cc, nn, 0, 1, *((e_in, e_out) if side > 0 else (e_out, e_in))), zw, cop))
         objs.append(_prisms_obj(nm + ".rest_rail", coll, wall, "marble_white"))
         pc = cr[2] + nr[2] * side * (lat + REST_DEPTH * 0.5)
         hpc, _, _ = _ground(rng_, np.array([pc[0]]), np.array([pc[1]]), grid=PLAN_GRID)
@@ -1784,7 +1929,8 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True):
         rep["bridge"] = dict(deck_z=round(arch[2], 2), span=round(arch[1] - arch[0], 1), span_t=arch[3],
                              level=bool(np.ptp(zs[(s >= arch[0] - BRIDGE_LANDING) & (s <= arch[1] + BRIDGE_LANDING)]) < 1e-6),
                              max_depth=round(float((arch[2] - h[(s >= arch[0]) & (s <= arch[1])]).max()), 1))
-    geo = dict(s=s, xy=xy, yaw=yaw, z=zs, h=h, plan=plan)
+    geo = dict(s=s, xy=xy, yaw=yaw, z=zs, h=h, plan=plan,
+               sink=dict(walk=(np.vstack(walk_xy), np.concatenate(walk_z)), strip=(foot, lat), pads=pads))
     return [o for o in objs if o is not None] + extras, rep, geo
 
 
@@ -1914,6 +2060,118 @@ def _stepping_stones(rng_, coll, p0, p1, name, seed=0, bulge=STONE_BULGE, land0=
                first_top=round(float(tops[0]), 2), last_top=round(float(tops[-1]), 2))
     geo = dict(xy=np.stack([cx, cy], axis=1), z=tops, sizes=sizes)
     return out, rep, geo
+
+
+def sink_under_links(rng_, terrain, links):
+    """Round 11 (S2): lower the range SINK under each stairway's walking surfaces wherever it lay at
+    their level. Where a stair runs onto a terrace, the riser plan keeps its lowest treads on the
+    ground (lb = h), so they and the foot landing lay in the terrace's own plane: on the web the
+    two z-fought, and in the bake each blocked the other's light (the dark band across the top of
+    the gate -> mirror stair). The stairs stay exactly as they are (risers, landings and joins to
+    the areas, as walkcheck measures them; the range on the terraces is never floor for it). Only
+    the range moves, a few cm and out of sight under the stair, with one 2.5 m cell of slope beside it.
+
+    Walking surfaces: geo['sink'] of each stairway: points over the tread tops (from the first
+    flight on) and the foot and rest landings with their level L, and the stair's footprint (the
+    treads with their parapets, the landings' outlines). A top vertex of the range inside that
+    footprint, with L - SINK < T < L + SINK_UP for a walking point within SINK_REACH m (XY), goes to
+    min(T, L - SINK) for the lowest such L. Nothing outside the footprint moves: the areas' steps,
+    aprons and rails stand on the range right beside the stairs' ends. T is the range's analytic
+    top there (Range.fields), not the mesh, so a second run lands on the same heights. Returns
+    dict(vertices, by_link, max_drop)."""
+    from mathutils import kdtree
+    me = terrain.data
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    Mw = np.array(terrain.matrix_world)
+    if not np.allclose(Mw, np.eye(4)):
+        raise ValueError("sink_under_links: %s has a transform; the range is built in world space" % terrain.name)
+    target = {}
+    by_link = {}
+    for nm, kind, objs, rep, geo in links:
+        sk = geo.get("sink") if isinstance(geo, dict) else None
+        if sk is None or not len(sk["walk"][0]):
+            continue
+        pts, lv = sk["walk"]
+        lo, hi = pts.min(axis=0) - 1.0, pts.max(axis=0) + 1.0
+        cand = np.nonzero((co[:, 0] >= lo[0]) & (co[:, 0] <= hi[0]) & (co[:, 1] >= lo[1]) & (co[:, 1] <= hi[1]))[0]
+        if not len(cand):
+            continue
+        q0, lat = sk["strip"]
+        sq, sl = _strip_coords(geo["s"], geo["xy"], geo["yaw"], co[cand, :2])
+        # (past a bare stair end, SINK_END more: an unmoved corner just past it left a corner of the last tread
+        # within 5 mm of the grass, the top of the gate -> mirror stair; a foot landing carries the other end)
+        inside = (sq >= q0 - (SINK_END if q0 <= 0.0 else 0.0) - 1e-6) & \
+            (sq <= float(geo["s"][-1]) + SINK_END + 1e-6) & (np.abs(sl) <= lat + 1e-6)
+        for poly, _lvl in sk["pads"]:
+            inside |= _in_poly(co[cand, :2], poly)
+        cand = cand[inside]
+        if not len(cand):
+            continue
+        T = rng_.fields(co[cand, 0], co[cand, 1])["T"]
+        keep = (co[cand, 2] <= T + 0.01) & (co[cand, 2] >= T - SINK - SINK_UP - 0.01)      # top surface vertices
+        keep &= (T > lv.min() - SINK) & (T < lv.max() + SINK_UP)
+        cand, T = cand[keep], T[keep]
+        kd = kdtree.KDTree(len(pts))
+        for i, (x, y) in enumerate(pts):
+            kd.insert((float(x), float(y), 0.0), i)
+        kd.balance()
+        moved = 0
+        for v, t in zip(cand.tolist(), T.tolist()):
+            hits = kd.find_range((float(co[v, 0]), float(co[v, 1]), 0.0), SINK_REACH)
+            if not hits:
+                continue
+            L_ = lv[[h[1] for h in hits]]
+            ok = L_[(L_ - SINK < t) & (t < L_ + SINK_UP)]
+            if len(ok):
+                z = min(t, float(ok.min()) - SINK)
+                target[v] = min(target.get(v, z), z)
+                moved += 1
+        by_link[nm] = moved
+    if target:
+        idx = np.fromiter(target.keys(), np.int64)
+        old = co[idx, 2].copy()
+        co[idx, 2] = np.fromiter(target.values(), float)
+        me.vertices.foreach_set("co", co.ravel().astype(np.float32))
+        me.update()
+        drop = float((old - co[idx, 2]).max())
+    else:
+        drop = 0.0
+    return dict(vertices=len(target), by_link=by_link, max_drop=round(drop, 4))
+
+
+def _strip_coords(s, xy, yaw, pts):
+    """(station, lateral) of XY points against a centreline; past either end the line runs on
+    along the end's tangent, so a point beyond an end gets a station outside [0, L]."""
+    from mathutils import kdtree
+    L = float(s[-1])
+    q = np.arange(-2.0, L + 2.0 + 1e-9, 0.05)
+    c, nl, _ = _frame(s, xy, yaw, np.clip(q, 0.0, L))
+    t0 = np.array([math.cos(float(yaw[0])), math.sin(float(yaw[0]))])
+    t1 = np.array([math.cos(float(yaw[-1])), math.sin(float(yaw[-1]))])
+    c = c + np.minimum(q, 0.0)[:, None] * t0[None, :] + np.maximum(q - L, 0.0)[:, None] * t1[None, :]
+    kd = kdtree.KDTree(len(q))
+    for i, (x, y) in enumerate(c):
+        kd.insert((float(x), float(y), 0.0), i)
+    kd.balance()
+    idx = np.array([kd.find((float(p[0]), float(p[1]), 0.0))[1] for p in pts], np.int64)
+    lat = ((np.asarray(pts, float) - c[idx]) * nl[idx]).sum(axis=1)
+    return q[idx], lat
+
+
+def _in_poly(pts, poly):
+    """Even-odd test of XY points against a closed polygon (k, 2)."""
+    x, y = pts[:, 0], pts[:, 1]
+    inside = np.zeros(len(pts), bool)
+    j = len(poly) - 1
+    for i in range(len(poly)):
+        xi, yi = poly[i]
+        xj, yj = poly[j]
+        cross = ((yi > y) != (yj > y)) & (x < (xj - xi) * (y - yi) / ((yj - yi) if yj != yi else 1e-30) + xi)
+        inside ^= cross
+        j = i
+    return inside
 
 
 LINK_TREE_CLEAR = 8.0      # terrain faces (5 m) whose centre is this close (XY) to a link part get no trees
@@ -2058,6 +2316,7 @@ def build(scene=None, anchors=None):
     build_waterfalls(rng_, cols["water"])
     t = lap("waterfalls", t)
     links = build_connectors(rng_, cols["links"])
+    _log("range sunk under the stairs' walking surfaces:", sink_under_links(rng_, terrain, links))
     # (trees off the links: the forest scatter above knew nothing of them, and pines grew
     # through stair bodies and pier arcades)
     _log("forest faces cleared near links:", clear_mask_near(terrain, ["world_veg"], link_points()))

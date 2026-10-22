@@ -6,6 +6,9 @@ import {
   BANNER_HANGS,
   CRANE_GLIDES,
   FILM_TURN_SPEED,
+  FIVE_ELEMENT_FLAGS,
+  FLAG_FLIES,
+  FLY_LIFT,
   FORMATION_CORE_SPEED,
   HANG_STILL,
   bannerSway,
@@ -17,15 +20,19 @@ import {
   glidePivot,
   fitRing,
   flicker,
+  flySway,
   hangSway,
   inCylinder,
+  inFly,
   inHang,
+  qiFlag,
   rigidStep,
   splitTriangles,
   treeSway,
   wave,
   type AreaFrame,
   type BannerHang,
+  type FlagFly,
   type V3,
 } from "./idle";
 
@@ -324,6 +331,177 @@ describe("the forge's, the arena's and the mission hall's merged banners", () =>
         expect(w[k * 4 + 2]).toBeCloseTo(h.out[0], 6);
       });
     }
+  });
+});
+
+describe("the formation's Five Element flags", () => {
+  const flags = FIVE_ELEMENT_FLAGS;
+  const wood = flags[0];
+  /** A point `along` out from the pole, `across` off the cloth's plane, at height y. */
+  const at = (f: FlagFly, along: number, across: number, y: number): V3 => [
+    f.pole[0] + f.out[0] * along - f.out[1] * across,
+    y,
+    f.pole[1] + f.out[1] * along + f.out[0] * across,
+  ];
+  /** A ring of n points round the pole at height y and radius r, the first along the cloth. */
+  const round = (f: FlagFly, r: number, y: number, n: number, k: number): V3 => {
+    const a = (2 * Math.PI * k) / n;
+    return at(f, r * Math.cos(a), r * Math.sin(a), y);
+  };
+
+  it("fly where the bake's cloths fly", () => {
+    // Read from the baked formation and abode chunks (high and low): every flag's hoist edge 0.098 m
+    // from its pole in the cloth's plane, rows from 234.652 down to 230.956 m, the teeth's tips at
+    // 235.239 m, the drooping fly no lower than 230.008 m, the fly 5.016 m out.
+    expect(flags).toHaveLength(5);
+    for (const f of flags) {
+      expect(f.hoist).toBeCloseTo(0.098, 3);
+      expect(Math.abs(f.hoistTop - 234.652)).toBeLessThan(2e-3);
+      expect(Math.abs(f.hoistBottom - 230.956)).toBeLessThan(2e-3);
+      expect(Math.abs(f.top - 235.239)).toBeLessThan(5e-3);
+      expect(f.bottom).toBeLessThan(230.008);
+      expect(Math.abs(f.reach - 5.016)).toBeLessThan(3e-3);
+      expect(Math.hypot(f.out[0], f.out[1])).toBeCloseTo(1, 9);
+      // One wind: they all fly the same way (the area's -x).
+      expect(f.out[0]).toBeCloseTo(wood.out[0], 9);
+      expect(f.out[1]).toBeCloseTo(wood.out[1], 9);
+    }
+    expect(wood.pole[0]).toBeCloseTo(98.59, 2);
+    expect(wood.pole[1]).toBeCloseTo(-1165.06, 2);
+  });
+
+  it("stand inside meta.json's five-element-banners boxes, wood to water", () => {
+    const meta = JSON.parse(readFileSync(path.resolve(__dirname, "../../../public/sect/full/meta.json"), "utf8")) as {
+      lore: { id: string; boxes: { center: V3; size: V3; objects: string[] }[] }[];
+    };
+    const boxes = meta.lore.find((l) => l.id === "five-element-banners")!.boxes;
+    expect(boxes.map((b) => b.objects[0])).toEqual(["wood", "fire", "earth", "metal", "water"].map((k) => `formation.flag.${k}`));
+    flags.forEach((f, k) => {
+      const b = boxes[k];
+      const inBox = (p: V3) => [0, 1, 2].every((i) => Math.abs(p[i] - b.center[i]) <= b.size[i] / 2 + 0.05);
+      expect(inBox(at(f, 0, 0, f.hoistTop))).toBe(true);
+      expect(inBox(at(f, f.reach, 0, f.hoistBottom))).toBe(true);
+      expect(inBox(at(f, f.reach / 2, 0, f.top))).toBe(true);
+    });
+  });
+
+  it("takes the cloth from its hoist edge to its fly", () => {
+    for (const f of flags) {
+      // The hoist edge's rows (0.33 of 1.4 apart), its tooth bases, the cloth, the fly, the billow.
+      for (let j = 0; j <= 8; j++) expect(inFly(f, ...at(f, f.hoist, 0.0004, f.hoistTop - 0.462 * j))).toBe(true);
+      expect(inFly(f, ...at(f, 0.3, 0, f.top - 0.3))).toBe(true);
+      expect(inFly(f, ...at(f, 2.5, 0.6, 233))).toBe(true);
+      expect(inFly(f, ...at(f, f.reach, -0.9, f.hoistBottom - 0.2))).toBe(true);
+      expect(inFly(f, ...at(f, 4, 1.2, f.bottom))).toBe(true);
+      // Not the ground, the drum, beyond the fly, nor far off the plane.
+      expect(inFly(f, ...at(f, 2, 0, 221))).toBe(false);
+      expect(inFly(f, ...at(f, 0.4, 0, 222.2))).toBe(false);
+      expect(inFly(f, ...at(f, f.reach + 0.3, 0, 233))).toBe(false);
+      expect(inFly(f, ...at(f, 2, 1.5, 233))).toBe(false);
+    }
+  });
+
+  it("cuts out no triangle of the pole, its hoist rings or its finial", () => {
+    // props.banner at 1.4 x: a 16-sided pole 0.091 m round halfway up (8.1 m above the drum) and
+    // 0.07 m at its top cap (15.07 m); four rings 0.105 m round, 0.017 thick (16 x 6 faces); the
+    // finial from 15.06 m up, 0.112 m round at most.
+    const tri = (f: FlagFly, ps: V3[]) => ps.every((p) => inFly(f, ...p));
+    for (const f of flags) {
+      const foot = f.hoistTop - 1.4 * 9.68;
+      const cut: V3[][] = [];
+      // The pole's side between its two upper vertex rings, and its top cap.
+      for (let k = 0; k < 16; k++) {
+        const a = round(f, 0.091, foot + 7.0, 16, k), b = round(f, 0.091, foot + 7.0, 16, k + 1);
+        const c = round(f, 0.07, foot + 13.972, 16, k), d = round(f, 0.07, foot + 13.972, 16, k + 1);
+        cut.push([a, b, c], [b, d, c], [c, d, at(f, 0, 0, foot + 13.972)]);
+      }
+      // The rings: a torus round the pole at each centre.
+      for (const y of f.rings) {
+        for (let k = 0; k < 16; k++) {
+          for (let q = 0; q < 6; q++) {
+            const pt = (kk: number, qq: number): V3 => {
+              const phi = (2 * Math.PI * qq) / 6;
+              return round(f, 1.4 * (0.075 + 0.012 * Math.cos(phi)), y + 1.4 * 0.012 * Math.sin(phi), 16, kk);
+            };
+            cut.push([pt(k, q), pt(k + 1, q), pt(k + 1, q + 1)], [pt(k, q), pt(k + 1, q + 1), pt(k, q + 1)]);
+          }
+        }
+      }
+      // The finial's lathe (radius, height above the pole's top).
+      const fin: [number, number][] = [[0.062, -0.03], [0.07, 0], [0.05, 0.04], [0.08, 0.11], [0.05, 0.18], [0.022, 0.21], [0.045, 0.3], [0.03, 0.4], [0, 0.52]];
+      for (let i = 0; i + 1 < fin.length; i++) {
+        for (let k = 0; k < 16; k++) {
+          const p = (j: number, kk: number) => round(f, 1.4 * fin[j][0], foot + 1.4 * (10 + fin[j][1]), 16, kk);
+          cut.push([p(i, k), p(i, k + 1), p(i + 1, k + 1)], [p(i, k), p(i + 1, k + 1), p(i + 1, k)]);
+        }
+      }
+      for (const t of cut) expect(tri(f, t)).toBe(false);
+      // A ring's vertices in the cloth's plane are out too (by height), while the hoist edge's
+      // rows 2.8 cm above two of the rings are in.
+      for (const y of f.rings) for (const dy of [-0.0168, -0.0146, 0, 0.0146, 0.0168]) for (const r of [0.0882, 0.0966, 0.1134, 0.1218]) expect(inFly(f, ...at(f, r, 0, y + dy))).toBe(false);
+      expect(inFly(f, ...at(f, f.hoist, 0, f.rings[0] + 0.028))).toBe(true);
+      expect(inFly(f, ...at(f, f.hoist, 0, f.rings[2] + 0.028))).toBe(true);
+    }
+  });
+
+  it("keeps each flag's space its own", () => {
+    for (const a of flags) {
+      for (const b of flags) {
+        if (a === b) continue;
+        for (const along of [a.hoist, a.reach / 2, a.reach]) for (const across of [-1, 0, 1]) expect(inFly(b, ...at(a, along, across, 233))).toBe(false);
+      }
+    }
+  });
+
+  it("holds the hoist edge and the pole, and swings the fly most, across the cloth and up", () => {
+    const f = flags[2];
+    const pts = [f.hoist, f.clear, 2.5, f.reach].flatMap((along) => at(f, along, 0, 233));
+    const w = flySway(pts, flags);
+    const level = (i: number) => Math.hypot(w[i * 4], w[i * 4 + 2]);
+    expect(level(0)).toBe(0);
+    expect(w[1]).toBe(0);
+    expect(level(1)).toBeCloseTo(0, 9);
+    expect(level(2)).toBeCloseTo(((2.5 - f.clear) / (f.reach - f.clear)) ** 1.2, 6);
+    expect(level(3)).toBeCloseTo(1, 6);
+    for (let i = 0; i < 4; i++) {
+      // Across the cloth (never along it), and FLY_LIFT as much up.
+      expect(w[i * 4] * f.out[0] + w[i * 4 + 2] * f.out[1]).toBeCloseTo(0, 6);
+      expect(w[i * 4 + 1]).toBeCloseTo(FLY_LIFT * level(i), 6);
+    }
+    // The ripple runs out from the pole: the phase falls going out.
+    expect(w[11]).toBeLessThan(w[7]);
+    expect(w[15]).toBeLessThan(w[11]);
+  });
+
+  it("gives each vertex its own flag's weight and phase, so neighbours swing out of step", () => {
+    const tips = flags.flatMap((f) => at(f, f.reach, 0, 233));
+    const w = flySway(tips, flags);
+    flags.forEach((f, k) => {
+      expect(w[k * 4]).toBeCloseTo(-f.out[1], 6);
+      expect(w[k * 4 + 2]).toBeCloseTo(f.out[0], 6);
+    });
+    expect(new Set(flags.map((_, k) => w[k * 4 + 3].toFixed(3))).size).toBe(5);
+    expect([...flySway([0, 0, 0, 1, 2, 3], [])].every((v) => v === 0)).toBe(true);
+  });
+
+  it("are cut from the formation's chunk and the abode's (the bake put the metal and water cloths there)", () => {
+    expect(FLAG_FLIES.formation).toBe(FIVE_ELEMENT_FLAGS);
+    expect(FLAG_FLIES.abode).toBe(FIVE_ELEMENT_FLAGS);
+    expect(Object.keys(FLAG_FLIES).sort()).toEqual(["abode", "formation"]);
+  });
+
+  it("builds a flag as qiFlag reads props.banner", () => {
+    // An unturned, unscaled 6 m flag 1 m wide at the area's origin, flying along +x.
+    const f = qiFlag({ at: [0, 0, 0], yaw: 0 }, 0, 0, 0, 0, 6, 1, 1);
+    expect(f.pole).toEqual([0, -0]);
+    expect(f.out[0]).toBeCloseTo(1, 9);
+    expect(f.out[1]).toBeCloseTo(0, 9);
+    expect(f.hoistTop).toBeCloseTo(5.68, 9);
+    expect(f.hoistBottom).toBeCloseTo(5.68 - 0.8, 9);
+    expect(f.rings).toHaveLength(4);
+    expect(f.rings[0]).toBeCloseTo(5.66, 9);
+    expect(f.rings[3]).toBeCloseTo(5.66 - 0.75, 9);
+    expect(f.clear).toBeCloseTo(0.097, 9);
   });
 });
 

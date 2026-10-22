@@ -24,6 +24,7 @@ import {
   loreHit,
   loreLine,
   loreNote,
+  loreNovel,
   loreUnderPointer,
   NOVELS,
   placeLoreCard,
@@ -73,12 +74,40 @@ describe("the cards' words", () => {
   });
 
   it("names the novels right", () => {
-    expect(loreLine(LORE["heaven-sword"])).toBe("The Dragon Saber's only rival, from Heaven Sword and Dragon Saber");
+    expect(loreLine(LORE["heavy-iron-sword"])).toBe(`${LORE["heavy-iron-sword"].what}, from Return of the Condor Heroes`);
+    // The novel's title already names the two blades (by their short names), so their lines don't repeat it.
+    expect(loreLine(LORE["heaven-sword"])).toBe("The Dragon-Slaying Saber's only rival");
+    expect(loreLine(LORE["dragon-saber"])).toBe("The blade whose holder rules the martial world");
+    // A Chinese title that holds the name is not enough: the English title must say it.
+    expect(loreLine(LORE["wanderer-duet"])).toBe("Qu Yang and Liu Zhengfeng's duet, from The Smiling, Proud Wanderer");
+    expect(loreLine(LORE["divine-condor"])).toBe("Yang Guo's companion and teacher, from Return of the Condor Heroes");
     expect(LORE["heavy-iron-sword"].novel).toBe("Return of the Condor Heroes");
     expect(LORE["jade-flute"].novel).toBe("Legend of the Condor Heroes");
     expect(LORE["big-dipper-array"].novel).toBe("Legend of the Condor Heroes");
     expect(LORE["wanderer-duet"].novel).toBe("The Smiling, Proud Wanderer");
     expect(LORE["icefire-island"].what).toContain("Zhang Wuji");
+  });
+
+  it("translates every character of the name, as the usual English sources do", () => {
+    expect(LORE["heaven-sword"].en).toBe("Heaven-Reliant Sword"); // 倚 relying on, 天 heaven, 劍 sword
+    expect(LORE["dragon-saber"].en).toBe("Dragon-Slaying Saber"); // 屠 slaying, 龍 dragon, 刀 saber
+    expect(LORE["heavy-iron-sword"].en).toBe("Black Iron Heavy Sword"); // 玄 black, 鐵 iron, 重 heavy, 劍 sword
+    expect(LORE["wanderer-duet"].en).toBe("Laughing Proudly in the Jianghu"); // 笑傲江湖
+    // The five metals of 金銀銅鐵鉛五輪 are in the line, not crammed into the name.
+    expect(LORE["five-wheels"].what).toBe("Gold, silver, copper, iron and lead");
+    // As the traditional editions print them.
+    expect(LORE["sword-tomb"].zh).toBe("劍塚");
+    expect(LORE["holy-fire-altar"].zh).toBe("聖火");
+  });
+
+  it("keeps a short name only where the novel's title uses it", () => {
+    for (const [id, e] of entries) {
+      if (e.short === undefined) continue;
+      expect(e.novel?.toLowerCase(), id).toContain(e.short.toLowerCase());
+      expect(loreNovel(e), id).toBeNull();
+    }
+    expect(loreNovel(LORE["heavy-iron-sword"])).toBe("Return of the Condor Heroes");
+    expect(loreNovel(LORE["sun-moon"])).toBeNull();
   });
 
   it("matches the exporter's ids and stops (blender/xianxia-sect/sect/export_web.py LORE)", () => {
@@ -92,12 +121,12 @@ describe("the cards' words", () => {
 });
 
 describe("hover notes (a reference a hotspot holds)", () => {
-  it("names the reference on the hotspot that holds it, with its novel", () => {
-    expect(loreNote("heaven-sword")).toEqual({ zh: "倚天劍", text: "Heaven Sword", novel: "Heaven Sword and Dragon Saber" });
+  it("names the reference on the hotspot that holds it, with its novel unless the title already names it", () => {
+    expect(loreNote("heavy-iron-sword")).toEqual({ zh: "玄鐵重劍", text: "Black Iron Heavy Sword", novel: "Return of the Condor Heroes" });
+    expect(loreNote("heaven-sword")).toEqual({ zh: "倚天劍", text: "Heaven-Reliant Sword, the Dragon-Slaying Saber's only rival" });
     expect(hoverNote("gate-swords", { id: "dragon-saber", host: "gate-swords" })).toEqual({
       zh: "屠龍刀",
-      text: "Dragon Saber",
-      novel: "Heaven Sword and Dragon Saber",
+      text: "Dragon-Slaying Saber, the blade whose holder rules the martial world",
     });
     // No novel: the line itself.
     expect(hoverNote("gate", { id: "sun-moon", host: "gate" })).toEqual({ zh: "日月", text: LORE["sun-moon"].what });

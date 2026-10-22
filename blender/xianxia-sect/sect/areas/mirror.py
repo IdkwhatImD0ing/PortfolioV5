@@ -18,8 +18,7 @@ path runs north past paired lanterns to three low steps onto the zig-zag bridge,
 a railed island (3 m gap at the bridge) in front of the pavilion's own steps. The east path
 leaves the main path, rounds the pond and ends on a shore walk at the foot of the dais stair.
 A branch off the east path runs to a 6 x 6 m landing on the east rim, with three steps down to
-where the stair to the forge starts. A rail runs along the south and east rim, open at both
-stairs.
+where the stair to the forge starts. A rail runs right round the rim, open at both stairs.
 """
 
 import math
@@ -90,9 +89,25 @@ PATH_FORGE = [(18.5, 0.0), (30.0, 5.0), (41.0, 11.0), (43.0, 12.1)]
 # 6 x 6 m depart landing, centred on the depart line (y 13) so the stair to the forge leaves on
 # the steps' axis (the audit centred it on y 12, 1 m off its own depart point)
 DEPART_LANDING = (44.0, 13.0, 6.0)
-# rail on world.py's -0.4 terrace along the south and east rim (degrees, atan2 convention),
-# with a gap where each connector stair crosses it
-RIM_R, RIM_ARC, RIM_GAP = 52.0, (-135.0, 45.0), 6.0
+# rail on world.py's -0.4 terrace right round the rim, with a gap where each connector stair
+# crosses it. (Until round 11 it ran only along the south and east rim, -135 to 45 deg, and the
+# north and west rim behind the dais was an open drop.) The flat terrace follows world.py's
+# 2.5 m terrain grid, so its edge wanders from 50.8 to 57.4 m from the centre (measured on
+# world.range, round 11): r 52 stays on it except east and north-east of the centre, where the
+# edge comes in to 50.8-51.9 m and the half rail's feet hung up to 0.4 m over the lip. There the
+# rail steps in to RIM_R_EAST over RIM_EAST (degrees, atan2 convention), with cosine ramps
+# RIM_RAMP degrees wide either side, so every foot stands at least 0.24 m inside the flat.
+RIM_R, RIM_GAP = 52.0, 6.0
+RIM_R_EAST, RIM_EAST, RIM_RAMP = 50.5, (-20.0, 56.0), 8.0
+# The stair to the forge starts on world.py's foot landing: FOOT_FLAT (5 m) along the stair from
+# the depart point, FOOT_GATE width / 2 + 0.6 (5.6 m) either side of the depart line, walled
+# along both sides REVEAL (2 cm) in from the slab. The rail circle runs into that landing through
+# its south wall, 3 m before the depart opening's edge, so the south-east span stops against the
+# wall: its end post stands RIM_END_EMBED outside the wall's outer face, its shaft 4 cm into the
+# wall (no shared face). (Round 11: run on to the opening's edge, it crossed the wall and stood
+# 3 m of rail on the landing beside the gate's south column.)
+DEPART_FOOT_WALL = 10.0 * 0.5 + 0.6 - 0.02     # that wall's outer face, from the depart line (m)
+RIM_END_EMBED = 0.06
 
 
 def _mirror_face_builder(g):
@@ -207,32 +222,97 @@ def _landings(coll, root):
              location=(cx + s / 2, cy, -0.4), rotation_z=math.pi / 2)
 
 
+def rim_radius(a):
+    """The rail's radius at angle ``a`` (radians, atan2 convention): RIM_R, RIM_R_EAST over
+    RIM_EAST, cosine ramps between."""
+    lo, hi = RIM_EAST
+    half = 0.5 * (hi - lo)
+    x = abs((math.degrees(a) - 0.5 * (lo + hi) + 180.0) % 360.0 - 180.0)
+    if x <= half:
+        return RIM_R_EAST
+    if x >= half + RIM_RAMP:
+        return RIM_R
+    t = (x - half) / RIM_RAMP
+    return RIM_R_EAST + (RIM_R - RIM_R_EAST) * (0.5 - 0.5 * math.cos(math.pi * t))
+
+
 def _rim_crossing(x, y, heading):
-    """Angle where a straight line from (x, y) along ``heading`` crosses the rim-rail circle."""
+    """Angle where a straight line from (x, y) along ``heading`` crosses the rail (rim_radius)."""
     dx, dy = math.cos(heading), math.sin(heading)
-    b = x * dx + y * dy
-    c = x * x + y * y - RIM_R * RIM_R
-    t = -b + math.sqrt(max(0.0, b * b - c))
-    return math.atan2(y + t * dy, x + t * dx)
+    r, a = RIM_R, None
+    for _ in range(12):
+        b = x * dx + y * dy
+        c = x * x + y * y - r * r
+        t = -b + math.sqrt(max(0.0, b * b - c))
+        a = math.atan2(y + t * dy, x + t * dx)
+        r2 = rim_radius(a)
+        if abs(r2 - r) < 1e-9:
+            break
+        r = r2
+    return a
+
+
+def _foot_wall_end(a1):
+    """Angle <= a1 where a span ending at the depart opening meets the south wall of the forge
+    stair's foot landing: the rail point DEPART_FOOT_WALL + RIM_END_EMBED to the right of the
+    depart line (looking along the stair). a1 itself when the span already stops short of it."""
+    px, py, _, ph = AREA["depart"]
+    want = -(DEPART_FOOT_WALL + RIM_END_EMBED)
+
+    def lateral(a):
+        r = rim_radius(a)
+        return -(r * math.cos(a) - px) * math.sin(ph) + (r * math.sin(a) - py) * math.cos(ph)
+
+    if lateral(a1) <= want:
+        return a1
+    lo, hi = a1 - 0.3, a1
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if lateral(mid) > want:
+            hi = mid
+        else:
+            lo = mid
+    return lo
+
+
+def rim_spans():
+    """[(a0, a1), ...] radians, counter-clockwise: the rim rail's spans, one from each connector
+    opening to the next. The openings (RIM_GAP wide) are centred where each connector stair's
+    straight end run crosses the rail; on the depart side the south-east span stops earlier,
+    against the forge stair's foot-landing wall (_foot_wall_end). Built in this order: the
+    north / west span from the depart opening round to the arrival opening ('mirror.rim_rail'),
+    then the south-east span from the arrival opening to that wall ('mirror.rim_rail.001')."""
+    ax, ay, _, ah = AREA["arrival"]
+    px, py, _, ph = AREA["depart"]
+    dep = _rim_crossing(px, py, ph)
+    gaps = sorted([_rim_crossing(ax, ay, ah + math.pi), dep])
+    spans = []
+    for g0, g1 in zip(gaps, gaps[1:] + [gaps[0] + 2.0 * math.pi]):
+        a0, a1 = g0 + 0.5 * RIM_GAP / rim_radius(g0), g1 - 0.5 * RIM_GAP / rim_radius(g1)
+        if abs(math.remainder(g1 - dep, 2.0 * math.pi)) < 1e-12:
+            a1 = _foot_wall_end(a1)
+        spans.append((a0, a1))
+    return spans[1:] + spans[:1]
+
+
+def rim_points(a0, a1):
+    """Post points (x, y, -0.4) of one rim span, on rim_radius, about 2.5 m apart (arch.balustrade
+    adds a post at least every 1.8 m between them)."""
+    n = max(2, int(math.ceil((a1 - a0) * RIM_R / 2.5)) + 1)
+    out = []
+    for i in range(n):
+        a = a0 + (a1 - a0) * i / (n - 1)
+        r = rim_radius(a)
+        out.append((r * math.cos(a), r * math.sin(a), -0.4))
+    return out
 
 
 def _rim_rails(coll, root):
-    """Stone rail on the terrace (-0.4) along the south and east rim, with a RIM_GAP opening
-    centred where each connector stair's straight end run crosses it."""
-    ax, ay, _, ah = AREA["arrival"]
-    px, py, _, ph = AREA["depart"]
-    gaps = sorted([_rim_crossing(ax, ay, ah + math.pi), _rim_crossing(px, py, ph)])
-    half = 0.5 * RIM_GAP / RIM_R
-    spans, a = [], math.radians(RIM_ARC[0])
-    for g in gaps:
-        spans.append((a, g - half))
-        a = g + half
-    spans.append((a, math.radians(RIM_ARC[1])))
-    for a0, a1 in spans:
-        n = max(2, int(math.ceil((a1 - a0) * RIM_R / 2.5)) + 1)
-        pts = [(RIM_R * math.cos(a0 + (a1 - a0) * i / (n - 1)),
-                RIM_R * math.sin(a0 + (a1 - a0) * i / (n - 1)), -0.4) for i in range(n)]
-        A.balustrade(_n("rim_rail"), coll, pts, height=1.0, parent=root)
+    """Stone rail on the terrace (-0.4) right round the rim (rim_spans), open where each
+    connector stair crosses it. One span per pair of openings, so no post is doubled where a
+    full circle would close on itself."""
+    for a0, a1 in rim_spans():
+        A.balustrade(_n("rim_rail"), coll, rim_points(a0, a1), height=1.0, parent=root)
 
 
 def _pond(coll, root):

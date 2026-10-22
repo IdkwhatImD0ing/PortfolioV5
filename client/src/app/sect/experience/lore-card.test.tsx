@@ -24,7 +24,7 @@ const textOf = (html: string) =>
 describe("LoreCard", () => {
   it("names the reference: Chinese name in gold, English name, one line with the novel", () => {
     const html = renderToStaticMarkup(<LoreCard id="heavy-iron-sword" visible />);
-    expect(textOf(html)).toBe("玄鐵重劍 Heavy Iron Sword Dugu Qiubai's edgeless sword, from Return of the Condor Heroes");
+    expect(textOf(html)).toBe("玄鐵重劍 Black Iron Heavy Sword Dugu Qiubai's edgeless sword, from Return of the Condor Heroes");
     expect(html).toContain('lang="zh-Hant"');
     expect(html).toMatch(/text-\[var\(--sect-gold\)\][^>]*>玄鐵重劍/);
     expect(html).toContain("<cite");
@@ -48,10 +48,13 @@ describe("LoreCard", () => {
     expect(textOf(none)).toBe("");
   });
 
-  it("says the line alone when there is no novel", () => {
+  it("says the line alone when there is no novel, or when the novel's title is the name", () => {
     expect(textOf(renderToStaticMarkup(<LoreCard id="sun-moon" visible />))).toBe(
       "日月 Sun and Moon Sun 日 and moon 月 make 明, the Ming Sect's name",
     );
+    const sword = renderToStaticMarkup(<LoreCard id="heaven-sword" visible />);
+    expect(textOf(sword)).toBe("倚天劍 Heaven-Reliant Sword The Dragon-Slaying Saber's only rival");
+    expect(sword).not.toContain("<cite");
   });
 });
 
@@ -127,13 +130,13 @@ describe("the hover label's quiet line", () => {
 
   it("names the sword under the pointer on the gate's swords", () => {
     const html = label("gate-swords", { id: "heaven-sword", host: "gate-swords" });
-    expect(textOf(html)).toContain("倚天劍 Heaven Sword, from Heaven Sword and Dragon Saber");
+    expect(textOf(html)).toContain("倚天劍 Heaven-Reliant Sword, the Dragon-Slaying Saber's only rival");
     expect(html).toContain("data-sect-note");
   });
 
-  it("names the Heavy Iron Sword on the arena's landmark", () => {
+  it("names the Black Iron Heavy Sword on the arena's landmark", () => {
     expect(textOf(label("arena", { id: "heavy-iron-sword", host: "arena" }))).toContain(
-      "玄鐵重劍 Heavy Iron Sword, from Return of the Condor Heroes",
+      "玄鐵重劍 Black Iron Heavy Sword, from Return of the Condor Heroes",
     );
   });
 
@@ -154,8 +157,8 @@ describe("the stop's panel", () => {
     const html = renderToStaticMarkup(<AreaPanel area="gate" onOpen={() => {}} references={["heaven-sword", "dragon-saber", "sun-moon"]} />);
     const list = html.slice(html.indexOf("<ul"));
     expect(list).toMatch(/^<ul class="sr-only" aria-label="Jin Yong references in this place">/);
-    expect(textOf(list)).toContain("Heaven Sword (倚天劍): The Dragon Saber's only rival, from Heaven Sword and Dragon Saber.");
-    expect(textOf(list)).toContain("Dragon Saber (屠龍刀): Its holder rules the martial world, from Heaven Sword and Dragon Saber.");
+    expect(textOf(list)).toContain("Heaven-Reliant Sword (倚天劍): The Dragon-Slaying Saber's only rival.");
+    expect(textOf(list)).toContain("Dragon-Slaying Saber (屠龍刀): The blade whose holder rules the martial world.");
   });
 
   it("is unchanged without references (today's meta.json)", () => {

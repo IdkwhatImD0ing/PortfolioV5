@@ -9,13 +9,19 @@
  *
  * Sheet attribute `aFall` (four floats per vertex, built once per water mesh at load, in world
  * metres, so streak size does not depend on a sheet's size): x = metres across (u - 0.5 times the
- * lip width), y = metres below the lip (streams: along the flow from the head), z = the sheet's
- * height (negative for a stream: its length), w = the lip width. Metres below the lip come from
- * world height (today's GLBs: v is linear in height, and glTF flips it, so v = 0 is the lip there
- * while the corner quads have v = 1 at the lip; height avoids both). When a GLB carries Blender's
- * UV1 = (metres across, seconds since the lip), those are used instead: Blender writes free-fall
- * seconds (t = sqrt(2 d / g)), so they turn back into the true metres with uv1FallMetres. The shader
- * turns metres below the lip into seconds per pixel with its own drag model.
+ * lip width), y = metres below the lip, z = the sheet's height, w = the lip width. The shader moves
+ * every pattern toward larger y, so y must grow downhill: it comes from world geometry, never from
+ * which way a UV runs. Metres below the lip come from world height (today's GLBs: v is linear in
+ * height, and glTF flips it, so v = 0 is the lip there while the corner quads have v = 1 at the lip;
+ * height avoids both). When a GLB carries Blender's UV1 = (metres across, seconds since the lip), a
+ * sheet uses those instead, unless they grow upward over it: Blender writes free-fall seconds
+ * (t = sqrt(2 d / g)), so they turn back into the true metres with uv1FallMetres. The shader turns
+ * metres below the lip into seconds per pixel with its own drag model.
+ *
+ * Streams (z < 0): y = metres along the flow, downhill on every stretch that is not level
+ * (streamFlow; UV1 gives only the metres across), and z = -(1 + the share of the strip's length
+ * from its head, its higher end), so the shader fades the foot (the lower end) whichever way the
+ * pattern runs there.
  *
  * Wet rock: the falls in meta.json (sheets of one fall grouped by their shared foot) become wet
  * volumes: a band beside and behind the falling water (the cliff it pours down), and a splash zone
@@ -237,48 +243,84 @@ export function sheetFallAttribute(m: SheetVertices, f: FallPhysics = FALL): Flo
   const n = Math.floor(m.positions.length / 3);
   const out = new Float32Array(n * 4);
   const below = new Float32Array(n);
+  const share = m.stream ? new Float32Array(n) : null;
   const p = m.positions;
   const uv = m.uvs;
+  const uv1 = m.uv1 ?? null;
   for (const ids of connectedPieces(n, m.index)) {
     let height = 0;
     let width = 1;
     const across = (i: number) => (uv[i * 2] - 0.5) * width;
     let acrossOf = across;
-    if (m.uv1) {
-      const uv1 = m.uv1;
+    if (uv1) {
       let lo = Infinity;
       let hi = -Infinity;
       for (const i of ids) {
-        below[i] = m.stream ? Math.max(uv1[i * 2 + 1], 0) * f.streamSpeed : uv1FallMetres(uv1[i * 2 + 1], f);
-        height = Math.max(height, below[i]);
         lo = Math.min(lo, uv1[i * 2]);
         hi = Math.max(hi, uv1[i * 2]);
       }
       width = Math.max(hi - lo, 0.1);
       acrossOf = (i) => uv1[i * 2];
-    } else if (m.stream) {
-      height = streamBelow(ids, p, uv, below);
-      width = streamWidth(ids, p, uv);
-    } else {
-      let top = -Infinity;
-      let bottom = Infinity;
-      for (const i of ids) {
-        top = Math.max(top, p[i * 3 + 1]);
-        bottom = Math.min(bottom, p[i * 3 + 1]);
-      }
-      for (const i of ids) below[i] = top - p[i * 3 + 1];
-      height = top - bottom;
-      width = lipWidth(ids, p, uv, below, height);
     }
-    const h = Math.max(height, 0.01) * (m.stream ? -1 : 1);
+    if (share) {
+      // Along a stream: from its world geometry, downhill on every stretch that is not level (never
+      // Blender's UV1 seconds, which count from the strip's first row whichever end is higher).
+      const rows = streamRows(ids, p, uv);
+      const flow = streamFlow(rows.map((r) => r.c));
+      rows.forEach((r, k) => {
+        for (const i of r.ids) {
+          below[i] = flow.along[k];
+          share[i] = flow.share[k];
+        }
+      });
+      if (!uv1) width = streamWidth(ids, p, uv);
+    } else {
+      // Blender's free-fall seconds, unless they grow upward (a sheet exported upside down): then,
+      // as without UV1, metres below the piece's top.
+      let measured = false;
+      if (uv1) {
+        for (const i of ids) {
+          below[i] = uv1FallMetres(uv1[i * 2 + 1], f);
+          height = Math.max(height, below[i]);
+        }
+        measured = !growsUpward(ids, p, below);
+      }
+      if (!measured) {
+        let top = -Infinity;
+        let bottom = Infinity;
+        for (const i of ids) {
+          top = Math.max(top, p[i * 3 + 1]);
+          bottom = Math.min(bottom, p[i * 3 + 1]);
+        }
+        for (const i of ids) below[i] = top - p[i * 3 + 1];
+        height = top - bottom;
+        if (!uv1) width = lipWidth(ids, p, uv, below, height);
+      }
+    }
+    const h = Math.max(height, 0.01);
     for (const i of ids) {
       out[i * 4] = acrossOf(i);
       out[i * 4 + 1] = below[i];
-      out[i * 4 + 2] = h;
+      out[i * 4 + 2] = share ? -(1 + share[i]) : h;
       out[i * 4 + 3] = width;
     }
   }
   return out;
+}
+
+/** Whether `below` (metres below the lip) grows upward over a piece, so its streaks would rise. */
+function growsUpward(ids: readonly number[], p: ArrayLike<number>, below: ArrayLike<number>): boolean {
+  let mb = 0;
+  let my = 0;
+  for (const i of ids) {
+    mb += below[i];
+    my += p[i * 3 + 1];
+  }
+  mb /= Math.max(ids.length, 1);
+  my /= Math.max(ids.length, 1);
+  let c = 0;
+  for (const i of ids) c += (below[i] - mb) * (p[i * 3 + 1] - my);
+  return c > 0;
 }
 
 /** A stream's rows (one per value of v), ordered from the head (the higher end), with their vertices. */
@@ -300,18 +342,69 @@ function streamRows(ids: readonly number[], p: ArrayLike<number>, uv: ArrayLike<
   return list;
 }
 
-/** Metres along a stream from its head (into `below`); returns its length. */
-function streamBelow(ids: readonly number[], p: ArrayLike<number>, uv: ArrayLike<number>, below: Float32Array): number {
-  const rows = streamRows(ids, p, uv);
+export const STREAM = {
+  /**
+   * Stretches flatter than this (degrees) count as level and keep the way the water was going;
+   * steeper ones always run downhill. On screen, water climbing a 9-10 degree stretch already read
+   * as flowing up; below about 5 degrees the motion is along the ground either way, and following
+   * every 1-2 m bump of the range top would turn the flow back and forth every few rows.
+   */
+  levelDeg: 5,
+} as const;
+
+export interface StreamFlow {
+  /** Per stretch (row k to row k + 1): +1 when the water runs toward row k + 1, -1 toward row k. */
+  dirs: number[];
+  /** Per row: metres along the flow, from 0 (the shader moves the pattern toward larger values). */
+  along: number[];
+  /** Per row: share of the strip's length from its head (the higher end, 0) to its foot (1). */
+  share: number[];
+}
+
+/**
+ * Which way the water runs along a stream, from its rows' centres in strip order (world metres, y
+ * up). A stretch at least `levelDeg` steep runs downhill. A level one keeps the way the water was
+ * going: like the stretch before it, counting from the strip's higher end (level stretches before
+ * the first steep one follow that one; a strip with no steep stretch runs toward its lower end).
+ * The feeder streams follow the range's top in 24 straight steps and cross its ridges, some
+ * climbing 100-150 m at 60-80 degrees (cliffs that read as waterfalls): timed along the strip, as
+ * Blender's UV1 does, the water climbed them. Now it pours down both sides of a crest and into
+ * both sides of a dip.
+ */
+export function streamFlow(centres: readonly Vec3[], levelDeg: number = STREAM.levelDeg): StreamFlow {
+  const n = centres.length - 1;
+  if (n < 1) return { dirs: [], along: centres.map(() => 0), share: centres.map(() => 0) };
+  const len: number[] = [];
+  const own: number[] = [];
+  const level = Math.tan((Math.max(levelDeg, 0) * Math.PI) / 180);
+  for (let s = 0; s < n; s++) {
+    const a = centres[s];
+    const b = centres[s + 1];
+    const rise = b[1] - a[1];
+    const run = Math.hypot(b[0] - a[0], b[2] - a[2]);
+    len.push(Math.hypot(run, rise));
+    own.push(rise !== 0 && Math.abs(rise) >= level * run ? (rise < 0 ? 1 : -1) : 0);
+  }
+  const reversed = centres[n][1] > centres[0][1];
+  const order = [...own.keys()];
+  if (reversed) order.reverse();
+  const firstSteep = order.find((s) => own[s] !== 0);
+  let last = firstSteep !== undefined ? own[firstSteep] : reversed ? -1 : 1;
+  const dirs = own.slice();
+  for (const s of order) {
+    if (own[s] !== 0) last = own[s];
+    dirs[s] = last;
+  }
+  const along = [0];
+  for (let s = 0; s < n; s++) along.push(along[s] + dirs[s] * len[s]);
+  const lo = Math.min(...along);
+  const total = len.reduce((t, l) => t + l, 0);
   let d = 0;
-  rows.forEach((r, k) => {
-    if (k > 0) {
-      const a = rows[k - 1].c;
-      d += Math.hypot(r.c[0] - a[0], r.c[1] - a[1], r.c[2] - a[2]);
-    }
-    for (const i of r.ids) below[i] = d;
+  const share = centres.map((_, k) => {
+    if (k > 0) d += len[k - 1];
+    return total > 0 ? (reversed ? total - d : d) / total : 0;
   });
-  return d;
+  return { dirs, along: along.map((v) => v - lo), share };
 }
 
 /** Mean width of a stream's rows (from their lowest-u to their highest-u vertex). */

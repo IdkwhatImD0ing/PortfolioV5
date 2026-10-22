@@ -9,9 +9,9 @@
  *   the library floors and the formation pillars; breathing runes at the gate, the mirror, the jade
  *   scroll and the summit arch; the censer's ember and the abode's wind chimes flicker;
  * - cloth and branches: the arena's hackathon banners flutter, and so do the sect's other pole
- *   banners, at the gate, the forge, the arena and the mission hall (cut out of the merged scenery
- *   where they hang); the mirror's and the abode's peach trees sway (a vertex offset in the
- *   shader, weighted so poles and trunks stay put).
+ *   banners, at the gate, the forge, the arena and the mission hall, and the formation's Five
+ *   Element flags (cut out of the merged scenery where they hang or fly); the mirror's and the
+ *   abode's peach trees sway (a vertex offset in the shader, weighted so poles and trunks stay put).
  * Nothing moves with reduced motion. planIdleSliced (or planIdle, in one go) runs once per loaded
  * chunk; updateIdle every frame.
  */
@@ -37,6 +37,7 @@ import {
   BANNER_HANGS,
   CRANE_GLIDES,
   FILM_TURN_SPEED,
+  FLAG_FLIES,
   FORMATION_CORE_SPEED,
   bannerSway,
   bobLift,
@@ -46,14 +47,17 @@ import {
   glidePivot,
   fitRing,
   flicker,
+  flySway,
   hangSway,
   inCylinder,
+  inFly,
   inHang,
   rigidStep,
   treeSway,
   wave,
   type BannerHang,
   type Cylinder,
+  type FlagFly,
   type V3,
 } from "@/lib/sect/idle";
 import { PREPARE_SLICE_MS, yieldToBrowser, type HotspotEntry, type SliceOptions } from "./prepare";
@@ -153,6 +157,8 @@ const GLOWS: Record<string, GlowSpec[]> = {
 
 /** Banner flutter, tree sway and wing beat: amplitude (m at full weight) and angular frequency (rad/s). */
 const BANNER = { amp: 0.32, freq: 2.1 };
+/** The formation's flags are bigger (4.6 m out): a little more swing, a little slower. */
+const FLAG = { amp: 0.38, freq: 1.7 };
 const TREE = { amp: 0.14, freq: 0.85 };
 const WINGS = { amp: 0.42, freq: 3.2 };
 const SWAY_TREES: Record<string, string[]> = { mirror: ["mirror-blossom"], abode: ["fact:1"] };
@@ -328,6 +334,26 @@ function cylinderRegion(cyl: Cylinder): CarveRegion {
       return Math.hypot(nx - cyl.x, nz - cyl.z) <= cyl.rMax;
     },
     part: (x, y, z) => (inCylinder(cyl, x, y, z) ? 1 : 0),
+  };
+}
+
+/** An area's flags as a carve: each flag's cloth is a part, cut out on its own to flutter. */
+function flyRegion(flies: readonly FlagFly[]): CarveRegion {
+  // A box round each flag's space (inFly's bounds, a little wider).
+  const boxes = flies.map((f) => {
+    const r = Math.hypot(f.reach + 0.2, f.billow + 0.2);
+    return new Box3(new Vector3(f.pole[0] - r, f.bottom - 0.3, f.pole[1] - r), new Vector3(f.pole[0] + r, f.top + 0.1, f.pole[1] + r));
+  });
+  return {
+    yMin: Math.min(...boxes.map((b) => b.min.y)),
+    yMax: Math.max(...boxes.map((b) => b.max.y)),
+    touches: (bb) => boxes.some((b) => b.intersectsBox(bb)),
+    part: (x, y, z) => {
+      for (let k = 0; k < flies.length; k++) if (inFly(flies[k], x, y, z)) return k + 1;
+      return 0;
+    },
+    // Room for the flutter (FLAG.amp at full weight, across and FLY_LIFT up, both waves at their peak).
+    compact: { pad: 0.6 },
   };
 }
 
@@ -557,6 +583,27 @@ function* carveRegion(root: Object3D, skip: Set<Mesh>, region: CarveRegion): Gen
   return out;
 }
 
+/**
+ * Cuts the region's cloth out of the merged scenery, onto a copy of its material, and sets it
+ * fluttering with `weights` (computed on its world positions), counting each piece in the plan.
+ */
+function* swayCut(
+  plan: IdlePlan,
+  main: Object3D,
+  skip: Set<Mesh>,
+  region: CarveRegion,
+  weights: (world: Float32Array) => Float32Array,
+  motion: { amp: number; freq: number },
+): Generator<void, void, void> {
+  const pieces = yield* carveRegion(main, skip, region);
+  const copies = new Map<Material, Material>();
+  for (const m of pieces) {
+    yield;
+    m.material = swayCopy(m.material as Material, copies);
+    if (setSway(m, weights, motion.amp, motion.freq)) plan.sway++;
+  }
+}
+
 /** The forge hoop's ring, from its glowing tube in the merged scenery (else the artifacts' plane). */
 function* forgeRing(main: Object3D | null, skip: Set<Mesh>, centers: V3[]): Generator<void, { pivot: Vector3; axis: Vector3 } | null, void> {
   const guess = centers.reduce<V3>((a, c) => [a[0] + c[0] / centers.length, a[1] + c[1] / centers.length, a[2] + c[2] / centers.length], [0, 0, 0]);
@@ -760,15 +807,11 @@ function* planSteps(
   // four that no hackathon claims, the mission hall's): their cloth is cut out where it hangs, onto
   // a copy of its material, and flutters as props.banner's wave did in Blender.
   const hangs = BANNER_HANGS[id];
-  if (hangs?.length && main) {
-    const pieces = yield* carveRegion(main, skip, hangRegion(hangs));
-    const copies = new Map<Material, Material>();
-    for (const m of pieces) {
-      yield;
-      m.material = swayCopy(m.material as Material, copies);
-      if (setSway(m, (w) => hangSway(w, hangs), BANNER.amp, BANNER.freq)) plan.sway++;
-    }
-  }
+  if (hangs?.length && main) yield* swayCut(plan, main, skip, hangRegion(hangs), (w) => hangSway(w, hangs), BANNER);
+  // The flags flying from their poles' tops (FLAG_FLIES: the formation's Five Element Banners, in the
+  // formation's chunk and the abode's), the same way, rippling out from the pole.
+  const flies = FLAG_FLIES[id];
+  if (flies?.length && main) yield* swayCut(plan, main, skip, flyRegion(flies), (w) => flySway(w, flies), FLAG);
   for (const h of SWAY_TREES[id] ?? []) {
     for (const m of hotspotMeshes.get(h) ?? []) {
       yield;

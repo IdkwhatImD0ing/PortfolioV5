@@ -239,8 +239,8 @@ def _ridge(coll, root):
 # had them forged from Yang Guo's Black Iron Heavy Sword (玄铁重剑, black, with a dark red glint) and Western gold
 # essence (西方精金): the Dragon Saber black, broad and over a hundred jin heavy (east, x +16: the dragon's side), the
 # Heaven Sword a slender, keen straight jian (west, x -16). Each stands blade-down in a sumeru plinth (须弥座) with
-# its name in raised gold (倚天 / 屠龙) on the front and, on the sides, its half of the jianghu saying
-# 武林至尊，宝刀屠龙，号令天下，莫敢不从；倚天不出，谁与争锋 (columns read right to left). The site's cyan rune glow:
+# its name inlaid on the blade (倚天 / 屠龍; the plinth front stays plain, PLINTH_NAME) and, on the sides, its half of the saying
+# 武林至尊，寶刀屠龍，號令天下，莫敢不從；倚天不出，誰與爭鋒 (traditional, as the novels print it) (columns read right to left). The site's cyan rune glow:
 # the jian's ridge inlay, guard and pommel gems; the saber's groove (血槽), dragon eyes and the pearl in its ring.
 #
 # Web-pipeline contract (sect/patch_gate_swords.py rebuilds both in out/sect_chase.blend): the objects keep the
@@ -258,17 +258,19 @@ WEAPON_FACE_IN = True          # True: the fronts turn 12 deg toward the axis, t
                                # turned 12 deg away from it); the world box is the same either way (square local box)
 WEAPON_TRI_BUDGET = 15000      # per weapon including its plinth; over it the couplet drops to res 1, then goes
 WEAPON_COUPLET = True          # the saying on the plinth sides
+PLINTH_NAME = False            # the name in gold on the plinth front; off: the blade already carries it (the owner
+                               # found the name said twice), so the front panel stays a plain framed stone
 COUPLET_RES = 1                # its glyphs' curve resolution (0.2 m characters: res 1 reads, res 2 doubles them)
 BLADE_NAME_BACK = False        # the blade's name on the back face too (+1.0-1.3k triangles; the path and the
                                # hold see the fronts, only a look-around from the plaza sees the backs)
 WEAPON_SMOOTH = math.radians(35.0)   # edges sharper than this stay hard; ridge and hone lines are marked hard anyway
 WEAPONS = (
     dict(key="heaven_sword", kind="jian", side=-1, object="gate.sword_monolith", name="倚天",
-         couplet=(("倚天不出",), ("谁与争锋",)),          # (inner face, outer face) columns, right to left
+         couplet=(("倚天不出",), ("誰與爭鋒",)),          # (inner face, outer face) columns, right to left
          materials=dict(stone="stone_grey", panel="stone_dark", blade="steel", gold="gold", rune="rune_cyan",
                         wrap="cloth_teal", tassel="cloth_red")),
-    dict(key="dragon_saber", kind="dao", side=1, object="gate.sword_monolith.001", name="屠龙",
-         couplet=(("武林至尊", "宝刀屠龙"), ("号令天下", "莫敢不从")),
+    dict(key="dragon_saber", kind="dao", side=1, object="gate.sword_monolith.001", name="屠龍",
+         couplet=(("武林至尊", "寶刀屠龍"), ("號令天下", "莫敢不從")),
          materials=dict(stone="stone_grey", panel="stone_dark", blade="iron", gold="gold", rune="rune_cyan",
                         wrap="cloth_red", hone="steel")),
 )
@@ -664,13 +666,14 @@ def _w_plinth(g, collar):
 
 
 def _w_inscriptions(g, spec, glyph, couplet=True, couplet_res=COUPLET_RES):
-    """The name (gold relief 3 cm proud, front panel) and the saying (gold inlay 4 mm proud, side panels)."""
+    """The name (gold relief 3 cm proud, front panel; only with PLINTH_NAME) and the saying (gold inlay 4 mm proud,
+    side panels)."""
     zc = sum(PANEL_Z) / 2.0
     face_d = DIE[2] + 0.03                         # the plate's outer face
     # name: two characters side by side
     size = NAME_CELL * 0.88
     n = len(spec["name"])
-    for k, ch in enumerate(spec["name"]):
+    for k, ch in enumerate(spec["name"] if PLINTH_NAME else ""):
         u = (k - (n - 1) / 2.0) * NAME_CELL * 1.08
         vs, fs = glyph(ch, size, 3)
         g.glyph_solid(vs, fs, _frame((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), (u, -face_d, zc)), "gold",

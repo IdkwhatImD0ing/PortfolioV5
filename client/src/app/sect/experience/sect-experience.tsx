@@ -46,7 +46,8 @@ import { AREAS, areaInfo, isAreaId, type AreaId } from "@/lib/sect/areas";
 import { sampleCamera } from "@/lib/sect/camera-path";
 import { areaItemHotspots, commandTarget, isThing, parseContentHash, SECTION_NAMES } from "@/lib/sect/content";
 import { POSTER_ATTR, posterStart, startYaw, type NetworkHint } from "@/lib/sect/content-start";
-import { isDragging, isLookingBack, isTurned } from "@/lib/sect/free-look";
+import { framingAt } from "@/lib/sect/framing";
+import { composeLook, isDragging, isLookingBack, isTurned } from "@/lib/sect/free-look";
 import { PageHistory } from "@/lib/sect/history";
 import { plainUrl, readHistoryState, readerUrl, resolveDeepLink } from "@/lib/sect/links";
 import { lookFogConstants } from "@/lib/sect/look";
@@ -1523,7 +1524,9 @@ export default function SectExperience() {
       const s = sampleCamera(data.camera.frames, h.frame);
       const landmark =
         data.meta.areas.find((a) => a.id === h.id)?.anchor ?? data.meta.hotspots.find((x) => x.id === h.id)?.center ?? null;
-      out[h.id] = panelSide({ f: h.frame, ...s }, data.camera.refAspect, landmark);
+      // As the stop frames it: the path's view turned by the stop's framing (lib/sect/framing.ts).
+      const q = composeLook(s.q, framingAt(data.camera.holds, h.frame));
+      out[h.id] = panelSide({ f: h.frame, ...s, q }, data.camera.refAspect, landmark);
     }
     return out;
   }, [data]);
