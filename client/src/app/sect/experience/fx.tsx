@@ -2,10 +2,10 @@
 
 /**
  * Decoration the style frames have and the bake does not: peach petals drifting around the camera,
- * a few cranes circling high over the two areas, the forge cauldron's fire and the formation's
- * brazier fires (a flickering glow and rising sparks; the film's emission and particles cannot be
- * baked). Each is one draw. Motion follows lib/sect/fx.ts (petalOffset is mirrored in the petal
- * vertex shader).
+ * a few cranes circling high over the two areas, the forge cauldron's fire (a flickering glow and
+ * rising sparks; the film's emission and particles cannot be baked) and the formation core's
+ * breathing glow. Each is one draw. Motion follows lib/sect/fx.ts (petalOffset is mirrored in the
+ * petal vertex shader). The holy fire on the altars and braziers is flames.tsx's.
  */
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
@@ -17,14 +17,11 @@ import {
   DynamicDrawUsage,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
-  type InstancedMesh,
-  Matrix4,
   Mesh,
   PlaneGeometry,
   ShaderMaterial,
   Vector3,
 } from "three";
-import { clusterFlames, fireRadius, formationTier, type FormationTierName } from "@/lib/sect/formation";
 import { craneFlights, cranePose, PETAL_STRIDE, PETAL_WIND, petalSeeds } from "@/lib/sect/fx";
 import { fogLibrary, type FogConstants } from "@/lib/sect/glsl";
 import { breathe } from "@/lib/sect/idle";
@@ -260,8 +257,8 @@ interface FireShape {
 const FORGE_FIRE: FireShape = { rise: SPARK_HEIGHT, sparkSize: 0.13, wander: 0.35, glowSize: 2.6, core: "#ff9a45", hot: "#ffd27a" };
 
 /**
- * The cauldron glow's strength (1 as it always was): forge-flames.tsx lowers it while its flames
- * stand over the cauldron and carry the light themselves (the big soft glow washed them out).
+ * The cauldron glow's strength (1 as it always was): flames.tsx lowers it while its flames stand
+ * over the cauldron and carry the light themselves (the big soft glow washed them out).
  */
 export const FORGE_FIRE_GLOW = { value: 1 };
 
@@ -435,102 +432,33 @@ export function ForgeFire({ set, store }: { set: LoadedSet | null; store: SectSt
 }
 
 // ---------------------------------------------------------------------------------------------
-// Formation fires
-
-const FLAME = /\.glow\.flame$/i;
-
-/** World positions (xyz triples) of the vertices of a set's meshes whose material matches `re` (instances too). */
-function glowVertices(set: LoadedSet, re: RegExp): number[] {
-  const out: number[] = [];
-  const v = new Vector3();
-  const inst = new Matrix4();
-  const world = new Matrix4();
-  for (const root of set.scenes) {
-    root.updateMatrixWorld(true);
-    root.traverse((o) => {
-      const m = o as Mesh;
-      if (!m.isMesh || Array.isArray(m.material) || !re.test(m.material.name ?? "")) return;
-      const pos = m.geometry.getAttribute("position");
-      if (!pos) return;
-      const im = m as InstancedMesh;
-      const n = im.isInstancedMesh ? im.count : 1;
-      for (let k = 0; k < n; k++) {
-        if (im.isInstancedMesh) {
-          im.getMatrixAt(k, inst);
-          world.multiplyMatrices(m.matrixWorld, inst);
-        } else world.copy(m.matrixWorld);
-        for (let i = 0; i < pos.count; i++) {
-          v.fromBufferAttribute(pos, i).applyMatrix4(world);
-          out.push(v.x, v.y, v.z);
-        }
-      }
-    });
-  }
-  return out;
-}
+// The formation's core
 
 /**
- * The formation's holy fires: a flickering glow and rising sparks over each brazier (the bake's
- * ".glow.flame" meshes, grouped into fires by lib/sect/formation.ts clusterFlames), and the sun-fire
- * core's warm glow at the `formation` hotspot, breathing with its 4 s breath (idle.ts). One draw,
- * while the formation chunk is drawn. Sparks per fire follow the tier (sparks are packed round-robin,
- * so a lower tier draws fewer for every fire); they stop (and hide) with reduced motion, the glows
- * stay. Before the rebake there are no flames: only the core's glow.
+ * The formation's sun-fire core: a warm glow at the `formation` hotspot, breathing with its 4 s
+ * breath (idle.ts). One sprite, while the formation chunk is drawn; still with reduced motion. The
+ * holy fire in its braziers is flames.tsx's, as every carved flame's is.
  */
-export function FormationFires({ set, store, meta, tier }: { set: LoadedSet | null; store: SectStore; meta: SectMeta; tier: FormationTierName }) {
+export function FormationCore({ set, store, meta }: { set: LoadedSet | null; store: SectStore; meta: SectMeta }) {
   const built = useMemo(() => {
     if (!set) return null;
     const look = SECT_LOOK.formation;
-    const fires = clusterFlames(glowVertices(set, FLAME), look.fire.cell);
     const core = meta.hotspots.find((h) => h.id === "formation");
-    if (fires.length === 0 && !core) return null;
-    const F = fires.length;
-    const S = look.fire.sparks.high;
-    const lead = core ? 1 : 0;
-    const total = lead + F + F * S;
-    const seeds = new Float32Array(total * 4);
-    const fire = new Float32Array(total * 4);
-    let s = 13;
-    const rnd = () => {
-      s = (s * 16807) % 2147483647;
-      return s / 2147483647;
-    };
-    if (core) {
-      seeds.set([0, 0, 0, -2], 0);
-      fire.set([core.center[0], core.center[1], core.center[2], look.coreGlow.radius], 0);
-    }
-    fires.forEach((f, i) => {
-      const at = [f.center[0], f.min[1], f.center[2], fireRadius(f, look)];
-      seeds.set([0, 0, 0, -1], (lead + i) * 4);
-      fire.set(at, (lead + i) * 4);
-      // Spark j of fire i at lead + F + j * F + i: the first n * F sparks are n for every fire.
-      for (let j = 0; j < S; j++) {
-        const k = lead + F + j * F + i;
-        seeds.set([rnd(), rnd(), rnd(), rnd()], k * 4);
-        fire.set(at, k * 4);
-      }
-    });
+    if (!core) return null;
     const quad = new PlaneGeometry(2, 2);
     const geo = new InstancedBufferGeometry();
     geo.setIndex(quad.getIndex());
     geo.setAttribute("position", quad.getAttribute("position"));
-    geo.setAttribute("iSeed", new InstancedBufferAttribute(seeds, 4));
-    geo.setAttribute("iFire", new InstancedBufferAttribute(fire, 4));
-    geo.instanceCount = total;
-    const material = fireMaterial({
-      rise: look.fire.sparkHeight,
-      sparkSize: look.fire.sparkSize,
-      wander: 0.2,
-      glowSize: 1.4,
-      core: look.fire.core,
-      hot: look.coreGlow.color,
-    });
+    geo.setAttribute("iSeed", new InstancedBufferAttribute(new Float32Array([0, 0, 0, -2]), 4));
+    geo.setAttribute("iFire", new InstancedBufferAttribute(new Float32Array([core.center[0], core.center[1], core.center[2], look.coreGlow.radius]), 4));
+    geo.instanceCount = 1;
+    const material = fireMaterial({ rise: 0, sparkSize: 0, wander: 0, glowSize: 1, core: look.coreGlow.color, hot: look.coreGlow.color });
     const mesh = new Mesh(geo, material);
     mesh.frustumCulled = false;
     mesh.renderOrder = 7;
-    mesh.name = "sect.formationfires";
+    mesh.name = "sect.formationcore";
     mesh.visible = false;
-    return { mesh, material, quad, geo, lead, fires: F };
+    return { mesh, material, quad };
   }, [set, meta]);
   useEffect(
     () => () => {
@@ -540,17 +468,12 @@ export function FormationFires({ set, store, meta, tier }: { set: LoadedSet | nu
     },
     [built],
   );
-  useEffect(() => {
-    if (built) built.geo.instanceCount = built.lead + built.fires * (1 + formationTier(tier).sparks);
-  }, [built, tier]);
   useFrame((state) => {
     if (!built || !set) return;
     built.mesh.visible = set.drawn;
     if (!set.drawn) return;
     const t = store.reducedMotion ? 0 : state.clock.elapsedTime;
     const g = SECT_LOOK.formation.coreGlow;
-    built.material.uniforms.uTime.value = t;
-    built.material.uniforms.uSparks.value = store.reducedMotion ? 0 : 1;
     built.material.uniforms.uBreath.value = g.strength * (g.rest + (1 - g.rest) * breathe(t, g.period));
   });
   return built ? <primitive object={built.mesh} /> : null;

@@ -22,25 +22,6 @@ export const VoiceBus = {
   },
 };
 
-/** True when the user has asked the OS for less motion. Every animated scroll
- *  in the app should gate on this — the global reduced-motion CSS block only
- *  clamps animation/transition durations, which does nothing for scrolling. */
-export function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined") return false;
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-}
-
-export function scrollToSection(id: string): void {
-  if (typeof window === "undefined") return;
-  const el = document.getElementById(id);
-  if (!el) return;
-  const y = el.getBoundingClientRect().top + window.scrollY;
-  // "instant" — not "auto". Per CSSOM-View "auto" defers to the computed
-  // `scroll-behavior`, which globals.css sets to `smooth` on <html>, so "auto"
-  // would still animate and this branch would silently do nothing.
-  window.scrollTo({ top: y, behavior: prefersReducedMotion() ? "instant" : "smooth" });
-}
-
 /** Navigation metadata shape emitted by the server via Retell's metadata
  *  event. Each `page` value here MUST be in PAGE_TO_SECTION below. */
 export interface NavigationMeta {
@@ -56,7 +37,10 @@ export interface NavigationMeta {
   project_id?: string;
 }
 
-/** Server `page` value → DOM section id on the long-scroll layout. */
+/** Server `page` value → the section it names. Each section is a stop of the sect
+ *  (lib/sect/areas.ts `sectionId`): the sect's useVoiceRouting turns the command
+ *  into a flight there (lib/sect/content.ts commandTarget). The same names are
+ *  the site's section hashes (/#projects). */
 export const PAGE_TO_SECTION: Record<NonNullable<NavigationMeta["page"]>, string> = {
   landing: "hero",
   personal: "personal",
@@ -67,43 +51,31 @@ export const PAGE_TO_SECTION: Record<NonNullable<NavigationMeta["page"]>, string
   architecture: "architecture",
 };
 
-interface NavigationAction {
-  command: VoiceCommand;
-  scrollTo: string;
-}
-
-/** Convert a server-side navigation metadata payload into the VoiceBus
- *  command + section id the page should scroll to. Returns null when the
- *  payload isn't a navigation metadata or the page is unknown. Pure — no
- *  side effects, safe to unit-test. */
+/** Convert a server-side navigation metadata payload into the VoiceBus command
+ *  that takes the visitor there: `open` for a named project, else `scroll` to
+ *  the page's section. Returns null when the payload isn't a navigation
+ *  metadata or the page is unknown. Pure — no side effects, safe to unit-test. */
 export function metaToNavigationAction(
   meta: NavigationMeta | null | undefined,
-): NavigationAction | null {
+): VoiceCommand | null {
   if (!meta || meta.type !== "navigation" || !meta.page) return null;
 
   if (meta.page === "project" && meta.project_id) {
-    return {
-      command: { type: "open", id: meta.project_id },
-      scrollTo: "projects",
-    };
+    return { type: "open", id: meta.project_id };
   }
 
   const section = PAGE_TO_SECTION[meta.page];
   if (!section) return null;
 
-  return {
-    command: { type: "scroll", id: section },
-    scrollTo: section,
-  };
+  return { type: "scroll", id: section };
 }
 
-/** Apply a server navigation payload to the page: emit its VoiceBus command,
- *  then scroll to its section on the next frame. No-op for anything that
- *  isn't navigation metadata. The voice path (Retell `metadata` events) and
- *  the text path (`/chat` SSE chunks) both go through here. */
+/** Apply a server navigation payload: emit its VoiceBus command, which the
+ *  sect turns into a flight (app/sect/experience/voice.tsx useVoiceRouting).
+ *  No-op for anything that isn't navigation metadata. The voice path (Retell
+ *  `metadata` events) and the text path (`/chat` SSE chunks) both go through
+ *  here. */
 export function applyNavigation(meta: NavigationMeta | null | undefined): void {
-  const action = metaToNavigationAction(meta);
-  if (!action) return;
-  VoiceBus.emit(action.command);
-  requestAnimationFrame(() => scrollToSection(action.scrollTo));
+  const command = metaToNavigationAction(meta);
+  if (command) VoiceBus.emit(command);
 }

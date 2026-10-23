@@ -1,17 +1,17 @@
-# /sect content inventory
+# Sect content inventory
 
 Generated from `src/lib/sect/content-inventory.ts`. Do not edit by hand; after changing that file run `SECT_WRITE_INVENTORY=1 pnpm exec vitest run src/lib/sect/content-inventory.test.ts`.
 
-Every piece of content and every interaction on the main page (`src/app/page.tsx`), and where it lives in the hidden 3D page `/sect`. `src/app/sect/content/content-completeness.test.tsx` renders every area reader and the one-page view and fails if any text or link below marked carried or adapted is missing.
+Every piece of content and every interaction on the old page (the one-page portfolio that was `src/app/page.tsx` until the sect replaced it as the home page; archived), and where it lives in the sect. `src/app/sect/content/content-completeness.test.tsx` renders every area reader and the one-page view and fails if any text or link below marked carried or adapted is missing.
 
-## How a visitor reaches content on /sect
+## How a visitor reaches content in the sect
 
 1. Fly: scroll (or use the area rail) through the eleven areas. The camera holds at each one and its summary panel appears. The panel's button opens the reader for that area.
 2. Click a thing in the scene (an artifact, a banner, a tablet...). The reader opens at that item. The map's list of places (the Map button, or M) does the same.
 3. Inside a reader, Previous / Next go to the neighbouring areas, and links inside the content (hero chips, a win's "Open project") jump across areas.
 4. Read as one page: every reader's content on one scrolling page with a menu of the eleven areas. It is also what a browser without WebGL gets. It opens at `#<section id>` or `#project/<id>`.
 
-| Area | Place | Main-page section |
+| Area | Place | Old page's section |
 | --- | --- | --- |
 | gate | Mountain Gate (山门) | Welcome (#hero) |
 | mirror | Heart-Mirror Terrace (心镜台) | About (#about) |
@@ -29,9 +29,9 @@ Every piece of content and every interaction on the main page (`src/app/page.tsx
 
 ## Page shell (layout.tsx, page.tsx) (3)
 
-- [x] **C-001** Document title and description, Open Graph and Twitter cards. *adapted.* /sect sets its own title ("Bill Zhang · The Ming Sect"), description, Open Graph and Twitter cards in src/app/sect/page.tsx; the share image is the main page's, inherited from the root layout. While a reader is open the tab names its section. The description's facts (Pinterest, 36 wins, talk to it) are in the gate reader. Same person and facts, worded for the sect. /sect stays out of search results (noindex), but a shared /sect link gets its own card.
-- [x] **C-002** JSON-LD Person record (Software Engineer II at Pinterest; alumni of USC and UC Santa Cruz; knows AI, ML, conversational AI, voice agents). *carried.* Inherited: /sect uses the same root layout, so its HTML carries the same application/ld+json blocks. The same facts are visible in the Mission Hall (role) and Scripture Pavilion (schools).
-- [x] **C-003** Favicons, web manifest, theme colour. *carried.* Inherited: /sect uses the same root layout.
+- [x] **C-001** Document title and description, Open Graph and Twitter cards. *adapted.* The root layout (src/app/layout.tsx) sets the site's title ("Bill Zhang · Sun Moon Divine Cult"), description, Open Graph and Twitter cards; the share image is a frame of the Mountain Gate (public/og-image.jpg). While a reader is open the tab names its section. The description's facts (Pinterest, 36 wins, talk to it) are in the gate reader. Same person and facts, worded for the sect. The sect is the indexed home page; under the flight the server renders the whole portfolio as text (app/sect/summary.tsx) for crawlers and for visitors without JavaScript.
+- [x] **C-002** JSON-LD Person record (Software Engineer II at Pinterest; alumni of USC and UC Santa Cruz; knows AI, ML, conversational AI, voice agents). *carried.* The root layout's application/ld+json block, now also linking GitHub, LinkedIn and Devpost (sameAs). The same facts are visible in the Mission Hall (role) and Scripture Pavilion (schools).
+- [x] **C-003** Favicons, web manifest, theme colour. *carried.* The root layout's, as before.
 
 ## Top bar (2)
 
@@ -46,7 +46,7 @@ Reader: Mountain Gate (山门). Scroll (or use the area rail) to the Mountain Ga
 
 ## Custom cursor, background stage, speech waveform (1)
 
-- [ ] **C-007** Decorative cursor ring, gradient backdrop, animated waveform beside the hero eyebrow. *not carried.* Not on /sect. Decoration only. The 3D scene is the backdrop and /sect uses the normal cursor.
+- [ ] **C-007** Decorative cursor ring, gradient backdrop, animated waveform beside the hero eyebrow. *not carried.* Not in the sect. Decoration only. The 3D scene is the backdrop and the sect uses the normal cursor.
 
 ## Backend warm-up (1)
 
@@ -54,14 +54,14 @@ Reader: Mountain Gate (山门). Scroll (or use the area rail) to the Mountain Ga
 
 ## Hash landing and deep links (1)
 
-- [x] **C-009** Landing on /#section or /#project/<id> keeps the target in view. *adapted.* parseContentHash() reads #<section id>, #<area id> and #project/<id>, in any letter case; a project id outside the 15 opens the forge reader, which loads it from the archive or says it couldn't find it, and a malformed hash is ignored. The 3D page flies there and opens the reader; the one-page view (also /sect?view=page) jumps there. On the main page, opening a project pushes #project/<id>, so Back closes it and the address can be shared. On /sect that history handling belongs to the 3D page (sect-experience.tsx); the reader reports a project opened or closed inside it through onItemChange for that.
+- [x] **C-009** Landing on /#section or /#project/<id> keeps the target in view. *adapted.* parseContentHash() reads #<section id>, #<area id> and #project/<id>, in any letter case; a project id outside the 15 opens the forge reader, which loads it from the archive or says it couldn't find it, and a malformed hash is ignored. The 3D page flies there and opens the reader; the one-page view (also /?view=page) jumps there. On the old page, opening a project pushes #project/<id>, so Back closes it and the address can be shared. In the sect that history handling belongs to the 3D page (sect-experience.tsx); the reader reports a project opened or closed inside it through onItemChange for that.
 
 ## Hero (#hero) (11)
 
 Reader: Mountain Gate (山门). Scroll (or use the area rail) to the Mountain Gate and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Welcome" in the one-page view (#hero).
 
-- [ ] **C-010** Eyebrow "VOICE-DRIVEN PORTFOLIO · 2026". *not carried.* Not on /sect. Cut to keep the gate reader short.
-- [ ] **C-011** Headline "Ask me anything." *not carried.* Not on /sect. Cut to keep the gate reader short.
+- [ ] **C-010** Eyebrow "VOICE-DRIVEN PORTFOLIO · 2026". *not carried.* Not in the sect. Cut to keep the gate reader short.
+- [ ] **C-011** Headline "Ask me anything." *not carried.* Not in the sect. Cut to keep the gate reader short.
 - [x] **C-012** Intro paragraph (I'm Bill Zhang ... ask it something.) *adapted.* Mountain Gate reader. The last two sentences are left out.
 - [x] **C-013** Tagline "AI engineer. Builder of voice-first systems." (portfolio data). *carried.* Mountain Gate reader. Also on the gate's summary panel.
 - [x] **C-014** "View resume" button (jumps to the resume). *carried.* Mountain Gate reader. The button goes to the Jade Slip Pavilion reader.
@@ -74,18 +74,18 @@ Reader: Mountain Gate (山门). Scroll (or use the area rail) to the Mountain Ga
 
 ## Voice orb (components/voice-orb) (6)
 
-- [x] **C-021** Orb button "Start a voice conversation" and pill "Tap to talk · or scroll". *3D page.* The 3D page passes onTalk; the content shows "Talk to the AI" on the gate and summit panels, "Talk to the portfolio" in the gate reader, "Tap voice orb" in the contact reader, and the moon hotspot. Without onTalk these link to art3m1s.me, where the orb lives. The orb is the main page's, dressed by sect.css as a 传音符 (a sound-transmission talisman): a jade seal stamped 音, "Talk to the AI" on hover and keyboard focus, glowing while it listens and speaks; its pill shows on the intro screen only, because at the stops it covered the scene's own objects.
+- [x] **C-021** Orb button "Start a voice conversation" and pill "Tap to talk · or scroll". *3D page.* The 3D page passes onTalk; the content shows "Talk to the AI" on the gate and summit panels, "Talk to the portfolio" in the gate reader, "Tap voice orb" in the contact reader, and the moon hotspot. Without onTalk they are left out. The orb (components/voice-orb) is dressed by sect.css as a 传音符 (a sound-transmission talisman): a jade seal stamped 音, "Talk to the AI" on hover and keyboard focus, glowing while it listens and speaks; its pill shows on the intro screen only, because at the stops it covered the scene's own objects.
 - [x] **C-022** Voice call panel: Retell call, status lines, transcript, text chat mode, end call. *3D page.* Runs through onTalk on the 3D page. The content layer has no call UI of its own, but keeps the orb usable over its modals: the reader and the one-page view never pull focus out of the orb, a reader the agent opens mid-reply leaves the caret in the chat box, and Tab goes from a modal's last control to the orb.
-- [x] **C-023** Panel title "Ask anything." *3D page.* The voice orb on /sect shows it in its own panel.
-- [x] **C-024** Suggestion "Show me only the voice AI projects." with reply "Filtering by voice + AI." *3D page.* The voice orb on /sect lists it in its own panel. The gate's Sword Monoliths view also lists the question, without the reply.
-- [x] **C-025** Suggestion "Highlight SentinelAI." with reply "Focusing SentinelAI." *3D page.* The voice orb on /sect lists it in its own panel. The gate's Sword Monoliths view also lists the question, without the reply.
-- [x] **C-026** Suggestion "Tell me more about Dispatch AI." with reply "Opening Dispatch AI deep-dive." *3D page.* The voice orb on /sect lists it in its own panel. The gate's Sword Monoliths view also lists the question, without the reply.
+- [x] **C-023** Panel title "Ask anything." *3D page.* The voice orb in the sect shows it in its own panel.
+- [x] **C-024** Suggestion "Show me only the voice AI projects." with reply "Filtering by voice + AI." *3D page.* The voice orb in the sect lists it in its own panel. The gate's Sword Monoliths view also lists the question, without the reply.
+- [x] **C-025** Suggestion "Highlight SentinelAI." with reply "Focusing SentinelAI." *3D page.* The voice orb in the sect lists it in its own panel. The gate's Sword Monoliths view also lists the question, without the reply.
+- [x] **C-026** Suggestion "Tell me more about Dispatch AI." with reply "Opening Dispatch AI deep-dive." *3D page.* The voice orb in the sect lists it in its own panel. The gate's Sword Monoliths view also lists the question, without the reply.
 
 ## About (#about) (6)
 
 Reader: Heart-Mirror Terrace (心镜台). Scroll (or use the area rail) to the Heart-Mirror Terrace and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "About" in the one-page view (#about).
 
-- [ ] **C-027** Eyebrow "ABOUT" and heading "A builder who listens first." *not carried.* Not on /sect. The reader's title already says About.
+- [ ] **C-027** Eyebrow "ABOUT" and heading "A builder who listens first." *not carried.* Not in the sect. The reader's title already says About.
 - [x] **C-028** Sticky cards that stack as you scroll. *adapted.* Heart-Mirror Terrace reader. The four cards become a plain list in the same order.
 - [x] **C-029** Card 01 / WHO: "Most of my work is failure handling." and its paragraph. *adapted.* Heart-Mirror Terrace reader. Clicking the bronze mirror (hotspot mirror) opens it too. The "01 / WHO" label is left out.
 - [x] **C-030** Card 02 / WHAT: "Software you can talk to." and its paragraph. *adapted.* Heart-Mirror Terrace reader. Clicking the bronze mirror (hotspot mirror) opens it too. The "02 / WHAT" label is left out.
@@ -96,15 +96,15 @@ Reader: Heart-Mirror Terrace (心镜台). Scroll (or use the area rail) to the H
 
 Reader: Artifact Forge Peak (炼器峰). Scroll (or use the area rail) to the Artifact Forge Peak and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Projects" in the one-page view (#projects).
 
-- [ ] **C-033** Eyebrow "PROJECTS · <count>" (6 STANDOUTS, or matches/15 when filtered) and heading "Things I shipped." *not carried.* Not on /sect. The reader's title already says Projects.
-- [ ] **C-034** "Curated gallery" and "Ask by voice for any project, or filter the archive." *not carried.* Not on /sect. Cut: the filters explain themselves.
-- [ ] **C-035** Phone hint "Swipe the cards, ask by voice, or filter the archive." and the "SCROLL ↓ drives gallery →" footer. *not carried.* Not on /sect. They describe the phone carousel and the scroll-driven rail, which the reader replaces with a grid of cards.
-- [x] **C-036** Filters: Standouts, Voice, AI, Fintech, Safety, Education, 3D, Winners, and year toggles 2025, 2024. *adapted.* Artifact Forge Peak reader. Filter buttons sit above the cards; the orb suggestion "Show me only the voice AI projects." opens the forge filtered. Same filters and rules as the main page (a year narrows, picking a filter clears the year). Two filters are added: "On the ring", the default, lists the 11 prize winners whose artifacts circle the cauldron, biggest win first; "All 15" lists every project. "Standouts" still shows the main page's six hand-picked projects in their order.
-- [x] **C-037** Match count ("6/15 standouts", "n/15 match"). *adapted.* Artifact Forge Peak reader. Announced politely to screen readers when it changes. The default view counts the ring's winners ("11/15 on the ring"); a filter shows "n/15 match" and Standouts "6/15 standouts", as on the main page.
+- [ ] **C-033** Eyebrow "PROJECTS · <count>" (6 STANDOUTS, or matches/15 when filtered) and heading "Things I shipped." *not carried.* Not in the sect. The reader's title already says Projects.
+- [ ] **C-034** "Curated gallery" and "Ask by voice for any project, or filter the archive." *not carried.* Not in the sect. Cut: the filters explain themselves.
+- [ ] **C-035** Phone hint "Swipe the cards, ask by voice, or filter the archive." and the "SCROLL ↓ drives gallery →" footer. *not carried.* Not in the sect. They describe the phone carousel and the scroll-driven rail, which the reader replaces with a grid of cards.
+- [x] **C-036** Filters: Standouts, Voice, AI, Fintech, Safety, Education, 3D, Winners, and year toggles 2025, 2024. *adapted.* Artifact Forge Peak reader. Filter buttons sit above the cards; the orb suggestion "Show me only the voice AI projects." opens the forge filtered. Same filters and rules as the old page (a year narrows, picking a filter clears the year). Two filters are added: "On the ring", the default, lists the 11 prize winners whose artifacts circle the cauldron, biggest win first; "All 15" lists every project. "Standouts" still shows the old page's six hand-picked projects in their order.
+- [x] **C-037** Match count ("6/15 standouts", "n/15 match"). *adapted.* Artifact Forge Peak reader. Announced politely to screen readers when it changes. The default view counts the ring's winners ("11/15 on the ring"); a filter shows "n/15 match" and Standouts "6/15 standouts", as on the old page.
 - [x] **C-038** Project cards: poster, award badge, /id, "↗ deep dive", name, summary, #tags, year. *adapted.* Artifact Forge Peak reader. Hovering a card lights its artifact in the scene. A grid instead of the horizontal scroll rail and the phone carousel with dots. The "↗ deep dive" label is left out; the whole card opens.
 - [x] **C-039** Project detail view: eyebrow (award or Project · year), name, summary, demo video / image / placeholder, The story, Role, Stack, Year, ID, Tags, demo / live / GitHub links, voice tip, close with Esc. *adapted.* Inside the forge reader: press a project's name or card, click its artifact in the scene (hotspot project:<id>), or pick it in the map's list of places. Esc or "Back" goes back to the list; arrows step to the previous/next project. Shown in the reader sheet instead of a second modal. YouTube demos load when you press Play (the 3D scene already uses the GPU), and a "Watch on YouTube" link is always there. The voice tip is left out, and the eyebrow shows only an award (the Year row has the year).
-- [x] **C-040** Projects outside the 15 that the voice agent can open (Pinecone corpus, lazy-loaded). *carried.* Forge reader, when a deep link (#project/<id>, ?open=project:<id>) or a voice command names one: the detail loads from the same corpus, like the main page. An id that is not there either shows "Couldn't find project".
-- [ ] **C-041** Voice feedback lines ("Filtering by voice.", "Focusing on X.", "Opening X."). *not carried.* Not on /sect. They echo voice commands. The filter state and match count show the same result.
+- [x] **C-040** Projects outside the 15 that the voice agent can open (Pinecone corpus, lazy-loaded). *carried.* Forge reader, when a deep link (#project/<id>, ?open=project:<id>) or a voice command names one: the detail loads from the same corpus, like the old page. An id that is not there either shows "Couldn't find project".
+- [ ] **C-041** Voice feedback lines ("Filtering by voice.", "Focusing on X.", "Opening X."). *not carried.* Not in the sect. They echo voice commands. The filter state and match count show the same result.
 - [x] **C-042** Project SentinelAI (sentinelai): summary, story, role, 8 stack items, year 2025, tags #ai #voice #safety, GitHub link, demo video, poster. *carried.* Forge reader, SentinelAI detail: click its artifact (hotspot project:sentinelai), its card in the forge reader, or the map's list of places. Deep link #project/sentinelai in the one-page view.
 - [x] **C-043** Project CourtVision (courtvision): summary, story, role, 6 stack items, year 2025, tags #ai #voice #3d, GitHub link, demo media link, poster. *carried.* Forge reader, CourtVision detail: click its artifact (hotspot project:courtvision), its card in the forge reader, or the map's list of places. Deep link #project/courtvision in the one-page view.
 - [x] **C-044** Project Dispatch AI (dispatchai): summary, story, role, 6 stack items, award "Grand Prize, UC Berkeley AI Hackathon 2024", year 2024, tags #ai #voice #safety #winner, GitHub link, demo video, live project link, poster. *carried.* Forge reader, Dispatch AI detail: click its artifact (hotspot project:dispatchai), its card in the forge reader, or the map's list of places. Deep link #project/dispatchai in the one-page view.
@@ -125,7 +125,7 @@ Reader: Artifact Forge Peak (炼器峰). Scroll (or use the area rail) to the Ar
 
 Reader: Sword-Discussion Arena (论剑台). Scroll (or use the area rail) to the Sword-Discussion Arena and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Hackathons" in the one-page view (#hackathons).
 
-- [ ] **C-057** Eyebrow "HACKATHONS · 36 WINS", heading "Thirty-six wins." and intro. *not carried.* Not on /sect. The panel and the stat tiles carry the numbers.
+- [ ] **C-057** Eyebrow "HACKATHONS · 36 WINS", heading "Thirty-six wins." and intro. *not carried.* Not in the sect. The panel and the stat tiles carry the numbers.
 - [x] **C-058** Two scrolling marquee rows (first 18, last 18). *adapted.* Sword-Discussion Arena reader. One list of all 36 banners in the same order. Nothing moves, so nothing has to be caught. The reader also shows each win's project (a field of the data the marquee leaves out), with a link to it in the forge when it is one of the 15.
 - [x] **C-059** Stat "36" Hackathons won. *carried.* Sword-Discussion Arena reader.
 - [x] **C-060** Stat "$74k" Largest prize. *carried.* Sword-Discussion Arena reader.
@@ -172,8 +172,8 @@ Reader: Sword-Discussion Arena (论剑台). Scroll (or use the area rail) to the
 
 Reader: Mission Hall (任务殿). Scroll (or use the area rail) to the Mission Hall and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Experience" in the one-page view (#experience).
 
-- [ ] **C-099** Eyebrow "EXPERIENCE" and heading "A short, productive career." *not carried.* Not on /sect. The reader's title already says Experience.
-- [ ] **C-100** Timeline spine that draws in on scroll. *not carried.* Not on /sect. Decoration. The roles keep their order.
+- [ ] **C-099** Eyebrow "EXPERIENCE" and heading "A short, productive career." *not carried.* Not in the sect. The reader's title already says Experience.
+- [ ] **C-100** Timeline spine that draws in on scroll. *not carried.* Not in the sect. Decoration. The roles keep their order.
 - [x] **C-101** Role 1: Software Engineer II, Pinterest · San Francisco (Jul 2026 — Now). *carried.* Mission Hall reader. Its jade tablet is hotspot role:0.
 - [x] **C-102** Role 2: Applied AI Engineer (Forward-Deployed), Scale AI · San Francisco (Jun 2025 — Jul 2026). *carried.* Mission Hall reader. Its jade tablet is hotspot role:1.
 - [x] **C-103** Role 3: AI Engineer, RingCentral · Remote (Jun 2023 — Jun 2025). *carried.* Mission Hall reader. Its jade tablet is hotspot role:2.
@@ -186,7 +186,7 @@ Reader: Mission Hall (任务殿). Scroll (or use the area rail) to the Mission H
 
 Reader: Scripture Pavilion (藏经阁). Scroll (or use the area rail) to the Scripture Pavilion and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Education" in the one-page view (#education).
 
-- [ ] **C-108** Eyebrow "EDUCATION" and heading "Three schools, one path." *not carried.* Not on /sect. The reader's title already says Education.
+- [ ] **C-108** Eyebrow "EDUCATION" and heading "Three schools, one path." *not carried.* Not in the sect. The reader's title already says Education.
 - [x] **C-109** Flip cards and the hint "Click a card to flip it." *adapted.* Scripture Pavilion reader. Both faces of each card are shown at once, so nothing hides behind a flip and the hint is not needed.
 - [x] **C-110** School 1: University of Southern California (front: logo, number, name, degree, dates; back: notes). *adapted.* Scripture Pavilion reader. Its lit pagoda floor is hotspot school:0. The card number and the NOTES label are left out.
 - [x] **C-111** School 2: UC Santa Cruz (front: logo, number, name, degree, dates; back: notes). *adapted.* Scripture Pavilion reader. Its lit pagoda floor is hotspot school:1. The card number and the NOTES label are left out.
@@ -203,7 +203,7 @@ Reader: Stele Forest (碑林). Scroll (or use the area rail) to the Stele Forest
 
 Reader: Jade Slip Pavilion (玉简阁). Scroll (or use the area rail) to the Jade Slip Pavilion and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Resume" in the one-page view (#resume).
 
-- [ ] **C-115** Eyebrow "RESUME · ONE-PAGER", heading "The printable version." and intro. *not carried.* Not on /sect. The panel and the file line say what it is.
+- [ ] **C-115** Eyebrow "RESUME · ONE-PAGER", heading "The printable version." and intro. *not carried.* Not in the sect. The panel and the file line say what it is.
 - [x] **C-116** Inline PDF preview of /resume.pdf. *carried.* Jade Slip Pavilion reader. Clicking the giant jade scroll (hotspot resume) opens the reader at the preview.
 - [x] **C-117** File line "resume.pdf · last updated September 12, 2026". *carried.* Jade Slip Pavilion reader.
 - [x] **C-118** "Open in new tab" and "Download PDF" (Bill-Zhang-Resume.pdf). *carried.* Jade Slip Pavilion reader. Placed above the preview (phones without a PDF viewer show an empty box). The Jade Slip Pavilion panel has its own Download PDF button.
@@ -216,7 +216,7 @@ Reader: Jade Slip Pavilion (玉简阁). Scroll (or use the area rail) to the Jad
 - [x] **C-125** At a glance: USC: M.S. Computer Science, AI specialization. *carried.* Jade Slip Pavilion reader.
 - [x] **C-126** At a glance: Stack: TypeScript / Python / Rust, Next.js, Retell, Twilio, Mistral, Llama. *carried.* Jade Slip Pavilion reader.
 - [x] **C-127** Get in touch: billzhangsc@gmail.com, github.com/IdkwhatImD0ing, linkedin.com/in/bill-zhang1. *carried.* Jade Slip Pavilion reader.
-- [ ] **C-128** Voice tip “Send me your resume.” → opens the download. *not carried.* Not on /sect. Cut to keep the reader short.
+- [ ] **C-128** Voice tip “Send me your resume.” → opens the download. *not carried.* Not in the sect. Cut to keep the reader short.
 
 ## Architecture (#architecture) (12)
 
@@ -231,7 +231,7 @@ Reader: Grand Sect-Protecting Formation (护宗大阵). Scroll (or use the area 
 - [x] **C-135** Flow step 06: Voice reply. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:5.
 - [x] **C-136** Stack group Voice: Retell AI (call runtime, WebRTC), Deepgram speech-to-text, ElevenLabs text-to-speech. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
 - [x] **C-137** Stack group Brain: GPT-5.6 Terra (the agent), GPT-5.6 Luna (guardrail + call summary), OpenAI Agents SDK, nine tools, Site-grounded system prompt. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
-- [x] **C-138** Stack group Frame: Next.js + React 19, Three.js + GLSL bg, Framer Motion + GSAP. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
+- [x] **C-138** Stack group Frame: Next.js + React 19, Three.js + React Three Fiber + GLSL, A sect modelled and baked in Blender. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
 - [x] **C-139** Stack group State: VoiceBus pub-sub, URL-driven section anchors, Per-section local React state. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
 - [x] **C-140** Code snippet (navigation metadata → VoiceBus → scroll), syntax highlighted. *carried.* Grand Sect-Protecting Formation reader. The code is pillar hotspot arch:7.
 
@@ -239,8 +239,8 @@ Reader: Grand Sect-Protecting Formation (护宗大阵). Scroll (or use the area 
 
 Reader: Cave Abode (洞府). Scroll (or use the area rail) to the Cave Abode and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Off the clock" in the one-page view (#personal).
 
-- [ ] **C-141** Eyebrow "OFF THE CLOCK" and heading "A few true things." *not carried.* Not on /sect. The reader's title already says Off the clock.
-- [ ] **C-142** Watermark lines behind the section. *not carried.* Not on /sect. Decoration.
+- [ ] **C-141** Eyebrow "OFF THE CLOCK" and heading "A few true things." *not carried.* Not in the sect. The reader's title already says Off the clock.
+- [ ] **C-142** Watermark lines behind the section. *not carried.* Not in the sect. Decoration.
 - [x] **C-143** Photo (/profile-joshua-tree.webp, alt "Bill Zhang") with caption "SHOT · 2025 · LA". *carried.* Cave Abode reader. The moon gate (hotspot abode) opens the reader.
 - [x] **C-144** Fact 1: Finished a 4-year CS degree in 2.5 years. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:0.
 - [x] **C-145** Fact 2: Won my first hackathon at 17. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:1.
@@ -249,23 +249,23 @@ Reader: Cave Abode (洞府). Scroll (or use the area rail) to the Cave Abode and
 - [x] **C-148** Fact 5: Still chasing the best bowl of noodles in San Francisco. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:4.
 - [x] **C-149** Fact 6: Convinced everyone gets a personal Jarvis eventually: an AI you just talk to, in real time. Building toward it. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:5.
 - [x] **C-150** Fact 7: Would rather talk to software than tap through it. Hence this site. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:6.
-- [ ] **C-151** Tip "Try asking the orb: “What does Bill do for fun?”". *not carried.* Not on /sect. The Ask the portfolio button does the same.
+- [ ] **C-151** Tip "Try asking the orb: “What does Bill do for fun?”". *not carried.* Not in the sect. The Ask the portfolio button does the same.
 
 ## Footer / contact (11)
 
 Reader: Moon-Gazing Terrace (望月台). Scroll (or use the area rail) to the Moon-Gazing Terrace and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Contact" in the one-page view (#footer).
 
-- [ ] **C-152** Eyebrow "CONTACT", heading "Let's talk. (Literally.)" and "Tap the orb. Or, if you're old-school, send a normal email. I read every one." *not carried.* Not on /sect. The reader's title already says Contact; the email and the talk button follow.
+- [ ] **C-152** Eyebrow "CONTACT", heading "Let's talk. (Literally.)" and "Tap the orb. Or, if you're old-school, send a normal email. I read every one." *not carried.* Not in the sect. The reader's title already says Contact; the email and the talk button follow.
 - [x] **C-153** Direct: email billzhangsc@gmail.com. *carried.* Moon-Gazing Terrace reader. The summit panel also has an Email button.
-- [x] **C-154** Direct: "Tap voice orb". *carried.* Moon-Gazing Terrace reader. Starts a call through onTalk (or links to art3m1s.me). Clicking the moon (hotspot moon) does the same on the 3D page.
+- [x] **C-154** Direct: "Tap voice orb". *carried.* Moon-Gazing Terrace reader. Starts a call through onTalk (left out without it). Clicking the moon (hotspot moon) does the same on the 3D page.
 - [x] **C-155** Elsewhere: GitHub (https://github.com/IdkwhatImD0ing). *carried.* Moon-Gazing Terrace reader.
 - [x] **C-156** Elsewhere: LinkedIn (https://www.linkedin.com/in/bill-zhang1/). *carried.* Moon-Gazing Terrace reader.
 - [x] **C-157** Elsewhere: Devpost (https://devpost.com/IdkwhatImD0ing). *carried.* Moon-Gazing Terrace reader.
-- [ ] **C-158** Index: Projects (jumps to #projects). *not carried.* Not on /sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
-- [ ] **C-159** Index: Hackathons (jumps to #hackathons). *not carried.* Not on /sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
-- [ ] **C-160** Index: Experience (jumps to #experience). *not carried.* Not on /sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
+- [ ] **C-158** Index: Projects (jumps to #projects). *not carried.* Not in the sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
+- [ ] **C-159** Index: Hackathons (jumps to #hackathons). *not carried.* Not in the sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
+- [ ] **C-160** Index: Experience (jumps to #experience). *not carried.* Not in the sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
 - [x] **C-161** "© 2026 BILL ZHANG". *carried.* Moon-Gazing Terrace reader.
-- [x] **C-162** Location "San Francisco, CA" (portfolio data; the main page shows it only as "SF" in the top bar). *carried.* Moon-Gazing Terrace reader.
+- [x] **C-162** Location "San Francisco, CA" (portfolio data; the old page shows it only as "SF" in the top bar). *carried.* Moon-Gazing Terrace reader.
 
 ## Public files (4)
 
@@ -274,5 +274,5 @@ Reader: Jade Slip Pavilion (玉简阁). Scroll (or use the area rail) to the Jad
 - [x] **C-163** /resume.pdf (preview, open in new tab, download). *carried.* Jade Slip Pavilion panel and reader; gate reader (Download PDF).
 - [x] **C-164** Project posters (15 in /project-posters/). *carried.* Forge reader cards and the detail view's video cover.
 - [x] **C-165** School logos (/usc.png, /ucsc.png, /lynbrook.png). *carried.* Scripture Pavilion reader.
-- [ ] **C-166** github.svg, linkedin.svg, devpost.svg, rocket.png, llms.txt, data.json. *not carried.* Not on /sect. The main page does not use them either.
+- [ ] **C-166** github.svg, linkedin.svg, devpost.svg, rocket.png, llms.txt, data.json. *not carried.* Not in the sect. The old page did not use them either.
 

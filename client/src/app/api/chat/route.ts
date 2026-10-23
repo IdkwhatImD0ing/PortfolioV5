@@ -2,6 +2,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { resolveApiBase } from "@/lib/backend";
+import { personaForReferer } from "@/lib/sect/persona";
 
 // Same-origin proxy for the backend's text chat stream (POST /chat, Server-Sent
 // Events). The browser can't call the backend directly: its CORS only allows
@@ -30,12 +31,20 @@ export async function POST(request: NextRequest) {
   // existed doesn't, and the backend then appends its refusal the old way.
   const supportsReplace = (body as { supports_replace?: unknown }).supports_replace === true;
 
+  // A chat from /sect gets the sect's persona (server/personas.py). Decided
+  // here from the page, never taken from the body, like every other field.
+  const persona = personaForReferer(request.headers.get("referer"));
+
   try {
     const base = await resolveApiBase();
     const upstream = await fetch(`${base}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(supportsReplace ? { messages, supports_replace: true } : { messages }),
+      body: JSON.stringify({
+        messages,
+        ...(supportsReplace ? { supports_replace: true } : {}),
+        ...(persona ? { persona } : {}),
+      }),
       cache: "no-store",
       // Stop the backend's work when the visitor closes the panel or the
       // client gives up waiting.

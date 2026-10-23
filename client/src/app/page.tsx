@@ -1,46 +1,23 @@
-import { BackendWarmup } from "@/components/backend-warmup";
-import { BgStage } from "@/components/bg-stage";
-import { CustomCursor } from "@/components/custom-cursor";
-import { HashLanding } from "@/components/hash-landing";
-import { ScrollProgressBar } from "@/components/scroll-progress-bar";
-import { Topbar } from "@/components/topbar";
-import { VoiceOrb } from "@/components/voice-orb";
-import { HeroSection } from "@/components/sections/hero";
-import { AboutSection } from "@/components/sections/about";
-import { ProjectsSection } from "@/components/sections/projects";
-import { HackathonsSection } from "@/components/sections/hackathons";
-import { ExperienceSection } from "@/components/sections/experience";
-import { EducationSection } from "@/components/sections/education";
-import { SkillsSection } from "@/components/sections/skills";
-import { ResumeSection } from "@/components/sections/resume";
-import { ArchitectureSection } from "@/components/sections/architecture";
-import { PersonalSection, FooterSection } from "@/components/sections/personal";
+import { SectClient } from "./sect/sect-client";
+import { SectSummary } from "./sect/summary";
+import "./sect/sect.css";
 
+// Without JavaScript there is no flight and no page view: the veil goes, and the portfolio as text
+// (SectSummary) shows in its place.
+const NO_SCRIPT_CSS =
+  ".sect-root{display:none!important}.sect-summary{position:static;width:auto;height:auto;overflow:visible;clip-path:none;white-space:normal}";
+
+/**
+ * The home page is the sect: 日月神教, the Sun Moon Divine Cult, a real-time fly-through of the
+ * portfolio (./sect). It was /sect until it replaced the one-page portfolio (archived); /sect now
+ * redirects here (app/sect/route.ts). Title, description and share cards are the root layout's.
+ */
 export default function Home() {
   return (
     <>
-      <BackendWarmup />
-      <BgStage />
-      <ScrollProgressBar />
-      <CustomCursor />
-      <HashLanding />
-      <Topbar />
-
-      <main>
-        <HeroSection />
-        <AboutSection />
-        <ProjectsSection />
-        <HackathonsSection />
-        <ExperienceSection />
-        <EducationSection />
-        <SkillsSection />
-        <ResumeSection />
-        <ArchitectureSection />
-        <PersonalSection />
-        <FooterSection />
-      </main>
-
-      <VoiceOrb />
+      <SectClient />
+      <SectSummary />
+      <noscript dangerouslySetInnerHTML={{ __html: `<style>${NO_SCRIPT_CSS}</style>` }} />
     </>
   );
 }

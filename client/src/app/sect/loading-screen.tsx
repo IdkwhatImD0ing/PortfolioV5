@@ -11,9 +11,10 @@ import { QualityPicker, QualityPickerSpace, type QualityPickerProps } from "./qu
 const SLOW_MS = 4000;
 
 /**
- * The sect's sun-and-moon emblem (明 = 日 sun + 月 moon), the same design as the scene's banners and gate
- * (blender/xianxia-sect/sect/lib/props.py SM_MOON / SM_SUN, y flipped for SVG): a moon-white crescent with
- * its horns up cradling a gold sun with twelve short rays, in a thin gold ring. Unit radius 1.
+ * The sect's sun-and-moon emblem (日月, the first two characters of its name), the same design as the
+ * scene's banners and gate (blender/xianxia-sect/sect/lib/props.py SM_MOON / SM_SUN, y flipped for
+ * SVG): a moon-white crescent with its horns up cradling a gold sun with twelve short rays, in a thin
+ * gold ring. Unit radius 1.
  */
 const SUN_RAYS = (() => {
   const [cx, cy, rs, rt, n] = [0, -0.14, 0.34, 0.56, 12];
@@ -46,7 +47,7 @@ function SunMoonEmblem({ className }: { className?: string }) {
  * announced on every byte.
  *
  * Whose portfolio this is and a way to read it without the flight show from the first paint: before
- * the page's scripts run, "Read as page" is a plain link to /sect?view=page (which never
+ * the page's scripts run, "Read as page" is a plain link to /?view=page (which never
  * downloads the scene); once the flight has loaded its code, it opens the page view in place.
  *
  * The graphics picker (quality-picker.tsx) sits under the progress bar once the flight's code is
@@ -60,11 +61,12 @@ function SunMoonEmblem({ className }: { className?: string }) {
  * The flight's veil can show the poster still of the opening view behind it (Poster), while <html>
  * has POSTER_ATTR; the veil's fade when the scene is ready is then a crossfade to the same view.
  *
- * Its way back to the main site is a plain link: a full page load frees the scene's memory, its
- * decoder workers and its audio (a client-side route change would keep them alive).
+ * Without JavaScript the screen is not shown at all: the page shows the portfolio as text instead
+ * (app/page.tsx, summary.tsx).
  *
- * Dressed as a Wukong loading screen: 明教 in the brush hand on a pool of ink wash with the sect's
- * seal, and the progress drawn as a brush stroke filling with gold (ornaments.tsx, sect.css).
+ * Dressed as a Wukong loading screen: 日月神教 in the brush hand on a pool of ink wash with the sect's
+ * seal (four characters, set smaller than the two of 明教 were), and the progress drawn as a brush
+ * stroke filling with gold (ornaments.tsx, sect.css).
  */
 export function LoadingScreen({
   progress,
@@ -85,7 +87,7 @@ export function LoadingScreen({
   visible?: boolean;
   /** Shows a Reload button with the error (the graphics context was lost). */
   onReload?: () => void;
-  /** Opens the one-page view in place; without it the offer links to /sect?view=page. */
+  /** Opens the one-page view in place; without it the offer links to /?view=page. */
   onReadAsPage?: () => void;
   /** The graphics picker, or "reserve" for its empty place (it is coming); none without either. */
   quality?: QualityPickerProps | "reserve";
@@ -126,26 +128,16 @@ export function LoadingScreen({
       {poster && <Poster />}
       {/* The emblem sits above the name; short screens (a phone on its side) drop it so the column still fits. */}
       <SunMoonEmblem className="mt-auto mb-5 h-[clamp(2.75rem,7vw,3.75rem)] w-[clamp(2.75rem,7vw,3.75rem)] shrink-0 [@media(max-height:30rem)]:hidden" />
-      <p className="sect-sealed sect-ink text-[clamp(3.6rem,11vw,6.6rem)] leading-none text-[var(--sect-paper)] [@media(max-height:30rem)]:mt-auto [@media(max-height:30rem)]:text-[3.2rem]">
-        <BrushName text="明教" />
+      <p className="sect-sealed sect-ink text-[clamp(3rem,9vw,5.4rem)] leading-none text-[var(--sect-paper)] [@media(max-height:30rem)]:mt-auto [@media(max-height:30rem)]:text-[2.7rem]">
+        <BrushName text="日月神教" even={0.1} />
         <SealStamp />
       </p>
-      <p className="mt-4 text-[0.75rem] uppercase tracking-[0.42em] text-[var(--sect-gold)]">The Ming Sect</p>
+      <p className="mt-4 text-[0.75rem] uppercase tracking-[0.42em] text-[var(--sect-gold)]">Sun Moon Divine Cult</p>
       <p className="mt-5 max-w-md text-[0.9375rem] leading-relaxed text-[var(--sect-paper-soft)]">
         <span className="font-serif text-[1.35rem] text-[var(--sect-paper)]">{PORTFOLIO.name}</span>
         <br />
         {PORTFOLIO.tagline}
       </p>
-      <noscript>
-        <p className="mt-6 text-[0.9375rem] text-[var(--sect-paper-soft)]">
-          The flight needs JavaScript. The same portfolio is at{" "}
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full page load (see above) */}
-          <a className={quiet} href="/">
-            art3m1s.me
-          </a>
-          .
-        </p>
-      </noscript>
       {error ? (
         <div className="mb-auto mt-10 flex w-[min(28rem,calc(100vw-3rem))] flex-col items-center text-sm leading-relaxed text-[var(--sect-paper-soft)]">
           <p role="alert">{error}</p>
@@ -165,10 +157,6 @@ export function LoadingScreen({
                 Read as page
               </a>
             )}
-            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full page load (see above) */}
-            <a className={`inline-block ${quiet}`} href="/">
-              Back to art3m1s.me
-            </a>
           </div>
         </div>
       ) : (

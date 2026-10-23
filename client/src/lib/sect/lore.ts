@@ -63,7 +63,7 @@ export const LORE = {
   "sun-moon": {
     zh: "日月",
     en: "Sun and Moon",
-    what: "Sun 日 and moon 月 make 明, the Ming Sect's name",
+    what: "The sect's emblem, and the first half of its name, 日月神教",
     novel: null,
     area: "gate",
   },

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 import { OPTIONS, POST } from "./route";
+import { PROD_AGENT_ID } from "@/lib/retell-agent";
 
 /** Build the NextRequest the route expects. `body` is sent raw so tests can
  *  exercise the malformed-JSON path too. */
@@ -231,6 +232,104 @@ describe("POST /api/create-web-call", () => {
     expect(upstreamErr.headers.get("Access-Control-Allow-Origin")).toBe(
       EXPECTED_ORIGIN,
     );
+  });
+});
+
+describe("POST /api/create-web-call from the /sect page", () => {
+  /** The same request, placed by a page at `referer` (a same-origin fetch carries its URL). */
+  function postFrom(referer: string | null, body: unknown) {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (referer) headers.Referer = referer;
+    return new NextRequest("http://localhost:3000/api/create-web-call", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** What the orb sends from either page: the same body, word for word. */
+  const ORB_BODY = {
+    agent_id: PROD_AGENT_ID,
+    metadata: { session_started: "2026-10-23T00:00:00.000Z", platform: "web" },
+  };
+
+  function sentBody(fetchMock: ReturnType<typeof vi.fn>) {
+    return JSON.parse(requestInit(fetchMock).init.body as string);
+  }
+
+  it("asks the backend for the sect persona, keeping the orb's metadata", async () => {
+    const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
+
+    await POST(postFrom("http://localhost:3000/sect", ORB_BODY));
+
+    expect(sentBody(fetchMock)).toEqual({
+      agent_id: PROD_AGENT_ID,
+      metadata: { ...ORB_BODY.metadata, persona: "ming-sect" },
+    });
+  });
+
+  it("adds the persona even when the page sent no metadata", async () => {
+    const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
+
+    await POST(postFrom("https://portfolio-v5-lake.vercel.app/sect?debug=1", { agent_id: "agent_1" }));
+
+    expect(sentBody(fetchMock)).toEqual({ agent_id: "agent_1", metadata: { persona: "ming-sect" } });
+  });
+
+  it.each([
+    ["the main page", "http://localhost:3000/"],
+    ["no Referer", null],
+    ["a lookalike path", "http://localhost:3000/sectarian"],
+  ])("sends the main page's call exactly as before (%s)", async (_label, referer) => {
+    const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
+
+    await POST(postFrom(referer, ORB_BODY));
+
+    expect(sentBody(fetchMock)).toEqual(ORB_BODY);
+  });
+
+  it("keeps a persona the page named itself", async () => {
+    const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
+
+    await POST(
+      postFrom("http://localhost:3000/sect", { agent_id: "agent_1", metadata: { persona: "classic" } }),
+    );
+
+    expect(sentBody(fetchMock).metadata).toEqual({ persona: "classic" });
+  });
+
+  describe("with a sect agent configured (RETELL_SECT_AGENT_ID)", () => {
+    beforeEach(() => {
+      vi.stubEnv("RETELL_SECT_AGENT_ID", "agent_sect");
+    });
+
+    it("dials the sect's own agent instead of the production one", async () => {
+      const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
+
+      await POST(postFrom("http://localhost:3000/sect", ORB_BODY));
+
+      expect(sentBody(fetchMock)).toEqual({
+        agent_id: "agent_sect",
+        metadata: { ...ORB_BODY.metadata, persona: "ming-sect" },
+      });
+    });
+
+    it("leaves a dev agent's call on the dev agent", async () => {
+      const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
+
+      await POST(postFrom("http://localhost:3000/sect", { ...ORB_BODY, agent_id: "agent_dev" }));
+
+      expect(sentBody(fetchMock).agent_id).toBe("agent_dev");
+      expect(sentBody(fetchMock).metadata.persona).toBe("ming-sect");
+    });
+
+    it("never moves the main page's call", async () => {
+      const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
+
+      await POST(postFrom("http://localhost:3000/", ORB_BODY));
+
+      expect(sentBody(fetchMock)).toEqual(ORB_BODY);
+    });
   });
 });
 

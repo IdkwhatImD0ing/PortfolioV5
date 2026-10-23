@@ -51,7 +51,7 @@ export function nearestHold(map: ScrollMap, u: number): string | null {
   return best;
 }
 
-/** The hash for an area: its main-page section id, so links are the same on both pages. */
+/** The hash for an area: its section name (areas.ts sectionId), so the old one-page site's links still land. */
 export function hashForArea(area: string): string {
   const info = AREAS.find((a) => a.id === area);
   return info ? `#${info.sectionId}` : "";

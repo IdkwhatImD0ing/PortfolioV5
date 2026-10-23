@@ -38,7 +38,7 @@ import {
 } from "three";
 import { BVH_MS_PER_KTRI, bvhCostMs, bvhWanted, deferUpload, mayBuildBvh, mayPostBvh, updateBvhRate, uploadWaitedMs } from "@/lib/sect/background-work";
 import { fovForAspect, samplePath, sampleCamera } from "@/lib/sect/camera-path";
-import { framingAt, framingFrame } from "@/lib/sect/framing";
+import { framingAt, framingFrame, framingTable } from "@/lib/sect/framing";
 import {
   clampLook,
   composeLook,
@@ -84,8 +84,8 @@ import { createPipeline, type Pipeline } from "./effects";
 import { SectReflections } from "./reflect";
 import { reflectTier } from "./reflect/plan";
 import { SpanTimer } from "./reflect/timer";
-import { Cranes, ForgeFire, FormationFires, IncenseSmoke, Petals } from "./fx";
-import { ForgeFlames } from "./forge-flames";
+import { Flames } from "./flames";
+import { Cranes, ForgeFire, FormationCore, IncenseSmoke, Petals } from "./fx";
 import { createGrassDebug, Grass, type GrassDebug } from "./grass";
 import { IDLE_ON, IDLE_TIME, updateIdle } from "./idle";
 import { Life } from "./life";
@@ -207,8 +207,10 @@ function CameraRig({ store }: { store: SectStore }) {
     if (store.frameOverride !== null) frame = store.frameOverride;
     store.frame = frame;
     // A few stops frame their subject (lib/sect/framing.ts): near the hold the camera takes the
-    // film's pose of a few frames earlier (it stands back along the path), easing in and out.
-    const s = sampleCamera(store.camera.frames, framingFrame(store.camera.holds, frame));
+    // film's pose of a few frames earlier (it stands back along the path), easing in and out; on a
+    // portrait screen some stand further back (framingTable).
+    const table = framingTable(size.width, size.height);
+    const s = sampleCamera(store.camera.frames, framingFrame(store.camera.holds, frame, table));
     camera.position.set(s.p[0], s.p[1], s.p[2]);
     // Free look turns the rendered camera on top of the path's orientation; a new path position
     // (scroll, jump, voice) swings it back. The path sample stays the flight's own camera.
@@ -219,7 +221,7 @@ function CameraRig({ store }: { store: SectStore }) {
     if (followPath(look, at, performance.now() / 1000, store.reducedMotion)) wakeForRecenter(store);
     // And turn the view a little to centre their subject, easing in over the frames before the
     // hold and out after it; the free look turns on top of that.
-    const framed = composeLook(s.q, framingAt(store.camera.holds, frame));
+    const framed = composeLook(s.q, framingAt(store.camera.holds, frame, table));
     // The tilt that keeps the view short of straight up or down depends on the view's own pitch.
     look.limits = lookLimits(framed);
     const c = clampLook(look, look.limits);
@@ -1442,11 +1444,12 @@ function Flyer({ store, object, path }: { store: SectStore; object: Object3D; pa
   // A JSX group (not one made in useMemo): StrictMode runs memos twice, and re-parenting the
   // loaded object into a second group would leave the rendered one empty.
   const ref = useRef<Group>(null);
+  const size = useThree((s) => s.size);
   useFrame(() => {
     const g = ref.current;
     if (!g) return;
     // Keyed to the frame the camera stands at (a framed stop's camera stands back, framing.ts).
-    const s = samplePath(path.frames, framingFrame(store.camera.holds, store.frame));
+    const s = samplePath(path.frames, framingFrame(store.camera.holds, store.frame, framingTable(size.width, size.height)));
     g.position.set(s.p[0], s.p[1], s.p[2]);
     g.quaternion.set(s.q[0], s.q[1], s.q[2], s.q[3]);
     g.updateMatrix();
@@ -2393,8 +2396,10 @@ function SectCanvas(props: SectCanvasProps) {
       {global && <Grass chunks={chunks} ctx={ctx} meta={meta} store={store} quality={quality} debug={grassDebug} />}
       {global && <WaterfallFx meta={meta} base={ctx.data.base} time={ctx.waterfallMaterial.uniforms.uTime} sets={sets} store={store} fog={fog} quality={quality} overlay={overlay} />}
       <ForgeFire set={forgeSet} store={store} />
-      <ForgeFlames set={forgeSet} meta={meta} store={store} fog={fog} quality={quality} overlay={overlay} debug={debug} />
-      <FormationFires set={formationSet} store={store} meta={meta} tier={decorTier} />
+      {chunks.map((s) => (
+        <Flames key={s.id} set={s} meta={meta} store={store} fog={fog} quality={quality} overlay={overlay} debug={debug} />
+      ))}
+      <FormationCore set={formationSet} store={store} meta={meta} />
       <IncenseSmoke set={mirrorSet} store={store} />
       <Hotspots
         store={store}

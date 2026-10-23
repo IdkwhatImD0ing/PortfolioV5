@@ -4,7 +4,7 @@ Status: plan, not started. Written 2026-10-10.
 
 ## The idea
 
-The site becomes a flight through the Ming Sect. Scrolling moves the camera. When the
+The site becomes a flight through the sect (then the Ming Sect, now the Sun Moon Divine Cult). Scrolling moves the camera. When the
 camera reaches an area, the things in the video become clickable: the 15 floating
 artifacts at the forge are your 15 projects, the 7 jade tablets are your 7 jobs, and so
 on. Clicking one opens the same detail view the site already has. It works in reverse
@@ -125,7 +125,7 @@ Ids in the right column are hotspot ids. Each one maps to a real item in
 
 | Section | Area | Clickable things in the video | What clicking does |
 |---|---|---|---|
-| hero | Mountain Gate | the gate plaque 明教 | scroll on to About |
+| hero | Mountain Gate | the gate plaque (then 明教, now 日月神教) | scroll on to About |
 | about | Heart-Mirror Terrace | the bronze mirror | your About text appears *inside* the mirror (projected onto its surface) |
 | projects | Artifact Forge | 15 artifacts, `project:<id>` | opens the existing ProjectDetail modal; hovering a project card lights its artifact |
 | hackathons | Sword Arena | 36 banners, `hackathon:<i>` | shows name, project and prize; scrolls its card into view |

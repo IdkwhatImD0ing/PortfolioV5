@@ -1,7 +1,7 @@
 /**
  * The map's seals (map-view.tsx): one emblem per stop, drawn in a 40 x 40 box with brush-like round
  * strokes in the current colour (gold on an ink seal; ink on the gold seal of the current stop), and
- * the visitor's own mark, the sun and the moon of 明 on a cinnabar seal.
+ * the visitor's own mark, the sun and the moon (日月, as the sect's name begins) on a cinnabar seal.
  */
 import type { ReactNode } from "react";
 import type { AreaId } from "@/lib/sect/areas";
@@ -161,7 +161,7 @@ export function Emblem({ id, className }: { id: AreaId; className?: string }) {
   );
 }
 
-/** The visitor's mark: 明, the sun beside the moon, in paper on a cinnabar seal. */
+/** The visitor's mark: 日月, the sun beside the moon, in paper on a cinnabar seal. */
 export function HereGlyph({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 40 40" aria-hidden className={className}>

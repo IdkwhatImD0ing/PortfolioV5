@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { HACKATHONS, PORTFOLIO } from "@/lib/portfolio-data";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -25,37 +26,54 @@ export const viewport: Viewport = {
   themeColor: "#07060d",
 };
 
+// The site is one page, the sect (app/page.tsx), so its title, description and share cards are here.
+// The English name after the last "·" is the one the voice persona uses too (server/tests/test_personas.py).
+const TITLE = `${PORTFOLIO.name} · Sun Moon Divine Cult`;
+const DESCRIPTION = `${PORTFOLIO.name} builds LLM agents at Pinterest and has won ${HACKATHONS.length} hackathons. His portfolio is a 3D flight through 日月神教, the Sun Moon Divine Cult, with a voice guide you can talk to.`;
+const SHARE_TEXT = "LLM agents at Pinterest. A portfolio you fly through, and talk to.";
+// A frame of the flight at the Mountain Gate, 1200x630 (public/og-image.jpg).
+const IMAGE = {
+  url: "/og-image.jpg",
+  width: 1200,
+  height: 630,
+  type: "image/jpeg",
+  alt: "The Mountain Gate of 日月神教, the Sun Moon Divine Cult, Bill Zhang's portfolio at art3m1s.me",
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL("https://art3m1s.me"),
   manifest: "/manifest.json",
-  title: "Bill Zhang | Voice-Driven Portfolio v2026",
-  description:
-    "Bill Zhang builds LLM agents at Pinterest by day and software you can talk to by night. 36 hackathon wins. Talk to this portfolio.",
+  title: TITLE,
+  description: DESCRIPTION,
   keywords: [
     "AI Engineer",
     "Bill Zhang",
     "Portfolio",
     "Voice AI",
     "Conversational AI",
+    "LLM agents",
     "Retell",
     "Hackathon",
+    "three.js",
+    "Sun Moon Divine Cult",
   ],
-  authors: [{ name: "Bill Zhang" }],
-  creator: "Bill Zhang",
+  authors: [{ name: PORTFOLIO.name }],
+  creator: PORTFOLIO.name,
   robots: { index: true, follow: true },
+  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
-    url: "https://art3m1s.me",
+    url: "/",
     siteName: "Bill Zhang · art3m1s.me",
-    title: "Bill Zhang | Voice-driven AI portfolio",
-    description:
-      "LLM agents at Pinterest by day. Software you can talk to by night. Talk to this portfolio.",
+    title: TITLE,
+    description: SHARE_TEXT,
+    images: [IMAGE],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Bill Zhang | Voice-driven AI portfolio",
-    description:
-      "LLM agents at Pinterest by day. Software you can talk to by night. Talk to this portfolio.",
+    title: TITLE,
+    description: SHARE_TEXT,
+    images: [IMAGE],
   },
   icons: {
     icon: [
@@ -82,7 +100,8 @@ export default function RootLayout({
             __html: JSON.stringify({
               "@context": "https://schema.org",
               "@type": "Person",
-              name: "Bill Zhang",
+              name: PORTFOLIO.name,
+              description: PORTFOLIO.tagline,
               jobTitle: "Software Engineer II",
               worksFor: {
                 "@type": "Organization",
@@ -99,6 +118,7 @@ export default function RootLayout({
                 },
               ],
               url: "https://art3m1s.me",
+              sameAs: [PORTFOLIO.github, PORTFOLIO.linkedin, PORTFOLIO.devpost],
               knowsAbout: [
                 "Artificial Intelligence",
                 "Machine Learning",

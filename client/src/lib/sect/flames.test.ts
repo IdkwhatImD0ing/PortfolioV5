@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  blazeFromCluster,
+  blazeGlowRadius,
+  blazeIndices,
+  blazesFromFlames,
   CARD_STRIDE,
   classifyGlow,
+  clusterFlames,
   EMBER_STRIDE,
   emberSeeds,
   fireBounds,
+  fireCode,
   fireFlicker,
+  firePhase,
   FLAME_GLSL,
   flameCards,
   FLAMES,
@@ -15,13 +22,17 @@ import {
   fireSourcesFromGlow,
   glowFactor,
   glowShape,
+  LIGHT_GLSL,
+  lightFactor,
+  lightFalloff,
   meshPieces,
+  mergeFires,
   MOUTH_STRIDE,
   openingQuads,
   type BedFire,
   type FireSource,
   type OpeningFire,
-} from "./forge-flames";
+} from "./flames";
 import { parseFires } from "./parse";
 import type { FireAnchor, Vec3 } from "./types";
 
@@ -216,7 +227,7 @@ describe("fireSourcesFromGlow", () => {
 
   it("keeps at most FLAMES.maxSources", () => {
     const pieces: number[][] = [];
-    for (let i = 0; i < 12; i++) pieces.push(...meshPieces(box([i * 10, 0, 0], [2, 1.4, 2]).positions, box([0, 0, 0], [1, 1, 1]).index));
+    for (let i = 0; i < FLAMES.maxSources + 4; i++) pieces.push(...meshPieces(box([i * 10, 0, 0], [2, 1.4, 2]).positions, box([0, 0, 0], [1, 1, 1]).index));
     expect(fireSourcesFromGlow(pieces, null)).toHaveLength(FLAMES.maxSources);
   });
 });
@@ -309,12 +320,16 @@ describe("tiers and tables", () => {
 
   it("draws less on the lower tiers", () => {
     const [hi, mid, lo] = (["high", "mid", "low"] as const).map(flameTier);
-    for (const k of ["cauldronCards", "kilnCards", "sheets", "mouthEmbers", "kilnEmbers"] as const) {
+    for (const k of ["cauldronCards", "kilnCards", "sheets", "mouthEmbers", "kilnEmbers", "blazeCards", "blazeSparks"] as const) {
       expect(hi[k]).toBeGreaterThanOrEqual(mid[k]);
       expect(mid[k]).toBeGreaterThanOrEqual(lo[k]);
     }
     expect(lo.cauldronCards).toBeLessThan(hi.cauldronCards);
     expect(lo.mouthEmbers).toBeLessThan(hi.mouthEmbers);
+    expect(lo.blazeCards).toBeLessThan(hi.blazeCards);
+    expect(lo.blazeSparks).toBeLessThan(hi.blazeSparks);
+    // The light reads the scene's depth, which only the composer tiers have.
+    expect([hi.blazeLight, mid.blazeLight, lo.blazeLight]).toEqual([true, true, false]);
   });
 
   it("packs the bed cards with their sources' indices", () => {
@@ -340,7 +355,7 @@ describe("tiers and tables", () => {
     }
   });
 
-  it("gives embers to the openings and kilns only", () => {
+  it("gives embers to the openings and kilns only (the forge has no blaze)", () => {
     const t = flameTier("high");
     const e = emberSeeds(fires, t);
     expect(e.length % EMBER_STRIDE).toBe(0);
@@ -381,5 +396,258 @@ describe("tiers and tables", () => {
       const top: Vec3 = [f.base[0], f.base[1] + f.height, f.base[2]];
       expect(Math.hypot(top[0] - b.center[0], top[1] - b.center[1], top[2] - b.center[2])).toBeLessThan(b.radius);
     }
+  });
+});
+
+/**
+ * A carved flame as the bake holds one (areas/mission.py _hf_flame): separate closed tongues (a
+ * broad body, the tall middle one, five side tongues round it, two detached licks), each its own
+ * little cloud of points: about 1.6 m across and 1.8 m tall from its foot in the coals.
+ */
+function carvedFlame(foot: Vec3): number[] {
+  const out: number[] = [];
+  const tongue = (x: number, z: number, w: number, h: number, y0 = 0) => {
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const y = y0 + (i % 4) * (h / 3);
+      const r = (w / 2) * (1 - (y - y0) / (h * 1.05));
+      out.push(foot[0] + x + r * Math.cos(a), foot[1] + y, foot[2] + z + r * Math.sin(a));
+    }
+  };
+  tongue(0, 0, 1.25, 0.95);
+  tongue(0, 0, 0.85, 1.8);
+  for (let k = 0; k < 5; k++) {
+    const a = (k / 5) * Math.PI * 2;
+    tongue(Math.cos(a) * 0.55, Math.sin(a) * 0.55, 0.5, 0.9 + 0.08 * k);
+  }
+  tongue(0.3, -0.04, 0.1, 0.24, 1.2);
+  tongue(-0.26, 0.02, 0.08, 0.2, 1.46);
+  return out;
+}
+
+/** The mission hall's two altars as the current bake has them (three space), east first. */
+const ALTARS: Vec3[] = [
+  [-116.4, 143.0, -592.0],
+  [-149.2, 143.0, -616.3],
+];
+
+describe("clusterFlames", () => {
+  /** A brazier's flame: a little cone of points (0.9 m across, 1.2 m tall) standing at `foot`. */
+  function flame(foot: Vec3): number[] {
+    const out: number[] = [];
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      const y = (i % 4) * 0.4;
+      const r = 0.45 * (1 - y / 1.3);
+      out.push(foot[0] + r * Math.cos(a), foot[1] + y, foot[2] + r * Math.sin(a));
+    }
+    return out;
+  }
+
+  it("finds one fire per brazier round the formation", () => {
+    const pts: number[] = [];
+    for (let k = 0; k < 8; k++) {
+      const a = (22.5 + 45 * k) * (Math.PI / 180);
+      pts.push(...flame([65 + 24.6 * Math.cos(a), 222.6, -1195 + 24.6 * Math.sin(a)]));
+    }
+    const fires = clusterFlames(pts, FLAMES.blaze.cell);
+    expect(fires).toHaveLength(8);
+    for (const f of fires) {
+      expect(f.count).toBe(24);
+      expect(Math.hypot(f.center[0] - 65, f.center[2] + 1195)).toBeCloseTo(24.6, 0);
+      expect(f.min[1]).toBeCloseTo(222.6, 6);
+      expect(f.max[1] - f.min[1]).toBeCloseTo(1.2, 6);
+    }
+    // Stable order (by x).
+    for (let i = 1; i < fires.length; i++) expect(fires[i].center[0]).toBeGreaterThanOrEqual(fires[i - 1].center[0]);
+  });
+
+  it("joins a carved flame's separate tongues and licks, and one that straddles grid cells", () => {
+    expect(clusterFlames(carvedFlame([0, 0, 0]), FLAMES.blaze.cell)).toHaveLength(1);
+    expect(clusterFlames(carvedFlame([1.19, 1.19, 1.19]), FLAMES.blaze.cell)).toHaveLength(1);
+    expect(clusterFlames([], 1)).toEqual([]);
+    expect(clusterFlames([1, 2, 3], 0)).toEqual([]);
+  });
+});
+
+describe("blazes from carved flames", () => {
+  it("burns one blaze in an altar's carving, from its foot, as wide and a little taller", () => {
+    const [z, ...rest] = blazesFromFlames(carvedFlame(ALTARS[0]), "mission");
+    expect(rest).toEqual([]);
+    expect(z).toMatchObject({ kind: "bed", style: "blaze", id: "mission.flame.0", pull: 0 });
+    // The middle of the carving's spread (its licks and tongues are not quite even round the foot).
+    expect(Math.hypot(z.base[0] - ALTARS[0][0], z.base[2] - ALTARS[0][2])).toBeLessThan(0.2);
+    expect(z.base[1]).toBeCloseTo(ALTARS[0][1], 6);
+    expect(z.radius).toBeGreaterThan(0.65);
+    expect(z.radius).toBeLessThan(0.85);
+    expect(z.height).toBeCloseTo(1.8 * FLAMES.blaze.stretch, 6);
+    // In step with the old brazier glow (fx.tsx fireMaterial's phase of the same foot).
+    expect(z.phase).toBeCloseTo(firePhase(z.base), 9);
+  });
+
+  it("finds the altars wherever a render puts them: the mission hall now, the formation's gate next", () => {
+    const hall = blazesFromFlames([...carvedFlame(ALTARS[0]), ...carvedFlame(ALTARS[1])], "mission");
+    expect(hall.map((z) => z.id)).toEqual(["mission.flame.0", "mission.flame.1"]);
+    expect(hall[0].base[0]).toBeLessThan(hall[1].base[0]);
+    const gate = blazesFromFlames([...carvedFlame([58, 221.9, -1166]), ...carvedFlame([72, 221.9, -1166])], "formation");
+    expect(gate).toHaveLength(2);
+    for (const z of gate) expect(z.radius).toBeCloseTo(hall[0].radius, 6);
+  });
+
+  it("skips a carving too low to be a fire", () => {
+    const bead = clusterFlames([0, 0, 0, 0.2, 0.1, 0, 0, 0.1, 0.2], 1)[0];
+    expect(blazeFromCluster(bead, "x")).toBeNull();
+    expect(blazesFromFlames([])).toEqual([]);
+  });
+});
+
+describe("mergeFires", () => {
+  const blazes = blazesFromFlames([...carvedFlame(ALTARS[0]), ...carvedFlame(ALTARS[1])], "mission");
+
+  it("leaves an altar to the anchor written for it and keeps the other", () => {
+    const anchored = fireSourcesFromAnchors(
+      [
+        {
+          id: "mission.fire.altar.0",
+          kind: "altar",
+          area: "mission",
+          chunk: "mission",
+          position: [ALTARS[1][0] + 0.1, ALTARS[1][1] + 0.05, ALTARS[1][2]],
+          normal: null,
+          width: 0,
+          height: 0,
+          depth: 0,
+          radius: 0,
+        },
+      ],
+      "mission",
+    );
+    // By x the west altar (ALTARS[1]) is flame.0: the anchor stands in it.
+    const fires = mergeFires(anchored, blazes);
+    expect(fires.map((f) => f.id)).toEqual(["mission.fire.altar.0", "mission.flame.1"]);
+    expect(mergeFires([], blazes)).toEqual(blazes);
+  });
+
+  it("keeps the forge's fires first and never more than a draw holds", () => {
+    const forge = fireSourcesFromGlow(forgePieces(), [115, 95, -335], "forge");
+    expect(mergeFires(forge, []).map((f) => f.id)).toEqual(forge.map((f) => f.id));
+    const many: BedFire[] = [];
+    for (let i = 0; i < 30; i++) many.push(...blazesFromFlames(carvedFlame([i * 10, 0, 0]), `c${i}`));
+    expect(mergeFires(forge, many)).toHaveLength(FLAMES.maxSources);
+  });
+});
+
+describe("anchored blazes", () => {
+  it("reads altars, holy fires and braziers as blazes, with sizes the page fills in", () => {
+    const fires = fireSourcesFromAnchors(
+      parseFires([
+        { id: "a", kind: "altar", chunk: "formation", position: [1, 2, 3] },
+        { id: "b", kind: "holy_fire", chunk: "formation", position: [5, 2, 3], radius: 0.9, height: 2.1 },
+        { id: "c", kind: "brazier", chunk: "formation", position: [9, 2, 3], width: 1 },
+      ]),
+      "formation",
+    );
+    expect(fires.map((f) => (f.kind === "bed" ? f.style : f.kind))).toEqual(["blaze", "blaze", "blaze"]);
+    const [a, b, c] = fires as BedFire[];
+    // Heights as seen, as a carving's: the cards stand taller by the same stretch.
+    expect(a).toMatchObject({ radius: FLAMES.blaze.radius, height: FLAMES.blaze.height * FLAMES.blaze.stretch, pull: 0 });
+    expect(b).toMatchObject({ radius: 0.9, height: 2.1 * FLAMES.blaze.stretch });
+    expect(c.radius).toBe(0.5);
+  });
+});
+
+describe("blaze tables", () => {
+  const fires: FireSource[] = [
+    ...fireSourcesFromGlow(forgePieces(), [115, 95, -335], "forge"),
+    ...blazesFromFlames([...carvedFlame(ALTARS[0]), ...carvedFlame(ALTARS[1])], "mission"),
+  ];
+  const blazeAt = fires.flatMap((f, i) => (f.kind === "bed" && f.style === "blaze" ? [i] : []));
+
+  it("codes each kind for the shaders", () => {
+    expect(fires.map(fireCode).sort()).toEqual([0, 0, 0, 1, 1, 2, 3, 3]);
+    expect(Array.from(blazeIndices(fires))).toEqual(blazeAt);
+  });
+
+  it("stands a tall fire a little wider than the carving in each blaze, tongues round it", () => {
+    const t = flameTier("high");
+    const cards = flameCards(fires, t);
+    for (const i of blazeAt) {
+      const z = fires[i] as BedFire;
+      const rows: Float32Array[] = [];
+      for (let r = 0; r < cards.length; r += CARD_STRIDE) if (cards[r + 6] === i) rows.push(cards.subarray(r, r + CARD_STRIDE));
+      expect(rows).toHaveLength(t.blazeCards);
+      expect(rows[0][0]).toBeCloseTo(z.base[0], 3);
+      expect(rows[0][2]).toBeCloseTo(z.base[2], 3);
+      expect(rows[0][3]).toBeCloseTo(z.radius * 2.6, 5);
+      expect(rows[0][4]).toBeCloseTo(z.height, 5);
+      for (const row of rows) {
+        expect(row[1]).toBeCloseTo(z.base[1], 3);
+        expect(Math.hypot(row[0] - z.base[0], row[2] - z.base[2])).toBeLessThanOrEqual(z.radius);
+        expect(row[4]).toBeLessThanOrEqual(z.height + 1e-5);
+        expect(row[7]).toBe(0);
+      }
+    }
+  });
+
+  it("gives each blaze its glow first, then its sparks", () => {
+    const t = flameTier("low");
+    const e = emberSeeds(fires, t);
+    for (const i of blazeAt) {
+      const rows: number[][] = [];
+      for (let r = 0; r < e.length; r += EMBER_STRIDE) if (e[r] === i) rows.push(Array.from(e.subarray(r, r + EMBER_STRIDE)));
+      expect(rows).toHaveLength(1 + t.blazeSparks);
+      expect(rows[0][1]).toBe(-1);
+      for (const row of rows.slice(1)) expect(row[1]).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("bounds a blaze with its sparks, its glow and the stone its light reaches", () => {
+    for (const i of blazeAt) {
+      const z = fires[i] as BedFire;
+      const b = fireBounds(z);
+      const inside = (p: Vec3, pad = 0) => Math.hypot(p[0] - b.center[0], p[1] - b.center[1], p[2] - b.center[2]) + pad <= b.radius + 1e-9;
+      expect(inside([z.base[0], z.base[1] + z.height + FLAMES.blaze.sparks.rise, z.base[2]])).toBe(true);
+      expect(inside([z.base[0], z.base[1] + FLAMES.blaze.light.lift * z.height, z.base[2]], FLAMES.blaze.light.reach)).toBe(true);
+      expect(blazeGlowRadius(z)).toBeGreaterThanOrEqual(FLAMES.blaze.glow.min);
+      expect(blazeGlowRadius(z)).toBeLessThanOrEqual(FLAMES.blaze.glow.max);
+    }
+  });
+});
+
+describe("a blaze's light", () => {
+  const L = FLAMES.blaze.light;
+
+  it("falls off from its centre as a point light does and is gone by its reach", () => {
+    expect(lightFalloff(0)).toBe(1);
+    expect(lightFalloff(L.core)).toBeCloseTo(0.5, 6);
+    let last = 1;
+    for (let d = 0.25; d < L.reach + 2; d += 0.25) {
+      expect(lightFalloff(d)).toBeLessThanOrEqual(last);
+      last = lightFalloff(d);
+    }
+    expect(lightFalloff(L.reach)).toBe(0);
+    expect(lightFalloff(L.reach * 3)).toBe(0);
+  });
+
+  it("moves the stone's colour round 1 with the flicker, by the swing at most", () => {
+    expect(lightFactor(0, 0.85)).toBeCloseTo(1, 9);
+    expect(lightFactor(L.reach, 1.01)).toBe(1);
+    // The swing is for the flicker 19 % over or under its mean (about its extremes).
+    expect(lightFactor(0, 0.85 * 1.19)).toBeCloseTo(1 + L.swing, 9);
+    expect(lightFactor(0, 0.85 * 0.81, 0.5)).toBeCloseTo(1 - L.swing / 2, 9);
+    let sum = 0;
+    const n = 4000;
+    for (let i = 0; i < n; i++) {
+      const k = lightFactor(0.5, fireFlicker(i * 0.0173, 1.3));
+      expect(Math.abs(k - 1)).toBeLessThanOrEqual(L.swing + 1e-9);
+      sum += k;
+    }
+    expect(sum / n).toBeCloseTo(1, 2);
+  });
+
+  it("is mirrored in GLSL with the same numbers", () => {
+    for (const x of [L.core, L.reach, L.swing]) expect(LIGHT_GLSL).toContain(String(x));
+    expect(LIGHT_GLSL).toContain("float sectFireLight( float d )");
+    expect(LIGHT_GLSL).toContain("float sectFireSwing( float flick, float on )");
   });
 });

@@ -77,8 +77,9 @@ describe("MapView", () => {
     expect(html).toMatch(/class="sect-map-side"/);
     expect(html).toContain("<kbd>Enter</kbd> Travel");
     expect(html).toContain("<kbd>M</kbd> Close");
-    // The Chinese title rides beside the English one.
-    expect(html).toMatch(/lang="zh"[^>]*>明教全图</);
+    // The Chinese title rides beside the English one (each character in its own span, set evenly).
+    const zh = /<span lang="zh"[^>]*class="[^"]*sect-map-zh[^"]*"[^>]*>(.*?)<\/span><\/p>/.exec(html)?.[1] ?? "";
+    expect(zh.replace(/<[^>]+>/g, "")).toBe("日月神教全图");
   });
 
   it("offers the map and the list as two tabs (shown on phones)", () => {

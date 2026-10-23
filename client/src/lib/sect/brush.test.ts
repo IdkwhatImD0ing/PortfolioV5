@@ -3,7 +3,7 @@ import path from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { AREAS } from "./areas";
-import { BRUSH_EXTRA, BRUSH_GLYPHS, brushCovers, brushText } from "./brush";
+import { BRUSH_EXTRA, BRUSH_GLYPHS, BRUSH_INK, brushCovers, brushSpacing, brushText } from "./brush";
 
 const FONT = path.resolve(__dirname, "../../app/sect/assets/sect-brush.woff2");
 
@@ -92,8 +92,37 @@ describe("the brush hand", () => {
     expect(brushCovers("")).toBe(false);
     // The Jin Yong references are traditional characters, never in the subset.
     expect(brushCovers("劍塚")).toBe(false);
-    expect(brushCovers("明月")).toBe(true);
-    expect(brushCovers("明月劍")).toBe(false);
+    expect(brushCovers("日月")).toBe(true);
+    expect(brushCovers("日月劍")).toBe(false);
+    // The sect's old name: 明 left the subset with it.
+    expect(brushCovers("明教")).toBe(false);
+  });
+
+  it("knows where every character's ink sits, and nothing else (scripts/subset-brush-font.mjs writes both)", () => {
+    expect(Object.keys(BRUSH_INK).sort()).toEqual([...BRUSH_GLYPHS].sort());
+    for (const [ch, side] of Object.entries(BRUSH_INK)) {
+      expect(side, ch).toHaveLength(2);
+      for (const v of side) expect(v >= 0 && v < 0.5, ch).toBe(true);
+    }
+  });
+
+  it("sets a name's characters evenly apart, ink to ink, its box trimmed to the ink", () => {
+    const name = "日月神教";
+    const gap = 0.1;
+    const s = brushSpacing(name, gap)!;
+    const ink = [...name].map((c) => BRUSH_INK[c]);
+    expect(s.start).toBeCloseTo(-ink[0][0], 9);
+    expect(s.after).toHaveLength(4);
+    // Between two characters: the margin plus the paper either side is the gap, whatever the glyphs.
+    for (let i = 0; i < 3; i++) expect(s.after[i] + ink[i][1] + ink[i + 1][0], `${name[i]}${name[i + 1]}`).toBeCloseTo(gap, 9);
+    expect(s.after[3]).toBeCloseTo(-ink[3][1], 9);
+    // Tracking alone leaves 日 standing off from 月神教: its paper is several times 教's.
+    expect(ink[0][1] + ink[1][0]).toBeGreaterThan(3 * (ink[2][1] + ink[3][0]));
+  });
+
+  it("leaves the spacing alone where the brush cannot write the name", () => {
+    expect(brushSpacing("明教", 0.1)).toBeNull();
+    expect(brushSpacing("", 0.1)).toBeNull();
   });
 
   it("matches the font that ships: every character has a glyph, and the file stays small", () => {

@@ -148,8 +148,13 @@ describe("portraitTurn", () => {
     // every screen.
     expect(portraitTurn("mirror", true).yaw + STOP_FRAMING.mirror.yaw * DEG).toBeCloseTo(10 * DEG, 9);
     expect(portraitTurn("mission", true).yaw + STOP_FRAMING.mission.yaw * DEG).toBeCloseTo(13 * DEG, 9);
-    // The jade slip keeps the film's own view on phones too, as before its framing (2026-10-22).
-    expect(portraitTurn("scroll", true)).toEqual({ yaw: 0, pitch: 0 });
+    // The jade slip: on portrait screens the camera stands further back (framing.ts portraitBack), the
+    // slip and the pavilion side by side across a phone's narrow view; half a degree more left (8.5 in
+    // all), and 8 up, the sun and the moon out from under the labels.
+    expect(STOP_FRAMING.scroll.portraitBack).toBeGreaterThan(STOP_FRAMING.scroll.back ?? 0);
+    expect(portraitTurn("scroll", true).yaw + STOP_FRAMING.scroll.yaw * DEG).toBeCloseTo(8.5 * DEG, 9);
+    expect(portraitTurn("scroll", true).pitch).toBeCloseTo(8 * DEG, 9);
+    expect(portraitTurn("scroll", false)).toEqual({ yaw: 0, pitch: 0 });
     // The cave abode turns right, the cliff's inscription out from under the labels.
     expect(portraitTurn("abode", true).yaw).toBeCloseTo(-3 * DEG, 9);
     expect(portraitTurn("mirror", true).pitch).toBe(0);

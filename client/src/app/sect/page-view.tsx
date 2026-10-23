@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * /sect as the one-page view only (?view=page, or when the browser asks to save data): every area's
+ * The sect as the one-page view only (?view=page, or when the browser asks to save data): every area's
  * content, the voice orb, and a link to the flight. No three.js and no scene download: when the page
  * view was chosen for the visitor, only the small manifest comes, for the size of what was skipped.
  */
@@ -27,7 +27,7 @@ export default function PageView({ reason }: { reason: StartReason }) {
   });
 
   const talk = useCallback(() => {
-    if (!startTalk()) window.location.href = "/";
+    startTalk();
   }, []);
 
   // The size of the flight's first download, from the manifest (phones load the smaller textures).

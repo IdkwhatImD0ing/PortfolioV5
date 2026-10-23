@@ -1,5 +1,5 @@
 <!--
-  art3m1s.me · 明教 The Ming Sect
+  art3m1s.me · 日月神教 Sun Moon Divine Cult
   A voice-driven AI portfolio, and a fly-through of a floating xianxia sect.
   Author: Bill Zhang (@IdkwhatImD0ing)
 -->
@@ -7,25 +7,25 @@
 <a id="top"></a>
 
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0e0c14,55:2c2233,100:c98a4b&height=230&section=header&text=%E6%98%8E%E6%95%99%20%C2%B7%20The%20Ming%20Sect&fontSize=58&fontColor=e9c77e&fontAlignY=36&desc=art3m1s.me%20%C2%B7%20a%20portfolio%20you%20can%20talk%20to%2C%20and%20fly%20through&descSize=20&descAlignY=58&animation=fadeIn" alt="明教 · The Ming Sect · art3m1s.me"/>
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0e0c14,55:2c2233,100:c98a4b&height=230&section=header&text=%E6%97%A5%E6%9C%88%E7%A5%9E%E6%95%99%20%C2%B7%20Sun%20Moon%20Divine%20Cult&fontSize=46&fontColor=e9c77e&fontAlignY=36&desc=art3m1s.me%20%C2%B7%20a%20portfolio%20you%20can%20talk%20to%2C%20and%20fly%20through&descSize=20&descAlignY=58&animation=fadeIn" alt="日月神教 · Sun Moon Divine Cult · art3m1s.me"/>
 </p>
 
 <p align="center">
   <a href="https://art3m1s.me">
-    <img src="https://readme-typing-svg.demolab.com?font=Noto+Serif+SC&weight=600&size=22&pause=1200&color=E9C77E&center=true&vCenter=true&width=760&lines=Hi%2C+I'm+Bill.+Software+engineer+at+Pinterest.;Talk+to+my+portfolio%2C+or+fly+through+it.;%E6%98%8E+%3D+%E6%97%A5+sun+%2B+%E6%9C%88+moon;Built+in+Blender%2C+baked+on+cloud+GPUs%2C+drawn+in+three.js." alt="Hi, I'm Bill. Talk to my portfolio, or fly through it."/>
+    <img src="https://readme-typing-svg.demolab.com?font=Noto+Serif+SC&weight=600&size=22&pause=1200&color=E9C77E&center=true&vCenter=true&width=760&lines=Hi%2C+I'm+Bill.+Software+engineer+at+Pinterest.;Talk+to+my+portfolio%2C+or+fly+through+it.;%E6%97%A5+sun+%C2%B7+%E6%9C%88+moon+%C2%B7+%E7%A5%9E+divine+%C2%B7+%E6%95%99+cult;Built+in+Blender%2C+baked+on+cloud+GPUs%2C+drawn+in+three.js." alt="Hi, I'm Bill. Talk to my portfolio, or fly through it."/>
   </a>
 </p>
 
 <p align="center">
   <a href="https://art3m1s.me"><img src="https://img.shields.io/badge/Live-art3m1s.me-e9c77e?style=for-the-badge&labelColor=0e0c14&logo=vercel&logoColor=e9c77e" alt="live site"/></a>
-  <a href="#入门--quickstart"><img src="https://img.shields.io/badge/%E6%98%8E%E6%95%99%20%2Fsect-run%20it%20locally-2c2233?style=for-the-badge&labelColor=0e0c14" alt="/sect: run it locally"/></a>
+  <a href="#入门--quickstart"><img src="https://img.shields.io/badge/%E6%97%A5%E6%9C%88%E7%A5%9E%E6%95%99-run%20it%20locally-2c2233?style=for-the-badge&labelColor=0e0c14" alt="日月神教: run it locally"/></a>
   <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/IdkwhatImD0ing/PortfolioV5/test.yml?branch=main&style=for-the-badge&label=tests&labelColor=0e0c14&logo=githubactions&logoColor=e9c77e" alt="tests"/></a>
   <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/stargazers"><img src="https://img.shields.io/github/stars/IdkwhatImD0ing/PortfolioV5?style=for-the-badge&logo=github&color=e9c77e&labelColor=0e0c14&logoColor=e9c77e" alt="stars"/></a>
   <img src="https://komarev.com/ghpvc/?username=IdkwhatImD0ing&style=for-the-badge&color=2c2233&label=PROFILE+VIEWS" alt="profile views"/>
 </p>
 
 <p align="center">
-  <img src=".github/readme/gate.jpg" alt="The Mountain Gate of the Ming Sect: a red and teal paifang with the 明教 plaque, the Heaven Sword and the Dragon Saber on either side, floating peaks and a giant moon behind" width="100%"/>
+  <img src=".github/readme/gate.jpg" alt="The Mountain Gate of the Sun Moon Divine Cult: a red and teal paifang with the 日月神教 plaque between a sun and a moon, the Heaven Sword and the Dragon Saber on either side, floating peaks and a giant moon behind" width="100%"/>
   <br/>
   <sub>山门 The Mountain Gate, the first stop. A live frame from the browser, not an offline render.</sub>
 </p>
@@ -36,13 +36,13 @@
 
 This repo is my portfolio, [art3m1s.me](https://art3m1s.me). There are two ways in.
 
-**1. Talk to it.** The main site is a one-page portfolio with a voice agent. Press the mic and ask a question. The agent searches my projects, answers out loud, and scrolls the page to what it's talking about.
+**1. Fly through it.** The home page is a flight through a floating mountain sect. Scroll, and the camera climbs from the gate to the summit. Each of the 11 stops is one section of the portfolio. You can drag to look around, open the map, and fast-travel. **Read as page** shows everything as one plain page, without the 3D.
 
-**2. Fly through it.** The `/sect` route turns the same portfolio into a flight through a floating mountain sect. Scroll, and the camera climbs from the gate to the summit. Each of the 11 stops is one section of the portfolio. You can drag to look around, open the map, and fast-travel. The voice agent works here too, and it flies you to the stop it's talking about.
+**2. Talk to it.** A voice agent lives in a jade talisman in the corner. Press it and ask a question. The agent searches my projects, answers out loud, and flies you to the stop it's talking about.
 
-The sect is 明教, **the Ming Sect**, from Jin Yong's novel *Heaven Sword and Dragon Saber*. I'm a big Jin Yong fan. The name also fits the site: 明 is 日 (sun) plus 月 (moon), and art3m1s is Artemis, goddess of the moon. So the moon leads, and sun-and-moon marks run through the whole sect.
+The sect is 日月神教, **the Sun Moon Divine Cult**, from Jin Yong's novel *The Smiling, Proud Wanderer*. I'm a big Jin Yong fan. The name also fits the site: 日月 is sun and moon, 神 is divine, and art3m1s is Artemis, goddess of the moon and the hunt. So the moon leads, and sun-and-moon marks run through the whole sect. Some treasures along the way belong to another of his sects, the Ming Sect (明教) of *Heaven Sword and Dragon Saber*.
 
-> **Status:** `/sect` is not public yet. It's coming to `art3m1s.me/sect`. For now, [run it locally](#入门--quickstart).
+> **Status:** the sect is now the home page of this repo's site, and the old one-page portfolio is retired. The old `/sect` address redirects to the home page. `art3m1s.me` itself still points at the previous site until the domain moves over. Until then, [run it locally](#入门--quickstart).
 
 ---
 
@@ -52,7 +52,7 @@ The camera flies one path up a floating mountain range. It stops at each place b
 
 | # | 中文 | Stop | Portfolio section | What you'll find |
 |:-:|:-:|---|---|---|
-| 1 | 山门 | Mountain Gate | Welcome | A five-bay gate with the 明教 plaque, guarded by the Heaven Sword and the Dragon Saber |
+| 1 | 山门 | Mountain Gate | Welcome | A five-bay gate with the 日月神教 plaque, guarded by the Heaven Sword and the Dragon Saber |
 | 2 | 心镜台 | Heart-Mirror Terrace | About | A giant bronze mirror above a still pond. On Medium and High quality, both show live reflections |
 | 3 | 炼器峰 | Artifact Forge Peak | Projects | A cauldron circled by 11 prize-winning projects, each forged into a magic artifact |
 | 4 | 论剑台 | Sword-Discussion Arena | Hackathons | A floating duelling ring lined with banners, with a black iron sword driven through it |
@@ -88,9 +88,9 @@ The camera flies one path up a floating mountain range. It stops at each place b
 </table>
 
 <p align="center">
-  <img src=".github/readme/map.jpg" alt="明教全图, the map of the sect: an ink-wash painting on a hanging scroll, with a seal on each of the 11 stops joined by a dotted route" width="100%"/>
+  <img src=".github/readme/map.jpg" alt="日月神教全图, the map of the sect: an ink-wash painting on a hanging scroll, with a seal on each of the 11 stops joined by a dotted route" width="100%"/>
   <br/>
-  <sub>明教全图, the map of the sect (press <kbd>M</kbd>). Pick a seal and the camera fast-travels there.</sub>
+  <sub>日月神教全图, the map of the sect (press <kbd>M</kbd>). Pick a seal and the camera fast-travels there.</sub>
 </p>
 
 ---
@@ -115,7 +115,7 @@ flowchart LR
 4. **Drawn live.** The page uses three.js through React Three Fiber. It shows the baked light and adds live layers on top: real reflections in the Heart-Mirror and its pond (Medium and High quality), banners that wave, flowing water, drifting clouds, birds, cranes, glowing qi motes and peach petals.
 5. **Fits the device.** It picks a Low, Medium or High quality tier from your device, and you can change it. If frames run slow, it steps the quality down until they don't.
 
-Other things to try on `/sect`:
+Other things to try in the sect:
 
 - **Drag** to look around at any stop (or hold the left and right arrow keys).
 - **Hover** a Jin Yong item to see a small card about it.
@@ -129,7 +129,7 @@ The full scene contract is in [`blender/xianxia-sect/spec.md`](./blender/xianxia
 
 ## 传音 · The voice agent
 
-传音 means "sound transmission", the way cultivators talk across a distance. The voice agent is the original heart of this portfolio, and it works on both the main page and `/sect`.
+传音 means "sound transmission", the way cultivators talk across a distance. The voice agent is the original heart of this portfolio. In the sect it speaks as the sect's guide, through a 传音符 (a sound-transmission talisman).
 
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#15101b','primaryTextColor':'#f5ecdc','primaryBorderColor':'#e9c77e','lineColor':'#e9c77e','secondaryColor':'#2c2233','tertiaryColor':'#0e0c14','fontFamily':'Georgia, serif'}}}%%
@@ -140,14 +140,14 @@ flowchart LR
   A <-- "search_projects" --> P[("Pinecone<br/>vector DB")]
   A -- "display_* tools" --> N["Next.js client<br/>(via Retell metadata)"]
   A -- "tokens" --> WS --> R --> U
-  N -. "scroll, or fly" .-> U
+  N -. "fly to the stop" .-> U
 ```
 
-- **Voice as the router.** The agent calls tools like `display_project` and `display_hackathons_page`. The server turns each call into a small navigation message, sends it through Retell's metadata channel, and the browser scrolls (or flies) to that section.
+- **Voice as the router.** The agent calls tools like `display_project` and `display_hackathons_page`. The server turns each call into a small navigation message, sends it through Retell's metadata channel, and the browser flies to the stop that holds that section.
 - **Search by meaning.** Every project is embedded into Pinecone with `text-embedding-3-large`. Ask "what did you build for emergency dispatch?" and it finds **DispatchAI**, even though you never said its name.
 - **Guardrails that don't slow you down.** A small classifier checks each question while the main model starts answering. If it flags the question, the answer is cancelled and replaced with a polite refusal. Normal questions get their first word with no extra wait.
 - **Streaming end to end.** Words stream from OpenAI through FastAPI to Retell, so the agent starts speaking before its answer is finished.
-- **Findable by people and by AI.** JSON-LD and [`/llms.txt`](https://art3m1s.me/llms.txt) describe the site for search engines and language models.
+- **Findable by people and by AI.** The server renders the whole portfolio as text under the flight, so search engines, language models and browsers without JavaScript can read it. JSON-LD and [`/llms.txt`](https://art3m1s.me/llms.txt) describe the site too.
 
 ---
 
@@ -157,14 +157,14 @@ These 15 objects from Jin Yong's novels are hidden along the flight. Hover one (
 
 | Stop | Items | From |
 |---|---|---|
-| Mountain Gate | 倚天劍 Heaven-Reliant Sword · 屠龍刀 Dragon-Slaying Saber · 日月 Sun and Moon | *Heaven Sword and Dragon Saber* (and the sect's name) |
+| Mountain Gate | 倚天劍 Heaven-Reliant Sword · 屠龍刀 Dragon-Slaying Saber · 日月 Sun and Moon | *Heaven Sword and Dragon Saber* · the sect's name, from *The Smiling, Proud Wanderer* |
 | Heart-Mirror Terrace | 玉簫 Huang Yaoshi's Jade Flute | *Legend of the Condor Heroes* |
 | Artifact Forge Peak | 金銀銅鐵鉛五輪 Five Metal Wheels · 劍塚 Sword Tomb | *Return of the Condor Heroes* |
 | Sword-Discussion Arena | 玄鐵重劍 Black Iron Heavy Sword | *Return of the Condor Heroes* |
-| Mission Hall | 聖火 Holy Flame | *Heaven Sword and Dragon Saber* |
+| Mission Hall | 聖火 the Ming Sect's Holy Flame | *Heaven Sword and Dragon Saber* |
 | Scripture Pavilion | 冰火島 Ice-Fire Island | *Heaven Sword and Dragon Saber* |
-| Jade Slip Pavilion | 聖火令 Holy Flame Tablets | *Heaven Sword and Dragon Saber* |
-| Grand Formation | 五行旗 Five Element Banners · 天罡北斗陣 Big Dipper Formation | *Heaven Sword and Dragon Saber* · *Legend of the Condor Heroes* |
+| Jade Slip Pavilion | 聖火令 the Ming Sect's Holy Flame Tablets | *Heaven Sword and Dragon Saber* |
+| Grand Formation | 五行旗 the Ming Sect's Five Element Banners · 天罡北斗陣 Big Dipper Formation | *Heaven Sword and Dragon Saber* · *Legend of the Condor Heroes* |
 | Cave Abode | 笑傲江湖 Qu Yang and Liu Zhengfeng's duet · 金鈴索 Golden Bell Rope | *The Smiling, Proud Wanderer* · *Return of the Condor Heroes* |
 | Moon-Gazing Terrace | 神鵰 Divine Condor | *Return of the Condor Heroes* |
 
@@ -186,7 +186,7 @@ The stele tablets are carved with martial-arts manuals from the novels too.
 | Layer | Tech | Why |
 |---|---|---|
 | **Frontend** | Next.js 15 (App Router) · React 19 · TypeScript 5 · Tailwind v4 · Retell web SDK | Fast, modern, voice-ready |
-| **3D** | three.js · React Three Fiber · drei · postprocessing · three-mesh-bvh | The `/sect` fly-through, picking and post effects |
+| **3D** | three.js · React Three Fiber · drei · postprocessing · three-mesh-bvh | The sect fly-through, picking and post effects |
 | **Scene build** | Blender 5.2 Python · Cycles on cloud RTX 5090s · glTF Transform + meshopt · WebP · Git LFS | Procedural sect, baked light, small streamed files |
 | **Backend** | FastAPI · Uvicorn · OpenAI Agents SDK · Retell SDK · Pydantic | Streaming WebSocket and a tool-calling agent |
 | **Vector DB** | Pinecone · `text-embedding-3-large` | Semantic search across projects |
@@ -205,14 +205,14 @@ The stele tablets are carved with martial-arts manuals from the novels too.
 The fly-through only needs the client:
 
 ```bash
-git lfs install          # the /sect scene files live in Git LFS
+git lfs install          # the sect's scene files live in Git LFS
 git clone https://github.com/IdkwhatImD0ing/PortfolioV5.git
 cd PortfolioV5/client
 pnpm install
-pnpm dev                 # then open http://localhost:3000/sect
+pnpm dev                 # then open http://localhost:3000
 ```
 
-Add `?tier=low`, `?tier=mid` or `?tier=high` to force a quality tier, or `?view=page` to read `/sect` as a plain page. If you cloned before installing Git LFS, run `git lfs pull` to fetch the scene files.
+Add `?tier=low`, `?tier=mid` or `?tier=high` to force a quality tier, or `?view=page` to read the sect as a plain page. If you cloned before installing Git LFS, run `git lfs pull` to fetch the scene files.
 
 <details>
 <summary><b>Running the voice agent too</b></summary>
@@ -263,11 +263,11 @@ cd server && uv run pytest tests/ -m "not integration"   # what CI runs
 
 | Module | What lives there |
 |---|---|
-| [`client/`](./client) | Next.js 15 UI · voice orb · one-page portfolio · the `/sect` fly-through · `/api/create-web-call` proxy |
+| [`client/`](./client) | Next.js 15 UI · the sect fly-through (the home page) · voice orb · `/api/create-web-call` and `/api/chat` proxies |
 | [`server/`](./server) | FastAPI WebSocket · OpenAI Agents · navigation and search tools · guardrails |
 | [`pinecone/`](./pinecone) | One-shot ingestion: `data.json` → embeddings → Pinecone index |
 | [`browserless/`](./browserless) | Deploy script for a separate headless-browser service (Browserless) on Cloud Run |
-| [`blender/xianxia-sect/`](./blender/xianxia-sect) | The Ming Sect: Blender Python for every stop, the light bake, and the packer for the web files |
+| [`blender/xianxia-sect/`](./blender/xianxia-sect) | The Sun Moon Divine Cult: Blender Python for every stop, the light bake, and the packer for the web files |
 | [`music/sect-themes/`](./music/sect-themes) | The prompts behind each stop's music |
 | [`research/`](./research) | Background research: fact checks, voice platform comparison, design audits |
 

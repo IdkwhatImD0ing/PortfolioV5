@@ -86,7 +86,7 @@ function ReaderSheet({
   // The tab names the open section while the reader is up.
   useEffect(() => {
     const prev = document.title;
-    document.title = `${summary.section} · ${PORTFOLIO.name} · The Ming Sect`;
+    document.title = `${summary.section} · ${PORTFOLIO.name} · Sun Moon Divine Cult`;
     return () => {
       document.title = prev;
     };

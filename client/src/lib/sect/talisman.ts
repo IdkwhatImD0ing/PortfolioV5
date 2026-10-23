@@ -1,7 +1,7 @@
 /**
- * The voice talisman on /sect: the main page's voice orb, dressed as a 传音符 (a sound-transmission
- * talisman) by sect.css, glows by what the call is doing. The orb is the main page's component and
- * tells nothing else, so its state is read from what it shows, and experience/voice.tsx sets it on
+ * The voice talisman in the sect: the site's voice orb (src/components/voice-orb), dressed as a 传音符
+ * (a sound-transmission talisman) by sect.css, glows by what the call is doing. The orb is a shared
+ * component and tells nothing else, so its state is read from what it shows, and experience/voice.tsx sets it on
  * the orb's wrapper as data-talisman: for the CSS, and for the music, which ducks under a call
  * (voiceDuck in music.ts).
  *

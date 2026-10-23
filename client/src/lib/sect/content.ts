@@ -3,12 +3,11 @@
  * on hover and in the Places list, the summary panel of each area, project filtering, and the
  * small text helpers the readers use. No React here; the components live in src/app/sect/content.
  *
- * Portfolio facts come from portfolio-data (and main-page copy from content-copy.ts), so the 3D
- * page always says what the main page says.
+ * Portfolio facts come from portfolio-data, and the rest of the copy from content-copy.ts, so the
+ * readers, the one-page view and the text under the flight (summary.ts) all say the same thing.
  *
  * The prototype exports (holdPanels, hotspotCard, hotspotArea, HoldPanel, HotspotCard) still work.
  */
-import { STANDOUT_PROJECT_IDS } from "@/components/sections/projects/constants";
 import type { VoiceCommand } from "@/lib/voice-bus";
 import {
   EDUCATION,
@@ -18,6 +17,7 @@ import {
   PORTFOLIO,
   PROJECTS,
   SKILLS_LINE,
+  STANDOUT_PROJECT_IDS,
   findProject,
   type Project,
 } from "@/lib/portfolio-data";
@@ -222,14 +222,14 @@ export function formationItems(): { id: string; title: string; blurb: string }[]
   return [
     ...ARCH_FLOW.map((f, i) => ({ id: `arch:${i}`, title: `${f.k} ${f.title}`, blurb: f.body })),
     { id: "arch:6", title: "Stack", blurb: ARCH_STACK.map((s) => s.group).join(" · ") },
-    { id: "arch:7", title: "Code", blurb: "metadata event → bus command → scroll" },
+    { id: "arch:7", title: "Code", blurb: "metadata event → bus command → flight" },
   ];
 }
 
 const AREA_THINGS: Record<string, { name?: string; zh?: string; body?: string }> = {
   gate: {
     zh: "山门",
-    body: "The paifang of the Ming Sect. Every disciple passes beneath its three tiers of teal tile on the first climb.",
+    body: "The paifang of the Sun Moon Divine Cult. Every disciple passes beneath its three tiers of teal tile on the first climb.",
   },
   "gate-lions": { name: "Guardian Lions", zh: "石狮" },
   "gate-swords": { name: "Sword Monoliths", zh: "剑碑" },
@@ -629,8 +629,9 @@ export function sectionDomId(area: AreaId): string {
 }
 
 /**
- * DOM id of an area's section in the one-page view. Deliberately not the main page's id: the voice
- * orb scrolls the window to an element with that id, which would move the flight hidden behind.
+ * DOM id of an area's section in the one-page view. Deliberately not the section's name: the
+ * address's hash ("#projects") names the stop, and the browser would jump to an element with that id
+ * on its own, moving the flight hidden behind.
  */
 export function pageSectionDomId(area: AreaId): string {
   return `sc-page-area-${area}`;

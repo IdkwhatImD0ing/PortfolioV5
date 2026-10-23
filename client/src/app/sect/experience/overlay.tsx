@@ -30,14 +30,15 @@ export const IntroTitle = forwardRef<HTMLDivElement>(function IntroTitle(_, ref)
       ref={ref}
       className="sect-intro pointer-events-none fixed inset-x-0 top-[13vh] z-10 flex flex-col items-center px-6 text-center md:top-[9vh]"
     >
-      {/* 明教 in the brush hand on a pool of ink wash, the sect's seal pressed beside it. */}
+      {/* 日月神教 in the brush hand on a pool of ink wash, the sect's seal pressed beside it. Four
+          characters: smaller than the two of 明教 were, so the name keeps about the same weight. */}
       <div className="sect-intro-seal sect-ink flex flex-col items-center">
-        <p className="sect-sealed sect-text-shadow text-[clamp(3.1rem,8.6vw,5.6rem)] leading-none text-[var(--sect-paper)]">
-          <BrushName text="明教" />
+        <p className="sect-sealed sect-text-shadow text-[clamp(2.75rem,7.4vw,4.6rem)] leading-none text-[var(--sect-paper)]">
+          <BrushName text="日月神教" even={0.1} />
           <SealStamp />
         </p>
         <p className="sect-plate mt-4 rounded-[2px] px-3 py-1.5 text-[0.75rem] uppercase tracking-[0.34em] text-[var(--sect-gold)]">
-          The Ming Sect
+          Sun Moon Divine Cult
         </p>
       </div>
       <div className="fixed inset-x-0 bottom-[6vh] flex justify-center px-4">
@@ -549,26 +550,21 @@ export const DebugHud = forwardRef<HTMLDivElement>(function DebugHud(_, ref) {
 });
 
 /**
- * Top-left, on an ink plate: whose portfolio this is (a link back to the main site), with the sect's
- * seal pressed before the name, and the one-page view of everything. The link is a plain one: a full
- * page load frees the scene's memory, its decoder workers and its audio, which a client-side route
- * change would keep alive.
+ * Top-left, on an ink plate: whose portfolio this is, with the sect's seal pressed before the name
+ * (a label: the sect is the whole site, so there is no main page to go back to), and the one-page
+ * view of everything.
  */
 export function TopLinks({ onReadAsPage }: { onReadAsPage: () => void }) {
   return (
     <header className="fixed left-3 top-3 z-20 md:left-5 md:top-4">
       <div className="sect-panel sect-plate relative flex items-stretch rounded-[3px]">
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- a full page load (see above) */}
-        <a
-          href="/"
-          className="sect-ctl flex min-h-11 items-center gap-2.5 rounded-[2px] px-2.5 text-[var(--sect-paper)] hover:text-[var(--sect-gold)] md:min-h-10 md:px-4 [@media(max-width:340px)]:px-2"
-        >
+        <p className="m-0 flex min-h-11 items-center gap-2.5 rounded-[2px] px-2.5 text-[var(--sect-paper)] md:min-h-10 md:px-4 [@media(max-width:340px)]:px-2">
           <SealStamp className="sect-toplinks-seal" />
           <span className="font-serif text-[1.05rem] leading-none tracking-[0.01em]">Bill Zhang</span>
           <span className="sr-only text-[0.68rem] uppercase tracking-[0.22em] text-[var(--sect-paper-soft)] md:not-sr-only">
             art3m1s.me
           </span>
-        </a>
+        </p>
         <span aria-hidden className="sect-brushrule-v my-2" />
         <button
           type="button"

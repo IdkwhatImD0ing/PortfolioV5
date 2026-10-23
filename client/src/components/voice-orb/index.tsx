@@ -14,7 +14,6 @@ import type { RetellWebClient as RetellWebClientType } from "retell-client-js-sd
 import {
   VoiceBus,
   applyNavigation,
-  scrollToSection,
   type NavigationMeta,
   type VoiceCommand,
 } from "@/lib/voice-bus";
@@ -46,11 +45,10 @@ const CHAT_IDLE_TIMEOUT_MS = 30_000;
  *  own error text, or a stream that ended without its `done` event). */
 class ChatReplyError extends Error {}
 
-/** Run a chip's page command locally. Scroll commands move the page here; the
- *  rest are picked up by the section listening on the VoiceBus. */
+/** Run a chip's page command locally: the page listening on the VoiceBus (the
+ *  sect's useVoiceRouting) carries it out. */
 function runCommand(cmd: VoiceCommand) {
   VoiceBus.emit(cmd);
-  if (cmd.type === "scroll") scrollToSection(cmd.id);
 }
 
 /** A chat bubble: the visitor's on the right, the agent's on the left. The
@@ -143,7 +141,14 @@ function TypingBubble({ label }: { label: string | null }) {
   );
 }
 
-export function VoiceOrb() {
+export function VoiceOrb({
+  referrer,
+}: {
+  /** The page the API routes should take this orb's requests as coming from
+   *  (fetch's `referrer`, a same-origin path). They pick the agent's persona
+   *  from the Referer (lib/sect/persona.ts); unset, it is this page's URL. */
+  referrer?: string;
+} = {}) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [mode, setMode] = useState<Mode>("voice");
@@ -266,6 +271,7 @@ export function VoiceOrb() {
       const response = await fetch("/api/create-web-call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        referrer,
         body: JSON.stringify({
           agent_id: agentId,
           metadata: {
@@ -289,7 +295,7 @@ export function VoiceOrb() {
     } finally {
       setIsStarting(false);
     }
-  }, [isCalling, isStarting, setupListeners]);
+  }, [isCalling, isStarting, setupListeners, referrer]);
 
   const endCall = useCallback(() => {
     retellRef.current?.stopCall();
@@ -341,6 +347,7 @@ export function VoiceOrb() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          referrer,
           // supports_replace: this page handles `replace` (see the loop below).
           body: JSON.stringify({ messages: toChatMessages(next), supports_replace: true }),
           signal: controller.signal,
@@ -395,7 +402,7 @@ export function VoiceOrb() {
         }
       }
     },
-    [fullTranscript, isSending],
+    [fullTranscript, isSending, referrer],
   );
 
   const finishClose = useCallback(() => {
@@ -620,7 +627,6 @@ export function VoiceOrb() {
                     key={s.you}
                     type="button"
                     onClick={() => onSuggestion(s)}
-                    data-cursor-hover
                     className="font-mono text-[11.5px] px-3 py-2 rounded-full bg-white/[0.02] border border-line text-ink-soft inline-flex items-center gap-1.5 transition-all duration-200 hover:bg-[rgba(192,132,252,0.1)] hover:border-[rgba(192,132,252,0.55)] hover:text-ink"
                   >
                     <span className="text-magenta">&ldquo;</span>
@@ -643,7 +649,6 @@ export function VoiceOrb() {
                     <button
                       type="button"
                       onClick={endCall}
-                      data-cursor-hover
                       className={cn(
                         cmdBtn,
                         "flex-1 justify-center font-medium text-danger border-danger/45 bg-danger/12 hover:border-danger/70 hover:bg-danger/18",
@@ -660,7 +665,6 @@ export function VoiceOrb() {
                       type="button"
                       onClick={() => void startCall()}
                       disabled={isStarting}
-                      data-cursor-hover
                       className={cn(
                         cmdBtn,
                         "flex-1 justify-center bg-[image:var(--grad)] text-white border-transparent font-medium hover:bg-[image:var(--grad)] hover:border-transparent disabled:opacity-70",
@@ -672,7 +676,6 @@ export function VoiceOrb() {
                   <button
                     type="button"
                     onClick={switchToText}
-                    data-cursor-hover
                     className={cn(cmdBtn, "justify-center whitespace-nowrap text-ink-soft")}
                   >
                     Prefer to chat?
@@ -700,7 +703,6 @@ export function VoiceOrb() {
                     type="submit"
                     disabled={isSending || !draft.trim()}
                     aria-label="Send"
-                    data-cursor-hover
                     className={cn(
                       cmdBtn,
                       "px-3.5 justify-center bg-[image:var(--grad)] text-white border-transparent hover:bg-[image:var(--grad)] hover:border-transparent disabled:opacity-40",
@@ -712,7 +714,6 @@ export function VoiceOrb() {
                 <button
                   type="button"
                   onClick={switchToVoice}
-                  data-cursor-hover
                   className="mt-2.5 font-mono text-[11px] text-muted hover:text-ink transition-colors"
                 >
                   Prefer talking? Switch back to voice →
@@ -734,7 +735,6 @@ export function VoiceOrb() {
             type="button"
             onClick={openAndStart}
             aria-label="Start a voice conversation"
-            data-cursor-hover
             className="relative w-16 h-16 rounded-full bg-[image:var(--grad)] shadow-[0_12px_40px_rgba(162,89,255,0.55),0_0_0_1px_rgba(255,255,255,0.06)_inset] grid place-items-center cursor-pointer transition-transform duration-200 hover:scale-105 before:content-[''] before:absolute before:-inset-2 before:rounded-full before:border before:border-[rgba(232,121,249,0.4)] before:animate-orb-pulse after:content-[''] after:absolute after:-inset-4 after:rounded-full after:border after:border-[rgba(232,121,249,0.2)] after:animate-orb-pulse-delayed"
           >
             <svg

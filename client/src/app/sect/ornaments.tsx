@@ -5,37 +5,59 @@
  * paper are plain CSS classes (.sect-brushstroke, .sect-brushrule, .sect-panel, .sect-paper).
  * No hooks, no three.js: the loading screen renders these before the 3D code is here.
  */
-import { brushCovers } from "@/lib/sect/brush";
+import { brushCovers, brushSpacing } from "@/lib/sect/brush";
 
 /**
  * A Chinese name in the brush hand (lib/sect/brush.ts), or in the serif when the brush font lacks a
  * character of it. `vertical` sets it in a column, top to bottom, as on a hanging scroll.
+ *
+ * `even` (em) sets the characters that far apart ink to ink, the box trimmed to the ink, in place of
+ * the tracking (brushSpacing): for the sect's name, where 日 and 月 carry far more paper than 神 and
+ * 教. Each character's box stays one em, so nothing moves when the brush font replaces the serif; the
+ * name never breaks across lines (a shrink-wrapped title would otherwise drop its last character).
  */
 export function BrushName({
   text,
   vertical = false,
+  even,
   className,
   hidden,
 }: {
   text: string;
   vertical?: boolean;
+  even?: number;
   className?: string;
   /** Decorative (the same name is written elsewhere for screen readers). */
   hidden?: boolean;
 }) {
   const hand = brushCovers(text) ? "sect-brushname" : "sect-zh";
+  const spacing = even !== undefined && !vertical ? brushSpacing(text, even) : null;
   return (
-    <span lang="zh" aria-hidden={hidden || undefined} className={`${hand}${vertical ? " sect-brushname-v" : ""}${className ? ` ${className}` : ""}`}>
-      {text}
+    <span
+      lang="zh"
+      aria-hidden={hidden || undefined}
+      className={`${hand}${vertical ? " sect-brushname-v" : ""}${className ? ` ${className}` : ""}`}
+      style={spacing ? { letterSpacing: 0, marginRight: 0, whiteSpace: "nowrap" } : undefined}
+    >
+      {spacing
+        ? [...text].map((c, i) => (
+            <span key={i} style={{ marginLeft: i === 0 ? `${spacing.start}em` : undefined, marginRight: `${spacing.after[i]}em` }}>
+              {c}
+            </span>
+          ))
+        : text}
     </span>
   );
 }
 
 /**
- * The sect's seal, stamped beside a name: 明 (the sun and the moon) cut in paper white out of a
- * cinnabar square, a little worn and set a touch askew, as a seal pressed by hand. Decorative.
+ * The sect's seal, stamped beside a name: 神 (divine, of 日月神教; the site's goddess, Artemis) cut in
+ * paper white out of a cinnabar square, a little worn and set a touch askew, as a seal pressed by
+ * hand. One character, so it reads at the 17 to 24 px the seal is drawn at (日月 squeezed into the
+ * square thinned to hairlines; the sun and the moon are the emblem's, the map mark's and the gate's).
+ * Decorative.
  */
-export function SealStamp({ text = "明", className }: { text?: string; className?: string }) {
+export function SealStamp({ text = "神", className }: { text?: string; className?: string }) {
   return (
     <svg viewBox="0 0 40 40" aria-hidden focusable="false" className={`sect-seal${className ? ` ${className}` : ""}`}>
       <path

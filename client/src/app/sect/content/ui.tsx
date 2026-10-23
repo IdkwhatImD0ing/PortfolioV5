@@ -1,7 +1,6 @@
 "use client";
 
 /** Small shared pieces for the /sect readers: text runs, links, item hover props. */
-import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import type { Run } from "@/lib/sect/content-copy";
 import type { ContentTarget } from "@/lib/sect/content";
@@ -115,7 +114,7 @@ export function useSfTime(timeZone: string): string {
   return time;
 }
 
-/** The talk action: the page's voice call when it has one, else the main site (where the orb is). */
+/** The talk action: the page's voice call. Without one there is nowhere to talk, so it is left out. */
 export function TalkButton({
   onTalk,
   label,
@@ -127,19 +126,11 @@ export function TalkButton({
   className?: string;
   id?: string;
 }) {
-  if (onTalk) {
-    return (
-      <button id={id} type="button" onClick={onTalk} className={className ?? "sc-btn sc-btn-gold"}>
-        <span aria-hidden className="sc-moon" />
-        {label}
-      </button>
-    );
-  }
+  if (!onTalk) return null;
   return (
-    <Link id={id} href="/" className={className ?? "sc-btn sc-btn-gold"}>
+    <button id={id} type="button" onClick={onTalk} className={className ?? "sc-btn sc-btn-gold"}>
       <span aria-hidden className="sc-moon" />
       {label}
-      <span className="sc-btn-note"> on art3m1s.me</span>
-    </Link>
+    </button>
   );
 }

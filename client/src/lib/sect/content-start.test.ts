@@ -97,9 +97,9 @@ describe("startView", () => {
 
 describe("view links", () => {
   it("keep the deep link while switching view", () => {
-    expect(pageViewHref()).toBe("/sect?view=page");
-    expect(pageViewHref("?open=project:dispatchai", "#projects")).toBe("/sect?open=project%3Adispatchai&view=page#projects");
-    expect(flightHref("?view=page", "#footer")).toBe("/sect?view=flight#footer");
+    expect(pageViewHref()).toBe("/?view=page");
+    expect(pageViewHref("?open=project:dispatchai", "#projects")).toBe("/?open=project%3Adispatchai&view=page#projects");
+    expect(flightHref("?view=page", "#footer")).toBe("/?view=flight#footer");
   });
 });
 

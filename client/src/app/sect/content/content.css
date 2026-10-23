@@ -1829,6 +1829,18 @@ body[data-sect-modal] .sect-panel.sc-panel {
   }
 }
 
+/* Over the flight the header's first row also holds "Back to the flight", a button about 1.3 rem
+   taller than the name beside it: a jump lands that much lower, or the eyebrow slips under it. */
+.sc-page:has(.sc-page-exit) .sc-page-section [id^="sc-page-title-"] {
+  scroll-margin-top: 10.25rem;
+}
+
+@media (min-width: 48rem) {
+  .sc-page:has(.sc-page-exit) .sc-page-section [id^="sc-page-title-"] {
+    scroll-margin-top: 13.25rem;
+  }
+}
+
 .sc-page-end {
   position: relative;
   margin: 0;

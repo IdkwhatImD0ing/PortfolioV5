@@ -1,5 +1,5 @@
 /**
- * How /sect starts: the 3D flight, or straight into the one-page view (no 3D download at all).
+ * How the sect (the home page) starts: the 3D flight, or straight into the one-page view (no 3D download at all).
  *
  * The page view is chosen with ?view=page (the loading screen links there, and it works before any
  * script has run), or automatically when the browser asks to save data or reports a very slow
@@ -41,6 +41,13 @@ export function startView(search: string, net?: NetworkHint | null): StartView {
 
 /** URL options that open the flight somewhere other than the top of the path. */
 const ELSEWHERE_OPTIONS = ["open", "frame", "yaw"];
+
+/**
+ * The id of the portfolio as text that the server renders under the flight (app/sect/summary.tsx):
+ * sect-client.tsx makes it inert once the page's scripts run. Here, not beside the summary, so the
+ * first script keeps none of the portfolio's data.
+ */
+export const SUMMARY_ID = "sect-summary";
 
 /** The attribute on <html> that shows the poster still behind the loading screen. */
 export const POSTER_ATTR = "data-sect-poster";
@@ -86,14 +93,14 @@ function withView(search: string, value: string): string {
   return `?${params.toString()}`;
 }
 
-/** The page-view address for the current one: "/sect?view=page", keeping ?open= and the hash. */
+/** The page-view address for the current one: "/?view=page", keeping ?open= and the hash. */
 export function pageViewHref(search = "", hash = ""): string {
-  return `/sect${withView(search, "page")}${hash}`;
+  return `/${withView(search, "page")}${hash}`;
 }
 
-/** The flight's address from the page view: "/sect?view=flight", keeping ?open= and the hash. */
+/** The flight's address from the page view: "/?view=flight", keeping ?open= and the hash. */
 export function flightHref(search = "", hash = ""): string {
-  return `/sect${withView(search, "flight")}${hash}`;
+  return `/${withView(search, "flight")}${hash}`;
 }
 
 /**

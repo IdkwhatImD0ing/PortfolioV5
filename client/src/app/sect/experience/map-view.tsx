@@ -4,7 +4,7 @@
  * The map of the sect, opened by the Map button in the top bar or the M key: the painted map
  * (public/sect/map, lib/sect/map.ts), mounted like a hanging scroll that unrolls over the dimmed
  * scene, with one seal per stop on its painted terrace, the walkways between them as a dotted route,
- * and the visitor's own mark (明, the sun and the moon) where the camera is. A seal names its place
+ * and the visitor's own mark (日月, the sun and the moon) where the camera is. A seal names its place
  * on hover, on keyboard focus, or on a first tap on a touch screen; a click (Enter, or the Travel
  * button) fast-travels there, Wukong-style (ink-travel.tsx). At the stop the camera already holds at,
  * the seal opens that place's reader instead, as the rail does.
@@ -430,8 +430,8 @@ export default function MapView({
     >
       <div className="sect-map-head">
         <p className="sect-map-eyebrow">
-          The Ming Sect{" "}
-          <BrushName text="明教全图" className="sect-map-zh" />
+          Sun Moon Divine Cult{" "}
+          <BrushName text="日月神教全图" even={0.12} className="sect-map-zh" />
         </p>
         <h2 id={HEAD_ID} ref={titleRef} tabIndex={-1} className="sect-map-title font-serif text-[var(--sect-paper)] outline-none">
           Map of the sect

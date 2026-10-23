@@ -1,6 +1,8 @@
 /**
- * The inventory of everything the main page (src/app/page.tsx) shows or lets a visitor do, and
- * where each piece lives in /sect. One source for two checks:
+ * The inventory of everything the one-page portfolio showed or let a visitor do (the old page: the
+ * src/app/page.tsx and section components the sect replaced as the home page, now archived), and
+ * where each piece lives in the sect. It is the record that the move lost nothing. One source for
+ * two checks:
  *   - content-completeness.test.tsx renders every reader and the one-page view and asserts that
  *     every `texts` and `urls` value of every carried entry is there;
  *   - content-inventory.test.ts checks docs/sect-content-inventory.md is inventoryMarkdown().
@@ -56,18 +58,18 @@ import {
 } from "./content";
 
 export type InventoryStatus =
-  /** On /sect with the same content. */
+  /** In the sect with the same content. */
   | "carried"
-  /** On /sect with the same content, presented or operated differently (see note). */
+  /** In the sect with the same content, presented or operated differently (see note). */
   | "adapted"
   /** Belongs to the 3D page (src/app/sect/experience), not the content layer. */
   | "engine"
-  /** Not on /sect (see note for why). */
+  /** Not in the sect (see note for why). */
   | "dropped";
 
 export interface InventoryEntry {
   id: string;
-  /** Main-page section or component. */
+  /** Old page's section or component. */
   section: string;
   what: string;
   status: InventoryStatus;
@@ -75,7 +77,7 @@ export interface InventoryEntry {
   area?: AreaId;
   /** Shown in this project's detail view (forge reader opened at project:<id>). */
   project?: string;
-  /** Where it lives in /sect and how a visitor reaches it. */
+  /** Where it lives in the sect and how a visitor reaches it. */
   where: string;
   /** Strings that must appear in the rendered reader and the one-page view. */
   texts?: string[];
@@ -112,20 +114,20 @@ export function contentInventory(): InventoryEntry[] {
     section: shell,
     what: "Document title and description, Open Graph and Twitter cards",
     status: "adapted",
-    where: `/sect sets its own title ("${PORTFOLIO.name} · The Ming Sect"), description, Open Graph and Twitter cards in src/app/sect/page.tsx; the share image is the main page's, inherited from the root layout. While a reader is open the tab names its section. The description's facts (Pinterest, 36 wins, talk to it) are in the gate reader.`,
-    note: "Same person and facts, worded for the sect. /sect stays out of search results (noindex), but a shared /sect link gets its own card.",
+    where: `The root layout (src/app/layout.tsx) sets the site's title ("${PORTFOLIO.name} · Sun Moon Divine Cult"), description, Open Graph and Twitter cards; the share image is a frame of the Mountain Gate (public/og-image.jpg). While a reader is open the tab names its section. The description's facts (Pinterest, 36 wins, talk to it) are in the gate reader.`,
+    note: "Same person and facts, worded for the sect. The sect is the indexed home page; under the flight the server renders the whole portfolio as text (app/sect/summary.tsx) for crawlers and for visitors without JavaScript.",
   });
   add({
     section: shell,
     what: "JSON-LD Person record (Software Engineer II at Pinterest; alumni of USC and UC Santa Cruz; knows AI, ML, conversational AI, voice agents)",
     status: "carried",
-    where: "Inherited: /sect uses the same root layout, so its HTML carries the same application/ld+json blocks. The same facts are visible in the Mission Hall (role) and Scripture Pavilion (schools).",
+    where: "The root layout's application/ld+json block, now also linking GitHub, LinkedIn and Devpost (sameAs). The same facts are visible in the Mission Hall (role) and Scripture Pavilion (schools).",
   });
   add({
     section: shell,
     what: "Favicons, web manifest, theme colour",
     status: "carried",
-    where: "Inherited: /sect uses the same root layout.",
+    where: "The root layout's, as before.",
   });
   add({
     section: "Top bar",
@@ -153,8 +155,8 @@ export function contentInventory(): InventoryEntry[] {
     section: "Custom cursor, background stage, speech waveform",
     what: "Decorative cursor ring, gradient backdrop, animated waveform beside the hero eyebrow",
     status: "dropped",
-    where: "Not on /sect.",
-    note: "Decoration only. The 3D scene is the backdrop and /sect uses the normal cursor.",
+    where: "Not in the sect.",
+    note: "Decoration only. The 3D scene is the backdrop and the sect uses the normal cursor.",
   });
   add({
     section: "Backend warm-up",
@@ -166,8 +168,8 @@ export function contentInventory(): InventoryEntry[] {
     section: "Hash landing and deep links",
     what: "Landing on /#section or /#project/<id> keeps the target in view",
     status: "adapted",
-    where: "parseContentHash() reads #<section id>, #<area id> and #project/<id>, in any letter case; a project id outside the 15 opens the forge reader, which loads it from the archive or says it couldn't find it, and a malformed hash is ignored. The 3D page flies there and opens the reader; the one-page view (also /sect?view=page) jumps there.",
-    note: "On the main page, opening a project pushes #project/<id>, so Back closes it and the address can be shared. On /sect that history handling belongs to the 3D page (sect-experience.tsx); the reader reports a project opened or closed inside it through onItemChange for that.",
+    where: "parseContentHash() reads #<section id>, #<area id> and #project/<id>, in any letter case; a project id outside the 15 opens the forge reader, which loads it from the archive or says it couldn't find it, and a malformed hash is ignored. The 3D page flies there and opens the reader; the one-page view (also /?view=page) jumps there.",
+    note: "On the old page, opening a project pushes #project/<id>, so Back closes it and the address can be shared. In the sect that history handling belongs to the 3D page (sect-experience.tsx); the reader reports a project opened or closed inside it through onItemChange for that.",
   });
 
   // ---- hero -------------------------------------------------------------------------------------
@@ -176,14 +178,14 @@ export function contentInventory(): InventoryEntry[] {
     section: hero,
     what: `Eyebrow "${HERO.eyebrow}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "Cut to keep the gate reader short.",
   });
   add({
     section: hero,
     what: `Headline "${runsText(HERO.heading)}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "Cut to keep the gate reader short.",
   });
   add({
@@ -238,7 +240,7 @@ export function contentInventory(): InventoryEntry[] {
     section: orb,
     what: `Orb button "${VOICE_ORB.button}" and pill "${VOICE_ORB.pill}"`,
     status: "engine",
-    where: 'The 3D page passes onTalk; the content shows "Talk to the AI" on the gate and summit panels, "Talk to the portfolio" in the gate reader, "Tap voice orb" in the contact reader, and the moon hotspot. Without onTalk these link to art3m1s.me, where the orb lives. The orb is the main page\'s, dressed by sect.css as a 传音符 (a sound-transmission talisman): a jade seal stamped 音, "Talk to the AI" on hover and keyboard focus, glowing while it listens and speaks; its pill shows on the intro screen only, because at the stops it covered the scene\'s own objects.',
+    where: 'The 3D page passes onTalk; the content shows "Talk to the AI" on the gate and summit panels, "Talk to the portfolio" in the gate reader, "Tap voice orb" in the contact reader, and the moon hotspot. Without onTalk they are left out. The orb (components/voice-orb) is dressed by sect.css as a 传音符 (a sound-transmission talisman): a jade seal stamped 音, "Talk to the AI" on hover and keyboard focus, glowing while it listens and speaks; its pill shows on the intro screen only, because at the stops it covered the scene\'s own objects.',
   });
   add({
     section: orb,
@@ -250,7 +252,7 @@ export function contentInventory(): InventoryEntry[] {
     section: orb,
     what: `Panel title "${VOICE_ORB.panelTitle}"`,
     status: "engine",
-    where: "The voice orb on /sect shows it in its own panel.",
+    where: "The voice orb in the sect shows it in its own panel.",
   });
   for (const s of SUGGESTIONS) {
     add({
@@ -258,7 +260,7 @@ export function contentInventory(): InventoryEntry[] {
       what: `Suggestion "${s.you}" with reply "${s.ai}"`,
       status: "engine",
       where:
-        "The voice orb on /sect lists it in its own panel. The gate's Sword Monoliths view also lists the question, without the reply.",
+        "The voice orb in the sect lists it in its own panel. The gate's Sword Monoliths view also lists the question, without the reply.",
     });
   }
 
@@ -268,7 +270,7 @@ export function contentInventory(): InventoryEntry[] {
     section: about,
     what: `Eyebrow "${ABOUT_HEAD.eyebrow}" and heading "${runsText(ABOUT_HEAD.heading)}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "The reader's title already says About.",
   });
   add({
@@ -297,21 +299,21 @@ export function contentInventory(): InventoryEntry[] {
     section: proj,
     what: `Eyebrow "${PROJECTS_HEAD.eyebrow} · <count>" (6 STANDOUTS, or matches/15 when filtered) and heading "${runsText(PROJECTS_HEAD.heading)}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "The reader's title already says Projects.",
   });
   add({
     section: proj,
     what: `"${PROJECTS_HEAD.galleryLabel}" and "${PROJECTS_HEAD.galleryHint}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "Cut: the filters explain themselves.",
   });
   add({
     section: proj,
     what: `Phone hint "${PROJECTS_HEAD.mobileHint}" and the "SCROLL ↓ drives gallery →" footer`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "They describe the phone carousel and the scroll-driven rail, which the reader replaces with a grid of cards.",
   });
   add({
@@ -321,7 +323,7 @@ export function contentInventory(): InventoryEntry[] {
     area: "forge",
     texts: [...PROJECT_FILTERS.map((f) => f.label), ...PROJECT_YEARS.map(String)],
     where: reach("forge", "Filter buttons sit above the cards; the orb suggestion \"Show me only the voice AI projects.\" opens the forge filtered."),
-    note: `Same filters and rules as the main page (a year narrows, picking a filter clears the year). Two filters are added: "On the ring", the default, lists the ${FORGE_RING.length} prize winners whose artifacts circle the cauldron, biggest win first; "All ${PROJECTS.length}" lists every project. "Standouts" still shows the main page's six hand-picked projects in their order.`,
+    note: `Same filters and rules as the old page (a year narrows, picking a filter clears the year). Two filters are added: "On the ring", the default, lists the ${FORGE_RING.length} prize winners whose artifacts circle the cauldron, biggest win first; "All ${PROJECTS.length}" lists every project. "Standouts" still shows the old page's six hand-picked projects in their order.`,
   });
   add({
     section: proj,
@@ -330,7 +332,7 @@ export function contentInventory(): InventoryEntry[] {
     area: "forge",
     texts: [`/${PROJECTS.length} on the ring`],
     where: reach("forge", "Announced politely to screen readers when it changes."),
-    note: `The default view counts the ring's winners ("${FORGE_RING.length}/${PROJECTS.length} on the ring"); a filter shows "n/${PROJECTS.length} match" and Standouts "6/${PROJECTS.length} standouts", as on the main page.`,
+    note: `The default view counts the ring's winners ("${FORGE_RING.length}/${PROJECTS.length} on the ring"); a filter shows "n/${PROJECTS.length} match" and Standouts "6/${PROJECTS.length} standouts", as on the old page.`,
   });
   add({
     section: proj,
@@ -356,13 +358,13 @@ export function contentInventory(): InventoryEntry[] {
     section: proj,
     what: "Projects outside the 15 that the voice agent can open (Pinecone corpus, lazy-loaded)",
     status: "carried",
-    where: 'Forge reader, when a deep link (#project/<id>, ?open=project:<id>) or a voice command names one: the detail loads from the same corpus, like the main page. An id that is not there either shows "Couldn\'t find project".',
+    where: 'Forge reader, when a deep link (#project/<id>, ?open=project:<id>) or a voice command names one: the detail loads from the same corpus, like the old page. An id that is not there either shows "Couldn\'t find project".',
   });
   add({
     section: proj,
     what: 'Voice feedback lines ("Filtering by voice.", "Focusing on X.", "Opening X.")',
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "They echo voice commands. The filter state and match count show the same result.",
   });
   for (const p of PROJECTS) {
@@ -409,7 +411,7 @@ export function contentInventory(): InventoryEntry[] {
     section: hack,
     what: `Eyebrow "${HACKATHONS_HEAD.eyebrowPrefix} · ${HACKATHONS.length} ${HACKATHONS_HEAD.eyebrowSuffix}", heading "${runsText(HACKATHONS_HEAD.heading)}" and intro`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "The panel and the stat tiles carry the numbers.",
   });
   add({
@@ -441,14 +443,14 @@ export function contentInventory(): InventoryEntry[] {
     section: exp,
     what: `Eyebrow "${EXPERIENCE_HEAD.eyebrow}" and heading "${runsText(EXPERIENCE_HEAD.heading)}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "The reader's title already says Experience.",
   });
   add({
     section: exp,
     what: "Timeline spine that draws in on scroll",
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "Decoration. The roles keep their order.",
   });
   EXPERIENCE.forEach((r, i) => {
@@ -469,7 +471,7 @@ export function contentInventory(): InventoryEntry[] {
     section: edu,
     what: `Eyebrow "${EDUCATION_HEAD.eyebrow}" and heading "${runsText(EDUCATION_HEAD.heading)}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "The reader's title already says Education.",
   });
   add({
@@ -522,7 +524,7 @@ export function contentInventory(): InventoryEntry[] {
     section: res,
     what: `Eyebrow "${RESUME_HEAD.eyebrow}", heading "${runsText(RESUME_HEAD.heading)}" and intro`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "The panel and the file line say what it is.",
   });
   add({
@@ -580,7 +582,7 @@ export function contentInventory(): InventoryEntry[] {
     section: res,
     what: `Voice tip ${RESUME_HEAD.voiceTipText}`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "Cut to keep the reader short.",
   });
 
@@ -630,14 +632,14 @@ export function contentInventory(): InventoryEntry[] {
     section: per,
     what: `Eyebrow "${PERSONAL_HEAD.eyebrow}" and heading "${runsText(PERSONAL_HEAD.heading)}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "The reader's title already says Off the clock.",
   });
   add({
     section: per,
     what: "Watermark lines behind the section",
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "Decoration.",
   });
   add({
@@ -663,7 +665,7 @@ export function contentInventory(): InventoryEntry[] {
     section: per,
     what: `Tip "${PERSONAL_HEAD.tipLead} ${PERSONAL_HEAD.tipQuote}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "The Ask the portfolio button does the same.",
   });
 
@@ -673,7 +675,7 @@ export function contentInventory(): InventoryEntry[] {
     section: foot,
     what: `Eyebrow "${FOOTER.eyebrow}", heading "${runsText(FOOTER.heading)} ${FOOTER.heading2}" and "${FOOTER.body}"`,
     status: "dropped",
-    where: "Not on /sect.",
+    where: "Not in the sect.",
     note: "The reader's title already says Contact; the email and the talk button follow.",
   });
   add({
@@ -693,7 +695,7 @@ export function contentInventory(): InventoryEntry[] {
     texts: [FOOTER.tapOrb],
     where: reach(
         "summit",
-        "Starts a call through onTalk (or links to art3m1s.me). Clicking the moon (hotspot moon) does the same on the 3D page.",
+        "Starts a call through onTalk (left out without it). Clicking the moon (hotspot moon) does the same on the 3D page.",
       ),
   });
   for (const [label, href] of [
@@ -716,7 +718,7 @@ export function contentInventory(): InventoryEntry[] {
       section: foot,
       what: `Index: ${l.label} (jumps to #${l.section})`,
       status: "dropped",
-      where: "Not on /sect.",
+      where: "Not in the sect.",
       note: "The reader's Previous / Next and the map (its seals and its list of places) already move between areas.",
     });
   }
@@ -730,7 +732,7 @@ export function contentInventory(): InventoryEntry[] {
   });
   add({
     section: foot,
-    what: `Location "${PORTFOLIO.location}" (portfolio data; the main page shows it only as "SF" in the top bar)`,
+    what: `Location "${PORTFOLIO.location}" (portfolio data; the old page shows it only as "SF" in the top bar)`,
     status: "carried",
     area: "summit",
     texts: [PORTFOLIO.location],
@@ -767,8 +769,8 @@ export function contentInventory(): InventoryEntry[] {
     section: files,
     what: "github.svg, linkedin.svg, devpost.svg, rocket.png, llms.txt, data.json",
     status: "dropped",
-    where: "Not on /sect.",
-    note: "The main page does not use them either.",
+    where: "Not in the sect.",
+    note: "The old page did not use them either.",
   });
 
   return out;
@@ -788,17 +790,17 @@ export function inventoryMarkdown(): string {
   for (const e of items) if (!sections.includes(e.section)) sections.push(e.section);
   const count = (s: InventoryStatus) => items.filter((e) => e.status === s).length;
   const lines: string[] = [];
-  lines.push("# /sect content inventory");
+  lines.push("# Sect content inventory");
   lines.push("");
   lines.push(
     "Generated from `src/lib/sect/content-inventory.ts`. Do not edit by hand; after changing that file run `SECT_WRITE_INVENTORY=1 pnpm exec vitest run src/lib/sect/content-inventory.test.ts`.",
   );
   lines.push("");
   lines.push(
-    "Every piece of content and every interaction on the main page (`src/app/page.tsx`), and where it lives in the hidden 3D page `/sect`. `src/app/sect/content/content-completeness.test.tsx` renders every area reader and the one-page view and fails if any text or link below marked carried or adapted is missing.",
+    "Every piece of content and every interaction on the old page (the one-page portfolio that was `src/app/page.tsx` until the sect replaced it as the home page; archived), and where it lives in the sect. `src/app/sect/content/content-completeness.test.tsx` renders every area reader and the one-page view and fails if any text or link below marked carried or adapted is missing.",
   );
   lines.push("");
-  lines.push("## How a visitor reaches content on /sect");
+  lines.push("## How a visitor reaches content in the sect");
   lines.push("");
   lines.push(
     "1. Fly: scroll (or use the area rail) through the eleven areas. The camera holds at each one and its summary panel appears. The panel's button opens the reader for that area.",
@@ -807,7 +809,7 @@ export function inventoryMarkdown(): string {
   lines.push("3. Inside a reader, Previous / Next go to the neighbouring areas, and links inside the content (hero chips, a win's \"Open project\") jump across areas.");
   lines.push("4. Read as one page: every reader's content on one scrolling page with a menu of the eleven areas. It is also what a browser without WebGL gets. It opens at `#<section id>` or `#project/<id>`.");
   lines.push("");
-  lines.push("| Area | Place | Main-page section |");
+  lines.push("| Area | Place | Old page's section |");
   lines.push("| --- | --- | --- |");
   for (const a of AREAS) lines.push(`| ${a.id} | ${a.label} (${a.zh}) | ${SECTION_NAMES[a.id]} (#${a.sectionId}) |`);
   lines.push("");

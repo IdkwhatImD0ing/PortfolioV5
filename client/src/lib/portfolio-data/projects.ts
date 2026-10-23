@@ -7,6 +7,16 @@ export function findProject(idOrAlias: string): Project | undefined {
   );
 }
 
+/** The six hand-picked projects the forge reader's "Standouts" filter lists, in this order. */
+export const STANDOUT_PROJECT_IDS = [
+  "dispatchai",
+  "adapted",
+  "talktuahbank",
+  "slugloop",
+  "soundsearch",
+  "swarmaid",
+] as const;
+
 export const PROJECTS: Project[] = [
   {
     id: "sentinelai",

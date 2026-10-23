@@ -64,7 +64,8 @@
  *   ink-pool          a soft pool of ink wash with a ragged, bled edge
  */
 .sect-root,
-.sc-theme {
+.sc-theme,
+.sect-summary {
   /* The brush hand (brush-font.ts), and the serif while it loads or where it lacks a character. */
   --sect-brush-font: var(--font-sect-brush, "Ma Shan Zheng"), "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, serif;
   --sect-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M35 1.6H17.2C15.6 1.6 14.6 2.6 14.6 3.9C14.6 5.4 15.9 6.3 17.2 6.1C18.3 5.9 18.8 5 18.5 4.2'/%3E%3Cpath d='M1.6 35V17.2C1.6 15.6 2.6 14.6 3.9 14.6C5.4 14.6 6.3 15.9 6.1 17.2C5.9 18.3 5 18.8 4.2 18.5'/%3E%3Cpath d='M14.6 3.9C10.8 2.4 6.6 3.4 4.6 6.4C2.8 9.2 3.2 12.4 5.4 14.2C3.4 12 3.8 8.6 6.4 7C8.4 5.8 11 6.4 12 8.2C12.9 9.8 12 11.6 10.4 11.8C9.2 12 8.4 11 8.8 10'/%3E%3C/svg%3E");
@@ -208,7 +209,7 @@
   margin-left: 0.06em;
 }
 
-/* A pool of ink wash behind large type on the scene (the intro's 明教, the loading screen's). */
+/* A pool of ink wash behind large type on the scene (the intro's 日月神教, the loading screen's). */
 .sect-ink {
   position: relative;
   isolation: isolate;
@@ -380,7 +381,7 @@
 }
 
 /*
- * The intro's 明教 is written on a pool of ink wash (.sect-ink), so it and the plate under it stay
+ * The intro's 日月神教 is written on a pool of ink wash (.sect-ink), so it and the plate under it stay
  * readable on a bright sky; its seal is pressed beside the last character (.sect-sealed).
  */
 
@@ -507,9 +508,10 @@
 /* ---- the voice talisman (experience/voice.tsx) ---------------------------------------------------- */
 
 /*
- * The main site's voice orb, unchanged, dressed as a 传音符: the talisman a cultivator speaks through
- * across a distance. The orb is the main page's component, so everything here reaches it through its
- * own classes, and through the state its wrapper reads from it (data-talisman: lib/sect/talisman.ts).
+ * The site's voice orb (src/components/voice-orb), dressed as a 传音符: the talisman a cultivator
+ * speaks through across a distance. The orb is a shared component, so everything here reaches it
+ * through its own classes, and through the state its wrapper reads from it (data-talisman:
+ * lib/sect/talisman.ts).
  *   the button  a jade seal in the map seals' dress (a gold rim, a ring of ink and gold), the
  *               microphone in gold on its face, 音 (sound) stamped in cinnabar at its foot and a slow
  *               ripple of qi round it; "Talk to the AI" shows over it on hover and keyboard focus
@@ -1047,7 +1049,7 @@
   animation: sect-enso 1.6s linear infinite;
 }
 
-/* End call: cinnabar, not the main site's alarm red. */
+/* End call: cinnabar, not the orb's own alarm red. */
 .sect-orb [role="dialog"] button[class*="text-danger"] {
   border-color: rgba(217, 105, 79, 0.6);
   background: rgba(184, 65, 45, 0.16);
@@ -1394,7 +1396,7 @@ body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   }
 }
 
-/* The visitor's mark: 明 on a cinnabar seal (the way the camera looks is a wedge in the route's layer). */
+/* The visitor's mark: 日月 on a cinnabar seal (the way the camera looks is a wedge in the route's layer). */
 .sect-map-here {
   position: absolute;
   width: 0;
@@ -1811,4 +1813,126 @@ body[data-sect-travel] .sect-orb > div:not([role="dialog"]) {
   .sect-travel-card {
     filter: none;
   }
+}
+
+/*
+ * The portfolio as text (summary.tsx): rendered under the flight for crawlers and for visitors
+ * without JavaScript. With scripts it stays out of sight, clipped to a pixel like .sr-only (and
+ * inert, sect-client.tsx); the <noscript> rule in app/page.tsx unclips it and hides the flight's
+ * veil, and it reads as a plain page in the sect's ink, paper and gold.
+ */
+.sect-summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sect-summary-page {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 3.5rem 1.25rem 5rem;
+  color: rgba(245, 236, 220, 0.8);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.sect-summary-page h1,
+.sect-summary-page h2 {
+  margin: 0;
+  color: #f5ecdc;
+  font-family: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+.sect-summary-page h1 {
+  margin-top: 1.25rem;
+  font-size: 2.6rem;
+}
+
+.sect-summary-page h2 {
+  margin-top: 3rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid rgba(233, 199, 126, 0.32);
+  font-size: 1.75rem;
+}
+
+.sect-summary-page h3 {
+  margin: 0;
+  color: #f5ecdc;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.sect-summary-page p {
+  margin: 0.5rem 0 0;
+}
+
+.sect-summary-page ul {
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sect-summary-page li + li {
+  margin-top: 1.1rem;
+}
+
+.sect-summary-page a {
+  color: #e9c77e;
+  text-decoration: underline;
+  text-decoration-color: rgba(233, 199, 126, 0.4);
+  text-underline-offset: 0.2em;
+}
+
+.sect-summary-brand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 1rem;
+  color: #e9c77e;
+  font-size: 0.75rem;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}
+
+.sect-summary-seal {
+  color: #f5ecdc;
+  font-size: 2.75rem;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.sect-summary-tagline {
+  color: #f5ecdc;
+  font-size: 1.15rem;
+}
+
+.sect-summary-note {
+  padding: 0.6rem 0.85rem;
+  border-left: 2px solid #e9c77e;
+  background: rgba(233, 199, 126, 0.08);
+}
+
+.sect-summary-place,
+.sect-summary-meta {
+  color: rgba(233, 199, 126, 0.85);
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+}
+
+.sect-summary-place {
+  display: block;
+  margin-top: 0.3rem;
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  text-transform: uppercase;
+}
+
+.sect-summary-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
 }

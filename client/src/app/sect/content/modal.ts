@@ -32,7 +32,7 @@ function siblingFocusables(): HTMLElement[] {
 
 /**
  * True when focus at `el` belongs to the orb (or to a field that asked to keep the caret, like the
- * main page's `data-keeps-focus`): a modal must not take it away.
+ * orb's own `data-keeps-focus` chat box): a modal must not take it away.
  */
 export function keepsFocus(el: Element | null | undefined): boolean {
   if (!el || typeof el.closest !== "function") return false;

@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  clusterFlames,
   domeAlpha,
   domeCellsAround,
   domeGlsl,
-  fireRadius,
   FORMATION_DOME,
   formationShafts,
   formationTier,
@@ -137,52 +135,6 @@ describe("wispPulse", () => {
   });
 });
 
-describe("clusterFlames", () => {
-  /** A flame: a little cone of points (0.9 m across, 1.2 m tall) standing at `foot`. */
-  function flame(foot: Vec3): number[] {
-    const out: number[] = [];
-    for (let i = 0; i < 24; i++) {
-      const a = (i / 24) * Math.PI * 2;
-      const y = (i % 4) * 0.4;
-      const r = 0.45 * (1 - y / 1.3);
-      out.push(foot[0] + r * Math.cos(a), foot[1] + y, foot[2] + r * Math.sin(a));
-    }
-    return out;
-  }
-
-  it("finds one fire per brazier round the array", () => {
-    const pts: number[] = [];
-    for (let k = 0; k < 8; k++) {
-      const a = (22.5 + 45 * k) * (Math.PI / 180);
-      pts.push(...flame([65 + 24.6 * Math.cos(a), 222.6, -1195 + 24.6 * Math.sin(a)]));
-    }
-    const fires = clusterFlames(pts, F.fire.cell);
-    expect(fires).toHaveLength(8);
-    for (const f of fires) {
-      expect(f.count).toBe(24);
-      expect(Math.hypot(f.center[0] - 65, f.center[2] + 1195)).toBeCloseTo(24.6, 0);
-      expect(f.min[1]).toBeCloseTo(222.6, 6);
-      expect(f.max[1] - f.min[1]).toBeCloseTo(1.2, 6);
-    }
-    // Stable order (by x).
-    for (let i = 1; i < fires.length; i++) expect(fires[i].center[0]).toBeGreaterThanOrEqual(fires[i - 1].center[0]);
-  });
-
-  it("joins a flame that straddles grid cells, and nothing from nothing", () => {
-    expect(clusterFlames(flame([2.49, 0, 2.49]), 2.5)).toHaveLength(1);
-    expect(clusterFlames([], 2.5)).toEqual([]);
-    expect(clusterFlames([1, 2, 3], 0)).toEqual([]);
-  });
-
-  it("gives a brazier's fire a glow of about a metre and a half, within the look's bounds", () => {
-    const [f] = clusterFlames(flame([0, 0, 0]), F.fire.cell);
-    expect(fireRadius(f)).toBeGreaterThan(0.9);
-    expect(fireRadius(f)).toBeLessThanOrEqual(F.fire.radius[1]);
-    const candle = clusterFlames([0, 0, 0, 0.05, 0.2, 0], F.fire.cell)[0];
-    expect(fireRadius(candle)).toBe(F.fire.radius[0]);
-  });
-});
-
 describe("the barrier dome", () => {
   it("all but vanishes face-on: at most 0.04 at mid-height whenever the shimmer passes", () => {
     let max = 0;
@@ -284,20 +236,17 @@ describe("hexDist", () => {
 });
 
 describe("formationTier", () => {
-  it("draws everything on High, drops the halo and some sparks on Medium, and the shimmer and streaks on Low", () => {
+  it("draws everything on High, drops the halo on Medium, and the shimmer and streaks on Low", () => {
     const hi = formationTier("high"), mid = formationTier("mid"), lo = formationTier("low");
-    expect(hi).toEqual({ domeDetail: 1, streaks: 1, halo: true, sparks: F.fire.sparks.high });
-    expect(mid.halo).toBe(false);
-    expect(mid.domeDetail).toBe(1);
-    expect(mid.sparks).toBeLessThan(hi.sparks);
-    expect(lo).toEqual({ domeDetail: 0, streaks: 0, halo: false, sparks: F.fire.sparks.low });
-    expect(lo.sparks).toBeLessThan(mid.sparks);
+    expect(hi).toEqual({ domeDetail: 1, streaks: 1, halo: true });
+    expect(mid).toEqual({ domeDetail: 1, streaks: 1, halo: false });
+    expect(lo).toEqual({ domeDetail: 0, streaks: 0, halo: false });
   });
 });
 
 describe("the formation's palette", () => {
   it("is warm gold, not the old mint: no colour fully saturated", () => {
-    for (const hex of [F.dome.color, F.shaft.color, F.halo.color, F.wisp.color, F.coreGlow.color, F.fire.core, F.fire.hot]) {
+    for (const hex of [F.dome.color, F.shaft.color, F.halo.color, F.wisp.color, F.coreGlow.color]) {
       const n = parseInt(hex.slice(1), 16);
       const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
       expect(Math.min(...c), hex).toBeGreaterThan(40);

@@ -1,14 +1,14 @@
 /**
- * Main-page copy that lives inside section components (not in portfolio-data), copied verbatim so
- * the /sect readers can show it. The components keep these as private constants, so they cannot be
- * imported. content.test.ts reads each source file and fails when a string here no longer appears
- * there, so a wording change on the main page is caught instead of drifting silently.
+ * The portfolio's copy that is not in portfolio-data: headings, cards, chips and labels the sect's
+ * readers show. It was copied verbatim from the one-page portfolio's section components, which the
+ * sect replaced (they are archived, out of the repo); this file is now its only home, so edit the
+ * wording here.
  *
- * Each block names its source. JSX text is stored with its entities decoded (&apos; -> ') and its
- * whitespace collapsed, the way it renders.
+ * Each block names the component it came from. JSX text is stored with its entities decoded
+ * (&apos; -> ') and its whitespace collapsed, the way it rendered.
  */
 
-/** A run of text; `em` marks the main page's gradient serif word, `b` its bold words. */
+/** A run of text; `em` marks the serif accent word (the old page's gradient word), `b` the bold words. */
 export interface Run {
   t: string;
   em?: boolean;
@@ -194,7 +194,7 @@ export const ARCH_HEAD = {
   eyebrow: "HOW THIS SITE WORKS",
   heading: [{ t: "A portfolio that " }, { t: "talks back.", em: true }] as Run[],
   intro:
-    "Ask about a project and the agent looks it up, describes it, and opens it on the page. Retell carries the audio, Deepgram hears you, GPT-5.6 Terra thinks, ElevenLabs talks back. A Python backend runs the agent and tells the browser where to scroll.",
+    "Ask about a project and the agent looks it up, describes it, and opens it on the page. Retell carries the audio, Deepgram hears you, GPT-5.6 Terra thinks, ElevenLabs talks back. A Python backend runs the agent and tells the browser where to fly.",
 };
 
 export const ARCH_FLOW = [
@@ -216,17 +216,17 @@ export const ARCH_FLOW = [
   {
     k: "04",
     title: "VoiceBus",
-    body: "navigation.py turns each display_* call into a navigation metadata event; the browser converts it to a bus command. No prop drilling, no router. Sections opt in.",
+    body: "navigation.py turns each display_* call into a navigation metadata event; the browser converts it to a bus command. No prop drilling, no router. The sect listens.",
   },
   {
     k: "05",
     title: "Sections react",
-    body: "Each section subscribes to the events it cares about and animates its own state. The site rearranges itself.",
+    body: "The sect turns each command into one of its eleven stops and flies there, then opens the section or project it names.",
   },
   {
     k: "06",
     title: "Voice reply",
-    body: "The reply streams back through Retell into an ElevenLabs voice while the scroll is still finishing, so the answer and the page land together.",
+    body: "The reply streams back through Retell into an ElevenLabs voice while the flight is still landing, so the answer and the view arrive together.",
   },
 ];
 
@@ -244,7 +244,7 @@ export const ARCH_STACK = [
       "Site-grounded system prompt",
     ],
   },
-  { group: "Frame", items: ["Next.js + React 19", "Three.js + GLSL bg", "Framer Motion + GSAP"] },
+  { group: "Frame", items: ["Next.js + React 19", "Three.js + React Three Fiber + GLSL", "A sect modelled and baked in Blender"] },
   {
     group: "State",
     items: ["VoiceBus pub-sub", "URL-driven section anchors", "Per-section local React state"],
@@ -254,18 +254,16 @@ export const ARCH_STACK = [
 export const ARCH_SNIPPET = `// server: navigation.py turns a display_* tool call into
 // { type: "navigation", page: "project", project_id: "dispatchai" }
 
-// browser: metadata event → bus command → scroll
+// browser: metadata event → bus command
 client.on("metadata", ({ metadata }) => {
-  const action = metaToNavigationAction(metadata);
-  if (!action) return;
-  VoiceBus.emit(action.command);
-  requestAnimationFrame(() => scrollToSection(action.scrollTo));
+  const cmd = metaToNavigationAction(metadata);
+  if (cmd) VoiceBus.emit(cmd);
 });
 
-// every section subscribes to the same bus
+// the sect listens on the same bus and flies there
 VoiceBus.on((cmd) => {
-  if (cmd.type === "open")   setOpenId(cmd.id);
-  if (cmd.type === "scroll") scrollToSection(cmd.id);
+  const target = commandTarget(cmd); // { area: "forge", item: "project:dispatchai" }
+  if (target) navigate(target);
 });`;
 
 // ---- src/components/sections/personal/personal-section.tsx ---------------------------------

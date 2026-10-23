@@ -179,12 +179,16 @@ export interface AreaMeta {
 }
 
 /**
- * A fire as export_web.py writes it to meta.fires (from forge.py's fire anchors): the page draws
- * flames in it (lib/sect/forge-flames.ts).
+ * A fire as export_web.py writes it to meta.fires (from the areas' fire anchors): the page draws
+ * flames in it (lib/sect/flames.ts).
  */
 export interface FireAnchor {
   id: string;
-  /** "furnace" (an opening), "kiln" (a fire box) or "cauldron" (a molten surface); others are skipped. */
+  /**
+   * "furnace" (an opening), "kiln" (a fire box), "cauldron" (a molten surface) or "altar" /
+   * "brazier" / "holy_fire" (a free-standing fire, a blaze: position its foot, radius and height its
+   * size as seen, as a carved flame's, 0 for the page's); others are skipped.
+   */
   kind: string;
   area: string | null;
   chunk: string | null;
@@ -243,7 +247,7 @@ export interface SectMeta {
   lore?: LoreBox[];
   /** The areas along the path (may be empty in older files). */
   areas: AreaMeta[];
-  /** Fires the page draws flames in (forge-flames.ts; parseMeta: empty when the file has none). */
+  /** Fires the page draws flames in (flames.ts; parseMeta: empty when the file has none). */
   fires?: FireAnchor[];
   /** Blender's vignette strength (0.22 = 22 % corner darkening). */
   vignette: number;

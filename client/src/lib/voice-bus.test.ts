@@ -1,43 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { areaForSection } from "./sect/areas";
+import { commandTarget } from "./sect/content";
 import {
   applyNavigation,
   metaToNavigationAction,
   PAGE_TO_SECTION,
-  prefersReducedMotion,
   VoiceBus,
   type NavigationMeta,
   type VoiceCommand,
 } from "./voice-bus";
-
-// The suite runs in vitest's `node` environment, so there is no `window` unless
-// we install one. That is exactly the SSR path the guard exists for.
-const g = globalThis as { window?: { matchMedia?: (q: string) => { matches: boolean } } };
-
-describe("prefersReducedMotion", () => {
-  afterEach(() => {
-    delete g.window;
-  });
-
-  it("returns false when there is no window (server render)", () => {
-    expect(prefersReducedMotion()).toBe(false);
-  });
-
-  it("returns true when the reduce query matches", () => {
-    g.window = { matchMedia: (q) => ({ matches: q === "(prefers-reduced-motion: reduce)" }) };
-    expect(prefersReducedMotion()).toBe(true);
-  });
-
-  it("returns false when the query does not match", () => {
-    g.window = { matchMedia: () => ({ matches: false }) };
-    expect(prefersReducedMotion()).toBe(false);
-  });
-
-  it("returns false when matchMedia is unavailable", () => {
-    // Older Safari and stripped test DOMs; the optional call must not throw.
-    g.window = {};
-    expect(prefersReducedMotion()).toBe(false);
-  });
-});
 
 describe("metaToNavigationAction", () => {
   it("returns null for null/undefined/missing-page payloads", () => {
@@ -58,10 +29,7 @@ describe("metaToNavigationAction", () => {
       page: "project",
       project_id: "dispatch-ai",
     });
-    expect(action).toEqual({
-      command: { type: "open", id: "dispatch-ai" },
-      scrollTo: "projects",
-    });
+    expect(action).toEqual({ type: "open", id: "dispatch-ai" });
   });
 
   it("uses the canonical Pinecone slug for the open command", () => {
@@ -72,7 +40,7 @@ describe("metaToNavigationAction", () => {
       page: "project",
       project_id: "sentinelai-dec0jp",
     });
-    expect(action?.command).toEqual({ type: "open", id: "sentinelai-dec0jp" });
+    expect(action).toEqual({ type: "open", id: "sentinelai-dec0jp" });
   });
 
   it("falls back to a scroll-to-projects when no project_id is provided", () => {
@@ -80,10 +48,7 @@ describe("metaToNavigationAction", () => {
       type: "navigation",
       page: "project",
     });
-    expect(action).toEqual({
-      command: { type: "scroll", id: "projects" },
-      scrollTo: "projects",
-    });
+    expect(action).toEqual({ type: "scroll", id: "projects" });
   });
 
   it.each([
@@ -95,10 +60,7 @@ describe("metaToNavigationAction", () => {
     ["architecture", "architecture"],
   ] as const)("maps page='%s' to scroll-to-'%s'", (page, section) => {
     const action = metaToNavigationAction({ type: "navigation", page });
-    expect(action).toEqual({
-      command: { type: "scroll", id: section },
-      scrollTo: section,
-    });
+    expect(action).toEqual({ type: "scroll", id: section });
   });
 
   it("returns null for an unknown page value", () => {
@@ -113,26 +75,21 @@ describe("metaToNavigationAction", () => {
 });
 
 describe("applyNavigation", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("emits the command and schedules the scroll for navigation metadata", () => {
-    const raf = vi.fn();
-    vi.stubGlobal("requestAnimationFrame", raf);
+  it("emits the command for navigation metadata", () => {
     const seen: VoiceCommand[] = [];
     const off = VoiceBus.on((cmd) => seen.push(cmd));
 
     applyNavigation({ type: "navigation", page: "project", project_id: "dispatch-ai" });
+    applyNavigation({ type: "navigation", page: "resume" });
     off();
 
-    expect(seen).toEqual([{ type: "open", id: "dispatch-ai" }]);
-    expect(raf).toHaveBeenCalledTimes(1);
+    expect(seen).toEqual([
+      { type: "open", id: "dispatch-ai" },
+      { type: "scroll", id: "resume" },
+    ]);
   });
 
   it("does nothing for non-navigation or empty metadata", () => {
-    const raf = vi.fn();
-    vi.stubGlobal("requestAnimationFrame", raf);
     const seen: VoiceCommand[] = [];
     const off = VoiceBus.on((cmd) => seen.push(cmd));
 
@@ -141,7 +98,6 @@ describe("applyNavigation", () => {
     off();
 
     expect(seen).toEqual([]);
-    expect(raf).not.toHaveBeenCalled();
   });
 });
 
@@ -159,5 +115,21 @@ describe("PAGE_TO_SECTION", () => {
       "project",
     ];
     expect(Object.keys(PAGE_TO_SECTION).sort()).toEqual(expected.sort());
+  });
+
+  it("names a stop of the sect for every page, so every navigation flies somewhere", () => {
+    // The sect is the whole site: a page's section must be an area's sectionId
+    // (lib/sect/areas.ts), and the command must resolve to that area.
+    for (const [page, section] of Object.entries(PAGE_TO_SECTION)) {
+      const area = areaForSection(section);
+      expect(area, `${page} -> ${section}`).not.toBeNull();
+      const cmd = metaToNavigationAction({ type: "navigation", page: page as NavigationMeta["page"] });
+      expect(cmd && commandTarget(cmd), page).toEqual({ area, item: null });
+    }
+  });
+
+  it("opens a named project in the forge", () => {
+    const cmd = metaToNavigationAction({ type: "navigation", page: "project", project_id: "dispatch-ai" });
+    expect(cmd && commandTarget(cmd)).toEqual({ area: "forge", item: "project:dispatchai" });
   });
 });

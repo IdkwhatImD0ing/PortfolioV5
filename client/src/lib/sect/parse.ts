@@ -269,8 +269,8 @@ function normalize3(v: Vec3): Vec3 {
 }
 
 /**
- * meta.fires (export_web.py fire_meta, from forge.py's fire anchors): entries without a kind or a
- * usable position are dropped; sizes left out are 0 (forge-flames.ts fireSourcesFromAnchors fills
+ * meta.fires (export_web.py fire_meta, from the areas' fire anchors): entries without a kind or a
+ * usable position are dropped; sizes left out are 0 (flames.ts fireSourcesFromAnchors fills
  * them in). A few other spellings are read too (center or pos, facing, type, size [w, h, d], r).
  */
 export function parseFires(raw: unknown): FireAnchor[] {

@@ -1,22 +1,24 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { sampleCamera } from "./camera-path";
+import { fovForAspect, sampleCamera } from "./camera-path";
 import { isAreaId } from "./areas";
 import { areaSummary } from "./content";
 import {
   FRAMING_MAX_BACK,
   FRAMING_MAX_DEG,
   FRAMING_REACH_FRAMES,
+  PORTRAIT_STOP_FRAMING,
   STOP_FRAMING,
   framingAt,
   framingFrame,
   framingReach,
+  framingTable,
   framingWeight,
   type StopFraming,
 } from "./framing";
 import { composeLook } from "./free-look";
-import { POSTER } from "./opening";
+import { POSTER, portraitTurn } from "./opening";
 import { projectPoint } from "./coords";
 import { panelSide } from "./nav";
 import type { CameraFrame, Vec3 } from "./types";
@@ -29,10 +31,23 @@ function projectFwd(q: readonly number[]): Vec3 {
   return [-2 * (x * z + w * y), -2 * (y * z - w * x), -(1 - 2 * (x * x + y * y))];
 }
 
-/** A stop's framing reach (frames), 0 for a stop that is not framed. */
-function reachOf(id: string): number {
+/** A stop's framing reach before and after its hold (frames), 0 for a stop that is not framed. */
+function reachOf(id: string): readonly [number, number] {
   const t = STOP_FRAMING[id];
-  return t ? framingReach(t) : 0;
+  return t ? framingReach(t) : [0, 0];
+}
+
+/** The table with only stop `id`: its own framing, without a neighbour's handing over. */
+function only(id: string): Record<string, StopFraming> {
+  return { [id]: STOP_FRAMING[id] };
+}
+
+/** Holds whose framing passes straight on to the next framed hold's (one's reach after meets the other's before). */
+function handsOver(k: number): boolean {
+  const a = HOLDS[k];
+  const b = HOLDS[k + 1];
+  const gap = b.frame - a.frame;
+  return !!STOP_FRAMING[a.id] && !!STOP_FRAMING[b.id] && reachOf(a.id)[1] === gap && reachOf(b.id)[0] === gap;
 }
 
 const HOLDS = [
@@ -58,6 +73,16 @@ describe("framingWeight", () => {
     expect(framingWeight(217 - FRAMING_REACH_FRAMES / 2, 217)).toBeCloseTo(0.5, 9);
     expect(framingWeight(Number.NaN, 217)).toBe(0);
     expect(framingWeight(217, 217, 0)).toBe(0);
+  });
+
+  it("comes and goes over each side's own reach when the two differ", () => {
+    // 64 frames before the hold, 105 after: half way in 32 frames before it, 52.5 after.
+    expect(framingWeight(1103 - 32, 1103, [64, 105])).toBeCloseTo(0.5, 9);
+    expect(framingWeight(1103 + 52.5, 1103, [64, 105])).toBeCloseTo(0.5, 9);
+    expect(framingWeight(1103 - 64, 1103, [64, 105])).toBe(0);
+    expect(framingWeight(1103 + 80, 1103, [64, 105])).toBeGreaterThan(0);
+    expect(framingWeight(1103 + 105, 1103, [64, 105])).toBe(0);
+    expect(framingWeight(1103, 1103, [64, 105])).toBe(1);
   });
 
   it("starts, peaks and ends with zero slope, and never moves faster than 1.5 times its average", () => {
@@ -90,39 +115,64 @@ describe("framingAt", () => {
       expect(framingAt(HOLDS, h.frame)).toEqual({ yaw: 0, pitch: 0 });
     }
     expect(framingAt(HOLDS, POSTER.startFrame)).toEqual({ yaw: 0, pitch: 0 });
+    // Each stop's own framing is gone at the ends of its reach.
     for (const h of HOLDS) {
-      const r = reachOf(h.id);
-      if (!r) continue;
-      for (const f of [h.frame - r, h.frame + r]) expect(framingAt(HOLDS, f)).toEqual({ yaw: 0, pitch: 0 });
+      if (!STOP_FRAMING[h.id]) continue;
+      const [before, after] = reachOf(h.id);
+      for (const f of [h.frame - before, h.frame + after]) expect(framingAt(HOLDS, f, only(h.id))).toEqual({ yaw: 0, pitch: 0 });
     }
     // Midway between two stops the view is the film's own, or within a degree of it where the
-    // mirror's longer reach has begun to ease in (0.65 degrees, 62 frames out of 80).
+    // mirror's longer reach has begun to ease in (0.65 degrees, 62 frames out of 80); except where
+    // the jade slip hands over to the formation, midway between their framings there.
     for (let k = 0; k + 1 < HOLDS.length; k++) {
       const o = framingAt(HOLDS, (HOLDS[k].frame + HOLDS[k + 1].frame) / 2);
-      expect(Math.hypot(o.yaw, o.pitch)).toBeLessThan(1 * DEG);
+      if (handsOver(k)) {
+        const [a, b] = [STOP_FRAMING[HOLDS[k].id], STOP_FRAMING[HOLDS[k + 1].id]];
+        expect(o.yaw).toBeCloseTo(((a.yaw + b.yaw) / 2) * DEG, 9);
+        expect(o.pitch).toBeCloseTo(((a.pitch + b.pitch) / 2) * DEG, 9);
+      } else expect(Math.hypot(o.yaw, o.pitch)).toBeLessThan(1 * DEG);
     }
+    expect(HOLDS.filter((_, k) => k + 1 < HOLDS.length && handsOver(k)).map((h) => h.id)).toEqual(["scroll"]);
   });
 
-  it("never lets two stops' framings meet, or reach another stop or the poster", () => {
+  it("never lets two stops' framings meet, or reach another stop or the poster, but where one hands over to the next", () => {
     for (let k = 0; k + 1 < HOLDS.length; k++) {
-      expect(reachOf(HOLDS[k].id) + reachOf(HOLDS[k + 1].id)).toBeLessThanOrEqual(HOLDS[k + 1].frame - HOLDS[k].frame);
+      const gap = HOLDS[k + 1].frame - HOLDS[k].frame;
+      // A hand-over runs the whole way from one hold to the next, both ways: the two weights add up
+      // to 1 there (smoothstep S(x) + S(1 - x) = 1), and neither reaches past the other's hold.
+      if (handsOver(k)) continue;
+      expect(reachOf(HOLDS[k].id)[1] + reachOf(HOLDS[k + 1].id)[0], HOLDS[k].id).toBeLessThanOrEqual(gap);
     }
-    expect(HOLDS[0].frame - POSTER.startFrame).toBeGreaterThan(Math.max(FRAMING_REACH_FRAMES, reachOf(HOLDS[0].id)));
-    for (const t of Object.values(STOP_FRAMING)) expect(framingReach(t)).toBeGreaterThanOrEqual(FRAMING_REACH_FRAMES);
+    expect(HOLDS[0].frame - POSTER.startFrame).toBeGreaterThan(Math.max(FRAMING_REACH_FRAMES, reachOf(HOLDS[0].id)[0]));
+    for (const t of Object.values(STOP_FRAMING)) for (const r of framingReach(t)) expect(r).toBeGreaterThanOrEqual(FRAMING_REACH_FRAMES);
+  });
+
+  it("adds a hand-over's two framings up to the one, then the other, along the smoothstep", () => {
+    const s = STOP_FRAMING.scroll;
+    const f = STOP_FRAMING.formation;
+    for (const x of [0, 0.1, 0.25, 0.5, 0.75, 0.9, 1]) {
+      const t = x * x * (3 - 2 * x);
+      const o = framingAt(HOLDS, 1103 + 105 * x);
+      expect(o.yaw).toBeCloseTo((s.yaw + (f.yaw - s.yaw) * t) * DEG, 9);
+      expect(o.pitch).toBeCloseTo((s.pitch + (f.pitch - s.pitch) * t) * DEG, 9);
+      expect(framingFrame(HOLDS, 1103 + 105 * x)).toBeCloseTo(1103 + 105 * x - (s.back ?? 0) * (1 - t), 9);
+    }
   });
 
   it("eases in and out along the flight with no step from one frame to the next", () => {
-    const h = HOLDS.find((x) => x.id === "mirror")!;
-    const r = reachOf("mirror");
-    let prev = framingAt(HOLDS, h.frame - r - 2);
-    let biggest = 0;
-    for (let f = h.frame - r - 2; f <= h.frame + r + 2; f += 0.25) {
-      const o = framingAt(HOLDS, f);
-      biggest = Math.max(biggest, Math.abs(o.yaw - prev.yaw), Math.abs(o.pitch - prev.pitch));
-      prev = o;
+    for (const id of ["mirror", "scroll", "formation"]) {
+      const h = HOLDS.find((x) => x.id === id)!;
+      const [before, after] = reachOf(id);
+      let prev = framingAt(HOLDS, h.frame - before - 2);
+      let biggest = 0;
+      for (let f = h.frame - before - 2; f <= h.frame + after + 2; f += 0.25) {
+        const o = framingAt(HOLDS, f);
+        biggest = Math.max(biggest, Math.abs(o.yaw - prev.yaw), Math.abs(o.pitch - prev.pitch));
+        prev = o;
+      }
+      // A quarter frame never turns the view more than 0.1 degrees.
+      expect(biggest, id).toBeLessThan(0.1 * DEG);
     }
-    // A quarter frame never turns the view more than 0.1 degrees.
-    expect(biggest).toBeLessThan(0.1 * DEG);
   });
 
   it("keeps every turn small", () => {
@@ -143,35 +193,54 @@ describe("framingFrame", () => {
       expect(framingFrame(HOLDS, h.frame)).toBeCloseTo(h.frame - back, 9);
     }
     expect(framingFrame(HOLDS, POSTER.startFrame)).toBe(POSTER.startFrame);
-    // Midway between two stops, within 2 frames of the film's (the mirror's longer reach: 1.7).
+    // Midway between two stops, within 2 frames of the film's (the mirror's longer reach: 1.7), but
+    // half way through a hand-over (the jade slip's 9 frames back, half gone).
     for (let k = 0; k + 1 < HOLDS.length; k++) {
       const mid = (HOLDS[k].frame + HOLDS[k + 1].frame) / 2;
-      expect(Math.abs(framingFrame(HOLDS, mid) - mid)).toBeLessThan(2);
+      const want = handsOver(k) ? ((STOP_FRAMING[HOLDS[k].id].back ?? 0) + (STOP_FRAMING[HOLDS[k + 1].id].back ?? 0)) / 2 : 0;
+      expect(Math.abs(mid - framingFrame(HOLDS, mid) - want)).toBeLessThan(handsOver(k) ? 1e-9 : 2);
     }
-    const r = reachOf("mirror");
-    expect(framingFrame(HOLDS, 217 - r)).toBe(217 - r);
-    expect(framingFrame(HOLDS, 217 + r)).toBe(217 + r);
+    const [before, after] = reachOf("mirror");
+    expect(framingFrame(HOLDS, 217 - before)).toBe(217 - before);
+    expect(framingFrame(HOLDS, 217 + after)).toBe(217 + after);
   });
 
   it("keeps the camera moving forward, at between half and one and a half times the film's pace", () => {
-    for (const [id, t] of Object.entries(STOP_FRAMING)) {
-      const h = HOLDS.find((x) => x.id === id)!;
-      const back = t.back ?? 0;
-      const r = framingReach(t);
-      expect(back).toBeGreaterThanOrEqual(0);
-      expect(back).toBeLessThanOrEqual(FRAMING_MAX_BACK);
-      let slowest = Infinity;
-      let fastest = 0;
-      for (let f = h.frame - r - 2; f <= h.frame + r + 2; f += 0.25) {
-        const pace = (framingFrame(HOLDS, f + 0.25) - framingFrame(HOLDS, f)) / 0.25;
-        slowest = Math.min(slowest, pace);
-        fastest = Math.max(fastest, pace);
+    for (const table of [STOP_FRAMING, PORTRAIT_STOP_FRAMING]) {
+      for (const [id, t] of Object.entries(table)) {
+        const h = HOLDS.find((x) => x.id === id)!;
+        const back = t.back ?? 0;
+        const [before, after] = framingReach(t);
+        expect(back).toBeGreaterThanOrEqual(0);
+        expect(back).toBeLessThanOrEqual(FRAMING_MAX_BACK);
+        let slowest = Infinity;
+        let fastest = 0;
+        for (let f = h.frame - before - 2; f <= h.frame + after + 2; f += 0.25) {
+          const pace = (framingFrame(HOLDS, f + 0.25, table) - framingFrame(HOLDS, f, table)) / 0.25;
+          slowest = Math.min(slowest, pace);
+          fastest = Math.max(fastest, pace);
+        }
+        // The pace is 1 - back times the weight's slope (at most 1.5 / reach on either side; a hand-over
+        // adds the next stop's, which stands no further back).
+        const b = Math.max(back, ...HOLDS.filter((x) => Math.abs(x.frame - h.frame) <= Math.max(before, after)).map((x) => table[x.id]?.back ?? 0));
+        expect(slowest, id).toBeGreaterThanOrEqual(1 - (1.5 * b) / Math.min(before, after) - 1e-3);
+        expect(fastest, id).toBeLessThanOrEqual(1 + (1.5 * b) / Math.min(before, after) + 1e-3);
+        expect(slowest, id).toBeGreaterThanOrEqual(0.5 - 1e-3);
+        expect(fastest, id).toBeLessThanOrEqual(1.5 + 1e-3);
       }
-      // The pace is 1 - back times the weight's slope (at most 1.5 / reach either way).
-      expect(slowest, id).toBeGreaterThanOrEqual(1 - (1.5 * back) / r - 1e-3);
-      expect(fastest, id).toBeLessThanOrEqual(1 + (1.5 * back) / r + 1e-3);
-      expect(slowest, id).toBeGreaterThanOrEqual(0.5 - 1e-3);
-      expect(fastest, id).toBeLessThanOrEqual(1.5 + 1e-3);
+    }
+  });
+
+  it("stands further back on a portrait screen only where a stop asks, with the same turns", () => {
+    expect(framingTable(1600, 900)).toBe(STOP_FRAMING);
+    expect(framingTable(390, 844)).toBe(PORTRAIT_STOP_FRAMING);
+    expect(framingFrame(HOLDS, 1103, PORTRAIT_STOP_FRAMING)).toBeCloseTo(1103 - STOP_FRAMING.scroll.portraitBack!, 9);
+    for (const [id, t] of Object.entries(STOP_FRAMING)) {
+      const p = PORTRAIT_STOP_FRAMING[id];
+      expect({ ...p, back: t.back }, id).toEqual(t);
+      expect(p.back, id).toBe(t.portraitBack ?? t.back);
+      const h = HOLDS.find((x) => x.id === id)!;
+      for (const f of [h.frame - 30, h.frame, h.frame + 30]) expect(framingAt(HOLDS, f, PORTRAIT_STOP_FRAMING)).toEqual(framingAt(HOLDS, f));
     }
   });
 
@@ -179,8 +248,10 @@ describe("framingFrame", () => {
     expect(framingFrame([{ id: "x", frame: 100 }], 100, { x: { yaw: 0, pitch: 0, back: 60 } })).toBe(100 - FRAMING_MAX_BACK);
     expect(framingFrame([{ id: "x", frame: 100 }], 100, { x: { yaw: 0, pitch: 0, back: -5 } })).toBe(100);
     expect(framingFrame([{ id: "x", frame: 100 }], 100, { x: { yaw: 3, pitch: 0 } })).toBe(100);
-    expect(framingReach({ yaw: 0, pitch: 0, reach: 10 })).toBe(FRAMING_REACH_FRAMES);
-    expect(framingReach({ yaw: 0, pitch: 0, reach: 80 })).toBe(80);
+    expect(framingReach({ yaw: 0, pitch: 0, reach: 10 })).toEqual([FRAMING_REACH_FRAMES, FRAMING_REACH_FRAMES]);
+    expect(framingReach({ yaw: 0, pitch: 0, reach: 80 })).toEqual([80, 80]);
+    expect(framingReach({ yaw: 0, pitch: 0, reach: [64, 20] })).toEqual([64, FRAMING_REACH_FRAMES]);
+    expect(framingReach({ yaw: 0, pitch: 0 })).toEqual([FRAMING_REACH_FRAMES, FRAMING_REACH_FRAMES]);
     const long = { x: { yaw: 8, pitch: 0, back: 8, reach: 80 } };
     expect(framingAt([{ id: "x", frame: 100 }], 160, long).yaw).toBeCloseTo(8 * DEG * framingWeight(160, 100, 80), 9);
     expect(framingFrame([{ id: "x", frame: 100 }], 160, long)).toBeCloseTo(160 - 8 * framingWeight(160, 100, 80), 9);
@@ -280,10 +351,10 @@ describe("the stops' framing on the baked path", () => {
     const fwd = (v: CameraFrame) => projectFwd(v.q);
     const h = camera.holds.find((x) => x.id === holdId)!.frame;
     const t = table[holdId];
-    const r = t ? framingReach(t) : FRAMING_REACH_FRAMES;
+    const [before, after] = t ? framingReach(t) : [FRAMING_REACH_FRAMES, FRAMING_REACH_FRAMES];
     let most = 0;
-    let prev = fwd(viewAt(h - r - 2, framed, table));
-    for (let f = h - r - 1.75; f <= h + r + 2; f += 0.25) {
+    let prev = fwd(viewAt(h - before - 2, framed, table));
+    for (let f = h - before - 1.75; f <= h + after + 2; f += 0.25) {
       const d = fwd(viewAt(f, framed, table));
       const dot = Math.min(1, prev[0] * d[0] + prev[1] * d[1] + prev[2] * d[2]);
       most = Math.max(most, Math.acos(dot) / DEG / 0.25);
@@ -313,38 +384,136 @@ describe("the stops' framing on the baked path", () => {
     expect(at("mission-bell", "mission", true).c[0]).toBeLessThan(0.45);
   });
 
-  it("shows the jade slip as the film frames it: big and close on the left, past the left edge, the pavilion clear", () => {
-    // The owner preferred the first build to the slip turned square to a turned view (2026-10-22): the
-    // slip stands where it first stood (blender scroll.py, patch_r15_scroll_restore.py) and the page
-    // shows the film's own pose at the hold, neither stood back nor turned.
-    const h = camera.holds.find((x) => x.id === "scroll")!.frame;
-    expect(STOP_FRAMING.scroll).toBeUndefined();
-    expect(framingAt(camera.holds, h)).toEqual({ yaw: 0, pitch: 0 });
-    expect(framingFrame(camera.holds, h)).toBe(h);
-    expect(view("scroll", true)).toEqual(view("scroll", false));
-    // The slip's middle at the left edge, its left half past it; its right end a third of the way in
-    // (x 516 of 1600 in the owner's screenshot; the hotspot's box, square to the world, reaches a little
-    // further), its top over the middle of the picture: big and close, the characters about 21 px tall.
-    const slip = at("resume", "scroll", true);
-    expect(slip.c[0]).toBeGreaterThan(-1.25);
-    expect(slip.c[0]).toBeLessThan(-0.9);
-    expect(slip.min[0]).toBeLessThan(-1);
-    expect(slip.max[0]).toBeGreaterThan(-0.45);
-    expect(slip.max[0]).toBeLessThan(-0.15);
-    expect(slip.max[1]).toBeGreaterThan(0.2);
-    expect(slip.max[1]).toBeLessThan(0.5);
-    // The pavilion right of it near the middle, wholly under the panel's bottom (0.39 up at 1600 x 900).
+  /**
+   * The jade slip from its hotspot's box (square to the world; the slip runs from its west-north end to
+   * its east-south one, across the box's plan diagonal, so the box's corners there are its two ends, a
+   * little past its rolled left end): a point `s` along it (-1 its left end, 1 its right) at height `y`.
+   */
+  function slipAt(s: number, y: number): Vec3 {
+    const box = meta.hotspots.find((x) => x.id === "resume")!;
+    return [box.center[0] + (s * box.size[0]) / 2, y, box.center[2] - (s * box.size[2]) / 2];
+  }
+
+  it("shows the whole jade slip on its stand, big and square to the view, and the whole pavilion beside it", () => {
+    // The owner found the film's own view "too in my face" (2026-10-23): the slip big and close on the
+    // left, its left part past the edge and its stand cut by the bottom. The slip stands where it first
+    // stood (blender scroll.py); the camera stands back and turns.
+    const box = meta.hotspots.find((x) => x.id === "resume")!;
+    const top = box.center[1] + box.size[1] / 2;
+    const bottom = box.center[1] - box.size[1] / 2;
+    const paving = meta.areas.find((a) => a.id === "scroll")!.anchor[1];
+    // Its sun and moon on the post heads rise about 4.3 m over the slips (scroll.py frame_points); the
+    // posts stand 7.5 m either side of its middle, a little over half way to its ends.
+    const emblems = top + 4.3;
+    const before = (s: number, y: number) => pointAt(slipAt(s, y), "scroll", false);
+    const after = (s: number, y: number) => pointAt(slipAt(s, y), "scroll", true);
+    // Before: its left end past the left edge, its middle at it, its stand's feet below the bottom.
+    expect(before(-1, top)[0]).toBeLessThan(-2);
+    expect(before(0, top)[0]).toBeLessThan(-1);
+    expect(before(0.56, paving)[1]).toBeLessThan(-1);
+    // Now: both ends in (the left one 7 px in from the edge: the box's corner, a little past the slip's
+    // rolled end, which is 40 px in), the stand's feet on the paving above the bottom, the sun and the
+    // moon on the post heads below the top (140 px down).
+    for (const s of [-1, 1]) for (const y of [top, bottom]) {
+      const p = after(s, y);
+      expect(Math.abs(p[0]), `${s} ${y}`).toBeLessThan(1);
+      expect(Math.abs(p[1]), `${s} ${y}`).toBeLessThan(0.5);
+    }
+    for (const s of [-0.56, 0.56]) {
+      expect(after(s, paving)[1]).toBeGreaterThan(-0.97);
+      expect(after(s, paving)[1]).toBeLessThan(-0.8);
+      expect(after(s, emblems)[1]).toBeLessThan(0.75);
+    }
+    // Big: the slips 299 px tall at their middle at 1600 x 900 (the verses about 15 px a character),
+    // against 434 before; and square to the view, its two ends as far away as each other (42 m and
+    // 43 m; they were 26 m and 33 m away).
+    expect((after(0, top)[1] - after(0, bottom)[1]) * 450).toBeGreaterThan(295);
+    expect((before(0, top)[1] - before(0, bottom)[1]) * 450).toBeGreaterThan(430);
+    const v = view("scroll", true);
+    const depth = (s: number) => projectPoint(v.p, v.q, v.fovY, camera.refAspect, slipAt(s, box.center[1])).depth;
+    expect(Math.abs(depth(-1) - depth(1)) / depth(0)).toBeLessThan(0.05);
+    const v0 = view("scroll", false);
+    const depth0 = (s: number) => projectPoint(v0.p, v0.q, v0.fovY, camera.refAspect, slipAt(s, box.center[1])).depth;
+    expect(Math.abs(depth0(-1) - depth0(1)) / depth0(0)).toBeGreaterThan(0.2);
+    // The pavilion right of the slip, whole and clear of the edges, its top (the finial) left of the
+    // panel (its left edge 0.42 in at 1600 x 900, 0.35 at 1366 x 768) and its eaves below it.
     const pav = at("scroll", "scroll", true);
-    expect(pav.c[0]).toBeGreaterThan(slip.max[0]);
-    expect(Math.abs(pav.c[0])).toBeLessThan(0.2);
-    expect(pav.max[1]).toBeLessThan(0.3);
+    expect(pav.c[0]).toBeGreaterThan(after(1, top)[0]);
+    expect(pav.min[0]).toBeGreaterThan(-0.9);
+    expect(pav.max[0]).toBeLessThan(0.9);
+    expect(pav.min[1]).toBeGreaterThan(-0.9);
+    expect(pav.max[1]).toBeLessThan(0.9);
+    const p = meta.hotspots.find((x) => x.id === "scroll")!;
+    expect(pointAt([p.center[0], p.center[1] + p.size[1] / 2, p.center[2]], "scroll", true)[0]).toBeLessThan(0.33);
   });
 
-  it("turns the view on the way to and from the jade slip as the film does", () => {
-    // Out of the stop the film turns right and tilts up the stair at a degree a frame (0.999); with
-    // no framing there the page adds nothing to it.
+  it("on a phone, stands further back: the whole slip and the whole pavilion side by side between the labels and the panel", () => {
+    // A 390 x 844 phone sees 36 degrees across (camera-path.ts fovForAspect), the picture shifted up
+    // a fifth of the screen (scene.tsx PORTRAIT_SHIFT), between the stop's label and look hint (down to
+    // 156 px) and the panel (from 632 px), and turned at rest (opening.ts PORTRAIT_TURN_DEG).
+    const [w, h] = [390, 844];
+    const px = (x: Vec3, table: Table): [number, number] => {
+      const v = view("scroll", true, table);
+      const q = composeLook(v.q, portraitTurn("scroll", true));
+      const p = projectPoint(v.p, q, fovForAspect(v.fovY, camera.refAspect, w / h), w / h, x);
+      expect(p.depth).toBeGreaterThan(0);
+      return [((p.ndc[0] + 1) / 2) * w, ((1 - p.ndc[1]) / 2) * h - Math.round(h * 0.2)];
+    };
+    const box = meta.hotspots.find((x) => x.id === "resume")!;
+    const top = box.center[1] + box.size[1] / 2;
+    const bottom = box.center[1] - box.size[1] / 2;
+    const paving = meta.areas.find((a) => a.id === "scroll")!.anchor[1];
+    // The pavilion round its hotspot's centre: its eaves reach about 9 m out (the box, 24 m across, is
+    // padded for picking), its platform on the paving, its roofs up to 14 m, its finial at the box's top.
+    const pav = meta.hotspots.find((x) => x.id === "scroll")!;
+    const eaves = Array.from({ length: 24 }, (_, k) => (k * Math.PI) / 12).flatMap((a) =>
+      [paving, paving + 14].map((y) => [pav.center[0] + 9 * Math.cos(a), y, pav.center[2] + 9 * Math.sin(a)] as Vec3),
+    );
+    const pavPoints = [...eaves, [pav.center[0], pav.center[1] + pav.size[1] / 2, pav.center[2]] as Vec3];
+    const slip = [-1, 1].flatMap((s) => [top, bottom].map((y) => slipAt(s, y)));
+    const stand = [-0.56, 0.56].flatMap((s) => [slipAt(s, paving), slipAt(s, top + 4.3)]);
+    const span = (table: Table) => {
+      const ps = [...slip, ...stand, ...pavPoints].map((x) => px(x, table));
+      return { x0: Math.min(...ps.map((p) => p[0])), x1: Math.max(...ps.map((p) => p[0])), y0: Math.min(...ps.map((p) => p[1])), y1: Math.max(...ps.map((p) => p[1])) };
+    };
+    // From where the 16:9 framing stands the slip and the pavilion are wider than the phone.
+    const near = span(STOP_FRAMING);
+    expect(near.x1 - near.x0).toBeGreaterThan(w);
+    // From further back, both whole across it: the slip's ends, its stand's feet on the paving and its
+    // sun and moon, the pavilion's box; between the hint and the panel, with room.
+    const far = span(PORTRAIT_STOP_FRAMING);
+    expect(far.x0).toBeGreaterThan(5);
+    expect(far.x1).toBeLessThan(w - 5);
+    expect(far.y0).toBeGreaterThan(156 + 40);
+    expect(far.y1).toBeLessThan(632 - 100);
+    // The pavilion right of the slip, the slips 89 px tall at their middle (129 from where the 16:9
+    // framing stands, with the pavilion past the edge).
+    expect(px(pav.center, PORTRAIT_STOP_FRAMING)[0]).toBeGreaterThan(px(slipAt(1, top), PORTRAIT_STOP_FRAMING)[0]);
+    const slipTall = px(slipAt(0, bottom), PORTRAIT_STOP_FRAMING)[1] - px(slipAt(0, top), PORTRAIT_STOP_FRAMING)[1];
+    expect(slipTall).toBeGreaterThan(85);
+    expect(slipTall).toBeLessThan(95);
+  });
+
+  it("turns the view on the way to and from the jade slip about as gently as round the mirror", () => {
+    // Out of the stop the film turns right and tilts up the stair at a degree a frame (0.999). The
+    // framing's turn back the same way, and the camera catching up the 9 frames it stood back, add to
+    // it: over the default 48 frames that would be 1.52 degrees a frame, over all the 57 the
+    // formation's 48 leave 1.43. Handed over to the formation's framing over the 105 frames to its
+    // hold instead, the view turns at most 1.13 degrees a frame (26 frames out), about as round the
+    // mirror (1.10); on the formation's approach, which now carries the slip's framing in, 1.12 (its
+    // own framing alone made it 1.09).
     expect(steepest("scroll", false)).toBeLessThan(1);
-    expect(Math.abs(steepest("scroll", true) - steepest("scroll", false))).toBeLessThan(1e-9);
+    const s = STOP_FRAMING.scroll;
+    const alone = (reach: number) => ({ ...STOP_FRAMING, scroll: { ...s, reach }, formation: { ...STOP_FRAMING.formation, reach: FRAMING_REACH_FRAMES } });
+    expect(steepest("scroll", true, alone(48))).toBeGreaterThan(1.4);
+    expect(steepest("scroll", true, alone(57))).toBeGreaterThan(1.4);
+    expect(steepest("scroll", true)).toBeLessThan(1.14);
+    expect(steepest("formation", true)).toBeLessThan(1.14);
+    expect(steepest("formation", true, alone(48))).toBeLessThan(1.1);
+    // On a portrait screen the camera catches up 21 frames instead, over the same 105: 1.30 degrees a
+    // frame at the most (the turn at rest, opening.ts PORTRAIT_TURN_DEG, swings back with the free look).
+    expect(steepest("scroll", true, PORTRAIT_STOP_FRAMING)).toBeLessThan(1.31);
+    expect(steepest("formation", true, PORTRAIT_STOP_FRAMING)).toBeLessThan(1.31);
   });
 
   it("brings the whole formation up into the picture", () => {

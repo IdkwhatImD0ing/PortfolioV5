@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { POSTER_SCRIPT, startView, type NetworkHint, type StartView } from "@/lib/sect/content-start";
+import { POSTER_SCRIPT, SUMMARY_ID, startView, type NetworkHint, type StartView } from "@/lib/sect/content-start";
 import { brushFont } from "./brush-font";
 import { LoadingScreen } from "./loading-screen";
 
@@ -16,7 +16,7 @@ function FlightVeil() {
 }
 
 // three.js and R3F live only in ./experience, which is reachable only through this dynamic import,
-// so they are split into a chunk that loads on /sect alone (and not at all in the page view).
+// so they are split into a chunk that loads for the flight alone (and not at all in the page view).
 const SectExperience = dynamic(() => import("./experience/sect-experience"), { ssr: false, loading: FlightVeil });
 const PageView = dynamic(() => import("./page-view"), { ssr: false, loading: Veil });
 
@@ -27,6 +27,9 @@ export function SectClient() {
   useEffect(() => {
     const net = (navigator as Navigator & { connection?: NetworkHint }).connection;
     setStart(startView(window.location.search, net));
+    // The portfolio as text (summary.tsx) is for crawlers and for no JavaScript. With scripts it is
+    // out of sight already; inert also takes it out of the tab order and the accessibility tree.
+    document.getElementById(SUMMARY_ID)?.setAttribute("inert", "");
   }, []);
   return (
     // The brush font's variable (brush-font.ts) is set here, so every overlay, reader and veil has it.

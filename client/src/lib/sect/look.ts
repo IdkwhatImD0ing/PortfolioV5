@@ -308,7 +308,7 @@ export interface ShaftLook {
 
 export interface FormationLook {
   dome: {
-    /** Pale gold: 明 is light, and the barriers of the genre are golden. */
+    /** Pale gold: the sun of 日月, and the barriers of the genre are golden. */
     color: string;
     /** Fresnel rim at the silhouette: gain * (1 - facing)^power. */
     rim: { power: number; gain: number };
@@ -341,20 +341,6 @@ export interface FormationLook {
   wave: { period: number; width: number };
   /** Upward drift of the shafts' streaks (noise texture repeats per second). */
   streakSpeed: number;
-  fire: {
-    /** Grid (m) the flames' vertices are grouped on (neighbours join) to find the fires. */
-    cell: number;
-    /** A fire's glow radius per metre of its flames' width, and its bounds (m). */
-    radiusPerWidth: number;
-    radius: [number, number];
-    /** How high the sparks rise (m), and their size (m). */
-    sparkHeight: number;
-    sparkSize: number;
-    /** Sparks per fire by tier. */
-    sparks: { high: number; mid: number; low: number };
-    core: string;
-    hot: string;
-  };
   /** The sun-fire core's glow, breathing with the formation's 4 s breath (idle.ts). */
   coreGlow: { radius: number; color: string; strength: number; period: number; rest: number };
 }
@@ -477,16 +463,6 @@ export const SECT_LOOK: SectLook = {
     wisp: { color: "#bff5e0", radius: 1.4, opacity: 0.3, height: 16, fadeIn: 0.8, halfLife: 9, streaks: 0.5, belowTop: 1.2, rest: 0.3 },
     wave: { period: 8, width: 0.32 },
     streakSpeed: 0.03,
-    fire: {
-      cell: 2.5,
-      radiusPerWidth: 1.1,
-      radius: [0.35, 1.6],
-      sparkHeight: 5,
-      sparkSize: 0.12,
-      sparks: { high: 16, mid: 10, low: 5 },
-      core: "#ff9a45",
-      hot: "#ffd27a",
-    },
     coreGlow: { radius: 4.5, color: "#ffd27a", strength: 0.55, period: 4, rest: 0.65 },
   },
 };

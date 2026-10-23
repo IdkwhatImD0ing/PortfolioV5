@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * /sect: a fixed WebGL canvas behind a tall scroll track. Scrolling flies the camera along the
- * exported chase-camera path through the eleven areas of the sect, holding at each one with its
- * panel; every piece of the main page's content opens from there in the reader, or all of it as one
+ * The sect (the home page): a fixed WebGL canvas behind a tall scroll track. Scrolling flies the
+ * camera along the exported chase-camera path through the eleven areas of the sect, holding at each
+ * one with its panel; every piece of the portfolio opens from there in the reader, or all of it as one
  * page ("Read as page", and always when WebGL 2 is missing).
  *
  * The world streams: the global set (backdrop with a reduced proxy of every area) loads first, then
@@ -1442,7 +1442,7 @@ export default function SectExperience() {
 
   const talk = useCallback(() => {
     if (readerRef.current) closeReader();
-    if (!startTalk()) window.location.href = "/";
+    startTalk();
   }, [closeReader]);
 
   const onHover = useCallback((id: string | null, at: readonly [number, number] | null) => {
@@ -1931,7 +1931,7 @@ export default function SectExperience() {
         <>
           <TopLinks onReadAsPage={readAsPage} />
           <main>
-            <h1 className="sr-only">The Ming Sect: Bill Zhang&apos;s portfolio</h1>
+            <h1 className="sr-only">Sun Moon Divine Cult: Bill Zhang&apos;s portfolio</h1>
             <IntroTitle ref={introRef} />
             {holds.map((h) =>
               isAreaId(h.id) ? (

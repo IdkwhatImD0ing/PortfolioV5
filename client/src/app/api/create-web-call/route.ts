@@ -2,6 +2,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { CreateWebCallRequest } from '@/types/api';
+import { PROD_AGENT_ID } from '@/lib/retell-agent';
+import { personaForReferer, SECT_PERSONA } from '@/lib/sect/persona';
 
 const RETELL_CREATE_WEB_CALL_URL = 'https://api.retellai.com/v2/create-web-call';
 
@@ -45,8 +47,25 @@ export async function POST(request: NextRequest) {
         // Prepare the payload
         const payload: Partial<CreateWebCallRequest> = { agent_id };
 
-        if (metadata) {
-            payload.metadata = metadata;
+        // A call placed from /sect asks the backend for the sect's persona
+        // (server/personas.py reads metadata.persona), unless the page already
+        // named one. Calls from anywhere else are sent exactly as before, and
+        // the backend keeps the classic persona for them.
+        const pagePersona = metadata?.persona
+            ? null
+            : personaForReferer(request.headers.get('referer'));
+        const callMetadata = pagePersona ? { ...metadata, persona: pagePersona } : metadata;
+
+        if (callMetadata) {
+            payload.metadata = callMetadata;
+        }
+
+        // The sect can have a Retell agent of its own (its own voice), set by
+        // RETELL_SECT_AGENT_ID. Only a call for the production agent is moved
+        // to it: a dev agent's call stays on the dev tunnel.
+        const sectAgentId = process.env.RETELL_SECT_AGENT_ID;
+        if (callMetadata?.persona === SECT_PERSONA && sectAgentId && agent_id === PROD_AGENT_ID) {
+            payload.agent_id = sectAgentId;
         }
 
         if (retell_llm_dynamic_variables) {

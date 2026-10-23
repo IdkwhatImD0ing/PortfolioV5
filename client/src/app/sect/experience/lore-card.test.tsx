@@ -50,7 +50,7 @@ describe("LoreCard", () => {
 
   it("says the line alone when there is no novel, or when the novel's title is the name", () => {
     expect(textOf(renderToStaticMarkup(<LoreCard id="sun-moon" visible />))).toBe(
-      "日月 Sun and Moon Sun 日 and moon 月 make 明, the Ming Sect's name",
+      "日月 Sun and Moon The sect's emblem, and the first half of its name, 日月神教",
     );
     const sword = renderToStaticMarkup(<LoreCard id="heaven-sword" visible />);
     expect(textOf(sword)).toBe("倚天劍 Heaven-Reliant Sword The Dragon-Slaying Saber's only rival");

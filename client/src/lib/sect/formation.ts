@@ -1,7 +1,8 @@
 /**
- * The formation's page-drawn light (round 6, the Ming Sect's Grand Sect-Protecting Array): the
- * barrier dome, the soft shafts rising from the core and the eight array eyes, and the brazier
- * fires. The bake holds the stone, bronze and jade; everything here is light the bake cannot carry.
+ * The formation's page-drawn light (round 6, the sect's Grand Sect-Protecting Array): the
+ * barrier dome and the soft shafts rising from the core and the eight array eyes. The bake holds
+ * the stone, bronze and jade; everything here is light the bake cannot carry. The braziers' holy
+ * fire burns with every other carved flame (flames.ts).
  *
  * - The dome is a faint barrier you notice at its edge: a gold fresnel rim, a seam where it meets
  *   the plaza, and now and then a shimmer sliding down a tortoise-shell lattice (domeAlpha, mirrored
@@ -9,7 +10,6 @@
  * - The old link beams (Blender's light_beam strips: spokes, links, the sky pillar) are dropped
  *   (isFormationLinkBeam); soft shafts are placed from the hotspots instead (formationShafts), so
  *   they work before and after the Blender rebake.
- * - Fires are found from the bake's ".glow.flame" meshes (clusterFlames).
  *
  * Pure: plain arrays, no three.js. Numbers live in look.ts (SECT_LOOK.formation).
  */
@@ -31,15 +31,13 @@ export interface FormationTier {
   streaks: 0 | 1;
   /** The wide faint halo round the core's shaft. */
   halo: boolean;
-  /** Sparks per fire. */
-  sparks: number;
 }
 
-/** High full, Medium lighter (no halo, fewer sparks), Low cheap (no shimmer, no streaks). */
-export function formationTier(tier: FormationTierName, look: FormationLook = SECT_LOOK.formation): FormationTier {
-  if (tier === "low") return { domeDetail: 0, streaks: 0, halo: false, sparks: look.fire.sparks.low };
-  if (tier === "mid") return { domeDetail: 1, streaks: 1, halo: false, sparks: look.fire.sparks.mid };
-  return { domeDetail: 1, streaks: 1, halo: true, sparks: look.fire.sparks.high };
+/** High full, Medium lighter (no halo), Low cheap (no shimmer, no streaks). */
+export function formationTier(tier: FormationTierName): FormationTier {
+  if (tier === "low") return { domeDetail: 0, streaks: 0, halo: false };
+  if (tier === "mid") return { domeDetail: 1, streaks: 1, halo: false };
+  return { domeDetail: 1, streaks: 1, halo: true };
 }
 
 // ---- the old beams ------------------------------------------------------------------------------
@@ -108,83 +106,6 @@ export function wispPulse(t: number, phase: number, rest: number, look: Formatio
   if (phase < 0) return 1;
   // idle.ts wave(t, period, i, n) for station i of n is a function of t / period - i / n.
   return rest + (1 - rest) * wave(t, look.wave.period, phase * STATIONS, STATIONS, look.wave.width);
-}
-
-// ---- fires --------------------------------------------------------------------------------------
-
-export interface FlameCluster {
-  center: Vec3;
-  min: Vec3;
-  max: Vec3;
-  /** Vertices in the cluster. */
-  count: number;
-}
-
-/**
- * Groups flame vertices (xyz triples) into fires: each vertex falls in a `cell`-metre grid cell,
- * and occupied cells that touch (the 26 around) join. One cluster per brazier as long as fires
- * stand more than two cells apart. Sorted by x, then z, then y (stable across loads).
- */
-export function clusterFlames(positions: ArrayLike<number>, cell: number): FlameCluster[] {
-  const n = Math.floor(positions.length / 3);
-  if (n === 0 || !(cell > 0)) return [];
-  const cells = new Map<string, number>();
-  const keys: [number, number, number][] = [];
-  const vertCell = new Int32Array(n);
-  for (let i = 0; i < n; i++) {
-    const x = Math.floor(positions[i * 3] / cell), y = Math.floor(positions[i * 3 + 1] / cell), z = Math.floor(positions[i * 3 + 2] / cell);
-    const key = `${x},${y},${z}`;
-    let c = cells.get(key);
-    if (c === undefined) {
-      c = keys.length;
-      cells.set(key, c);
-      keys.push([x, y, z]);
-    }
-    vertCell[i] = c;
-  }
-  const parent = keys.map((_, i) => i);
-  const find = (i: number): number => {
-    while (parent[i] !== i) {
-      parent[i] = parent[parent[i]];
-      i = parent[i];
-    }
-    return i;
-  };
-  keys.forEach(([x, y, z], i) => {
-    for (let dx = -1; dx <= 1; dx++)
-      for (let dy = -1; dy <= 1; dy++)
-        for (let dz = -1; dz <= 1; dz++) {
-          const j = cells.get(`${x + dx},${y + dy},${z + dz}`);
-          if (j === undefined) continue;
-          const a = find(i), b = find(j);
-          if (a !== b) parent[Math.max(a, b)] = Math.min(a, b);
-        }
-  });
-  const groups = new Map<number, FlameCluster>();
-  for (let i = 0; i < n; i++) {
-    const root = find(vertCell[i]);
-    const p: Vec3 = [positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]];
-    const g = groups.get(root);
-    if (!g) {
-      groups.set(root, { center: [0, 0, 0], min: [...p], max: [...p], count: 1 });
-      continue;
-    }
-    for (let a = 0; a < 3; a++) {
-      g.min[a] = Math.min(g.min[a], p[a]);
-      g.max[a] = Math.max(g.max[a], p[a]);
-    }
-    g.count++;
-  }
-  const out = [...groups.values()];
-  for (const g of out) g.center = [(g.min[0] + g.max[0]) / 2, (g.min[1] + g.max[1]) / 2, (g.min[2] + g.max[2]) / 2];
-  return out.sort((a, b) => a.center[0] - b.center[0] || a.center[2] - b.center[2] || a.center[1] - b.center[1]);
-}
-
-/** A fire's glow radius (m): from its flames' width, within the look's bounds. */
-export function fireRadius(c: FlameCluster, look: FormationLook = SECT_LOOK.formation): number {
-  const w = Math.max(c.max[0] - c.min[0], c.max[2] - c.min[2]);
-  const [lo, hi] = look.fire.radius;
-  return Math.min(hi, Math.max(lo, w * look.fire.radiusPerWidth));
 }
 
 // ---- the barrier dome ---------------------------------------------------------------------------

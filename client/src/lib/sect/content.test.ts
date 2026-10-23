@@ -1,7 +1,4 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { STANDOUT_PROJECT_IDS } from "@/components/sections/projects/constants";
 import {
   EDUCATION,
   EXPERIENCE,
@@ -10,6 +7,7 @@ import {
   PORTFOLIO,
   PROJECTS,
   SKILLS_LINE,
+  STANDOUT_PROJECT_IDS,
 } from "@/lib/portfolio-data";
 import { AREA_IDS } from "./areas";
 import { FORGE_RING } from "./artifacts";
@@ -354,162 +352,5 @@ describe("navigation", () => {
       expect(pageSectionDomId(a)).toBe(`sc-page-area-${a}`);
       expect(pageSectionDomId(a)).not.toBe(sectionDomId(a));
     }
-  });
-});
-
-/**
- * The copy in content-copy.ts is duplicated from main-page components. Each string must still be in
- * its source file, so a wording change there fails here instead of leaving /sect out of date.
- */
-describe("main-page copy has not drifted", () => {
-  const root = path.resolve(__dirname, "../../components");
-  const read = (...files: string[]) => files.map((f) => readFileSync(path.join(root, f), "utf8")).join("\n");
-
-  /** Source text as it renders: JSX tags removed, {" "} as a space, entities decoded, spaces collapsed. */
-  const norm = (s: string) =>
-    s
-      .replace(/\{"\s"\}/g, " ")
-      .replace(/<\/?[A-Za-z][\w.]*(?:\s[^<>]*?)?\/?>/g, "")
-      .replace(/&apos;/g, "'")
-      .replace(/&ldquo;/g, "“")
-      .replace(/&rdquo;/g, "”")
-      .replace(/&nbsp;/g, " ")
-      .replace(/&amp;/g, "&")
-      .replace(/\s+/g, " ");
-
-  const expectIn = (src: string, strings: string[]) => {
-    const raw = src;
-    const text = norm(src);
-    for (const s of strings) {
-      const ok = raw.includes(s) || text.includes(norm(s));
-      expect(ok, `"${s}" not found in the main-page source`).toBe(true);
-    }
-  };
-  const runs = (r: COPY.Run[]) => r.map((x) => x.t).join("");
-
-  it("hero, top bar and voice orb", () => {
-    expectIn(read("sections/hero.tsx"), [
-      COPY.HERO.eyebrow,
-      runs(COPY.HERO.heading),
-      runs(COPY.HERO.intro),
-      COPY.HERO.viewResume,
-      COPY.HERO.downloadPdf,
-      COPY.HERO.pdfSize,
-      ...COPY.HERO_CHIPS,
-    ]);
-    expectIn(read("topbar.tsx"), [COPY.TOPBAR.name, `${COPY.TOPBAR.cityPrefix} ·`, COPY.TOPBAR.timeZone]);
-    expectIn(read("voice-orb/index.tsx"), [COPY.VOICE_ORB.pill, COPY.VOICE_ORB.button, COPY.VOICE_ORB.panelTitle]);
-  });
-
-  it("about", () => {
-    expectIn(read("sections/about.tsx"), [
-      COPY.ABOUT_HEAD.eyebrow,
-      runs(COPY.ABOUT_HEAD.heading),
-      ...COPY.ABOUT_CARDS.flatMap((c) => [c.num, c.title, c.body]),
-    ]);
-  });
-
-  it("projects", () => {
-    const src = read("sections/projects/index.tsx", "sections/projects/filter-bar.tsx", "sections/projects/project-card.tsx", "sections/projects/project-detail.tsx");
-    const h = COPY.PROJECTS_HEAD;
-    expectIn(src, [
-      h.eyebrow,
-      runs(h.heading),
-      h.galleryLabel,
-      h.galleryHint,
-      h.mobileHint,
-      h.deepDive,
-      h.story,
-      h.role,
-      h.stack,
-      h.year,
-      h.id,
-      h.tags,
-      h.demoMedia,
-      h.liveProject,
-      h.source,
-      h.voiceTip,
-      h.noMedia,
-      ...COPY.PROJECT_FILTERS.map((f) => `{ key: "${f.key}", label: "${f.label}" }`),
-      `[${COPY.PROJECT_YEARS.join(", ")}]`,
-    ]);
-  });
-
-  it("hackathons, experience, education", () => {
-    const hack = read("sections/hackathons/hackathons-section.tsx");
-    expectIn(hack, [
-      `${COPY.HACKATHONS_HEAD.eyebrowPrefix} · {HACKATHONS.length} ${COPY.HACKATHONS_HEAD.eyebrowSuffix}`,
-      runs(COPY.HACKATHONS_HEAD.heading),
-      COPY.HACKATHONS_HEAD.intro,
-      ...COPY.HACKATHON_STATS.map((s) => (s.n === "count" ? `{ n: \`\${HACKATHONS.length}\`, l: "${s.l}" }` : `{ n: "${s.n}", l: "${s.l}" }`)),
-    ]);
-    expectIn(read("sections/experience/experience-section.tsx"), [COPY.EXPERIENCE_HEAD.eyebrow, runs(COPY.EXPERIENCE_HEAD.heading)]);
-    expectIn(read("sections/education.tsx"), [
-      COPY.EDUCATION_HEAD.eyebrow,
-      runs(COPY.EDUCATION_HEAD.heading),
-      COPY.EDUCATION_HEAD.hint,
-      `{e.school} · ${COPY.EDUCATION_HEAD.notes}`,
-    ]);
-  });
-
-  it("resume", () => {
-    const h = COPY.RESUME_HEAD;
-    expectIn(read("sections/resume.tsx"), [
-      h.eyebrow,
-      runs(h.heading),
-      h.intro,
-      h.fileLine,
-      h.previewSrc,
-      h.previewTitle,
-      h.openTab,
-      h.download,
-      h.downloadName,
-      h.glanceTitle,
-      h.contactTitle,
-      h.voiceTip,
-      h.voiceTipText,
-      ...COPY.RESUME_STATS.map((s) => `{ k: "${s.k}", v: "${s.v}" }`),
-      ...COPY.RESUME_GLANCE.map((g) => `${g.k} ${g.v}`),
-      ...COPY.RESUME_LINKS.flatMap((l) => [l.label, l.href]),
-    ]);
-  });
-
-  it("architecture", () => {
-    expectIn(read("sections/architecture.tsx"), [
-      COPY.ARCH_HEAD.eyebrow,
-      runs(COPY.ARCH_HEAD.heading),
-      COPY.ARCH_HEAD.intro,
-      COPY.ARCH_SNIPPET,
-      ...COPY.ARCH_FLOW.flatMap((f) => [`k: "${f.k}"`, `title: "${f.title}"`, `body: "${f.body}"`]),
-      ...COPY.ARCH_STACK.flatMap((s) => [`group: "${s.group}"`, ...s.items.map((i) => `"${i}"`)]),
-    ]);
-  });
-
-  it("personal and footer", () => {
-    const h = COPY.PERSONAL_HEAD;
-    expectIn(read("sections/personal/personal-section.tsx"), [
-      h.eyebrow,
-      runs(h.heading),
-      ...h.decor,
-      `src="${h.photo}"`,
-      `alt="${h.photoAlt}"`,
-      h.photoCaption,
-      `› Try asking the orb: ${h.tipQuote}`,
-    ]);
-    const f = COPY.FOOTER;
-    expectIn(read("sections/personal/footer.tsx"), [
-      f.eyebrow,
-      `${runs(f.heading)} ${f.heading2}`,
-      f.body,
-      f.direct,
-      f.tapOrb,
-      f.elsewhere,
-      f.index,
-      f.copyright,
-      ...f.indexLinks.flatMap((l) => [`href="#${l.section}"`, `${l.label}`]),
-      "GitHub",
-      "LinkedIn",
-      "Devpost",
-    ]);
   });
 });

@@ -14,7 +14,7 @@ export interface AreaPanelProps {
   area: AreaId;
   /** Open the full reader for this section (or one of its items). */
   onOpen: (target: ContentTarget) => void;
-  /** Start a voice call (gate and summit show a talk button; without it they link to the main site). */
+  /** Start a voice call (gate and summit show a talk button; without it they show none). */
   onTalk?: () => void;
   /** Which side of a wide screen the panel sits on; each area has a default. */
   side?: "left" | "right";

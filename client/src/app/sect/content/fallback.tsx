@@ -2,10 +2,9 @@
 
 /**
  * Every area's content as one themed, scrollable page, with a top navigation of the 11 areas. Shown
- * when WebGL is unavailable, as /sect?view=page, and as the "Read as page" mode over the flight.
+ * when WebGL is unavailable, as /?view=page, and as the "Read as page" mode over the flight.
  * Dressed as the reader is: rice paper, brush-stroke dividers, the places' names in the brush hand.
  */
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { AREAS, isAreaId, type AreaId } from "@/lib/sect/areas";
 import { PORTFOLIO } from "@/lib/portfolio-data";
@@ -175,17 +174,13 @@ export function ContentFallback({ onTalk, onExit, initial, onHighlight, note }: 
     >
       <Top className="sc-page-top">
         <div className="sc-page-brand">
-          <BrushName text="明教" className="sc-page-seal" />
+          <BrushName text="日月神教" even={0.12} className="sc-page-seal" />
           <SealStamp />
-          <span className="sc-page-brandname">The Ming Sect</span>
-          {onExit ? (
+          <span className="sc-page-brandname">Sun Moon Divine Cult</span>
+          {onExit && (
             <button type="button" className="sc-btn sc-btn-gold sc-page-exit" onClick={onExit}>
               Back to the flight
             </button>
-          ) : (
-            <Link href="/" className="sc-btn sc-page-exit">
-              art3m1s.me
-            </Link>
           )}
         </div>
         <nav aria-label="Areas" className="sc-page-nav">
@@ -247,11 +242,13 @@ export function ContentFallback({ onTalk, onExit, initial, onHighlight, note }: 
             />
           </section>
         ))}
-        <p className="sc-page-end">
-          <Link href="/" className="sc-textbtn">
-            Back to art3m1s.me
-          </Link>
-        </p>
+        {onExit && (
+          <p className="sc-page-end">
+            <button type="button" className="sc-textbtn" onClick={onExit}>
+              Back to the flight
+            </button>
+          </p>
+        )}
       </Main>
     </div>
   );

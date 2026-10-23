@@ -1,7 +1,7 @@
 /**
- * The eleven areas of the Ming Sect in flight order, and the site section each one presents.
+ * The eleven areas of the Sun Moon Divine Cult in flight order, and the site section each one presents.
  *
- * Shared contract for the /sect page: camera holds (camera.json holds[].id), chunk ids in the
+ * Shared contract for the sect (the home page): camera holds (camera.json holds[].id), chunk ids in the
  * manifest, hotspot ids and the content layer all use these area ids. Hold frames come from
  * camera.json at runtime, never from here.
  */
@@ -23,7 +23,11 @@ export type AreaId = (typeof AREA_IDS)[number];
 
 export interface AreaInfo {
   id: AreaId;
-  /** DOM section id of the same content on the main page (src/app/page.tsx). */
+  /**
+   * The section's name in links and voice commands: the hash that opens it ("#projects") and the
+   * id the voice agent's navigation names (lib/voice-bus.ts PAGE_TO_SECTION). They are the section
+   * ids of the one-page portfolio the sect replaced, so its old links still land here.
+   */
   sectionId: string;
   /** English place name. */
   label: string;
@@ -55,7 +59,7 @@ export function areaInfo(id: AreaId): AreaInfo {
   return info;
 }
 
-/** The area that presents a main-page section id ("projects" -> "forge"), or null. */
+/** The area that presents a section ("projects" -> "forge"), or null. */
 export function areaForSection(sectionId: string): AreaId | null {
   return AREAS.find((a) => a.sectionId === sectionId)?.id ?? null;
 }
