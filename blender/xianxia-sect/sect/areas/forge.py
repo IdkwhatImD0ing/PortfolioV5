@@ -32,6 +32,7 @@ import random
 
 import bmesh
 import bpy
+from mathutils import Vector
 
 from sect.lib import arch as A
 from sect.lib import materials as M
@@ -130,9 +131,49 @@ M.register("forge_smoke", _forge_smoke)
 
 # ------------------------------------------------------------------ helpers
 
+ARRIVAL_PLAT = ((0.0, -52.5), 12.0, 11.0, 0.0)                       # centre, width, depth, turn: y -58 .. -47
+BRIDGEHEAD_PLAT = ((-51.3, -8.6), 8.0, 10.0, BRIDGE_ANG - math.pi / 2)   # r 47 .. 57, depth radial
+
+
 def _paving(root, coll):
-    """Round courtyard slab: concentric quad rings (no centre fan, so marble_paving stays clean),
-    top at z = 0, side down to z = -0.8."""
+    """Round courtyard slab (_paving_bm)."""
+    U.mesh_from_bmesh(_n("paving"), _paving_bm(), coll, materials=["marble_white", "marble_paving"], smooth=False,
+                      parent=root)
+
+
+def _cut_top(bm, plat):
+    """Cut the paving's top away under a landing slab ``plat`` (centre, width, depth, turn; its top at z 0 over the
+    paving's rim): bisect the top faces near it along the slab's four edges, delete the ones inside. Returns how many
+    faces were deleted."""
+    (cx, cy), w, d, rot = plat
+    ax, ay = Vector((math.cos(rot), math.sin(rot), 0.0)), Vector((-math.sin(rot), math.cos(rot), 0.0))
+    c = Vector((cx, cy, 0.0))
+    reach = math.hypot(w, d) * 0.5 + 3.0
+
+    def top(f):
+        return f.normal.z > 0.9 and abs(f.calc_center_median().z) < 1e-4
+
+    for co, no in ((c + ax * (0.5 * w), ax), (c - ax * (0.5 * w), ax), (c + ay * (0.5 * d), ay),
+                   (c - ay * (0.5 * d), ay)):
+        fs = [f for f in bm.faces if top(f) and (f.calc_center_median() - c).length < reach]
+        geom = list({v for f in fs for v in f.verts}) + list({e for f in fs for e in f.edges}) + fs
+        bmesh.ops.bisect_plane(bm, geom=geom, plane_co=co, plane_no=no, dist=1e-5)
+        bm.normal_update()
+    kill = []
+    for f in bm.faces:
+        if not top(f):
+            continue
+        q = f.calc_center_median() - c
+        if abs(q.dot(ax)) < 0.5 * w - 1e-4 and abs(q.dot(ay)) < 0.5 * d - 1e-4:
+            kill.append(f)
+    bmesh.ops.delete(bm, geom=kill, context='FACES')
+    return len(kill)
+
+
+def _paving_bm(cut=True):
+    """BMesh of the round courtyard slab: concentric quad rings (no centre fan, so marble_paving stays clean),
+    top at z = 0, side down to z = -0.8. Round 12 (cut=True): no top under the arrival and bridgehead landings
+    (_cut_top). Their slabs ran 0.5 m over the paving's rim with their tops in its plane: 6.5 m2 of z-fighting."""
     segs = 96
     radii = [3.0, 8.0, 14.0, 20.0, 26.0, 32.0, 38.0, 43.0, TERRACE_R]
     verts, faces, mats = [], [], []
@@ -162,8 +203,16 @@ def _paving(root, coll):
             mats.append(0)
     faces.append(tuple(low + k for k in reversed(range(segs))))
     mats.append(0)
-    U.mesh_from_pydata(_n("paving"), verts, faces, coll, materials=["marble_white", "marble_paving"],
-                       material_indices=mats, smooth=False, parent=root)
+    bm = bmesh.new()
+    bv = [bm.verts.new(p) for p in verts]
+    for f, m in zip(faces, mats):
+        bf = bm.faces.new([bv[i] for i in f])
+        bf.material_index = m
+    bm.normal_update()
+    if cut:
+        for plat in (ARRIVAL_PLAT, BRIDGEHEAD_PLAT):
+            _cut_top(bm, plat)
+    return bm
 
 
 def _terrace_balustrade(root, coll):
@@ -182,8 +231,9 @@ def _terrace_balustrade(root, coll):
 def _arrival(root, coll):
     """Arrival landing on the axis outside the front archway: top flush with the paving, on the
     world terrace (z -0.4), where the stair from the mirror tops out (audit 1.3 item 2)."""
-    A.platform(_n("arrival"), coll, 12.0, depth=11.0, height=0.4, style="plain", parent=root,
-               location=(0.0, -52.5, -0.4))                     # y -58 .. -47
+    (cx, cy), w, d, _rot = ARRIVAL_PLAT
+    A.platform(_n("arrival"), coll, w, depth=d, height=0.4, style="plain", parent=root,
+               location=(cx, cy, -0.4))                         # y -58 .. -47
     for x in (-5.0, 5.0):
         P.lantern_stone(coll, 2.6, name=_n("lantern_arrival"), parent=root, location=(x, -56.0, 0.0))
 
@@ -192,9 +242,9 @@ def _bridgehead(root, coll):
     """Bridgehead terrace and a one-bay archway in the balustrade opening at BRIDGE_ANG, where the
     chain bridge to the arena starts (audit 1.3 item 3). The platform is named forge.bridgehead
     so walkcheck counts it as a landing."""
-    rot = BRIDGE_ANG - math.pi / 2                              # 99.5 deg: depth runs radially
-    A.platform(_n("bridgehead"), coll, 8.0, depth=10.0, height=0.4, style="plain", parent=root,
-               location=(-51.3, -8.6, -0.4), rotation_z=rot)     # r 47 .. 57, top z 0
+    (cx, cy), w, d, rot = BRIDGEHEAD_PLAT                       # 99.5 deg: depth runs radially
+    A.platform(_n("bridgehead"), coll, w, depth=d, height=0.4, style="plain", parent=root,
+               location=(cx, cy, -0.4), rotation_z=rot)         # r 47 .. 57, top z 0
     A.paifang(_n("bridge_gate"), coll, bays=1, width=6.0, height=7.0, roof_mat="roof_tile_black",
               parent=root, location=(-46.0, -7.7, 0.0), rotation_z=rot)
     # lanterns flank the bridge foot, 3.4 m either side of the bridge line, so they stand on the

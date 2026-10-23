@@ -14,8 +14,10 @@ Layout (local frame, front = -Y, z = 0 walkable top):
   walk on the pavilion axis (x 12) to the foot of the pavilion's front stair;
 - the way out: side steps off the terrace's right edge, a paved exit walk east through a
   one-bay gate to the depart point where the stair to the formation starts;
-- the focal object: a colossal unrolled jade bamboo-slip scroll (22 x 9 m at 0.86x, slightly
-  curved, glowing script) left of the axis, its face square to the 1103 hold view (r10), held high
+- the focal object: a colossal unrolled jade bamboo-slip scroll (22 x 9 m, full size, slightly
+  curved, glowing script) left of the axis, facing the approach (-Y) as first built: at the 1103
+  hold it is big and close, its tall slips nearly flat to the view, its left part past the frame's
+  left edge (r15 restore, sect/patch_r15_scroll_restore.py: the owner's favourite), held high
   in a standing frame (round 2026-10-21 r5: it used to float with nothing holding it): two
   vermilion posts behind it, clamped at the foot by stone slabs with iron bands, a curved sill
   under the slips and a top rail over them, and the Ming Sect's 日 + 月 = 明 on the post heads
@@ -28,8 +30,8 @@ Layout (local frame, front = -Y, z = 0 walkable top):
   back rail, against the right rail of the terrace (they used to float in a fanned stack);
 - an ancient pine leaning over the back edge, bamboo and a blossom tree for colour, scholar rocks
   on low stone pedestals.
-The camera flies in toward the scroll's face, holds square to it (1103), then turns past its right end
-toward the pavilion.
+The camera flies in toward the scroll's face, holds with it on the left of the picture (1103), then turns past
+its right end toward the pavilion.
 """
 
 import math
@@ -58,40 +60,55 @@ K = "scroll"
 PAV = (12.0, 29.5)            # two-storey pavilion centre: back right, on the cliff edge (r ~ 39 m)
 PAV_R = 5.8                   # pavilion column circumradius (its platform reaches ~7.5 m)
 LANTERN_LIFT = 0.16           # the eave-corner lanterns' lift (r5): cord top 3 cm into the lower eave's soffit
-# The 1103 hold as the site shows it (r10): chase.cam's place and heading there, in this area's frame (read from
-# out/sect_chase.blend; sect/patch_r10_scroll_face.py checks the file still agrees), and the client's stop framing on
-# top of it (client/src/lib/sect/framing.ts STOP_FRAMING.scroll: the view turns 6 deg left, no pitch, easing in over
-# the last FRAMING_REACH frames before the hold and out over as many after it; hold_turn).
+# The 1103 hold as the site shows it: chase.cam's place and heading there, in this area's frame (read from
+# out/sect_chase.blend; sect/patch_r15_scroll_restore.py checks the file still agrees). r15: the site shows the film's
+# own view there again (client/src/lib/sect/framing.ts has no scroll entry any more, so HOLD_TURN is none; r10-r14 the
+# view turned 6 deg left, then also stood back 3 frames and tilted 3.5 up). hold_turn keeps the client's easing for a
+# turn, should one come back (the last FRAMING_REACH frames before the hold and as many after it).
 HOLD_FRAME = 1103
 HOLD_CAM = (0.20, -38.11, 15.66)
 HOLD_HEADING = math.radians(77.27)  # chase.cam's view direction in plan at the hold (atan2 of its forward y, x)
-HOLD_TURN = (6.0, 0.0)              # framing.ts STOP_FRAMING.scroll: yaw (deg, + = left, about world up), pitch (deg)
+HOLD_TURN = (0.0, 0.0)              # framing.ts STOP_FRAMING.scroll: yaw (deg, + = left, about world up), pitch (deg)
 FRAMING_REACH = 48                  # framing.ts FRAMING_REACH_FRAMES
-SCROLL_C = (-8.2, 12.0, 11.5)   # centre of the scroll (held by its frame, sect/patch_r5_scroll.py)
+# r15 restore (owner, 2026-10-23: "I dont like the jade strip now, way before it was good, then it was rotated to the
+# weird previous way"): back where the first build stood it (to 2026-10-21; patch_r2_compose.OLD_SCROLL_C), full size,
+# unturned. At the hold it is big and close, its slips tall with large characters, its right end 1/3 in from the left
+# edge and its left part past that edge (the owner liked that), the pavilion clear on its right. Round 2 (audit D2) had
+# moved it to (-4, 6, 13) at 0.9x turned -40 deg to fit it in the frame ("the weird previous way"), r10 to
+# (-8.2, 12, 11.5) at 0.86x square to a 6 deg turned view ("now"). Kept from those rounds: the r8 Jin Yong verses, the
+# r12 script cut into the slips (props.SLIPS_CUT), the r5 standing frame (rebuilt here for this place and size) and the
+# rune rings under it (back at their first place and size).
+SCROLL_C = (-10.0, -4.0, 13.0)  # centre of the scroll (held by its frame, sect/patch_r5_scroll.py)
 SCROLL_W, SCROLL_H = 22.0, 9.0
 SCROLL_CURVE = 0.08           # bow of the scroll in plan (props.bamboo_slip_scroll curve: ends come 0.08 W forward)
-SCROLL_SCALE = 0.86           # r10 (owner, 2026-10-22: "the jade slip does not seem to be facing the user"): it used to
-                              # stand at (-4, 6, 13), 0.9x, turned -40 deg (audit D2), its face ~30 deg off square to the
-                              # hold view. Square to the turned hold view it is wider on screen, so to stay whole in the
-                              # frame, 35 px clear of the pavilion at the hold and never over it on the approach it moved
-                              # 6 m back, 4 m left and 1.5 m down (posts as long as the panel is tall) and shrank to 0.86x;
-                              # its glyph cells are 11.8-12.1 px tall at 1600 x 900 (13-17 px before, turned away)
-SCROLL_YAW = HOLD_HEADING + math.radians(HOLD_TURN[0]) - math.pi / 2   # its front (-Y) looks straight back along the
-                              # turned hold view: the face lies parallel to the picture, both ends equally tall (-6.7 deg)
+SCROLL_SCALE = 1.0            # full size (r2 0.9, r10 0.86)
+SCROLL_YAW = 0.0              # unturned: its front faces -Y, the way the camera comes in (r2 -40 deg, r10 -6.7 deg)
 SCROLL_TEXT = P.JIN_YONG_VERSES   # what the slips say (r8): Jin Yong, each passage from the top of a new slip
 DESK = (4.0, 14.0)            # stone desk on the terrace, left of the axis walk (keeps x 12 clear)
 STAND_C = (23.2, 8.0)         # the Holy Fire Tokens' stand on the terrace: right of the axis walk, against the right
                               # rail, faces -Y (27 deg off the 1103 hold camera); clear of the route to the side
                               # steps (y -6 .. -1) and 3.8 m in front of the peach (r5: the stack floated at (21, -3, 6.5))
-RING_REF_SCALE = 0.9          # the scroll scale the rune rings' radii (and FRAME_RING_R) were laid out for
-RING_K = SCROLL_SCALE / RING_REF_SCALE   # r10: the rings (object scale in x and y) shrink with the scroll, so its
-                                         # posts keep their place between the two bands
-RING_BACK = 1.0               # the rings' centre lies this far (m at RING_REF_SCALE) behind the scroll's centre line
+RING_K = 1.0                  # the rune rings' object scale in x and y: their first size (r15; r10 shrank them with the
+                              # scroll to 0.956x). The frame's posts stand between the two bands (FRAME_RING_R)
+RING_BACK = 1.0               # the rings' centre lies this far (m at RING_K 1) behind the scroll's centre line
 RING_C = (SCROLL_C[0] - RING_K * RING_BACK * math.sin(SCROLL_YAW),
           SCROLL_C[1] + RING_K * RING_BACK * math.cos(SCROLL_YAW))   # the rune rings on the paving under the scroll
 RING_SCRIPT, RING_TRIGRAM = (9.0, 0.9), (6.4, 0.45)   # (radius to the band's centre, band width) at RING_K 1; the
                                                       # paving shows them RING_K times that (ring_bands)
-MOTES_TOP = 19.0              # the motes rise to this height (it was SCROLL_C z + 6 when the scroll stood at z 13)
+RING_Z = 0.0                  # the rune rings' origin (round 12): on the paving top
+# Round 12: the script ring's dark engraved channel is part of the terrace's own top (as at the summit, round 11): an
+# annulus of dark stone faces from the band's inner edge - CHANNEL_PAD to its outer edge + CHANNEL_PAD (the old groove
+# sheet's reach), CHANNEL_SEGS around. The groove was a separate sheet 5 mm under the paving top: 49 m2 of z-fighting
+TERRACE_MATS = ["marble_white", "marble_paving", "stone_dark"]
+CHANNEL_PAD = 0.02
+CHANNEL_SEGS = 256
+TERRACE_H = 0.6               # the terrace's height (its top at z 0, A.platform from -TERRACE_H)
+
+
+def channel_radii():
+    """(inner, outer) radius in m (root frame, from RING_C) of the dark channel under the script ring."""
+    r, w = RING_SCRIPT
+    return RING_K * (r - w / 2.0 - CHANNEL_PAD), RING_K * (r + w / 2.0 + CHANNEL_PAD)
 
 TERRACE_X = (-27.0, 27.0)
 TERRACE_Y = (-19.0, 24.0)     # the pavilion's own platform stands behind the back edge
@@ -109,14 +126,108 @@ def _n(*parts):
     return U.name(K, *parts)
 
 
+def terrace_channel(body, centre):
+    """Paint the dark channel (channel_radii, CHANNEL_SEGS) into the terrace body's top (A.platform's single top
+    n-gon, material 1): the top becomes the paving round the channel (quads from the channel's outer circle out to
+    the edge, each running to where its radial line meets the edge, the corners folded into their faces), the dark
+    annulus (material 2, TERRACE_MATS) and the paving disc inside it, all at the top's height. ``centre``: the
+    rings' centre (x, y) in the body's frame. The top's edges get the new boundary points, so its moulded sides keep
+    sharing them. Works on the built mesh (sect/patch_r12_areas.py paints a built file's the same way). Returns the
+    number of dark faces."""
+    me = body.data
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.normal_update()
+    zt = max(v.co.z for v in bm.verts)
+    tops = [f for f in bm.faces if f.normal.z > 0.99 and all(abs(v.co.z - zt) < 1e-5 for v in f.verts)]
+    if len(tops) != 1:
+        bm.free()
+        raise RuntimeError("terrace_channel: %s has %d top faces, expected one n-gon" % (body.name, len(tops)))
+    top = tops[0]
+    cx, cy = centre
+    c0, c1 = channel_radii()
+    n = CHANNEL_SEGS
+    ang = [2.0 * math.pi * k / n for k in range(n)]
+    # where each radial line through the outer circle's points meets the top's edge
+    ring = [v for v in top.verts]                            # counter-clockwise from +z
+    m = len(ring)
+    hits = []                                                # (edge index along the ring, t along it, k)
+    for k, a in enumerate(ang):
+        dx, dy = math.cos(a), math.sin(a)
+        best = None
+        for i in range(m):
+            p, q = ring[i].co, ring[(i + 1) % m].co
+            ex, ey = q.x - p.x, q.y - p.y
+            den = dx * ey - dy * ex
+            if abs(den) < 1e-12:
+                continue
+            s = ((p.x - cx) * ey - (p.y - cy) * ex) / den     # along the ray
+            t = ((p.x - cx) * dy - (p.y - cy) * dx) / den     # along the edge
+            if s > c1 and -1e-9 <= t <= 1.0 + 1e-9 and (best is None or s < best[0]):
+                best = (s, i, t)
+        if best is None:
+            bm.free()
+            raise RuntimeError("terrace_channel: the channel (r %.2f) does not fit inside %s's top" % (c1, body.name))
+        hits.append((best[1], best[2], k))
+    q_of = [None] * n
+    for i in range(m):
+        a, b = ring[i], ring[(i + 1) % m]
+        cur, done = a, 0.0
+        for t, k in sorted((t, k) for e_i, t, k in hits if e_i == i):
+            if t <= 1e-6:
+                q_of[k] = a
+            elif t >= 1.0 - 1e-6:
+                q_of[k] = b
+            else:      # split what is left of the edge (cur .. b) at the remaining fraction
+                _e, nv = bmesh.utils.edge_split(bm.edges.get((cur, b)), cur, (t - done) / (1.0 - done))
+                q_of[k] = nv
+                cur, done = nv, t
+    loop = list(top.verts)                                    # the top's ring with the new points, in order
+    pos = {v: j for j, v in enumerate(loop)}
+    mat_top = top.material_index
+    bmesh.ops.delete(bm, geom=[top], context='FACES_ONLY')
+    C1 = [bm.verts.new((cx + c1 * math.cos(a), cy + c1 * math.sin(a), zt)) for a in ang]
+    C0 = [bm.verts.new((cx + c0 * math.cos(a), cy + c0 * math.sin(a), zt)) for a in ang]
+    L = len(loop)
+    dark = 0
+    for k in range(n):
+        k2 = (k + 1) % n
+        j0, j1 = pos[q_of[k]], pos[q_of[k2]]
+        rim = [loop[j0]]
+        j = j0
+        while j != j1:
+            j = (j + 1) % L
+            rim.append(loop[j])
+        f = bm.faces.new(rim + [C1[k2], C1[k]])
+        f.material_index = mat_top
+        f = bm.faces.new((C0[k], C1[k], C1[k2], C0[k2]))
+        f.material_index = 2
+        dark += 1
+    f = bm.faces.new(C0)
+    f.material_index = mat_top
+    bm.normal_update()
+    if any(f.normal.z < 0.99 for f in bm.faces if all(abs(v.co.z - zt) < 1e-5 for v in f.verts)):
+        bm.free()
+        raise RuntimeError("terrace_channel: a top face of %s does not face up" % body.name)
+    bm.to_mesh(me)
+    bm.free()
+    U.set_materials(me, TERRACE_MATS)
+    U._apply_smooth(me, math.radians(35))
+    me.update()
+    return dark
+
+
 def _terrace(coll, root):
-    """Marble terrace (top at z = 0) with a balustrade along the back and side edges."""
+    """Marble terrace (top at z = 0) with a balustrade along the back and side edges; the dark channel under the
+    script ring is part of its top (terrace_channel)."""
     x0, x1 = TERRACE_X
     y0, y1 = TERRACE_Y
     w, d = x1 - x0, y1 - y0
-    h = 0.6
-    A.platform(_n("terrace"), coll, w, d, height=h, style="plain", sink=0.8, parent=root,
-               location=((x0 + x1) / 2, (y0 + y1) / 2, -h))
+    h = TERRACE_H
+    t = A.platform(_n("terrace"), coll, w, d, height=h, style="plain", sink=0.8, parent=root,
+                   location=((x0 + x1) / 2, (y0 + y1) / 2, -h))
+    body = bpy.data.objects[t.name + ".body"]
+    terrace_channel(body, (RING_C[0] - t.location.x, RING_C[1] - t.location.y))
     e = 0.6
     # back rail is split where the pavilion platform meets the terrace (its front face spans
     # PAV.x +- 3.75 m at the back edge)
@@ -232,14 +343,18 @@ def _scroll(coll, root):
                               rotation=(0.0, 0.0, SCROLL_YAW), passages=SCROLL_TEXT)
     sc.scale = (SCROLL_SCALE,) * 3
     scroll_frame(coll, root)
-    # glowing script ring on the paving under it (shrunk with the scroll: RING_K), and motes rising toward it
-    for nm, (r, w), kind, seed, spin, groove in ((_n("ring"), RING_SCRIPT, "script", 8, 0.02, True),
-                                                 (_n("ring_in"), RING_TRIGRAM, "trigram", 9, -0.03, False)):
-        ring = P.rune_ring(coll, r, w, kind, seed=seed, spin=spin, groove=groove, name=nm, parent=root,
+    # glowing script ring on the paving under it (scaled RING_K in plan). Round 21: no spirit motes (the web
+    # bake froze them into hundreds of still white specks over the sky; the page draws its own rising qi off the slip,
+    # client lib/sect/life.ts relic clusters). Round
+    # 12: no groove sheet (it lay 5 mm under the paving top and z-fought it over 49 m2): the terrace's own top is dark
+    # stone under the script band instead (_terrace_channel), and each ring's origin sits on the paving top, z 0, so
+    # props.rune_ring's band stands on it
+    for nm, (r, w), kind, seed, spin in ((_n("ring"), RING_SCRIPT, "script", 8, 0.02),
+                                         (_n("ring_in"), RING_TRIGRAM, "trigram", 9, -0.03)):
+        ring = P.rune_ring(coll, r, w, kind, seed=seed, spin=spin, groove=False, name=nm, parent=root,
                            location=(RING_C[0], RING_C[1], 0.0))
-        ring.scale = (RING_K, RING_K, 1.0)     # in plan only: they keep their 8 mm lift over the paving
-    P.spirit_motes(coll, 260, ((cx - 12, cy - 4, 0.6), (cx + 12, cy + 4, MOTES_TOP)), seed=5, size=0.07,
-                   rise=0.15, name=_n("motes"), parent=root)
+        ring.location.z = RING_Z
+        ring.scale = (RING_K, RING_K, 1.0)     # in plan only
     return sc
 
 

@@ -1033,9 +1033,51 @@ def star_stone(coll, name, parent, location, face_dir, star_name, variant=0):
 
 # ================================================================ floor inlays
 
+# Round 12: the floor inlays stand clear of the floor. The web draws every baked face double-sided with a 24-bit depth
+# buffer, so a sheet a few mm over the floor z-fights with it from afar (4 mm beyond ~130 m, 8 mm beyond ~180 m). The
+# glow under the trigram bars was a sheet 4 mm up (LEAK_Z_OLD) and the moss patches sheets 8 mm up (MOSS_Z_OLD), the
+# patches overlapping one another at one height. Both are now closed solids: tops INLAY_TOP over the floor, sides
+# INLAY_SINK into it, no bottom face; the moss patches are joined into one outline first (no two at one height).
+INLAY_TOP = 0.04
+INLAY_SINK = 0.02
+LEAK_Z_OLD = 0.004
+MOSS_Z_OLD = 0.008
+INLAY_SOLID = True              # False: the old sheets (patch_r12_libs.py builds them to recognise the old meshes)
+
+
+def _stand_up(bm, faces, top=INLAY_TOP, sink=INLAY_SINK):
+    """Raise flat faces (all at one height) of ``bm`` to ``top``, facing up, with closed sides from their outline (edges
+    of one face only) down to -``sink``; no bottom face."""
+    faces = [f for f in faces if f.is_valid]
+    verts = {v for f in faces for v in f.verts}
+    for f in faces:
+        f.normal_update()
+        if f.normal.z < 0:
+            f.normal_flip()
+    fs = set(faces)
+    # (in face order, not a set's: the same mesh every run)
+    edges = dict.fromkeys(e for f in faces for e in f.edges)
+    rim = [e for e in edges if sum(1 for g in e.link_faces if g in fs) == 1]
+    for v in verts:
+        v.co.z = top
+    low = {}
+
+    def under(v):
+        w = low.get(v)
+        if w is None:
+            w = low[v] = bm.verts.new((v.co.x, v.co.y, -sink))
+        return w
+    for e in rim:
+        f = next(g for g in e.link_faces if g in fs)
+        lp = next(lp for lp in f.loops if lp.edge == e)
+        a, b = lp.vert, lp.link_loop_next.vert
+        side = bm.faces.new((b, a, under(a), under(b)))
+        side.material_index = f.material_index
+
+
 def bagua(bm_bar, bm_leak, angles, chars, r_lines=(13.6, 15.0, 16.4), length=4.2, depth=0.75, gap=0.7):
-    """Bronze trigram bars (0.06 m proud) centred on each angle (bottom line innermost) and, under each bar, a flat
-    strip 0.12 m wider all round: the glow leaking from under the bronze."""
+    """Bronze trigram bars (0.06 m proud) centred on each angle (bottom line innermost) and, under each bar, a frame
+    0.12 m wider all round: the glow leaking from under the bronze, a closed band INLAY_TOP high (INLAY_SOLID)."""
     for t, ch in zip(angles, chars):
         rot = Matrix.Rotation(t, 4, 'Z')
         for r, yang in zip(r_lines, TRIGRAM_LINES[ch]):
@@ -1044,14 +1086,15 @@ def bagua(bm_bar, bm_leak, angles, chars, r_lines=(13.6, 15.0, 16.4), length=4.2
                 uc, L = 0.5 * (u0 + u1), u1 - u0
                 P._box(bm_bar, (depth, L, 0.075), (r, uc, 0.0225), matrix=rot)
                 hw, hl = depth / 2 + 0.12, L / 2 + 0.12
-                iw, il = depth / 2 - 0.02, L / 2 - 0.02
+                ins = 0.04 if INLAY_SOLID else 0.02    # the frame reaches this far in under the bar
+                iw, il = depth / 2 - ins, L / 2 - ins
                 outer = [(r - hw, uc - hl), (r + hw, uc - hl), (r + hw, uc + hl), (r - hw, uc + hl)]
                 inner = [(r - iw, uc - il), (r + iw, uc - il), (r + iw, uc + il), (r - iw, uc + il)]
-                vo = [bm_leak.verts.new(rot @ Vector((x, y, 0.004))) for x, y in outer]
-                vi = [bm_leak.verts.new(rot @ Vector((x, y, 0.004))) for x, y in inner]
-                for i in range(4):
-                    j = (i + 1) % 4
-                    bm_leak.faces.new((vo[i], vo[j], vi[j], vi[i]))
+                vo = [bm_leak.verts.new(rot @ Vector((x, y, LEAK_Z_OLD))) for x, y in outer]
+                vi = [bm_leak.verts.new(rot @ Vector((x, y, LEAK_Z_OLD))) for x, y in inner]
+                made = [bm_leak.faces.new((vo[i], vo[(i + 1) % 4], vi[(i + 1) % 4], vi[i])) for i in range(4)]
+                if INLAY_SOLID:
+                    _stand_up(bm_leak, made)
 
 
 def studs(bm, angles, r=15.0, size=0.8, h=0.08):
@@ -1178,9 +1221,10 @@ def dots(bm, angles, r, rad=0.24):
         P._cyl(bm, rad, 0.05, 16, center=(r * math.cos(a), r * math.sin(a), 0.015))
 
 
-def moss_patches(bm, spots, seed):
-    """Flat irregular moss patches [(x, y, size)] at z 0.008."""
+def moss_outlines(spots, seed):
+    """The irregular moss patch outlines [[(x, y), ...]] for spots [(x, y, size)]."""
     rnd = random.Random(seed)
+    out = []
     for x, y, s in spots:
         n = 9
         ph = rnd.uniform(0, TAU)
@@ -1189,4 +1233,42 @@ def moss_patches(bm, spots, seed):
             a = ph + TAU * i / n
             rr = 0.5 * s * (0.7 + 0.3 * math.sin(3 * a + rnd.uniform(0, 1)) + rnd.uniform(-0.12, 0.12))
             pts.append((x + rr * math.cos(a), y + rr * math.sin(a) * rnd.uniform(0.6, 1.0)))
-        flat_poly(bm, pts, 0.008)
+        out.append(pts)
+    return out
+
+
+def moss_solid(bm, outlines):
+    """The moss patches as one closed solid (INLAY_SOLID): their outlines joined (constrained Delaunay triangles of
+    the union, so overlapping patches become one), the top INLAY_TOP over the floor, sides INLAY_SINK into it."""
+    from mathutils.geometry import delaunay_2d_cdt
+    vco, faces = [], []
+    for pts in outlines:
+        if P._area2(pts) < 0:
+            pts = list(reversed(pts))
+        faces.append(list(range(len(vco), len(vco) + len(pts))))
+        vco.extend(Vector(p) for p in pts)
+    out_v, _e, out_f, _ov, _oe, orig_f = delaunay_2d_cdt(vco, [], faces, 1, 1e-7)
+    vs = [bm.verts.new((p.x, p.y, 0.0)) for p in out_v]
+    made = []
+    for k, tri in enumerate(out_f):
+        if not orig_f[k]:
+            continue
+        try:
+            made.append(bm.faces.new([vs[i] for i in tri]))
+        except ValueError:
+            pass
+    loose = [v for v in vs if not v.link_faces]
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context='VERTS')
+    _stand_up(bm, made)
+
+
+def moss_patches(bm, spots, seed):
+    """Irregular moss patches [(x, y, size)]: one closed solid INLAY_TOP high (INLAY_SOLID), else flat sheets at
+    MOSS_Z_OLD."""
+    outlines = moss_outlines(spots, seed)
+    if INLAY_SOLID:
+        moss_solid(bm, outlines)
+        return
+    for pts in outlines:
+        flat_poly(bm, pts, MOSS_Z_OLD)

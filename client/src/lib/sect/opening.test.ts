@@ -144,11 +144,12 @@ describe("openingMegabytes", () => {
 
 describe("portraitTurn", () => {
   it("turns toward the items at the stops that need it, on portrait screens only", () => {
-    // 10, 13 and 17 degrees left of the path's own view in all, 4, 8 and 6 of them the stops'
-    // framing on every screen.
+    // 10 and 13 degrees left of the path's own view in all, 4 and 8 of them the stops' framing on
+    // every screen.
     expect(portraitTurn("mirror", true).yaw + STOP_FRAMING.mirror.yaw * DEG).toBeCloseTo(10 * DEG, 9);
     expect(portraitTurn("mission", true).yaw + STOP_FRAMING.mission.yaw * DEG).toBeCloseTo(13 * DEG, 9);
-    expect(portraitTurn("scroll", true).yaw + STOP_FRAMING.scroll.yaw * DEG).toBeCloseTo(17 * DEG, 9);
+    // The jade slip keeps the film's own view on phones too, as before its framing (2026-10-22).
+    expect(portraitTurn("scroll", true)).toEqual({ yaw: 0, pitch: 0 });
     // The cave abode turns right, the cliff's inscription out from under the labels.
     expect(portraitTurn("abode", true).yaw).toBeCloseTo(-3 * DEG, 9);
     expect(portraitTurn("mirror", true).pitch).toBe(0);

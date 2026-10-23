@@ -85,6 +85,7 @@ import { SectReflections } from "./reflect";
 import { reflectTier } from "./reflect/plan";
 import { SpanTimer } from "./reflect/timer";
 import { Cranes, ForgeFire, FormationFires, IncenseSmoke, Petals } from "./fx";
+import { ForgeFlames } from "./forge-flames";
 import { createGrassDebug, Grass, type GrassDebug } from "./grass";
 import { IDLE_ON, IDLE_TIME, updateIdle } from "./idle";
 import { Life } from "./life";
@@ -2392,6 +2393,7 @@ function SectCanvas(props: SectCanvasProps) {
       {global && <Grass chunks={chunks} ctx={ctx} meta={meta} store={store} quality={quality} debug={grassDebug} />}
       {global && <WaterfallFx meta={meta} base={ctx.data.base} time={ctx.waterfallMaterial.uniforms.uTime} sets={sets} store={store} fog={fog} quality={quality} overlay={overlay} />}
       <ForgeFire set={forgeSet} store={store} />
+      <ForgeFlames set={forgeSet} meta={meta} store={store} fog={fog} quality={quality} overlay={overlay} debug={debug} />
       <FormationFires set={formationSet} store={store} meta={meta} tier={decorTier} />
       <IncenseSmoke set={mirrorSet} store={store} />
       <Hotspots

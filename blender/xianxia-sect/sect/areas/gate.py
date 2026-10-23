@@ -1,15 +1,16 @@
 """Mountain Gate (山门) - site section 'hero', the opening of the fly-through.
 
-Blocking pass (spec section 0): a colossal five-bay paifang with the 明教 plaque on a white
-marble plaza at the cliff edge, guardian lions and two colossal legendary weapons (the Heaven
+Blocking pass (spec section 0): a colossal five-bay paifang with the 日月神教 plaque (the Sun Moon Divine Cult; until
+round 32 明教, the Ming Sect) on a white marble plaza at the cliff edge, guardian lions and two colossal legendary weapons (the Heaven
 Sword 倚天剑 and the Dragon Saber 屠龙刀, blade-down in carved plinths) flanking the top
 of a steep white marble stairway that dives about 56 m down the mountainside into the cloud
 sea, with a landing every 24 steps (a stone lantern pair on each, tall banner pairs on landings
 1 and 3) and a paved forecourt joining the stair top to the plaza. Behind the plaza's back
 opening a 12 x 12 m railed landing on the axis (y 24 to 36) is where the stair to the
 Heart-Mirror Terrace starts (AREA['depart']); AREA['arrival'] is the grand stair's foot.
-The sect's sun-and-moon emblem (明 = 日 + 月) marks the paifang: a gilt finial on the top ridge and a sun and a moon
-medallion either side of the plaque (_sun_moon); every banner here carries it as its roundel (props.banner default).
+The sect's sun-and-moon emblem (日月, the first two characters of its name) marks the paifang: a gilt finial on the top
+ridge and a sun and a moon medallion either side of the plaque (_sun_moon); every banner here carries it as its roundel
+(props.banner default).
 
 Local frame: origin = plaza centre, z = 0 walkable, front (stairs, arriving camera) faces -Y.
 The stairway leaves the footprint toward -Y (allowed by the brief) and ends near y = -131,
@@ -27,8 +28,9 @@ from sect.lib import util as U
 from sect.lib import arch as A
 from sect.lib import props as P
 
-AREA = dict(key="gate", section_id="hero", title_en="Mountain Gate", title_zh="明教",
-            footprint=40.0)
+AREA = dict(key="gate", section_id="hero", title_en="Mountain Gate", title_zh="日月神教",
+            footprint=40.0)            # title_zh: the plaque. Round 32 (the owner): 明教 -> 日月神教, the Sun Moon Divine
+                                       # Cult of 笑傲江湖 (patch_r32_plaque.py brings a built file up to it)
 
 K = AREA["key"]
 
@@ -196,6 +198,17 @@ def _stairway(coll, root):
                          location=(s * 9.5, yl + 0.6, zb), rotation=(0, 0, 0.0 if s < 0 else math.pi))
 
 
+def _ridge_noise(p):
+    """The ridge's crag offsets at ``p``: three scalar Perlin fields (round 12: it used util.noise_vec, i.e.
+    mathutils.noise.noise_vector, whose offsets come from mathutils' random state, seeded from the clock: every Blender
+    session built different crags, so no rebuild matched the last one). Each component roughly in [-1, 1]."""
+    from mathutils import Vector
+    return Vector(tuple(U.noise3(p, scale=0.09, seed=RIDGE_SEED + k) for k in range(3)))
+
+
+RIDGE_SEED = 17
+
+
 def _ridge(coll, root):
     """Craggy rock spine under the stairway, so it reads as built down a mountainside (world.py's
     slope will partly bury it). Flat-shaded, rock_cliff."""
@@ -213,13 +226,19 @@ def _ridge(coll, root):
         for j, (sx, sz) in enumerate(section):
             x, z = sx * grow, ztop + sz * grow
             if j > 4 and j < m:            # keep the top edge tucked under the stair body
-                nv = U.noise_vec((x, y, z), scale=0.09, seed=17)
+                nv = _ridge_noise((x, y, z))
                 x += nv.x * 3.0
                 z += nv.z * 2.5
-                yy = y + nv.y * 1.5
+                # (round 12: not along y on the two end rings, so their caps are flat; the far one was a warped
+                # n-gon whose triangles folded over each other 1-13 mm apart)
+                yy = y + nv.y * 1.5 if 0 < i < n else y
             else:
                 yy = y
             verts.append((x, yy, z))
+    # round 12: each ring interval and section edge split RIDGE_SUB times (in place: the shape is the same), so
+    # clear_ridge_of_range's sunk vertices are at most ~2 m from the next one up and the faces meet the slope steeply
+    # (its 7 m rings left top faces crossing it at 2-4 degrees: a band of them lay within 5 mm of it)
+    verts, n, m = _subdivide_rings(verts, n, m, *RIDGE_SUB)
     for i in range(n):
         for j in range(m):
             a, b = i * m + j, i * m + (j + 1) % m
@@ -230,7 +249,83 @@ def _ridge(coll, root):
                             parent=root)
     _recalc(ob)
     U.shade_flat(ob)
+    rg = bpy.data.objects.get(RANGE)
+    if rg is not None:                     # assemble builds the world first; gate.root goes to the gate's anchor
+        from mathutils import Matrix
+        from sect import world as W
+        clear_ridge_of_range(ob, rg, Matrix.Translation(W.ANCHORS["gate"][:3]))
     return ob
+
+
+RANGE = "world.range"
+# Round 12: world.py's slope under the stairway lay 2-6 mm off the ridge over ~6 m2: its 30 m2 top faces under the
+# flights crossed the slope at 1-3 degrees, their corners a few dm either side of it, and near the stair foot its flanks
+# grazed it (z-fighting on the web). Every ridge vertex less than RIDGE_REACH over world.range's top (or less than
+# RIDGE_SINK under it) now goes RIDGE_SINK under it: those faces lie wholly under the slope, the rest meet it steeply
+RIDGE_REACH = 0.50
+RIDGE_SINK = 0.25
+RIDGE_SUB = (4, 2)       # _ridge's ring intervals (7 m) and section edges (4-9 m) are split this many times
+
+
+def _subdivide_rings(verts, n, m, sub_ring, sub_sec):
+    """A closed ring grid (n + 1 rings of m points, ring-major) with each ring interval split ``sub_ring`` times and
+    each section edge ``sub_sec`` times, by straight interpolation. Returns (verts, n, m) of the finer grid."""
+    def lerp(a, b, t):
+        return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t)
+
+    rings = []
+    for i in range(n + 1):
+        ring = verts[i * m:(i + 1) * m]
+        rings.append([lerp(ring[j], ring[(j + 1) % m], q / sub_sec) for j in range(m) for q in range(sub_sec)])
+    out = []
+    for i in range(n):
+        for s in range(sub_ring):
+            out += [lerp(a, b, s / sub_ring) for a, b in zip(rings[i], rings[i + 1])]
+    out += rings[n]
+    return out, n * sub_ring, m * sub_sec
+RIDGE_CLEAR = 0.03       # what the patch checks: no ridge vertex within this of the range's top
+
+
+def clear_ridge_of_range(ob, rg, root_matrix):
+    """Sink every vertex of the stair ridge ``ob`` (a child of gate.root, local = identity) that lies between
+    RIDGE_SINK under and RIDGE_REACH over world.range's top (``rg``, sampled straight down) to RIDGE_SINK under it.
+    ``root_matrix``: gate.root's world matrix (where assemble puts it; a patch passes the file's). Returns the number
+    of vertices moved."""
+    import numpy as np
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    me = ob.data
+    pts = [root_matrix @ v.co for v in me.vertices]
+    lo = np.array([min(p.x for p in pts) - 2.0, min(p.y for p in pts) - 2.0])
+    hi = np.array([max(p.x for p in pts) + 2.0, max(p.y for p in pts) + 2.0])
+    top = max(p.z for p in pts) + 60.0
+    rme = rg.data
+    rme.calc_loop_triangles()
+    co = np.empty(len(rme.vertices) * 3)
+    rme.vertices.foreach_get("co", co)
+    M = np.array(rg.matrix_world)
+    co = co.reshape(-1, 3) @ M[:3, :3].T + M[:3, 3]
+    tv = np.empty(len(rme.loop_triangles) * 3, dtype=np.int64)
+    rme.loop_triangles.foreach_get("vertices", tv)
+    T = co[tv.reshape(-1, 3)]
+    keep = ~((T[:, :, :2].min(1) > hi).any(1) | (T[:, :, :2].max(1) < lo).any(1))
+    T = T[keep]
+    if not len(T):
+        return 0
+    tree = BVHTree.FromPolygons([Vector(p) for p in T.reshape(-1, 3)], [(3 * i, 3 * i + 1, 3 * i + 2)
+                                                                        for i in range(len(T))], all_triangles=True)
+    inv = root_matrix.inverted()
+    n = 0
+    for v, p in zip(me.vertices, pts):
+        hit = tree.ray_cast(Vector((p.x, p.y, top)), Vector((0.0, 0.0, -1.0)), 1e4)
+        if hit[0] is None or hit[1].z <= 0.0:
+            continue
+        h = hit[0].z
+        if h - RIDGE_SINK + 1e-4 < p.z < h + RIDGE_REACH:
+            v.co = inv @ Vector((p.x, p.y, h - RIDGE_SINK))
+            n += 1
+    me.update()
+    return n
 
 
 # ---- the gate weapons: Heaven Sword 倚天剑 and Dragon Saber 屠龙刀 ----------------------------
@@ -239,30 +334,45 @@ def _ridge(coll, root):
 # had them forged from Yang Guo's Black Iron Heavy Sword (玄铁重剑, black, with a dark red glint) and Western gold
 # essence (西方精金): the Dragon Saber black, broad and over a hundred jin heavy (east, x +16: the dragon's side), the
 # Heaven Sword a slender, keen straight jian (west, x -16). Each stands blade-down in a sumeru plinth (须弥座) with
-# its name inlaid on the blade (倚天 / 屠龍; the plinth front stays plain, PLINTH_NAME) and, on the sides, its half of the saying
-# 武林至尊，寶刀屠龍，號令天下，莫敢不從；倚天不出，誰與爭鋒 (traditional, as the novels print it) (columns read right to left). The site's cyan rune glow:
-# the jian's ridge inlay, guard and pommel gems; the saber's groove (血槽), dragon eyes and the pearl in its ring.
+# its name in gold on the plinth's front (倚天 / 屠龍, PLINTH_NAME) and, on the sides, its half of the saying
+# 武林至尊，寶刀屠龍，號令天下，莫敢不從；倚天不出，誰與爭鋒 (traditional, as the novels print it) (columns read right to left). The blades
+# carry no name (BLADE_NAME; round 24, the owner: "if it was a real weapon the name wouldn't be on it"). The site's cyan
+# rune glow: the jian's ridge inlay, guard and pommel gems; the saber's groove (血槽), dragon eyes and the pearl in its ring.
 #
-# Web-pipeline contract (sect/patch_gate_swords.py rebuilds both in out/sect_chase.blend): the objects keep the
+# Web-pipeline contract (sect/patch_gate_swords.py, and since round 24 sect/patch_r24_swords.py, rebuild both in
+# out/sect_chase.blend): the objects keep the
 # names 'gate.sword_monolith' (sword) and 'gate.sword_monolith.001' (saber) and each mesh's local bound box is
 # exactly x, y -2.7..2.7, z 0..15.6, as the old stone monolith's. export_web's visibility cache, chunk plan and the
-# 'gate-swords' hotspot box key on those names and (rotated) boxes, so they stay valid without a new audit.
+# 'gate-swords' hotspot box key on those names and (rotated) boxes, so they stay valid without a new audit as long as
+# the weapons stay put (round 24 moved them 3 m toward the gate, WEAPON_Y: that needs the audit and chunks,meta).
 # The geometry is built as plain Python lists (_Geo, no bpy) so tests can check it without Blender; only the
 # glyph outlines (props._text_mesh) and the final mesh (_geo_to_mesh) need Blender.
 
 WEAPON_HALF = 2.7              # local bound box half width (x and y): the plinth's base slab
 WEAPON_TOP = 15.6              # local bound box top: the pommel
-WEAPON_X, WEAPON_Y = 16.0, -25.0
+WEAPON_X, WEAPON_Y = 16.0, -22.0  # round 24: y -25 -> -22, so the plinth names show whole in the gate's hold (93, 1600
+                               # x 900): at -25 the plinth fronts sat on the frame's bottom edge and the sword's also on
+                               # its left edge. At -22 the four characters are 22-28 px tall, all in the frame, none
+                               # hidden by the lions; the base stays 0.62 m off the plaza balustrade and 0.77 m off the
+                               # banner stones at y -20
 WEAPON_YAW = math.radians(12.0)
 WEAPON_FACE_IN = True          # True: the fronts turn 12 deg toward the axis, to the arriving camera (the old monoliths
                                # turned 12 deg away from it); the world box is the same either way (square local box)
-WEAPON_TRI_BUDGET = 15000      # per weapon including its plinth; over it the couplet drops to res 1, then goes
+WEAPON_TRI_BUDGET = 17000      # per weapon including its plinth; over it the couplet drops to res 1, then goes
+                               # (round 12: 15000 -> 16000; carving the inlays in, carve_inlays, adds ~1.5k to the saber.
+                               # Round 24: -> 17000; the 0.8 m plinth names at res 3, carved into their plates, cost ~840
+                               # more than the blade names did: the saber 15990 after carving, the sword 6918)
 WEAPON_COUPLET = True          # the saying on the plinth sides
-PLINTH_NAME = False            # the name in gold on the plinth front; off: the blade already carries it (the owner
-                               # found the name said twice), so the front panel stays a plain framed stone
-COUPLET_RES = 1                # its glyphs' curve resolution (0.2 m characters: res 1 reads, res 2 doubles them)
-BLADE_NAME_BACK = False        # the blade's name on the back face too (+1.0-1.3k triangles; the path and the
-                               # hold see the fronts, only a look-around from the plaza sees the backs)
+PLINTH_NAME = True             # the name in gold on the plinth front, carved into its plate like the saying (CARVE).
+                               # Round 24 (the owner): the name goes on the base, not on the weapon; until then it was
+                               # on the blade and this front was a plain framed stone (the name said once, not twice)
+NAME_RES = 3                   # the plinth name's curve resolution (0.8 m characters, the closest text to the path)
+COUPLET_RES = 1                # the saying's curve resolution (0.2 m characters: res 1 reads, res 2 doubles them)
+BLADE_NAME = False             # the name inlaid on the blade (the jian: in a cartouche on its ridge, J_PLATE; the saber:
+                               # on its broad flat under the collar, D_NAME). Off since round 24: plain blades, the
+                               # jian's ridge inlay runs unbroken where the cartouche was; the saber's dragon stays
+BLADE_NAME_BACK = False        # with BLADE_NAME, the blade's name on the back face too (+1.0-1.3k triangles; the path
+                               # and the hold see the fronts, only a look-around from the plaza sees the backs)
 WEAPON_SMOOTH = math.radians(35.0)   # edges sharper than this stay hard; ridge and hone lines are marked hard anyway
 WEAPONS = (
     dict(key="heaven_sword", kind="jian", side=-1, object="gate.sword_monolith", name="倚天",
@@ -667,15 +777,16 @@ def _w_plinth(g, collar):
 
 def _w_inscriptions(g, spec, glyph, couplet=True, couplet_res=COUPLET_RES):
     """The name (gold relief 3 cm proud, front panel; only with PLINTH_NAME) and the saying (gold inlay 4 mm proud,
-    side panels)."""
+    side panels). Both are the part 'glyphs', which weapon_mesh carves into the plates (CARVE): the plate's face stops
+    at each character's outline, so no face lies under the gold."""
     zc = sum(PANEL_Z) / 2.0
     face_d = DIE[2] + 0.03                         # the plate's outer face
-    # name: two characters side by side
+    # name: two characters side by side, read left to right as the gate's plaque (日月神教) reads
     size = NAME_CELL * 0.88
     n = len(spec["name"])
     for k, ch in enumerate(spec["name"] if PLINTH_NAME else ""):
         u = (k - (n - 1) / 2.0) * NAME_CELL * 1.08
-        vs, fs = glyph(ch, size, 3)
+        vs, fs = glyph(ch, size, NAME_RES)
         g.glyph_solid(vs, fs, _frame((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), (u, -face_d, zc)), "gold",
                       depth=0.034, sink=0.004)
     if not couplet:
@@ -698,10 +809,12 @@ def _w_inscriptions(g, spec, glyph, couplet=True, couplet_res=COUPLET_RES):
 
 # ---- Heaven Sword (jian) ---------------------------------------------------------------------
 
-J_PLATE = (7.75, 8.05, 9.55, 9.85)   # the blade's name cartouche on the ridge: ramp in, flat plate, ramp out (z)
+J_PLATE = (7.75, 8.05, 9.55, 9.85)   # the blade's name cartouche on the ridge: ramp in, flat plate, ramp out (z);
+                                     # only with BLADE_NAME (a cartouche with no name in it would be a blank label)
 J_PLATE_W = 0.28                     # its half width
-J_NAME = (0.52, (9.18, 8.42))        # blade name: character size, centres (top first); ~19 px tall at the hold
-D_NAME = (0.60, 0.08, (9.66, 8.98))  # saber blade name: character size, x on the broad flat, centres (top first)
+J_NAME = (0.52, (9.18, 8.42))        # blade name (BLADE_NAME): character size, centres (top first); ~19 px tall at
+                                     # the hold
+D_NAME = (0.60, 0.08, (9.66, 8.98))  # saber blade name (BLADE_NAME): character size, x on the broad flat, centres
 
 
 def _jian_T(z):
@@ -709,23 +822,23 @@ def _jian_T(z):
 
 
 def _jian_inlay(z):
-    """Half width of the glowing ridge inlay: grows in above the plinth, tapers into the name cartouche and grows
-    out of it again, narrows under the guard."""
+    """Half width of the glowing ridge inlay: grows in above the plinth, narrows under the guard; with BLADE_NAME it
+    tapers into the name cartouche and grows out of it again."""
     a, _b, _c, d = J_PLATE
-    away = min(max(1.0 - _ss((z - (a - 0.55)) / 0.55) + _ss((z - d) / 0.45), 0.0), 1.0)
+    away = min(max(1.0 - _ss((z - (a - 0.55)) / 0.55) + _ss((z - d) / 0.45), 0.0), 1.0) if BLADE_NAME else 1.0
     return 0.004 + 0.081 * _ss((z - 3.5) / 0.9) * away * (1.0 - 0.4 * _ss((z - 10.5) / 0.75))
 
 
 def _jian_section(z):
     """12 points: edge, hone line, inlay, ridge, ... (counter-clockwise). Hone faces: cols 0, 5, 6, 11; the glowing
-    ridge inlay: cols 2, 3, 8, 9 (flush with the flats). In the cartouche (J_PLATE) cols 2, 3, 8, 9 widen into a
-    flat plate at the ridge's height that carries the name."""
+    ridge inlay: cols 2, 3, 8, 9 (flush with the flats). With BLADE_NAME, in the cartouche (J_PLATE) cols 2, 3, 8, 9
+    widen into a flat plate at the ridge's height that carries the name."""
     t = (z - J_Z0) / (J_ZTOP - J_Z0)
     W = 0.52 + 0.16 * t ** 0.8
     T = _jian_T(z)
     b, te = 0.13, 0.035
     a, b_, c_, d = J_PLATE
-    p = _ss((z - a) / (b_ - a)) * (1.0 - _ss((z - c_) / (d - c_)))
+    p = _ss((z - a) / (b_ - a)) * (1.0 - _ss((z - c_) / (d - c_))) if BLADE_NAME else 0.0
     fo = _lerp(_jian_inlay(z), J_PLATE_W, p)
     ti = _lerp(T - (T - te) * fo / (W - b), T, p)
     pts = ((W, 0.0), (W - b, te), (fo, ti), (0.0, T), (-fo, ti), (-(W - b), te), (-W, 0.0), (-(W - b), -te),
@@ -763,19 +876,20 @@ def _offset_outline(pts, d):
 
 
 def _w_jian(g, spec, glyph):
-    # blade (tip end buried in the plinth): hard edge, hone, ridge and cartouche lines; the ridge inlay glows except
-    # where it narrows into the cartouche
+    # blade (tip end buried in the plinth): hard edge, hone and ridge lines; the ridge inlay glows from above the
+    # plinth to the guard (with BLADE_NAME: except where it narrows into the name's cartouche)
     rings = [_jian_section(z) for z in J_RINGS]
     hone = {0, 5, 6, 11}
     inlay = {2, 3, 8, 9}
 
     def glow(z):
-        return z >= 3.5 and not (J_PLATE[0] <= z < J_PLATE[3])
+        return z >= 3.5 and not (BLADE_NAME and J_PLATE[0] <= z < J_PLATE[3])
     g.loft("blade", rings, lambda r, c: "rune" if (c in inlay and glow(J_RINGS[r])) else "blade",
            edge=lambda r, c: 1.0 if c in hone else 0.0, hard_cols=tuple(range(12)))
-    # the name inlaid in gold on the cartouche, top to bottom, on the front (and the back: BLADE_NAME_BACK)
+    # with BLADE_NAME: the name inlaid in gold on the cartouche, top to bottom, on the front (and the back:
+    # BLADE_NAME_BACK)
     size, zs = J_NAME
-    for sgn in ((-1.0, 1.0) if BLADE_NAME_BACK else (-1.0,)):
+    for sgn in ((-1.0, 1.0) if BLADE_NAME_BACK else (-1.0,)) if BLADE_NAME else ():
         for ch, z in zip(spec["name"], zs):
             vs, fs = glyph(ch, size, 2)
             g.glyph_solid(vs, fs, _frame((-sgn, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, sgn, 0.0),
@@ -832,8 +946,9 @@ def _w_jian(g, spec, glyph):
 # A broad black-iron dao planted point-down. Seen from the front (-y) the spine (-x, toward the gate's axis) is thick
 # and gently curved; the edge (+x) runs almost parallel to it under the guard (~1.3 m wide), then sweeps out to a
 # ~2.3 m belly just above the plinth and turns back in where the point dives into the stone. The honed bevel is
-# bright steel against the dark iron flat; a lighter fuller (血槽) runs along the spine; 屠龙 is inlaid in gold under
-# the collar and a cyan line-art dragon rises up the flat (thin inlay strips laid on the blade mesh's own surface).
+# bright steel against the dark iron flat; a lighter fuller (血槽) runs along the spine; a cyan line-art dragon rises
+# up the flat (thin inlay strips laid on the blade mesh's own surface; with BLADE_NAME 屠龍 is inlaid in gold above it,
+# under the collar; since round 24 the name is on the plinth only).
 # Fittings: a gold cloud-point collar (吞口) wrapping the blade root, a begonia-shaped iron disc guard (海棠护手)
 # with gold rim lines, a red cord-wrapped grip, a gold ring pommel (环首) and a red silk tassel on the inner side.
 
@@ -979,8 +1094,8 @@ def _w_stroke(g, pts, mat, sgn=-1.0, top=None, name="dragon"):
 
 
 D_DRAGON_BODY = (              # centre line of the dragon's body, from the neck (behind the head, low on the
-    (0.74, 4.00, 0.15), (0.84, 4.40, 0.185), (0.74, 4.82, 0.195),     # blade's broad belly) up to the tail under
-    (0.46, 5.12, 0.19), (0.12, 5.42, 0.18), (-0.06, 5.84, 0.17),      # the name: (x, z, width) on the front flat
+    (0.74, 4.00, 0.15), (0.84, 4.40, 0.185), (0.74, 4.82, 0.195),     # blade's broad belly) up to the tail at z 8.4
+    (0.46, 5.12, 0.19), (0.12, 5.42, 0.18), (-0.06, 5.84, 0.17),      # (x, z, width) on the front flat
     (0.06, 6.26, 0.155), (0.38, 6.58, 0.14), (0.52, 6.96, 0.125), (0.36, 7.34, 0.11), (0.08, 7.62, 0.09),
     (-0.04, 7.92, 0.07), (0.04, 8.20, 0.05), (0.18, 8.40, 0.03))
 D_DRAGON_DORSAL = 1.0          # the body's back: +1 on the right of its neck-to-tail direction (fins), belly opposite
@@ -1013,8 +1128,8 @@ D_DRAGON_GAP = 0.045           # the dark line between the body's back and belly
 def _dao_dragon():
     """The dragon as strokes [(name, [(x, z, width) control points])] on the front flat: the head low on the broad
     belly of the blade looking toward the spine (the gate's axis), the serpentine body rising from it in S-curves,
-    thick at the chest and tapering to a flame-tipped tail under the name; dorsal fins on its back and two legs with
-    three claws on its belly (both laid out along the body curve)."""
+    thick at the chest and tapering to a flame-tipped tail (z 8.4, under where the name was until round 24); dorsal
+    fins on its back and two legs with three claws on its belly (both laid out along the body curve)."""
     out = _dragon_body_strips()
     pts = _curve(D_DRAGON_BODY, 0.02)
     acc = [0.0]
@@ -1111,9 +1226,10 @@ def _w_dao(g, spec, glyph):
     g.loft("blade", rings, lambda r, c: "hone" if c in hone else "blade",
            edge=lambda r, c: 1.0 if c in hone or c in fuller else (0.6 if c in (6, 8) else (0.3 if c == 7 else 0.0)),
            hard_cols=tuple(range(15)))
-    # the name inlaid in gold under the collar, top to bottom, on the front (and the back: BLADE_NAME_BACK)
+    # with BLADE_NAME: the name inlaid in gold under the collar, top to bottom, on the front (and the back:
+    # BLADE_NAME_BACK)
     size, xn, zs = D_NAME
-    for sgn in ((-1.0, 1.0) if BLADE_NAME_BACK else (-1.0,)):
+    for sgn in ((-1.0, 1.0) if BLADE_NAME_BACK else (-1.0,)) if BLADE_NAME else ():
         for ch, z in zip(spec["name"], zs):
             vs, fs = glyph(ch, size, 2)
             g.glyph_solid(vs, fs, _dao_place(xn, z, sgn), "gold", depth=0.007, sink=0.003, name="blade_glyphs")
@@ -1240,10 +1356,15 @@ def _geo_to_mesh(g, name, materials):
     slot = {r: i for i, r in enumerate(roles)}
     bm = bmesh.new()
     layer = bm.faces.layers.float.new(U.EDGE_ATTR)
+    part = bm.faces.layers.int.new(PART_ATTR)
+    part_of = [0] * len(g.faces)
+    for pi, (_nm, f0, f1, _closed) in enumerate(g.parts):
+        for i in range(f0, f1):
+            part_of[i] = pi
     vs = [bm.verts.new(p) for p in g.verts]
     bm.verts.index_update()
     skipped = 0
-    for idx, m, e, sm in zip(g.faces, g.mat, g.edge, g.smooth):
+    for fi, (idx, m, e, sm) in enumerate(zip(g.faces, g.mat, g.edge, g.smooth)):
         try:
             f = bm.faces.new([vs[i] for i in idx])
         except ValueError:                         # a glyph mesh's duplicate face: keep the first
@@ -1251,6 +1372,7 @@ def _geo_to_mesh(g, name, materials):
             continue
         f.material_index = slot[m]
         f[layer] = e
+        f[part] = part_of[fi]
         f.smooth = sm
     bm.normal_update()
     for e in bm.edges:
@@ -1277,6 +1399,10 @@ def weapon_mesh(spec, fresh=False, log=None):
         return me
     g = weapon_geo_budget(spec, blender_glyph, log=log)
     new = _geo_to_mesh(g, key + ".new", spec["materials"])
+    for host, inlays in CARVE:
+        n = carve_inlays(new, g, host, inlays)
+        if log and n:
+            log(spec["key"], "carved", inlays, "into", host, "->", n, "faces")
     if me is not None:
         me.name = key + ".old"
     new.name = key
@@ -1285,8 +1411,94 @@ def weapon_mesh(spec, fresh=False, log=None):
     return new
 
 
+# Round 12: the inlays (the blade's name, the saber's dragon, the saying on the plinth) were solids laid 3-9 mm proud
+# of the blade or plate they sit on, that face left whole under them: the web draws every face double-sided with a
+# 24-bit depth buffer, so beyond ~90-200 m the face under an inlay showed through it (0.5 m2 within 5 mm, 7.6 m2 at
+# 5-12 mm; the camera passes 11 m from them). Each inlay is now carved into its host (an exact boolean union):
+# the host's face stops at the inlay's outline and the inlay's walls rise from it, with nothing left under the inlay.
+# They look the same. CARVE: (host part, its inlay parts) as _Geo part names. Round 24: the plinth's name (PLINTH_NAME,
+# a 3 cm gold relief) is part 'glyphs' too, so it is carved into the front plate the same way; with BLADE_NAME off
+# the jian's blade has no inlay to carve and stays as built.
+PART_ATTR = "gate_part"          # FACE int: the face's _Geo part (index into g.parts)
+CARVE = (("blade", ("blade_glyphs", "dragon", "dragon_eye")), ("panel", ("glyphs",)))
+CARVE_SCENE = "_gate_carve"      # private scene the boolean runs in (removed after)
+
+
+def carve_inlays(me, g, host, inlays):
+    """Union the faces of _Geo parts ``inlays`` with those of part ``host`` in mesh ``me`` (built by _geo_to_mesh, with
+    its PART_ATTR layer): Blender's exact boolean in a private scene, its result put back in place of both, edges
+    marked sharp as _geo_to_mesh marks them (open, between materials, sharper than WEAPON_SMOOTH) or as they were.
+    Returns the number of faces the carved region has (0 when the mesh has no such inlays)."""
+    names = [p[0] for p in g.parts]
+    hid = {i for i, n in enumerate(names) if n == host}
+    iid = {i for i, n in enumerate(names) if n in inlays}
+    if not hid or not iid:
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    lay = bm.faces.layers.int[PART_ATTR]
+
+    def sub(ids, name):
+        b = bm.copy()
+        ly = b.faces.layers.int[PART_ATTR]
+        bmesh.ops.delete(b, geom=[f for f in b.faces if f[ly] not in ids], context='FACES')
+        bmesh.ops.delete(b, geom=[v for v in b.verts if not v.link_faces], context='VERTS')
+        m = bpy.data.meshes.new(name)
+        b.to_mesh(m)
+        b.free()
+        for mat in me.materials:
+            m.materials.append(mat)
+        return m
+    ma, mb = sub(hid, "~carve.host"), sub(iid, "~carve.inlay")
+    had = bpy.data.scenes.get(CARVE_SCENE) is not None
+    sc = bpy.data.scenes.get(CARVE_SCENE) or bpy.data.scenes.new(CARVE_SCENE)
+    oa = bpy.data.objects.new("~carve.host", ma)
+    ob = bpy.data.objects.new("~carve.inlay", mb)
+    sc.collection.objects.link(oa)
+    sc.collection.objects.link(ob)
+    md = oa.modifiers.new("carve", 'BOOLEAN')
+    md.operation = 'UNION'
+    md.solver = 'EXACT'
+    md.object = ob
+    md.use_self = True                 # overlapping font contours and crossing dragon strokes
+    md.material_mode = 'INDEX'
+    vl = sc.view_layers[0]
+    vl.update()
+    dg = vl.depsgraph
+    res = bpy.data.meshes.new_from_object(oa.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    bpy.data.objects.remove(oa)
+    bpy.data.objects.remove(ob)
+    bpy.data.meshes.remove(ma)
+    bpy.data.meshes.remove(mb)
+    if not had:
+        bpy.data.scenes.remove(sc)
+    nres = len(res.polygons)
+    if not nres:
+        bpy.data.meshes.remove(res)
+        bm.free()
+        raise RuntimeError("carve_inlays: the boolean of %s and %s came out empty" % (host, inlays))
+    # swap the region in place: delete the host and inlay faces, append the union (its PART_ATTR, edge wear,
+    # smooth flags, materials and sharp edges came through the boolean)
+    bmesh.ops.delete(bm, geom=[f for f in bm.faces if f[lay] in hid | iid], context='FACES')
+    bmesh.ops.delete(bm, geom=[v for v in bm.verts if not v.link_faces], context='VERTS')
+    keep = set(bm.edges)
+    bm.from_mesh(res)
+    bpy.data.meshes.remove(res)
+    bm.normal_update()
+    for e in bm.edges:
+        if e in keep:
+            continue
+        lf = e.link_faces
+        if len(lf) != 2 or lf[0].material_index != lf[1].material_index or e.calc_face_angle(math.pi) > WEAPON_SMOOTH:
+            e.smooth = False
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return nres
+
+
 def weapon_transform(spec):
-    """(location, rotation) under gate.root: at x = side * 16, y -25, turned 12 deg (toward the axis with
+    """(location, rotation) under gate.root: at x = side * WEAPON_X, y WEAPON_Y, turned WEAPON_YAW (toward the axis with
     WEAPON_FACE_IN)."""
     s = spec["side"]
     yaw = (-s if WEAPON_FACE_IN else s) * WEAPON_YAW
@@ -1347,23 +1559,120 @@ def _plaza(coll, root):
 
 
 PLAQUE_DESIGN_CHARS = 3   # the paifang's plaque zone was sized for a 3-character name
+PLAQUE_LONG_H = 0.76      # round 32: a longer name's board is this share of the plaque zone's height: 2.0 m at the gate,
+                          # as tall as the sun and moon medallions beside it (2 * MEDAL_R), and as wide as its
+                          # characters need (日月神教: 6.56 m; the medallions keep 0.40 m from it and 0.44 m from the
+                          # columns). 0.82 (the 3-character board's height) left them 0.25 m, crowded; 0.72 read smaller
+PLAQUE_TEXT_SCALE = 1.2   # round 32: the gold characters this much larger (across the board, not deeper) than
+                          # props.plaque sets them (its fit caps them at its nominal size, 62% of the board's width and
+                          # 68% of its height for 日月神教; now 75% and 81%, inside its own 86% / 88% margins), so they
+                          # read at the hold (93, 1600 x 900): 24-30 px tall, 日 the shortest (it was 20 px)
 
 
-def plaque_width(pw, text):
-    """Plaque width for ``text``. props.plaque's height follows the character size, so a name shorter than
-    PLAQUE_DESIGN_CHARS gets a narrower board at the height the plaque zone was designed for (3 characters at
-    width ``pw``), instead of a taller board that would crowd the beams."""
+def plaque_width(pw, text, ph=None):
+    """Plaque width for ``text``. props.plaque's height follows the character cell (board 1.66 cells tall and
+    1.12 n + 0.95 cells wide for n characters). Up to PLAQUE_DESIGN_CHARS characters the cell is the one the plaque zone
+    was designed for (3 characters at width ``pw``), so a shorter name gets a narrower board at that height instead of
+    a taller board that would crowd the beams. A longer name (round 32: 日月神教) gets a board PLAQUE_LONG_H of the zone's
+    height (``ph``: the paifang's plaque_size h, 0.86 of the zone), as wide as its characters need; sun_moon_layout
+    centres the medallions in the room left between it and the centre bay's columns."""
     n = max(1, len(text))
-    if n >= PLAQUE_DESIGN_CHARS:
-        return pw
-    return pw * (n * 1.12 + 0.95) / (PLAQUE_DESIGN_CHARS * 1.12 + 0.95)
+    if n <= PLAQUE_DESIGN_CHARS:
+        return pw * (n * 1.12 + 0.95) / (PLAQUE_DESIGN_CHARS * 1.12 + 0.95)
+    if ph is None:
+        raise ValueError("plaque_width: a %d-character name needs the plaque zone's height (ph); see _gate and "
+                         "patch_r32_plaque.py" % n)
+    return PLAQUE_LONG_H * (ph / 0.86) / 1.66 * (n * 1.12 + 0.95)
 
 
-def _gate(coll, root):
-    g = A.paifang(U.name(K, "paifang"), coll, bays=5, width=GATE_W, height=GATE_H, seed=3,
-                  parent=root, location=(0.0, GATE_Y, 0.0))
-    anchor = bpy.data.objects[g["plaque_anchor"]]
-    pw = float(g["plaque_size"][0])
+# Round 32: the gold characters are set into the board (round 12's rule: two faces stand 2 cm apart or become one
+# surface). props.plaque lays the text (raised KaiTi, extruded and bevelled, a closed solid) with its back 1 mm in front
+# of the board's face and leaves the board's face whole under it. inlay_plaque_text pushes the text back until the
+# board's face crosses its straight walls (PLAQUE_WALL_IN past the back bevel) and cuts the board's face away under
+# every character (props._imprint holes along the text's back outline, as round 12 cut the stele border's footprint).
+# No board face is left under the gold and no slit behind it; the strip of board face left round each character (the
+# bevel's width, about 1 cm) lies inside the gold, so the holes never show. The gold stands 5.6 cm proud at the gate
+# (props.plaque's 6.8 cm less its back bevel), its walls square to the board. The text and board stay separate objects
+# with their own names and materials.
+PLAQUE_INLAY = True
+PLAQUE_BEVEL_SHARE = 0.008 / (2.0 * (0.02 + 0.008))   # props.plaque's text: bevel depth / thickness (bv / 2 (ex + bv))
+PLAQUE_WALL_IN = 0.002    # m: the board's face crosses the text's straight walls this far in front of the back bevel
+PLAQUE_INLAY_TAG = "gate_plaque_inlay"   # on both meshes once inlaid: how far the text moved back (m)
+PLAQUE_PARTS = ("board", "frame", "relief", "text")
+
+
+def plaque_parts(root):
+    """(pivot, {part: object}) of a props.plaque built under the Empty ``root`` (PLAQUE_PARTS)."""
+    pivot = next((c for c in root.children if c.name.startswith(root.name + ".pivot")), None)
+    if pivot is None:
+        raise RuntimeError("%s has no pivot child; children %s" % (root.name, [c.name for c in root.children]))
+    found = {}
+    for k in PLAQUE_PARTS:
+        ob = next((c for c in pivot.children if c.name.startswith(root.name + "." + k)), None)
+        if ob is None or ob.type != 'MESH':
+            raise RuntimeError("%s.%s not found under %s" % (root.name, k, pivot.name))
+        found[k] = ob
+    return pivot, found
+
+
+def inlay_plaque_text(board_me, text_me):
+    """Set a props.plaque's text mesh into its board mesh (both in the plaque pivot's frame: the board's face at y = 0
+    facing -Y, the text in front of it). Returns (sink, holes): how far the text moved back (m) and how many triangles
+    of the board's face were cut out under it. Raises when the meshes are not what props.plaque builds (or are
+    inlaid already: PLAQUE_INLAY_TAG)."""
+    import numpy as np
+    from mathutils import Vector
+    if board_me.get(PLAQUE_INLAY_TAG) is not None or text_me.get(PLAQUE_INLAY_TAG) is not None:
+        raise RuntimeError("inlay_plaque_text: %s / %s are inlaid already" % (board_me.name, text_me.name))
+    nv = len(text_me.vertices)
+    co = np.empty(nv * 3)
+    text_me.vertices.foreach_get("co", co)
+    co = co.reshape(nv, 3)
+    y_back, y_front = float(co[:, 1].max()), float(co[:, 1].min())
+    y_wall = y_back - (y_back - y_front) * PLAQUE_BEVEL_SHARE      # the straight walls' back end
+    if y_back > -1e-4 or not (np.abs(co[:, 1] - y_wall) < 2e-4).any():
+        raise RuntimeError("inlay_plaque_text: %s is not a props.plaque text (back %.4f, no ring at %.4f)"
+                           % (text_me.name, y_back, y_wall))
+    regions = [([(float(co[i, 0]), float(co[i, 2])) for i in p.vertices], "gold") for p in text_me.polygons
+               if p.normal.y > 0.9999 and all(abs(co[i, 1] - y_back) < 2e-5 for i in p.vertices)]
+    if not regions:
+        raise RuntimeError("inlay_plaque_text: %s has no back faces at y %.4f" % (text_me.name, y_back))
+    bm = bmesh.new()
+    bm.from_mesh(board_me)
+    host = [f for f in bm.faces if f.normal.y < -0.9999 and all(abs(v.co.y) < 2e-5 for v in f.verts)]
+    if not host:
+        bm.free()
+        raise RuntimeError("inlay_plaque_text: %s has no face at y 0 facing -Y" % board_me.name)
+    got = P._imprint(bm, host, lambda c: (c.x, c.z), lambda x, z: Vector((x, 0.0, z)), regions, holes=True)
+    bm.to_mesh(board_me)
+    bm.free()
+    P._reharden(board_me)
+    sink = PLAQUE_WALL_IN - y_wall
+    co[:, 1] += sink
+    text_me.vertices.foreach_set("co", co.ravel())
+    text_me.update()
+    board_me[PLAQUE_INLAY_TAG] = text_me[PLAQUE_INLAY_TAG] = round(sink, 6)
+    return sink, len(got.get("gold", []))
+
+
+def scale_plaque_text(text_me, s):
+    """Scale a props.plaque text mesh ``s`` times about the board's centre across the board (x, z), not in depth."""
+    import numpy as np
+    nv = len(text_me.vertices)
+    co = np.empty(nv * 3)
+    text_me.vertices.foreach_get("co", co)
+    co = co.reshape(nv, 3)
+    co[:, 0] *= s
+    co[:, 2] *= s
+    text_me.vertices.foreach_set("co", co.ravel())
+    text_me.update()
+
+
+def build_plaque(coll, text, pw, ph, name, parent=None, legacy=False):
+    """The gate's name plaque: props.plaque of ``text`` at plaque_width(pw, text, ph) under ``parent``; its text
+    PLAQUE_TEXT_SCALE larger and set into its board (inlay_plaque_text, PLAQUE_INLAY). legacy=True: props.plaque alone,
+    as the gate's plaque was built until round 32 (patch_r32_plaque.py recognises the old file with it). Returns the
+    root Empty."""
     # On the Linux render box the fonts are mirrored at "/C:/Windows/Fonts/"; Python finds the
     # relative "C:/..." path from cwd "/", but bpy.data.fonts.load does not. Use the absolute
     # form for this call only (the lib reads U.FONT_KAITI at call time), then restore it.
@@ -1371,19 +1680,34 @@ def _gate(coll, root):
     if os.name != "nt" and os.path.exists(os.path.abspath(saved)):
         U.FONT_KAITI = os.path.abspath(saved)
     try:
-        plaque = P.plaque(coll, AREA["title_zh"], plaque_width(pw, AREA["title_zh"]), name=U.name(K, "plaque"),
-                          parent=anchor)
+        plaque = P.plaque(coll, text, plaque_width(pw, text, ph), name=name, parent=parent)
     finally:
         U.FONT_KAITI = saved
+    if legacy:
+        return plaque
+    _pivot, parts = plaque_parts(plaque)
+    if PLAQUE_TEXT_SCALE != 1.0:
+        scale_plaque_text(parts["text"].data, PLAQUE_TEXT_SCALE)
+    if PLAQUE_INLAY:
+        inlay_plaque_text(parts["board"].data, parts["text"].data)
+    return plaque
+
+
+def _gate(coll, root):
+    g = A.paifang(U.name(K, "paifang"), coll, bays=5, width=GATE_W, height=GATE_H, seed=3,
+                  parent=root, location=(0.0, GATE_Y, 0.0))
+    anchor = bpy.data.objects[g["plaque_anchor"]]
+    plaque = build_plaque(coll, AREA["title_zh"], float(g["plaque_size"][0]), float(g["plaque_size"][1]),
+                          U.name(K, "plaque"), parent=anchor)
     _sun_moon(coll, g, anchor, plaque)
     return g
 
 
-# ---- the sect's sun-and-moon emblem 日月 on the paifang (明 = 日 sun + 月 moon) -------------------------------
+# ---- the sect's sun-and-moon emblem 日月 on the paifang (日 sun + 月 moon, the first two characters of 日月神教) -----
 # A gilt ridge finial 日月宝顶 (props.sunmoon_finial: the emblem in the round, a crescent cradling a rayed sun) in the
 # middle of the top roof's main ridge, against the sky in the 93 hold; and two lacquered medallions
-# (props.sunmoon_medallion) on the plaque zone either side of the 明教 plaque that spell the name out: the sun 日 on
-# the viewer's left, the moon 月 on the right with its horns turned toward the plaque.
+# (props.sunmoon_medallion) on the plaque zone either side of the 日月神教 plaque that echo its first two characters: the
+# sun 日 on the viewer's left, the moon 月 on the right with its horns turned toward the plaque.
 FINIAL_R = 1.3                 # the finial's emblem unit radius (m): a 2.2 m wide moon, 2.6 m above the ridge
 MEDAL_R = 0.38                 # medallion radius / the plaque zone's height (2.64 m zone -> 1.0 m)
 FINIAL_NAME, SUN_NAME, MOON_NAME = "sunmoon_finial", "sun_medallion", "moon_medallion"

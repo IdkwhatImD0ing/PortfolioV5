@@ -51,8 +51,8 @@ export const FRAMING_MAX_BACK = 16;
 /**
  * Frames before and after a hold over which its framing comes and goes, unless the stop sets a longer
  * reach. Stops are at least 103 frames apart (the arena at 516, the mission hall at 619), so two never
- * overlap (a longer reach is kept to the room its neighbours leave: the scroll's 55 and the
- * formation's 48 leave 2 frames between 1103 and 1208), and the poster's start view (frame 27,
+ * overlap (a longer reach is kept to the room its neighbours leave: the mirror's 80 lies between the
+ * gate at 93 and the forge at 352, neither framed), and the poster's start view (frame 27,
  * opening.ts POSTER) is 66 frames before the first stop, out of reach. At the steepest an 8 degree
  * turn adds 0.25 degrees a frame to the film's own turning (up to about 1 a frame round the framed
  * stops).
@@ -62,7 +62,11 @@ export const FRAMING_REACH_FRAMES = 48;
 /**
  * The stops that need framing, by hold id, chosen on the hold frames at 16:9 (1600 x 900, the panel
  * up; framing.test.ts checks the numbers). Stops not listed keep the film's framing: the gate, the
- * forge, the arena, the library, the stele forest, the abode and the summit are balanced as they are.
+ * forge, the arena, the library, the stele forest, the jade slip, the abode and the summit are
+ * balanced as they are. (The jade slip was framed from 2026-10-22, turned square to a view turned 6
+ * degrees left, then stood back and tilted up too; the owner preferred the first build, so the slip
+ * stands where it first stood, big and close on the left with its left part past the edge, and the
+ * view is the film's own: blender scroll.py, patch_r15_scroll_restore.py.)
  * - mirror: the camera stood 19 m above the near edge of the Still Pond and saw only its far side,
  *   cut by the left edge and the bottom, the pavilion cut by the left edge and the Heart-Mirror 290 px
  *   in from it. A turn alone cannot fit the pond and the mirror in from there, so the camera stands
@@ -76,22 +80,12 @@ export const FRAMING_REACH_FRAMES = 48;
  * - mission: the hall and its board of seven posts sat on the left, the first post touching the edge
  *   and the roof cut by the top, an empty courtyard on the right. Left and a little up: hall and
  *   board in the middle, the bell pavilion beside them.
- * - scroll: the jade slip's left roller was cut by the left edge, and once the slip was turned square
- *   to the turned view (blender scroll.py HOLD_TURN, the bake of 2026-10-22) its roller sat 18 px in
- *   from it. The camera stands back 3 frames (3.4 m), the view turns 6 left as before (the slip
- *   still square to it, 1.3 degrees off) and 3.5 up: the roller 120 px in, the slip and the pavilion
- *   whole side by side below the panel. Out of the stop the film turns right and tilts up the stair
- *   at a degree a frame, and standing back speeds the camera along there, so the stand-back is kept
- *   small and the tilt up, fading out, takes back some of the film's tilt: over 55 frames (the room
- *   the formation's 48 leave before 1208, 2 to spare) the view turns at most 1.134 degrees a frame,
- *   as the old turn alone did (1.136).
  * - formation: the plaza sat on the bottom edge, its front stations and gate cut off, under the next
  *   stop's mountain. Down: the whole array, armillary, flags and gate in, the mountain behind.
  */
 export const STOP_FRAMING: Readonly<Record<string, StopFraming>> = {
   mirror: { yaw: 4, pitch: -3, back: 13, reach: 80 },
   mission: { yaw: 8, pitch: 2 },
-  scroll: { yaw: 6, pitch: 3.5, back: 3, reach: 55 },
   formation: { yaw: 0, pitch: -8 },
 };
 

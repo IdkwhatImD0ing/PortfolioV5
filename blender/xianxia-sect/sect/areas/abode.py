@@ -54,6 +54,8 @@ DECK_Z = 6.0        # balcony floor
 GATE_R = 3.2        # moon-gate opening radius
 GATE_ZC = DECK_Z + 3.0
 RING_OUT = 4.25     # outer radius of the marble ring frame
+DECK_BACK = 0.6     # the deck runs this far past the gate plane (YG) into the cave; the cave floor starts there
+CAVE_FLOOR_Y0_OLD = -1.0   # before round 12 the cave floor started at YG - 1.0, on the deck (patch_r12_areas.py)
 FALL_X = 15.0       # waterfall chute
 INSC_X = -27.0      # cliff inscription column
 STAIR_W = 3.6       # balcony stair: two flights of 18 risers with a 2 m landing at half height
@@ -338,9 +340,12 @@ def _cave(coll, root):
     faces.append(tuple(segs + k for k in range(segs)))      # back wall, faces -Y
     U.mesh_from_pydata(K + ".cave_tunnel", verts, faces, coll, materials=["rock_cliff"],
                        smooth=math.radians(50), parent=root)
-    # floor through the gate into the cave
+    # floor through the gate into the cave, from the deck's back edge (YG + DECK_BACK) to the back wall. Round 12: it
+    # started 1 m in front of the gate, on the deck, both tops at DECK_Z: 7 m2 of light and dark wood z-fighting on the
+    # web. Now the two meet edge to edge
+    yd = YG + DECK_BACK
     bm = bmesh.new()
-    U.bm_box(bm, (2 * GATE_R, y1 - YG + 1.0, 0.4), center=(GATE_X, (YG + y1) * 0.5 - 0.5, DECK_Z - 0.2))
+    U.bm_box(bm, (2 * GATE_R, y1 - yd, 0.4), center=(GATE_X, (yd + y1) * 0.5, DECK_Z - 0.2))
     U.mesh_from_bmesh(K + ".cave_floor", bm, coll, materials=["wood_dark"], parent=root)
     # warm lit screen at the back of the cave
     A.lattice_panel(K + ".cave_screen", coll, 3.6, 4.6, pattern="diamond", kind="window", lit=True,
@@ -376,8 +381,8 @@ def _box(name, coll, root, size, center, mat):
 def _balcony(coll, root):
     x0, x1 = -14.5, 9.0
     yf = Y_DECK
-    _box(K + ".deck", coll, root, (x1 - x0, YG + 0.6 - yf, 0.45),
-         ((x0 + x1) * 0.5, (yf + YG + 0.6) * 0.5, DECK_Z - 0.225), "wood_light")
+    _box(K + ".deck", coll, root, (x1 - x0, YG + DECK_BACK - yf, 0.45),
+         ((x0 + x1) * 0.5, (yf + YG + DECK_BACK) * 0.5, DECK_Z - 0.225), "wood_light")
     # front beam and cantilever joists (dark wood) under the deck
     _box(K + ".deck_beam", coll, root, (x1 - x0, 0.5, 0.6), ((x0 + x1) * 0.5, yf + 0.3, DECK_Z - 0.75),
          "wood_dark")
@@ -1708,7 +1713,11 @@ RIBBON_LOOP_W = 0.08                  # the gathered silk's width round the tip
 RIBBON_LOOP_GAP = 0.012               # its inner face off the section's convex hull
 RIBBON_KNOT_DROP = 0.09               # the knot pulls the loop into a teardrop: apex this far below the section
 RIBBON_W = 0.36                       # open width of the silk
-RIBBON_T = 0.012                      # its thickness (a closed band)
+RIBBON_T = 0.02                       # its thickness (a closed band). Round 12: 0.012 with lens-shaped tails whose
+                                      # edges thinned to nothing: front and back faces 2-12 mm apart, and the web
+                                      # (every face double-sided, 24-bit depth) let the back show through the front
+                                      # beyond ~90-220 m. Now 2 cm everywhere, with square edges (_RIB_X / _RIB_Y)
+RIBBON_T_OLD = 0.012                  # before round 12 (sect/patch_r12_areas.py recognises the old silk by it)
 RIBBON_DS = 0.06                      # m between a tail's cross-sections
 RIBBON_WIND = (-0.8, -0.6)            # the breeze off the falls, plan (abode.root): away from the falls and the cliff
 RIBBON_TAILS = (   # (name, control points (m along the wind, toward the hold camera, up) from the knot, start offset
@@ -1731,8 +1740,11 @@ RIBBON_KNOT = (((0.0, 0.0, 0.0), (0.06, 0.065, 0.06)),          # the knot's lum
                ((-0.01, -0.04, 0.015), (0.04, 0.042, 0.045)))    # and radii
 RIBBON_PARTS = ((RIBBON_SILK, (("silk", RIBBON_MAT),)),
                 (RIBBON_BELLS, (("gold", "gold"), ("slot", "lacquer_black"))))
-_RIB_X = (1.0, 0.62, 0.0, -0.62, -1.0, -0.62, 0.0, 0.62)   # a tail's cross-section: x of its half width,
-_RIB_Y = (0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0)       # y of its half thickness (thin edges at +-x)
+_RIB_X = (1.0, 1.0, 0.33, -0.33, -1.0, -1.0, -0.33, 0.33)  # a tail's cross-section: x of its half width,
+_RIB_Y = (-1.0, 1.0, 1.0, 1.0, 1.0, -1.0, -1.0, -1.0)      # y of its half thickness: square edges (round 12; the
+                                                           # cup still bends it across its width)
+_RIB_X_OLD = (1.0, 0.62, 0.0, -0.62, -1.0, -0.62, 0.0, 0.62)   # before round 12: thin edges at +-x
+_RIB_Y_OLD = (0.0, 1.0, 1.0, 1.0, 0.0, -1.0, -1.0, -1.0)
 
 
 def _rib_basis():
@@ -2020,6 +2032,57 @@ def _ribbon(coll, root):
     return em
 
 
+INSCRIPTION = K + ".inscription"
+
+
+def text_to_mesh(ob):
+    """Turn the text (FONT) object ``ob`` into a mesh object in place (Blender's Convert to Mesh): the same object
+    and name, parent, transform, collections and properties, its evaluated text as new mesh data with the curve's
+    materials. The curve is freed. Returns ``ob``. sect/patch_r12_areas.py converts a built file's text with it."""
+    if ob.type == 'MESH':
+        return ob
+    vl = bpy.context.view_layer
+    temp = vl.objects.get(ob.name) is None       # (a collection not linked to the scene: link it for the operator)
+    if temp:
+        bpy.context.scene.collection.objects.link(ob)
+        vl.update()
+    cu = ob.data
+    act = vl.objects.active
+    sel = [o for o in vl.objects if o.select_get()]
+    for o in sel:
+        o.select_set(False)
+    ob.select_set(True)
+    vl.objects.active = ob
+    try:
+        bpy.ops.object.convert(target='MESH', keep_original=False)
+    finally:
+        ob.select_set(False)
+        for o in sel:
+            if o.name in vl.objects:
+                o.select_set(True)
+        vl.objects.active = act
+        if temp:
+            bpy.context.scene.collection.objects.unlink(ob)
+    if ob.type != 'MESH':
+        raise RuntimeError("text_to_mesh: %s is still a %s" % (ob.name, ob.type))
+    if cu is not None and cu.users == 0:
+        bpy.data.curves.remove(cu)
+    ob.data.name = ob.name
+    return ob
+
+
+def _inscription(collection, root):
+    """The cliff inscription 洞天福地 as one mesh object 'abode.inscription' (round 12: it was a text object, and
+    export_web.gather keeps a text object and its evaluated mesh as two records, so the web drew the characters twice
+    in one place: 55 m2 z-fighting on the cliff at the abode). Returns the object."""
+    xi = INSC_X
+    yi = _yb(xi) + LEAN * 30.0
+    ob = U.text(INSCRIPTION, "洞天福地", collection, size=4.6, extrude=0.18, material="lacquer_red",
+                vertical=True, location=(xi, yi - 0.12, 29.8), rotation=(math.pi / 2, 0, _face_yaw(xi)),
+                parent=root)
+    return text_to_mesh(ob)
+
+
 def build(collection):
     """Build the Cave Abode at the local origin. Returns the root Empty 'abode.root'."""
     root = U.empty(K + ".root", collection, display_size=4.0)
@@ -2030,11 +2093,7 @@ def build(collection):
     _ground(collection, root, pool)
     _plants(collection, root, pool)
     # cliff inscription 洞天福地 ("grotto heaven, blessed land"), red paint in carved strokes
-    xi = INSC_X
-    yi = _yb(xi) + LEAN * 30.0
-    U.text(K + ".inscription", "洞天福地", collection, size=4.6, extrude=0.18, material="lacquer_red",
-           vertical=True, location=(xi, yi - 0.12, 29.8), rotation=(math.pi / 2, 0, _face_yaw(xi)),
-           parent=root)
+    _inscription(collection, root)
     # the resting crane on the lawn beside the stair foot (1.7 m tall), and two cranes in flight
     P.crane(collection, "standing", 1.1, name=K + ".crane", parent=root,
             location=(-1.0, 7.0, 0.0), rotation=(0, 0, math.radians(-30)))

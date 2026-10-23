@@ -76,6 +76,19 @@ plan gives it (chunks.npz: the area where it is nearest the camera; never split)
   than --needle-full-d m) use a 'lite' copy: --needle-lite-tris of the same cards, grown (same bake and slot); their
   instance groups are named 'trees.<area>.<family>.lite.<shade|sunK>'.
   --no-needles keeps the old needle-less near meshes (huangshan '.far', cliff/ancient '.hero' at 0.35).
+- Bushes (shrub.green / shrub.azalea) are near meshes wherever a card would show as flat: the path passes within
+  --shrub-near m, or their largest on-screen size reaches --shrub-mesh-px (screen_px: px at 1280x720 over the path and
+  the hold look-around views at full size, the between look views x --between-px-w), or it reaches --shrub-steep-px in
+  the views that look down on it from STEEP_DEG or more above (the card's flat top shows sooner), or a hold camera sees
+  them within --shrub-hold-near m. A crossed card a few dozen pixels wide reads as two flat planes as the camera moves
+  past or the visitor looks round (the peaks' 2-4 m ledge shrubs stand 40+ m off the path, so the path distance alone
+  kept every one of them a card). The old rule (path distance only, clumps-only near mesh) is --shrub-mesh-px 0
+  --shrub-steep-px 0 --shrub-mesh blob. With --shrub-mesh leafy (the default)
+  the near bush is the '.hero' shrub (else '.low'): its leafy clumps collapse-decimated to --shrub-blob-tris, every leaf
+  spray kept whole as a cut-out card (material 'trees.needle.leaf.<area>', extras cardAlpha 'needle', leaf_alpha.png:
+  nature._mat_needle's 8-leaf fan alpha) and the azalea flowers kept as small opaque quads (pink in the bake); the
+  whole bush gets crown normals (one soft rounded mass). --shrub-mesh blob: the old near shrub (green '.low' clumps,
+  azalea '.hero' clumps x0.3, leaves and flowers removed).
 - The "in shadow" lighting variant keeps the sun at SHADE_SUN (0.3) of its energy, raised to SHADE_SUN_ELEV_DEG,
   instead of switching it off (shade pines baked near-black). Card sprites of pines are rendered from the '.hero' LOD
   with every needle fan replaced by a twig card (cut out by the twig texture), so far trees get the same fine edge.
@@ -96,7 +109,10 @@ about 30 min with the ray-cast cache.
     ... sect_chase.blend --python bake_trees.py -- build --quality production
 
 Caches on the box (bakecache/trees_full, not copied back): sun visibility per record key, mesh bakes, sprites;
---fresh ignores them. Mesh-bake names carry NEEDLE_TAG / TWIG_TAG (needle pines) and LIGHT_TAG (shade variant), sprite
+--fresh ignores them. Test runs: --out out/<name> sends plan.json, the GLBs, the previews, verify renders and the caches
+under that folder (raw/, bake/trees/, cache/ or --cache-dir) instead of out/web/full and bakecache/trees_full; with
+--only <chunks> --only-recs a build casts, bakes and renders sprites for those chunks' records only. Mesh-bake names
+carry NEEDLE_TAG / TWIG_TAG (needle pines), SHRUB_TAG (leafy bushes) and LIGHT_TAG (shade variant), sprite
 names TWIG_TAG (twig-card pines) and LIGHT_TAG (shade variant), so a change there re-bakes only what it affects.
 """
 import argparse
@@ -416,6 +432,7 @@ def cmd_trees(a):
         for k in ("exposure", "sat", "tree_near", "quality"):
             if hasattr(a, k):
                 setattr(fa, k, getattr(a, k))
+        apply_out(fa)
         sc = bpy.context.scene
         full_build(fa, sc, full_plan(fa, sc))
         return
@@ -786,10 +803,13 @@ def cmd_trees(a):
         preview_png(p, os.path.join(TREES_OUT, "preview_" + os.path.basename(p)))
 
 
-def merge_uv_meshes(items, name):
+def merge_uv_meshes(items, name, materials=False):
     """One static mesh from [(mesh with a 'bake' UV, 4x4 matrix)] in world space. Meshes with needle cards (a 'needle'
-    UV, material 1) keep their material indices and fan UVs (zeros on the other faces)."""
+    UV, material 1) keep their material indices and fan UVs (zeros on the other faces). materials=True: the merged
+    mesh takes the union of the items' material slots (first seen first), each item's indices remapped onto it, so
+    pine needle cards and bush leaf cards keep their own materials; else the caller adds the slots (_near_materials)."""
     co, vi, ls, uv, nuv, mi = [], [], [], [], [], []
+    slots = []
     vo = lo_ = 0
     for me, M in items:
         A = BW.ma(me)
@@ -805,7 +825,16 @@ def merge_uv_meshes(items, name):
         if "needle" in me.uv_layers:
             me.uv_layers["needle"].data.foreach_get("uv", n)
         nuv.append(n.reshape(-1, 2)[perm])
-        mi.append(A.mi)
+        if materials:
+            remap = []
+            for m in me.materials:
+                if m not in slots:
+                    slots.append(m)
+                remap.append(slots.index(m))
+            remap = np.array(remap or [0], np.int32)
+            mi.append(remap[np.clip(A.mi, 0, len(remap) - 1)])
+        else:
+            mi.append(A.mi)
         vo += A.nv
         lo_ += A.nl
     mi = np.concatenate(mi)
@@ -816,6 +845,8 @@ def merge_uv_meshes(items, name):
         lay = out.uv_layers.new(name="needle")
         lay.data.foreach_set("uv", np.concatenate(nuv).ravel())
         out.uv_layers["bake"].active_render = True
+    for m in slots:
+        out.materials.append(m)
     return out
 
 
@@ -1034,6 +1065,29 @@ SHADE_SUN = 0.3
 SHADE_SUN_ELEV_DEG = 45.0
 LIGHT_TAG = "l2"            # in the cache names of shade-variant bakes and sprites; bump when SHADE_SUN* change
 TREE_TRANSPARENT_BOUNCES = 24   # the tree rig's Cycles transparent bounces (many twig cards overlap along a ray)
+# Bushes (see the module docstring). SHRUB_MESH_PX: px at 1280x720 (x1.25 at 1600x900) from which a shrub is a mesh.
+# From the r17 crops: crossed cards up to about 20 px wide (25 px at 1600x900) seen from the side pass for bushes;
+# bigger, the two planes and the flat top show as the view moves.
+SHRUB_MESH_PX = 20.0
+SHRUB_STEEP_PX = 12.0       # seen from above (camera STEEP_DEG+ over it) a card shows its flat top sprite crossed by
+#                             the vertical planes ("lily pads" on the arena lawn): from above it is a mesh from this
+STEEP_DEG = 25.0
+SHRUB_HERO_PX = 40.0        # leafy near bushes this big (screen_px) use the '.hero' shrub; smaller ones the '.low' one
+SHRUB_HOLD_NEAR = 0.0       # m: also a mesh when a hold camera sees it this near (0: off; screen_px covers the holds)
+BETWEEN_PX_W = 0.6          # screen_px: weight of the between look views (the visitor can turn anywhere, rarely does)
+SHRUB_LEAF_MAT = "M.nature_shrub_leaf"        # leaf sprays (nature._needle_fan, _mat_needle with 8 wide leaves)
+SHRUB_FLOWER_MAT = "M.nature_flower_azalea"   # azalea flower quads (nature._bm_flower)
+SHRUB_LEAF_ALPHA = dict(needles=8.0, spread=2.3, width=0.12)   # nature 'nature_shrub_leaf' (_mat_needle arguments)
+SHRUB_BLOB_TRIS = 800       # leafy near bush: its clumps (M.nature_shrub) collapse-decimated to about this many tris
+SHRUB_SLOT_PX = 224         # leafy near bush ('.hero'): mesh slot (the blob shrub's was SLOT_PX shrub, 160)
+SHRUB_SLOT_PX_LOW = 160     # leafy near bush ('.low')
+SHRUB_LEAF_GROW = 1.7       # leafy near bush: every leaf spray grown about its root (the r17 verify renders: at the
+#                             prototype's 0.11-0.18 m the sprays hid inside the clumps' outline and the bush read as a
+#                             smooth moss ball; grown, they break the outline into leaves)
+SHRUB_FLOWER_SRGB = (0.91, 0.43, 0.56)   # leafy near bush: the opaque flower quads bake this flat pink (the petal
+#                             #e0587a a little lighter); with the material's own ramp the square's corners (rim #c8385c)
+#                             and dark centre baked them red-orange, where the far cards' cut-out flowers read pink
+SHRUB_TAG = "lf3"           # in the mesh-bake cache names of leafy bushes; bump when shrub_near_mesh changes
 
 
 def needle_style(fam, a):
@@ -1050,8 +1104,22 @@ def full_mesh_source(fam, a=None):
     if needle_style(fam, a):
         lods = (".mid", ".hero") if getattr(a, "needle_lod", "hero") == "mid" else (".hero", ".mid")
         return proto_obj(fam + lods[0]) or proto_obj(fam + lods[1]), 1.0
+    if leafy_shrub(fam, a):
+        return proto_obj(fam) or proto_obj(fam + ".low"), 1.0
     ob, ratio = mesh_source(fam)
     return ob, FULL_RATIO.get(fam.split(".")[0], ratio)
+
+
+def leafy_shrub(fam, a):
+    """True when a shrub family's near mesh is the leafy bush (--shrub-mesh leafy): clumps + leaf cards (+ flowers)."""
+    return fam.split(".")[0] == "shrub" and a is not None and getattr(a, "shrub_mesh", "blob") == "leafy"
+
+
+def slot_px(fam, a):
+    """Mesh-slot size (px) of a family's near mesh: FULL_SLOT_PX by kind, SHRUB_SLOT_PX for a leafy bush."""
+    if leafy_shrub(fam, a):
+        return SHRUB_SLOT_PX_LOW if fam.endswith(".low") else SHRUB_SLOT_PX
+    return FULL_SLOT_PX.get(fam.split(".")[0], 128)
 
 
 def opaque_tris(style, a=None):
@@ -1089,7 +1157,109 @@ def full_remove(fam, a=None):
     keep = KEEP_MATS.get(fam.split(".")[0], ())
     if needle_style(fam, a):
         keep = keep + (NEEDLE_MAT,)
+    if leafy_shrub(fam, a):
+        keep = keep + (SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT)
     return tuple(m for m in REMOVE_MATS if m not in keep)
+
+
+def flat_colour_nodes(m, srgb):
+    """Every BSDF of material m but the transparent ones takes one flat colour (sRGB 0-1) instead of its linked one."""
+    lin = tuple(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in srgb) + (1.0,)
+    nt = m.node_tree
+    for n in nt.nodes:
+        if not n.bl_idname.startswith("ShaderNodeBsdf") or n.bl_idname == "ShaderNodeBsdfTransparent":
+            continue
+        for nm in ("Base Color", "Color"):
+            sk = n.inputs.get(nm)
+            if sk is not None:
+                for l in list(sk.links):
+                    nt.links.remove(l)
+                sk.default_value = lin
+
+
+def grow_fans(me, mask, k):
+    """Scale every fan (connected piece of the polygons in `mask`) about its root vertex (UV v ~ 0, nature._needle_fan)
+    by k, in place. Returns the number of fans grown."""
+    mi, ls, lt, vi = _poly_arrays(me)
+    sub = np.nonzero(mask)[0]
+    if not len(sub):
+        return 0
+    lay = me.uv_layers.get("UVMap") or (me.uv_layers[0] if len(me.uv_layers) else None)
+    if lay is None:
+        return 0
+    uv = np.empty(len(vi) * 2, np.float32)
+    lay.data.foreach_get("uv", uv)
+    uv = uv.reshape(-1, 2)
+    co = np.empty(len(me.vertices) * 3, np.float64)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    # pieces: union of the fans' vertices (faces sharing a vertex), by repeated min-label propagation
+    pl = np.repeat(np.arange(len(ls)), lt)
+    lm = mask[pl]
+    v_l, p_l = vi[lm], pl[lm]
+    lab = np.arange(len(me.vertices))
+    for _ in range(64):
+        fmin = np.full(len(ls), len(lab), np.int64)
+        np.minimum.at(fmin, p_l, lab[v_l])
+        new = lab.copy()
+        np.minimum.at(new, v_l, fmin[p_l])
+        if (new == lab).all():
+            break
+        lab = new
+    root_l = lm & (uv[:, 1] < 0.02)
+    root = {}
+    for v in vi[root_l]:
+        root.setdefault(int(lab[v]), co[v])
+    verts = np.unique(v_l)
+    for v in verts:
+        r = root.get(int(lab[v]))
+        if r is not None:
+            co[v] = r + (co[v] - r) * k
+    me.vertices.foreach_set("co", co.astype(np.float32).ravel())
+    me.update()
+    return len(root)
+
+
+def shrub_near_mesh(fam, me, dec, blob_tris, crown=True):
+    """Leafy near bush from a shrub prototype (its '.hero' LOD, else '.low'): the clumps (every face that is not a leaf
+    spray or a flower) collapse-decimated to about `blob_tris`, the leaf sprays (SHRUB_LEAF_MAT, cut-out cards on the
+    page) and the azalea flowers (SHRUB_FLOWER_MAT, small opaque quads) kept whole. Crown normals over the whole bush
+    (crown=False: not), so it bakes as one soft rounded mass instead of per-clump facets. Returns (mesh, info)."""
+    mats = [m.name if m else "" for m in me.materials]
+    mi = np.empty(len(me.polygons), np.int32)
+    me.polygons.foreach_get("material_index", mi)
+    keep = np.zeros(len(mi), bool)
+    for m in (SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT):
+        if m in mats:
+            keep |= mi == mats.index(m)
+    field = crown_field(me) if crown else None
+    info = {}
+    lt = np.empty(len(mi), np.int32)
+    me.polygons.foreach_get("loop_total", lt)
+    for m, k in ((SHRUB_LEAF_MAT, "leaf"), (SHRUB_FLOWER_MAT, "flower")):
+        if m in mats:
+            info[k + "_tris"] = int((lt[mi == mats.index(m)] - 2).sum())
+    if SHRUB_LEAF_MAT in mats and SHRUB_LEAF_GROW != 1.0:
+        info["leaf_grow"] = grow_fans(me, mi == mats.index(SHRUB_LEAF_MAT), SHRUB_LEAF_GROW)
+    if (~keep).any():
+        blob = EW.submesh(me, ~keep, me.name + ".blob")
+        n0 = ntris(blob)
+        r = min(1.0, blob_tris / max(n0, 1))
+        blob = dec.get("tree.%s.blob" % fam, blob, r)
+        info.update(blob_tris_source=n0, blob_tris=ntris(blob), ratio=round(r, 3))
+        if keep.any():
+            cards = EW.submesh(me, keep, me.name + ".cards")
+            parts = [blob, cards] if "UVMap" in blob.uv_layers else [cards, blob]
+            out = join_meshes(parts, "tree.near." + fam)
+        else:
+            out = blob.copy()
+            out.name = "tree.near." + fam
+    else:
+        out = me
+    if field is not None:
+        info.update(crown_normals=crown_normals(out, field))
+    info["tris"] = ntris(out)
+    return out, info
 
 
 def _poly_arrays(me):
@@ -1360,10 +1530,14 @@ def _set_smooth(me, mask):
     me.polygons.foreach_set("use_smooth", sm)
 
 
+FOLIAGE_MATS = (NEEDLE_MAT, "M.nature_shrub", SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT)
+
+
 def _foliage_mask(me):
-    """Per polygon: cushions or needle cards (materials '*pine_pad*' and NEEDLE_MAT), not bark."""
+    """Per polygon: cushions, needle cards, a bush's clumps, leaves and flowers (materials '*pine_pad*' and
+    FOLIAGE_MATS), not bark."""
     mats = [m.name if m else "" for m in me.materials]
-    fol = np.array([("pine_pad" in m) or m == NEEDLE_MAT for m in mats] or [False], bool)
+    fol = np.array([("pine_pad" in m) or m in FOLIAGE_MATS for m in mats] or [False], bool)
     mi = np.empty(len(me.polygons), np.int32)
     me.polygons.foreach_get("material_index", mi)
     return fol[np.clip(mi, 0, len(fol) - 1)], mats
@@ -1439,9 +1613,9 @@ def crown_normals(me, field):
     co = co.reshape(-1, 3)
     card = np.zeros(nv, bool)
     pad = np.zeros(nv, bool)
-    ndi = mats.index(NEEDLE_MAT) if NEEDLE_MAT in mats else -1
+    cut = [k for k, m in enumerate(mats) if m in (NEEDLE_MAT, SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT)]   # card-like faces
     lf = np.repeat(fol, lt)
-    lnd = np.repeat(mi == ndi, lt)
+    lnd = np.repeat(np.isin(mi, cut), lt)
     card[vi[lf & lnd]] = True
     pad[vi[lf & ~lnd]] = True
     pad &= ~card
@@ -1469,13 +1643,13 @@ def crown_normals(me, field):
     return int(sel.sum())
 
 
-def needle_loops(me, layer="UVMap"):
+def needle_loops(me, layer="UVMap", mat=NEEDLE_MAT):
     """(per-polygon needle mask, per-loop UVs of `layer` on the needle cards with zeros elsewhere) of a near mesh
     with needle cards: 'UVMap' = the fan UVs (the bake islands; fans: also the page's needle UVs), 'twig' = twig
-    cards' TWIG_TEX cell UVs (the page's card UVs)."""
+    cards' TWIG_TEX cell UVs (the page's card UVs). mat: the cards' material (SHRUB_LEAF_MAT: a bush's leaves)."""
     mats = [m.name if m else "" for m in me.materials]
     mi, ls, lt, vi = _poly_arrays(me)
-    nd = mi == mats.index(NEEDLE_MAT) if NEEDLE_MAT in mats else np.zeros(len(mi), bool)
+    nd = mi == mats.index(mat) if mat in mats else np.zeros(len(mi), bool)
     fan = np.zeros((len(vi), 2), np.float32)
     lay = me.uv_layers.get(layer) or (next((l for l in me.uv_layers if l.active_render), None)
                                       if layer == "UVMap" else None)
@@ -1699,14 +1873,19 @@ def needle_material(name, path, alpha_path, mode="needle"):
     return m
 
 
-def classify(kind, d, px, a):
-    """'mesh', 'card' or None (dropped) from the nearest visible distance and the largest on-screen size."""
+def classify(kind, d, px, a, spx=0.0, hold=float("inf"), steep=0.0):
+    """'mesh', 'card' or None (dropped) from the nearest visible distance and the largest on-screen size (px: the
+    audit's px_eff; spx: screen_px, shrubs only; hold: the nearest distance a hold camera sees it at; steep: screen_px
+    over the views that look down on it)."""
     if kind == "grass":
         return "mesh" if d < a.grass_near else None
     if kind == "lotus":
         return "mesh" if d < a.lotus_near else None
     if kind == "shrub":
-        return "mesh" if d < a.shrub_near else ("card" if px >= 3 else None)
+        if (d < a.shrub_near or (a.shrub_mesh_px > 0 and spx >= a.shrub_mesh_px) or hold <= a.shrub_hold_near or
+                (a.shrub_steep_px > 0 and steep >= a.shrub_steep_px)):
+            return "mesh"
+        return "card" if px >= 3 else None
     if kind == "bamboo":
         return "mesh" if d < a.bamboo_near else ("card" if px >= 2 else None)
     return "mesh" if d < a.tree_near else ("card" if px >= 2 else None)
@@ -1716,6 +1895,57 @@ def ntris(me):
     lt = np.empty(len(me.polygons), np.int32)
     me.polygons.foreach_get("loop_total", lt)
     return int((lt - 2).sum())
+
+
+def screen_px(R, vis, views, idx, tv, between_w=BETWEEN_PX_W):
+    """Per record of idx: (largest on-screen size in px at 1280x720, like the audit's pxmax; the view index giving it;
+    the largest over the hold views only: each hold's path frame and its look-around views; the largest over the views
+    that look down on it from STEEP_DEG or more above, weighted like the first). Over every audit view
+    whose visibility bit (vis, the cache's columns) is set: full size on the path and the hold look views, x between_w
+    on the between look views. Size = the record's largest bounds extent over its distance (camera to the bounds'
+    centre, at least that extent). A view counts only when that centre lies in front of the camera and inside the 16:9
+    frame widened by the record's bounding radius. The audit's px_eff is no use here: export_web.project takes a piece
+    that straddles the camera plane as filling the frame, so bushes 400+ m off read 216-360 px (pxmax_look) in look
+    views that only graze them."""
+    lo, hi = R.lo[idx], R.hi[idx]
+    c = 0.5 * (lo + hi)
+    ext = hi - lo
+    size = ext.max(1)
+    rad = 0.5 * np.linalg.norm(ext, axis=1)
+    kpx = 720.0 / (2.0 * tv)
+    th = tv * EW.ASPECT
+    kx, ky = math.sqrt(1.0 + th * th), math.sqrt(1.0 + tv * tv)
+    best = np.zeros(len(idx))
+    arg = np.full(len(idx), -1, np.int64)
+    hold = np.zeros(len(idx))
+    steep = np.zeros(len(idx))
+    s_steep = math.sin(math.radians(STEEP_DEG))
+    hold_frames = {int(x["holdFrame"]) for x in EW.AREAS}
+    pv = np.nonzero(views.path)[0]
+    hold_cols = set(int(pv[np.argmin(np.abs(views.frames[pv] - f))]) for f in hold_frames)
+    hold_cols |= set(np.nonzero((views.kind == EW.VIEW_HOLD))[0].tolist())
+    vsub = vis[idx]
+    for j, M in enumerate(views.mats):
+        on = vsub[:, j]
+        if not on.any():
+            continue
+        Mi = np.linalg.inv(np.asarray(M, float))
+        v = c @ Mi[:3, :3].T + Mi[:3, 3]
+        z = -v[:, 2]
+        ok = on & (z > -rad) & (np.abs(v[:, 0]) - th * z <= rad * kx) & (np.abs(v[:, 1]) - tv * z <= rad * ky)
+        if not ok.any():
+            continue
+        dist = np.maximum(np.linalg.norm(c - views.pos[j], axis=1), size)
+        px = np.where(ok, size / dist * kpx, 0.0)
+        w = between_w if views.kind[j] == EW.VIEW_BETWEEN else 1.0
+        up = px * w > best
+        best = np.where(up, px * w, best)
+        arg = np.where(up, j, arg)
+        if j in hold_cols:
+            hold = np.maximum(hold, px)
+        above = (views.pos[j][2] - c[:, 2]) >= s_steep * dist
+        steep = np.where(above, np.maximum(steep, px * w), steep)
+    return best, arg, hold, steep
 
 
 def full_plan(a, sc):
@@ -1753,20 +1983,38 @@ def full_plan(a, sc):
         if len(lk):
             dl = d * EW.VIEW_D_SCALE[EW.VIEW_HOLD]
             near_hold = np.where(vis[:, lk].any(1), np.minimum(near_hold, dl), near_hold)
+    # bushes: their largest on-screen size over every view (screen_px), for the mesh-or-card choice
+    sh = np.array([i for i in idx if parse(R.tkey[i])[0] == "shrub"], np.int64)
+    spx, sview, shold, sstp = (np.zeros(len(R)), np.full(len(R), -1, np.int64), np.zeros(len(R)), np.zeros(len(R)))
+    if len(sh):
+        t1 = time.time()
+        b, j, hp, st_ = screen_px(R, vis, views, sh, tv, a.between_px_w)
+        spx[sh], sview[sh], shold[sh], sstp[sh] = b, j, hp, st_
+        log("screen px of", len(sh), "shrubs over", len(views), "views in", round(time.time() - t1, 1), "s; tan_v",
+            round(tv, 4), "px per m at 100 m", round(720.0 / (2.0 * tv) / 100.0, 2))
     recs = []
     drops = collections.Counter()
     for i in idx:
         kind, fam, lod = parse(R.tkey[i])
         d, p = float(dmin[i]), float(px[i])
         hid = members.get(R.owner[i], "")
-        cls = classify(kind, d, p, a)
+        cls = classify(kind, d, p, a, float(spx[i]), float(near_hold[i]), float(sstp[i]))
+        if cls == "mesh" and ch[i] == -1 and kind == "shrub":    # the global set holds cards only (backdrop_trees)
+            cls = "card"
         if hid and kind not in SMALL_KINDS and d < a.hot_near:
             cls = "mesh"
         if cls is None:
             drops[kind] += 1
             continue
         recs.append(dict(i=int(i), kind=kind, fam=fam, cls=cls, chunk=int(ch[i]), d=d, px=p, hot=hid,
-                         hold=float(near_hold[i]), proxy=False, fpx=0.0))
+                         hold=float(near_hold[i]), proxy=False, fpx=0.0, spx=float(spx[i]),
+                         sview=int(sview[i]), shold=float(shold[i]), sstp=float(sstp[i])))
+        r = recs[-1]
+        # leafy bushes: the '.low' shrub (3-4 clumps, 50 leaf sprays) unless seen big (--shrub-hero-px) or clickable
+        if (kind == "shrub" and cls == "mesh" and leafy_shrub(fam, a) and not hid and
+                max(r["spx"], r["sstp"]) < a.shrub_hero_px and proto_obj(fam) is not None and
+                proto_obj(fam + ".low") is not None):
+            r["fam"] = fam + ".low"
     # proxies: largest on-screen size while the camera is outside the chunk's core range and the record is visible
     cand = [r for r in recs if r["chunk"] >= 0 and r["kind"] not in SMALL_KINDS]
     if cand:
@@ -1791,7 +2039,72 @@ def full_plan(a, sc):
     log("full plan:", len(idx), "visible vegetation instances ->", len(recs), "kept; dropped", dict(drops),
         round(time.time() - t0, 1), "s")
     return dict(R=R, S=S, ch=ch, ids=ids, cplan=cplan, recs=recs, drops=drops, labels=labels, frames=frames,
-                tv=tv, members=members)
+                tv=tv, members=members, views=views)
+
+
+SPX_BANDS = (0, 5, 10, 15, 20, 25, 30, 40, 60, 100, 1e9)
+
+
+def bush_report(P, a):
+    """plan.json 'bushes': every shrub by class, family, chunk and largest on-screen size (screen_px at 1280x720),
+    the cards' nearest distances, the views that make the biggest cards big, and the meshes' estimated triangles."""
+    R, recs, ids = P["R"], P["recs"], P["ids"]
+    views = P["views"]
+    sh = [r for r in recs if r["kind"] == "shrub"]
+    out = dict(rule=dict(shrub_near=a.shrub_near, shrub_mesh_px=a.shrub_mesh_px, shrub_hold_near=a.shrub_hold_near,
+                         between_px_w=a.between_px_w, shrub_mesh=a.shrub_mesh,
+                         px_unit="px at 1280x720 (x1.25 at 1600x900)", dropped_shrubs=int(P["drops"].get("shrub", 0))))
+    out["by_class"] = dict(collections.Counter(r["cls"] for r in sh))
+    out["by_family"] = dict(sorted(collections.Counter("%s/%s" % (r["cls"], r["fam"]) for r in sh).items()))
+    owners = collections.Counter()
+    for r in sh:
+        o = R.owner[r["i"]]
+        owners["%s/%s" % (r["cls"], o.rsplit(".", 1)[0] if o.rsplit(".", 1)[-1].isdigit() else o)] += 1
+    out["by_owner"] = dict(owners.most_common(40))
+    bands = {}
+    for cls in ("card", "mesh"):
+        rows = []
+        for b0, b1 in zip(SPX_BANDS[:-1], SPX_BANDS[1:]):
+            rr = [r for r in sh if r["cls"] == cls and b0 <= r["spx"] < b1]
+            if rr:
+                dd = np.array([r["d"] for r in rr])
+                rows.append(dict(px="%g-%g" % (b0, b1), n=len(rr), d_min=round(float(dd.min()), 1),
+                                 d_median=round(float(np.median(dd)), 1),
+                                 hold_views=sum(1 for r in rr if r["sview"] >= 0 and
+                                                views.kind[r["sview"]] == EW.VIEW_HOLD),
+                                 between_views=sum(1 for r in rr if r["sview"] >= 0 and
+                                                   views.kind[r["sview"]] == EW.VIEW_BETWEEN)))
+        bands[cls] = rows
+    out["by_screen_px"] = bands
+    per = {}
+    for k, cid in enumerate(ids + ["backdrop"]):
+        kk = k if cid != "backdrop" else -1
+        rk = [r for r in sh if r["chunk"] == kk]
+        cards = [r for r in rk if r["cls"] == "card"]
+        per[cid] = dict(meshes=sum(1 for r in rk if r["cls"] == "mesh"), cards=len(cards),
+                        cards_px_ge=dict((str(t), sum(1 for r in cards if r["spx"] >= t))
+                                         for t in (10, 15, 20, 25, 30, 50)),
+                        cards_steep_px_ge=dict((str(t), sum(1 for r in cards if r["sstp"] >= t))
+                                               for t in (8, 10, 12, 15, 20)),
+                        meshes_hero=sum(1 for r in rk if r["cls"] == "mesh" and not r["fam"].endswith(".low")),
+                        cards_max_px=round(max([r["spx"] for r in cards] or [0.0]), 1),
+                        cards_hold_px_max=round(max([r["shold"] for r in cards] or [0.0]), 1),
+                        meshes_hold_near=sum(1 for r in rk if r["cls"] == "mesh" and r["hold"] <= a.hold_mesh_near))
+    out["per_file"] = per
+    top = sorted([r for r in sh if r["cls"] == "card"], key=lambda r: -max(r["spx"], r["sstp"]))[:25]
+    out["cards_steep"] = [dict(px="%g-%g" % (b0, b1),
+                               n=sum(1 for r in sh if r["cls"] == "card" and b0 <= r["sstp"] < b1))
+                          for b0, b1 in zip(SPX_BANDS[:-1], SPX_BANDS[1:])]
+    out["meshes_by_lod"] = dict(collections.Counter(("low" if r["fam"].endswith(".low") else "hero")
+                                                    for r in sh if r["cls"] == "mesh"))
+    out["largest_cards"] = [dict(owner=R.owner[r["i"]], fam=r["fam"], chunk=ids[r["chunk"]] if r["chunk"] >= 0 else
+                                 "backdrop", px=round(r["spx"], 1), hold_px=round(r["shold"], 1), d=round(r["d"], 1),
+                                 view_frame=int(views.frames[r["sview"]]) if r["sview"] >= 0 else -1,
+                                 view_kind=int(views.kind[r["sview"]]) if r["sview"] >= 0 else -1,
+                                 steep_px=round(r["sstp"], 1),
+                                 at=[round(float(x), 1) for x in 0.5 * (R.lo[r["i"]] + R.hi[r["i"]])],
+                                 size=round(float((R.hi[r["i"]] - R.lo[r["i"]]).max()), 2)) for r in top]
+    return out
 
 
 def write_plan(P, a):
@@ -1830,8 +2143,30 @@ def write_plan(P, a):
     for r in recs:
         if r["hot"]:
             hot_owners[r["hot"]].add(R.owner[r["i"]])
+    # bushes: the near mesh's triangles per family (planned, before the build), per file
+    est = {}
+    for fam, row in protos.items():
+        if fam.startswith("shrub") and "mesh" in row:
+            ob = bpy.data.objects.get(row["mesh"]["object"])
+            if ob is None:
+                continue
+            mats = [m.name if m else "" for m in ob.data.materials]
+            mi, ls, lt, vi = _poly_arrays(ob.data)
+            t = {m: int((lt[mi == k] - 2).sum()) for k, m in enumerate(mats)}
+            if leafy_shrub(fam, a):
+                blob = sum(v for m, v in t.items() if m not in (SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT))
+                est[fam] = min(blob, a.shrub_blob_tris) + t.get(SHRUB_LEAF_MAT, 0) + t.get(SHRUB_FLOWER_MAT, 0)
+            else:
+                blob = sum(v for m, v in t.items() if m not in full_remove(fam, a))
+                est[fam] = int(round(blob * row["mesh"]["ratio"]))
+            row["mesh"]["near_tris_est"] = est[fam]
+    for k, cid in enumerate(ids + ["backdrop"]):
+        kk = k if cid != "backdrop" else -1
+        per[cid]["shrub_mesh_tris_est"] = sum(est.get(r["fam"], 0) for r in recs
+                                              if r["chunk"] == kk and r["kind"] == "shrub" and r["cls"] == "mesh")
     out = dict(kept=len(recs), dropped=dict(P["drops"]), per_file=per, protos=protos,
                click_target_owners={k: sorted(v) for k, v in hot_owners.items()},
+               bushes=bush_report(P, a),
                options={k: v for k, v in vars(a).items() if k not in ("commands",)})
     os.makedirs(FULL_OUT, exist_ok=True)
     BW.dump(os.path.join(FULL_OUT, "plan.json"), out)
@@ -1959,6 +2294,11 @@ def full_build(a, sc, P):
     T = {}
     t0 = time.time()
     R, recs, ids = P["R"], P["recs"], P["ids"]
+    if getattr(a, "only_recs", False) and a.only:          # test builds: only the --only chunks' records
+        keep = {ids.index(c) for c in a.only.split(",") if c in ids}
+        recs = [r for r in recs if r["chunk"] in keep]
+        P["recs"] = recs
+        log("--only-recs:", len(recs), "records of", sorted(ids[k] for k in keep))
     for d in (FULL_CACHE, FULL_OUT, FULL_RAW, os.path.join(FULL_CACHE, "mesh"), os.path.join(FULL_CACHE, "sprites"),
               os.path.join(FULL_CACHE, "tex")):
         os.makedirs(d, exist_ok=True)
@@ -1977,6 +2317,7 @@ def full_build(a, sc, P):
     fam_mesh, fam_card = {}, {}
     fam_needle, fam_nd, fam_fan = {}, {}, {}      # needle pines: build info, needle polygon mask, fan UVs per loop
     fam_nuv, fam_lite = {}, {}                    # twig cards: card UVs per loop (TEXCOORD_1), the lite subset
+    fam_cut, fam_shrub = {}, {}                   # cut-out cards per family ('pine' needles/twigs, 'leaf'), bush info
     for fam in sorted({r["fam"] for r in recs if r["cls"] == "mesh"}):
         ob, ratio = full_mesh_source(fam, a)
         if ob is None:
@@ -1987,13 +2328,20 @@ def full_build(a, sc, P):
         EW._slot_materials(me, ob)
         me = strip_faces(me, full_remove(fam, a))
         st = needle_style(fam, a)
-        if st:
+        if leafy_shrub(fam, a):
+            me, info = shrub_near_mesh(fam, me, dec, a.shrub_blob_tris, crown=not a.no_crown_normals)
+            nd, fan = needle_loops(me, mat=SHRUB_LEAF_MAT)
+            if nd.any():
+                fam_nd[fam], fam_fan[fam], fam_cut[fam] = nd, fan, "leaf"
+            fam_shrub[fam] = dict(info, source=ob.name)
+            log("bush proto", fam, json.dumps(fam_shrub[fam]))
+        elif st:
             me, info = needle_near_mesh(fam, me, dec, opaque_tris(st, a), a.needle_max_tris,
                                         twig=dict(scale=fam_scale.get(fam, 1.0)) if twig else None,
                                         crown=not a.no_crown_normals)
             nd, fan = needle_loops(me)
             if nd.any():
-                fam_nd[fam], fam_fan[fam] = nd, fan
+                fam_nd[fam], fam_fan[fam], fam_cut[fam] = nd, fan, "pine"
                 if twig:
                     fam_nuv[fam] = needle_loops(me, "twig")[1]
                     fam_lite[fam] = lite_cards(me, nd, a.needle_lite_tris, fam)
@@ -2004,12 +2352,14 @@ def full_build(a, sc, P):
             me = dec.get("tree." + fam, me, ratio)
         fam_mesh[fam] = me
         log("mesh proto", fam, ob.name, ntris(ob.data), "->", ntris(me), "tris")
-    if not fam_nd:
+    if not any(v == "pine" for v in fam_cut.values()):
         p_alpha = None
     elif twig:
         p_alpha = TWIG_TEX
     else:
         p_alpha = save_grey_png(needle_alpha(), os.path.join(FULL_OUT, "needle_alpha.png"))
+    p_leaf = save_grey_png(needle_alpha(**SHRUB_LEAF_ALPHA), os.path.join(FULL_OUT, "leaf_alpha.png")) \
+        if any(v == "leaf" for v in fam_cut.values()) else None
     for fam in sorted({r["fam"] for r in recs if r["cls"] == "card" or r["proxy"] or r["chunk"] == -1}):
         ob = card_source(fam)
         if ob is None:
@@ -2085,7 +2435,7 @@ def full_build(a, sc, P):
     fam_uv, fam_tag = {}, {}
     for fam, me in fam_mesh.items():
         A = BW.ma(me)
-        spx = FULL_SLOT_PX.get(fam.split(".")[0], 128)
+        spx = slot_px(fam, a)
         co, area = A.co, A.area
         nd = fam_nd.get(fam)
         texel = TWIG_TEXEL if fam in fam_nuv else NEEDLE_TEXEL
@@ -2113,6 +2463,8 @@ def full_build(a, sc, P):
                                                ".cn0" if a.no_crown_normals else "")
             if fam in fam_nuv:      # twig cards: their own tag and card size
                 fam_tag[fam] += ".%s.k%d" % (TWIG_TAG, int(round(fam_needle[fam].get("card_size", 0) * 100)))
+            if fam in fam_shrub:    # leafy bushes: their own tag
+                fam_tag[fam] += "." + SHRUB_TAG
             if "UVMap" in me.uv_layers:
                 me.uv_layers["UVMap"].active_render = True      # _mat_needle's colour (and fan alpha) read the fan UVs
     bake_px = {}
@@ -2146,6 +2498,10 @@ def full_build(a, sc, P):
                     if fam in fam_nuv:
                         twig_alpha_nodes(mc, t_img)
                     needle_bake_nodes(mc)
+                elif m.name in (SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT) and fam in fam_shrub:
+                    needle_bake_nodes(mc)       # leaves and flowers: opaque to their own texels, see-through to shadows
+                    if m.name == SHRUB_FLOWER_MAT:
+                        flat_colour_nodes(mc, SHRUB_FLOWER_SRGB)
                 tn = mc.node_tree.nodes.new("ShaderNodeTexImage")
                 mc.node_tree.nodes.active = tn
                 fam_nodes.setdefault(fam, []).append(tn)
@@ -2153,7 +2509,7 @@ def full_build(a, sc, P):
             fam_obj[fam] = rig.add("tree.bake." + fam, bme)
         with rig.ctx():
             for fam in todo:
-                spx = FULL_SLOT_PX.get(fam.split(".")[0], 128)
+                spx = slot_px(fam, a)
                 ob = fam_obj[fam]
                 rig.only(ob)
                 if (fam, "albedo") not in bake_px:
@@ -2189,7 +2545,7 @@ def full_build(a, sc, P):
     # ---- one global atlas of every mesh variant: denoise + grade like the main atlases; chunks cut their slots
     G, gpos = None, {}
     if used_mesh:
-        sizes = [FULL_SLOT_PX.get(fam.split(".")[0], 128) for fam, v in used_mesh]
+        sizes = [slot_px(fam, a) for fam, v in used_mesh]
         W, place = shelf_squares(sizes, 4096)
         H = place["height"]
         big = np.zeros((H, W, 4), np.float32)
@@ -2305,7 +2661,8 @@ def full_build(a, sc, P):
         "keys at", a.hold_sprite_px, "px) in", T["sprites"], "s")
     C = dict(G=G, gpos=gpos, fam_mesh=fam_mesh, fam_uv=fam_uv, card_geo=card_geo, spr=spr, spr_scale=spr_scale,
              labels=P["labels"], fam_nd=fam_nd, fam_fan=fam_fan, needle_alpha=p_alpha,
-             needle_mode="twig" if fam_nuv else "needle", fam_nuv=fam_nuv, fam_lite=fam_lite)
+             needle_mode="twig" if fam_nuv else "needle", fam_nuv=fam_nuv, fam_lite=fam_lite, fam_cut=fam_cut,
+             leaf_alpha=p_leaf)
     for r in recs:                  # near pines: full or lite twig cards (one bake, two meshes)
         lite = fam_lite.get(r["fam"])
         r["nlod"] = needle_lod(r, a) if r["cls"] == "mesh" and lite is not None and not lite["keep"].all() else "full"
@@ -2330,7 +2687,7 @@ def full_build(a, sc, P):
                lit_share=round(float(np.mean([r["vis"] >= 0.5 for r in recs])), 3),
                mesh_variants=len(used_mesh), card_keys=len(need_px),
                card_keys_hold=sum(1 for x in need_px.values() if x >= a.hold_sprite_px),
-               needles=fam_needle, options={k: v for k, v in vars(a).items() if k != "commands"})
+               needles=fam_needle, bushes=fam_shrub, options={k: v for k, v in vars(a).items() if k != "commands"})
     BW.dump(os.path.join(FULL_OUT, "trees_stats.json"), out)
     log("TREES FULL", json.dumps(dict(totals=tot, times=T)))
     for cid, f in files.items():
@@ -2414,8 +2771,9 @@ def export_chunk(sc, a, cid, rk, R, C):
     info = dict(file=cid + "_trees.glb")
     mesh_r = [r for r in rk if r["cls"] == "mesh"]
     card_r = [r for r in rk if r["cls"] == "card"]
-    mat_mesh = mat_card = mat_needle = None
+    mat_mesh = mat_card = mat_needle = mat_leaf = None
     suv = spr_uv = None
+    cut = C.get("fam_cut", {})
     if mesh_r:
         slots = sorted({(r["fam"], r["mvar"]) for r in mesh_r})
         full = {(r["fam"], r["mvar"]) for r in mesh_r
@@ -2423,8 +2781,10 @@ def export_chunk(sc, a, cid, rk, R, C):
         img, suv = atlas_from(slots, {s: 1 if s in full else 2 for s in slots}, C["G"], C["gpos"])
         p = save_png(img, "trees_mesh_" + cid, os.path.join(FULL_CACHE, "tex", "%s_mesh.png" % cid))
         mat_mesh = tex_material("trees.mesh." + cid, p, alpha=False)
-        if any(fam in C["fam_nd"] for fam, v in slots):
+        if any(fam in C["fam_nd"] and cut.get(fam, "pine") == "pine" for fam, v in slots):
             mat_needle = needle_material("trees.needle." + cid, p, C["needle_alpha"], C.get("needle_mode", "needle"))
+        if any(cut.get(fam) == "leaf" for fam, v in slots):      # leafy bushes: their leaf sprays' own cut-out
+            mat_leaf = needle_material("trees.needle.leaf." + cid, p, C["leaf_alpha"], "needle")
         info.update(mesh_atlas=[img.shape[1], img.shape[0]], mesh_slots=len(slots), mesh_slots_full=len(full))
         preview_arr(img, os.path.join(FULL_OUT, "preview_%s_mesh.png" % cid))
     if card_r:
@@ -2439,6 +2799,10 @@ def export_chunk(sc, a, cid, rk, R, C):
                     card_keys_hold=sum(1 for x in cpx.values() if x >= a.hold_sprite_px))
         preview_arr(sheet, os.path.join(FULL_OUT, "preview_%s_cards.png" % cid), bg=(0.45, 0.47, 0.5))
         preview_arr(sheet, os.path.join(FULL_OUT, "preview_%s_cards_rgb.png" % cid), bg="rgb")
+
+    def card_mat(fam):
+        """The cut-out material of a family's near mesh: the bush leaves' or the pines' needles / twigs."""
+        return mat_leaf if cut.get(fam) == "leaf" else mat_needle
     vm = {}
     groups = collections.defaultdict(list)
     for r in mesh_r:
@@ -2446,12 +2810,15 @@ def export_chunk(sc, a, cid, rk, R, C):
             groups[(r["fam"], r["mvar"], r.get("nlod", "full"))].append(r)
     small = []
     for (fam, v, lod), lst in sorted(groups.items()):
-        me = _variant_mesh(vm, cid, fam, v, C, suv, mat_mesh, mat_needle, lod)
+        me = _variant_mesh(vm, cid, fam, v, C, suv, mat_mesh, card_mat(fam), lod)
         st["tris_mesh"] += ntris(me) * len(lst)
-        if mat_needle is not None:
-            st["tris_needle"] += _needle_tris(C, fam, lod) * len(lst)
-        if fam in C["fam_nd"]:
+        if card_mat(fam) is not None:
+            st["tris_leaf" if cut.get(fam) == "leaf" else "tris_needle"] += _needle_tris(C, fam, lod) * len(lst)
+        if fam in C["fam_nd"] and cut.get(fam, "pine") == "pine":
             st["needle_trees_" + lod] += len(lst)
+        if fam.startswith("shrub"):
+            st["bush_meshes"] += len(lst)
+            st["tris_bush"] += ntris(me) * len(lst)
         if len(lst) < 3:
             small += [(me, R.mw[r["i"]]) for r in lst]
             st["merged_near"] += len(lst)
@@ -2471,8 +2838,7 @@ def export_chunk(sc, a, cid, rk, R, C):
         st["instances"] += len(lst)
         st["instance_groups"] += 1
     if small:
-        me = merge_uv_meshes(small, "trees.near." + cid)
-        _near_materials(me, mat_mesh, mat_needle)
+        me = merge_uv_meshes(small, "trees.near." + cid, materials=True)
         ob = bpy.data.objects.new("trees.near." + cid, me)
         coll.objects.link(ob)
         made.append(ob)
@@ -2494,17 +2860,15 @@ def export_chunk(sc, a, cid, rk, R, C):
         made.append(e)
         ms = [r for r in lst if r["cls"] == "mesh"]
         if ms:
-            me = merge_uv_meshes([(_variant_mesh(vm, cid, r["fam"], r["mvar"], C, suv, mat_mesh, mat_needle),
-                                   R.mw[r["i"]]) for r in ms], "trees.hs.%s.mesh" % hid)
-            _near_materials(me, mat_mesh, mat_needle)
+            me = merge_uv_meshes([(_variant_mesh(vm, cid, r["fam"], r["mvar"], C, suv, mat_mesh, card_mat(r["fam"])),
+                                   R.mw[r["i"]]) for r in ms], "trees.hs.%s.mesh" % hid, materials=True)
             o = bpy.data.objects.new("trees.hs.%s.mesh" % hid, me)
             coll.objects.link(o)
             o.parent = e
             made.append(o)
             temp.append(me)
             st["tris_mesh"] += ntris(me)
-            if mat_needle is not None:
-                st["tris_needle"] += sum(_needle_tris(C, r["fam"]) for r in ms)
+            st["tris_needle"] += sum(_needle_tris(C, r["fam"]) for r in ms if card_mat(r["fam"]) is not None)
         cs = [r for r in lst if r["cls"] == "card"]
         if cs:
             o, nt = card_object("trees.hs.%s.cards" % hid, cs, R, C, spr_uv, mat_card)
@@ -2630,7 +2994,12 @@ def full_verify(a, sc):
     ids = [x["id"] for x in EW.AREAS]
     with open(os.path.join(EW.WORK, "chunks.json"), encoding="utf-8") as fh:
         need = {c["id"]: c["need"] for c in json.load(fh)["chunks"]}
-    frames = [int(x) for x in a.frames.split(",")] if a.frames else [int(x["holdFrame"]) for x in EW.AREAS]
+    frames = ([int(x) for x in a.frames.split(",")] if a.frames else
+              ([] if a.looks else [int(x["holdFrame"]) for x in EW.AREAS]))
+    # --looks frame:yaw:pitch (degrees; yaw about world up, positive left; pitch about the camera's right axis,
+    # positive up): the page's free look at that frame, rendered from a copy of the camera turned like the page turns it
+    shots = [(f, 0.0, 0.0) for f in frames] + [(int(f_), float(y_), float(p_)) for f_, y_, p_ in
+                                              (x.split(":") for x in a.looks.split(",") if x)]
     # hide the original vegetation: every instancer of a vegetation prototype
     dg = bpy.context.evaluated_depsgraph_get()
     owners, other = collections.Counter(), collections.Counter()
@@ -2653,6 +3022,12 @@ def full_verify(a, sc):
     EW.hide_flyer(sc)
     sc.camera = bpy.data.objects[EW.CAMERA]
     vl = bpy.context.view_layer
+    # build,verify in one session: the build's own 'glTF Material Output' group (gltf_output_group: only an Occlusion
+    # input) would be reused by the glTF importer, which then fails on its missing inputs ('Iridescence Factor')
+    for g in list(bpy.data.node_groups):
+        if g.name.lower().startswith("gltf material output") and not any(
+                getattr(it, "name", "") == "Iridescence Factor" for it in g.interface.items_tree):
+            g.name = "bake_trees.export_output_group"
     proxies = {}
     for name in ids + ["backdrop"]:
         path = os.path.join(FULL_RAW, name + "_trees.glb")
@@ -2708,6 +3083,22 @@ def full_verify(a, sc):
     log("verify: engine", r.engine, "fx hidden in pass B", len(fx), "tree materials", len(tree_mats))
 
     span = {x["id"]: (x["frameStart"], x["frameEnd"]) for x in EW.AREAS}
+    cam0 = bpy.data.objects[EW.CAMERA]
+    vcam = bpy.data.objects.new("verify.look_cam", cam0.data)
+    sc.collection.objects.link(vcam)
+
+    def set_shot(f, yaw, pitch):
+        """Frame f; the chase camera, or (yaw / pitch) its copy turned like the page's free look. File tag."""
+        sc.frame_set(f)
+        if not yaw and not pitch:
+            sc.camera = cam0
+            return "%d" % f
+        M = cam0.matrix_world.copy()
+        R1 = (Matrix.Rotation(math.radians(yaw), 3, "Z") @ M.to_3x3().normalized() @
+              Matrix.Rotation(math.radians(pitch), 3, "X"))
+        vcam.matrix_world = Matrix.LocRotScale(M.to_translation(), R1.to_quaternion(), Vector((1.0, 1.0, 1.0)))
+        sc.camera = vcam
+        return "%d_y%g_p%g" % (f, yaw, pitch)
 
     def show_trees(f, on):
         drawn = [cid for cid in ids if need[cid][0] <= f <= need[cid][1]]
@@ -2723,11 +3114,12 @@ def full_verify(a, sc):
                 o.hide_render = cid in drawn
         return drawn
     # pass A (every frame): the film look without the vegetation
-    for f in frames:
-        sc.frame_set(f)
+    for f, yaw, pitch in shots:
+        tg = set_shot(f, yaw, pitch)
         show_trees(f, False)
-        r.filepath = os.path.join(tmp, "a_%d.png" % f)
+        r.filepath = os.path.join(tmp, "a_%s.png" % tg)
         bpy.ops.render.render(write_still=True)
+        log("verify: pass A", tg, round(time.time() - t0, 1), "s")
     # pass B (every frame): the tree GLBs unlit (Standard view, the web's display-referred colours), every other
     # material swapped for a Holdout shader (collection holdout misses instanced geometry), transparent film
     vs.view_transform, vs.look, vs.exposure = "Standard", "None", 0.0
@@ -2747,22 +3139,22 @@ def full_verify(a, sc):
             swapped += 1
     log("verify: holdout on", swapped, "material outputs")
     rows = []
-    for f in frames:
-        sc.frame_set(f)
+    for f, yaw, pitch in shots:
+        tg = set_shot(f, yaw, pitch)
         drawn = show_trees(f, True)
-        pb = os.path.join(tmp, "b_%d.png" % f)
+        pb = os.path.join(tmp, "b_%s.png" % tg)
         r.filepath = pb
         bpy.ops.render.render(write_still=True)
-        ia, ib = load_rgba(os.path.join(tmp, "a_%d.png" % f)), load_rgba(pb)
+        ia, ib = load_rgba(os.path.join(tmp, "a_%s.png" % tg)), load_rgba(pb)
         al = ib[..., 3:4]
         comp = ia.copy()
         comp[..., :3] = ia[..., :3] * (1 - al) + ib[..., :3] * al
         comp[..., 3] = 1.0
         tag = "_max%d" % a.max_chunks if a.max_chunks > 0 else ""
-        save_png(comp, "verify", os.path.join(FULL_OUT, "verify%s_%d.png" % (tag, f)))
+        save_png(comp, "verify", os.path.join(FULL_OUT, "verify%s_%s.png" % (tag, tg)))
         cover = float((al > 0.5).mean())
-        rows.append(dict(frame=f, chunks=drawn, tree_pixels=round(cover, 4)))
-        log("verify", f, "chunks", drawn, "tree pixels", round(cover * 100, 2), "%", round(time.time() - t0, 1), "s")
+        rows.append(dict(frame=f, yaw=yaw, pitch=pitch, chunks=drawn, tree_pixels=round(cover, 4)))
+        log("verify", tg, "chunks", drawn, "tree pixels", round(cover * 100, 2), "%", round(time.time() - t0, 1), "s")
     BW.dump(os.path.join(FULL_OUT, "verify%s.json" % ("_max%d" % a.max_chunks if a.max_chunks > 0 else "")), dict(frames=rows, hidden_instancers=len(owners),
                                                         mixed_instancers=mixed))
 
@@ -2812,15 +3204,66 @@ def full_args(argv):
     ap.add_argument("--quality", default="dev", choices=sorted(BW.BAKE_QUALITY),
                     help="dev: the fast bake (default); production: 4x samples for mesh bakes and sprites, adaptive "
                          "sampling off, own cache names (bake_web.BAKE_QUALITY)")
+    ap.add_argument("--shrub-mesh-px", type=float, default=SHRUB_MESH_PX,
+                    help="shrubs: a near mesh when their largest on-screen size (screen_px, px at 1280x720) reaches "
+                         "this; 0: off (the old rule, path distance only, also needs --shrub-steep-px 0 and "
+                         "--shrub-mesh blob)")
+    ap.add_argument("--shrub-steep-px", type=float, default=SHRUB_STEEP_PX,
+                    help="shrubs: also a near mesh when seen from %g deg or more above at this size (px at 1280x720; "
+                         "0: off)" % STEEP_DEG)
+    ap.add_argument("--shrub-hero-px", type=float, default=SHRUB_HERO_PX,
+                    help="leafy near bushes at least this big (px at 1280x720) use the '.hero' shrub, the rest '.low'")
+    ap.add_argument("--shrub-hold-near", type=float, default=SHRUB_HOLD_NEAR,
+                    help="shrubs: also a near mesh when a hold camera sees them this near (m; 0: off)")
+    ap.add_argument("--between-px-w", type=float, default=BETWEEN_PX_W,
+                    help="screen_px: weight of the between look-around views (path and hold views count in full)")
+    ap.add_argument("--shrub-mesh", choices=("leafy", "blob"), default="leafy",
+                    help="leafy: near bushes keep their leaf sprays (cut-out cards) and flowers, clumps decimated to "
+                         "--shrub-blob-tris; blob: the old near shrub (clumps only)")
+    ap.add_argument("--shrub-blob-tris", type=int, default=SHRUB_BLOB_TRIS)
+    ap.add_argument("--out", default="",
+                    help="test runs: write under this folder (relative to the project, e.g. out/r17/new): raw/, "
+                         "bake/trees/ and cache/ instead of out/web/full/raw, out/web/full/bake/trees and "
+                         "bakecache/trees_full (inputs still come from out/web/full)")
+    ap.add_argument("--cache-dir", default="", help="with --out: the bake cache (default <out>/cache)")
+    ap.add_argument("--only-recs", action="store_true",
+                    help="build with --only: cast, bake and render sprites for those chunks' records only (test runs: "
+                         "needs --out)")
     ap.add_argument("--frames", default="", help="verify: Blender frames (default: the 11 hold frames)")
+    ap.add_argument("--looks", default="",
+                    help="verify: also frame:yaw:pitch views (degrees, the page's free look: yaw positive left, pitch "
+                         "positive up), e.g. 516:45:-35; with --looks and no --frames only these")
     ap.add_argument("--res", default="1280x720")
     ap.add_argument("--max-chunks", type=int, default=0,
                     help="verify: draw at most this many chunks (nearest areas), proxies for the rest (page default 3)")
     return ap.parse_args(argv)
 
 
+def apply_out(a):
+    """--out: plan, build and verify read and write their own files under that folder (raw/, bake/trees/, cache/ or
+    --cache-dir) instead of out/web/full/raw, out/web/full/bake/trees and bakecache/trees_full. Refuses a folder
+    inside out/web or bakecache (test runs must never touch the real build)."""
+    global FULL_RAW, FULL_OUT, FULL_CACHE
+    if getattr(a, "only_recs", False) and not getattr(a, "out", ""):
+        raise SystemExit("--only-recs builds a partial set (a backdrop with some areas' proxies only): use it with --out")
+    if not getattr(a, "out", ""):
+        return
+    base = os.path.normpath(a.out if os.path.isabs(a.out) else os.path.join(ROOT, a.out))
+    cache = a.cache_dir and os.path.normpath(a.cache_dir if os.path.isabs(a.cache_dir) else
+                                             os.path.join(ROOT, a.cache_dir))
+    for p in (base, cache):
+        if p and any(os.path.commonpath([p, os.path.normpath(q)]) == os.path.normpath(q)
+                     for q in (EW.OUT_WEB, BW.CACHE_DIR)):
+            raise SystemExit("--out / --cache-dir must not be inside out/web or bakecache: %s" % p)
+    FULL_RAW = os.path.join(base, "raw")
+    FULL_OUT = os.path.join(base, "bake", "trees")
+    FULL_CACHE = cache or os.path.join(base, "cache")
+    log("test run: outputs under", base, "cache", FULL_CACHE)
+
+
 def main():
     a = full_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
+    apply_out(a)
     EW.use_profile("full")
     sc = bpy.context.scene
     t0 = time.time()

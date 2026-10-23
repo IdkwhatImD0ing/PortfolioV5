@@ -2019,6 +2019,10 @@ def _register_defaults():
     R("jade_slip", _jade, deep="#2a8a6c", pale="#9ee0c4", glow="#30ffc4", strength=1.1, sss=0.4, veins=0.08)
     for i, (_n, col) in enumerate(BANNER_COLOURS):
         R("banner_%d" % i, _cloth, colour=col, translucency=0.38 if i != 7 else 0.15)
+    # the Five Element Banners' own cloths, flag_<element> (areas/formation.py ELEMENT_FLAGS; round 30)
+    from . import element_flags
+    for _k, (name, col, tr, sheen) in element_flags.CLOTH.items():
+        R(name, _cloth, colour=col, translucency=tr, sheen=sheen)
 
 
 _register_defaults()

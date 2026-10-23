@@ -299,13 +299,17 @@ def _front_phase(n):
     return -math.pi / 2 + math.pi / n
 
 
-def _stair(g, apothem, z_top, width, rise=0.18, tread=0.34):
-    """Front stair (toward -Y) from a platform edge at y = -apothem, top z_top, down to z = 0."""
+def _stair(g, apothem, z_top, width, rise=0.18, tread=0.34, r12=True):
+    """Front stair (toward -Y) from a platform edge at y = -apothem, top z_top, down to z = 0. Each step is a block
+    under its own tread (the top one reaching 5 cm into the platform); round 12: they ran from their nosing all the
+    way back into the platform, one inside the other, and the sides of every pair lay in one plane (z-fighting on
+    both sides of each shrine stair). ``r12`` False: the old blocks (patch_r12_world's guard)."""
     steps = max(1, int(math.ceil(z_top / rise - 1e-6)) - 1)
     rz = z_top / (steps + 1)
     for i in range(steps):
         zt = z_top - rz * (i + 1)
-        g.box(-width / 2, width / 2, -apothem - tread * (i + 1), -apothem + 0.05, 0.0, zt, MI_MARBLE)
+        back = -apothem + 0.05 if (i == 0 or not r12) else -apothem - tread * i
+        g.box(-width / 2, width / 2, -apothem - tread * (i + 1), back, 0.0, zt, MI_MARBLE)
 
 
 def _hooks(n, phase, r, z):
@@ -315,7 +319,7 @@ def _hooks(n, phase, r, z):
     return [(x, y, z) for x, y in pts]
 
 
-def pavilion_geo(n=6, s=1.0, double=False):
+def pavilion_geo(n=6, s=1.0, double=False, r12=True):
     """Open pavilion (ting) on a marble platform with a front stair: n red columns, a beam ring, one or two
     swept roofs and a gold finial. Returns (Geo, dict(hooks=[...], height, apothem))."""
     g = Geo()
@@ -324,7 +328,7 @@ def pavilion_geo(n=6, s=1.0, double=False):
     r_plat = rcol + 0.8 * s
     g.prism(n, r_plat, 0.0, plat_h, ph, MI_MARBLE)
     ap = r_plat * math.cos(math.pi / n)
-    _stair(g, ap, plat_h, 2.2 * s)
+    _stair(g, ap, plat_h, 2.2 * s, r12=r12)
     z_b = plat_h + col_h
     for i in range(n):
         a = ph + 2 * math.pi * i / n
@@ -349,7 +353,7 @@ def pavilion_geo(n=6, s=1.0, double=False):
     return g, dict(hooks=_hooks(n, ph, r_e * 0.9, z_e + lift * 0.45), height=z_top + 1.9 * s, apothem=ap)
 
 
-def pagoda_geo(n=8, tiers=3, s=1.0, body_mat=MI_RED):
+def pagoda_geo(n=8, tiers=3, s=1.0, body_mat=MI_RED, r12=True):
     """Small pagoda (ta) on a marble platform with a front stair: ``tiers`` storeys tapering up, a swept eave
     over each, a pyramid roof and a tall gold spire; a dark door on the ground storey's front."""
     g = Geo()
@@ -358,7 +362,7 @@ def pagoda_geo(n=8, tiers=3, s=1.0, body_mat=MI_RED):
     plat_r, plat_h = r0 + 1.4 * s, 0.9
     g.prism(n, plat_r, 0.0, plat_h, ph, MI_MARBLE)
     ap = plat_r * math.cos(math.pi / n)
-    _stair(g, ap, plat_h, 2.0 * s)
+    _stair(g, ap, plat_h, 2.0 * s, r12=r12)
     ap0 = r0 * math.cos(math.pi / n)
     g.box(-0.6 * s, 0.6 * s, -ap0 - 0.12, -ap0 + 0.05, plat_h, plat_h + 2.2 * s, MI_WOOD)
     z = plat_h
@@ -383,9 +387,12 @@ def pagoda_geo(n=8, tiers=3, s=1.0, body_mat=MI_RED):
     return g, dict(hooks=hooks, height=z_top + 3.3 * s, apothem=ap)
 
 
-def terrace_geo(g, depth, opening=0.0, hx=None, front=None, back=None, rail_h=None, rail_t=None):
+def terrace_geo(g, depth, opening=0.0, hx=None, front=None, back=None, rail_h=None, rail_t=None, r12=True):
     """Stone terrace under a shrine (top at z = 0, marble top, grey body ``depth`` m deep) with a parapet on
-    every edge; ``opening`` > 0 leaves a gap that wide in the middle of the front (-Y) edge for a bridge."""
+    every edge; ``opening`` > 0 leaves a gap that wide in the middle of the front (-Y) edge for a bridge. The side
+    parapets run the terrace's full depth and the front and back ones between them (round 12: all four ended on the
+    corner points, so at each corner two overlapped in a square with their tops in one plane, and the outer corner
+    square was missing; ``r12`` False: that old layout, patch_r12_world's guard)."""
     T = TERRACE
     hx = T["hx"] if hx is None else hx
     front = T["front"] if front is None else front
@@ -394,11 +401,19 @@ def terrace_geo(g, depth, opening=0.0, hx=None, front=None, back=None, rail_h=No
     rt = T["rail_t"] if rail_t is None else rail_t
     g.box(-hx, hx, -front, back, -depth, 0.0, MI_STONE, top_mat=MI_MARBLE)
     x0, x1, y0, y1 = -hx + rt / 2, hx - rt / 2, -front + rt / 2, back - rt / 2
-    segs = [((x0, y1), (x1, y1)), ((x0, y0), (x0, y1)), ((x1, y0), (x1, y1))]
-    if opening > 0:
-        segs += [((x0, y0), (-opening / 2, y0)), ((opening / 2, y0), (x1, y0))]
+    if r12:
+        e = rt / 2
+        segs = [((x0 + e, y1), (x1 - e, y1)), ((x0, y0 - e), (x0, y1 + e)), ((x1, y0 - e), (x1, y1 + e))]
+        if opening > 0:
+            segs += [((x0 + e, y0), (-opening / 2, y0)), ((opening / 2, y0), (x1 - e, y0))]
+        else:
+            segs.append(((x0 + e, y0), (x1 - e, y0)))
     else:
-        segs.append(((x0, y0), (x1, y0)))
+        segs = [((x0, y1), (x1, y1)), ((x0, y0), (x0, y1)), ((x1, y0), (x1, y1))]
+        if opening > 0:
+            segs += [((x0, y0), (-opening / 2, y0)), ((opening / 2, y0), (x1, y0))]
+        else:
+            segs.append(((x0, y0), (x1, y0)))
     for p0, p1 in segs:
         g.obox(p0, p1, rt, 0.0, rh, MI_MARBLE)
     return dict(front=front, back=back, hx=hx)
@@ -410,14 +425,15 @@ def terrace_dims(cap_r):
     return dict(hx=T["hx"], front=T["front"], back=T["back"])
 
 
-def shrine_geo(spec, depth, opening=0.0, dims=None):
-    """Terrace + pavilion / pagoda for a SHRINES entry. Returns (Geo, info)."""
+def shrine_geo(spec, depth, opening=0.0, dims=None, r12=True):
+    """Terrace + pavilion / pagoda for a SHRINES entry. Returns (Geo, info). ``r12`` False: as built before round 12
+    (patch_r12_world's guard)."""
     s = SHRINE_SCALE * spec.get("scale", 1.0)
     if spec["kind"] == "pagoda":
-        g, info = pagoda_geo(spec.get("n", 8), spec.get("tiers", 3), s)
+        g, info = pagoda_geo(spec.get("n", 8), spec.get("tiers", 3), s, r12=r12)
     else:
-        g, info = pavilion_geo(spec.get("n", 6), s, spec.get("double", False))
-    info.update(terrace_geo(g, depth, opening, **(dims or {})))
+        g, info = pavilion_geo(spec.get("n", 6), s, spec.get("double", False), r12=r12)
+    info.update(terrace_geo(g, depth, opening, r12=r12, **(dims or {})))
     return g, info
 
 

@@ -44,6 +44,8 @@ LAND_R = (36.0, 42.0)            # rear landing, radial extent along REAR_A (5 m
 LAND_W = 5.0
 PIER_R1 = 44.0                   # pier end, ~1 m inside the island edge (44.9 m at 107 deg)
 PIER_W = 3.0
+PIER_SINK = 0.65                 # the pier's footing reaches this far under its foot (the landing's: arch.platform's 0.6);
+                                 # round 12: their footings' flared bottoms overlapped 2 mm apart where they meet
 WEST_A = math.radians(175.6)     # second band stair (west), so the grass ring forms a loop
 
 AREA = dict(key="arena", section_id="hackathons", title_en="Sword-Discussion Arena",
@@ -59,6 +61,14 @@ K = "arena"
 R_FLOOR = 30.0          # dueling floor radius (60 m platform)
 R_BAND = 34.0           # outer banner band
 Z_BAND = -0.35          # banner band top (one step below the floor)
+BAND_STEP_DROP = 0.02   # the stairs off the band: their top tread (inside the band's rim) this far under the band's top
+                        # (round 12: 5 mm, and the two z-fought on the web beyond ~140 m)
+BAND_STEP_DROP_OLD = 0.005
+FRONT_STEPS_Y = -33.695  # the front steps' top edge (y): 0.5 cm inside the band's rim at their corners (x +-4.5), and
+                         # their first riser (0.33 m down) 2.5 cm outside the rim wall at the axis. Round 12: at -33.65
+                         # that riser met the curved rim wall at a grazing angle 0.5-1.4 m either side of the axis, the
+                         # two 0-12 mm apart (z-fighting 16 m from the camera)
+FRONT_STEPS_Y_OLD = -33.65
 R_BANNER = 32.2         # banner pole circle
 N_BANNERS = 40          # ~40 hackathons
 GAP_FRONT = math.radians(13.0)   # half-angle of the open entrance at -Y
@@ -300,12 +310,35 @@ def _rim_rail(coll, root, z_at, edge, a0, length=20.0, inset=1.0, height=0.9):
     return A.balustrade(U.name(K, "rim_rail"), coll, pts, height=height, end_drum="both", parent=root)
 
 
+STEP_SINK = 0.12        # the band stairs' blocks reach this far under their foot (round 12 verify: the island's grass
+                        # falls away under the front and rear flights near their foot, so their bottoms stood up to
+                        # 8 and 10 cm over it, a dark slit along their sides seen from 16 m)
+
+
+def sink_steps(st, depth):
+    """Let an arch.stairs flight's block (its '.steps' mesh: the treads and stringers) reach ``depth`` below its foot:
+    its bottom vertices (and the bevel ring just above them) move down. Works on the built object, so a fresh build
+    and sect/patch_r12_areas.py agree. Returns the number of vertices moved (0 when already sunk)."""
+    me = bpy.data.objects[st.name + ".steps"].data
+    if min(v.co.z for v in me.vertices) < -1e-4:
+        return 0
+    n = 0
+    for v in me.vertices:
+        if v.co.z < 0.05:
+            v.co.z -= depth
+            n += 1
+    me.update()
+    return n
+
+
 def _band_stair(coll, root, a, z_foot, part):
-    """2.5 m stair from the banner band straight out and down to z_foot at angle a."""
+    """2.5 m stair from the banner band straight out and down to z_foot at angle a (its block sunk STEP_SINK)."""
     r_top = R_BAND - 0.15                       # top edge just inside the band's rim
     x, y = _radial(a, r_top)
-    return A.stairs(U.name(K, part), coll, 2.5, Z_BAND - z_foot - 0.005, run_per_step=0.3, ramp=False,
-                    balustrade=False, parent=root, location=(x, y, z_foot), rotation_z=a + math.pi / 2)
+    st = A.stairs(U.name(K, part), coll, 2.5, Z_BAND - z_foot - BAND_STEP_DROP, run_per_step=0.3, ramp=False,
+                  balustrade=False, parent=root, location=(x, y, z_foot), rotation_z=a + math.pi / 2)
+    sink_steps(st, STEP_SINK)
+    return st
 
 
 def _build_tier(coll, root, rim):
@@ -1056,15 +1089,19 @@ def _build_banners(coll, root):
 def _build_entrance(coll, root, z_at, edge):
     """Arrival from the forge chain bridge: a bridgehead slab on the axis under a three-bay gate,
     a paved strip and the front steps up to the banner band, stone lanterns, balustrades."""
-    # front steps: top edge inside the band's rim across their whole width (no slot under it)
-    st = A.stairs(U.name(K, "steps"), coll, 9.0, Z_BAND - FRONT_Z - 0.005, ramp=False, balustrade=False,
-                  parent=root, location=(0.0, -33.65, FRONT_Z))
-    foot_y = -33.65 - float(st["arch_run"])
+    # front steps: top edge inside the band's rim across their whole width (no slot under it), their top tread
+    # BAND_STEP_DROP under the band (round 12: 5 mm under it, the band's top and the tread z-fought on the web)
+    st = A.stairs(U.name(K, "steps"), coll, 9.0, Z_BAND - FRONT_Z - BAND_STEP_DROP, ramp=False, balustrade=False,
+                  parent=root, location=(0.0, FRONT_STEPS_Y, FRONT_Z))
+    sink_steps(st, STEP_SINK)
+    foot_y = FRONT_STEPS_Y - float(st["arch_run"])
     # bridgehead: 12 x 8 m, top flush with the steps' foot; the chain bridge lands on its outer edge
     A.platform(U.name(K, "bridgehead"), coll, 12.0, depth=BRIDGE_Y1 - BRIDGE_Y0, height=0.5, style="plain",
                parent=root, location=(0.0, (BRIDGE_Y0 + BRIDGE_Y1) * 0.5, FRONT_Z - 0.5))
-    _slab(U.name(K, "bridgehead_walk"), coll, root, (0.0, (BRIDGE_Y1 - 0.15 + foot_y + 0.05) * 0.5),
-          (9.2, foot_y + 0.05 - (BRIDGE_Y1 - 0.15)), FRONT_Z - 0.002, FRONT_Z - 0.6)
+    # paved strip from the bridgehead's edge to under the steps' foot (round 12: it started 0.15 m on the bridgehead,
+    # 2 mm under its top: 1.3 m2 of z-fighting)
+    _slab(U.name(K, "bridgehead_walk"), coll, root, (0.0, (BRIDGE_Y1 + foot_y + 0.05) * 0.5),
+          (9.2, foot_y + 0.05 - BRIDGE_Y1), FRONT_Z - 0.002, FRONT_Z - 0.6)
     # three-bay gate (centre opening ~5.1 x 4.8 m clears the 3.2 m deck and its end posts), 7.5 m
     # tall so the 'rim' camera at z 12 passes ~6 m over it
     g = A.paifang(U.name(K, "bridge_gate"), coll, bays=3, width=11.0, height=7.5, center_frac=0.6, seed=7,
@@ -1094,14 +1131,16 @@ def _build_rear(coll, root, z_at, edge):
     rot = REAR_A - math.pi / 2                   # local +Y points out along REAR_A
     st = _band_stair(coll, root, REAR_A, REAR_Z, "rear_steps")
     r_foot = R_BAND - 0.15 + float(st["arch_run"])
-    _slab(U.name(K, "rear_walk"), coll, root, _radial(REAR_A, (r_foot - 0.1 + LAND_R[0] + 0.15) * 0.5),
-          (3.0, LAND_R[0] + 0.15 - (r_foot - 0.1)), REAR_Z - 0.002, REAR_Z - 0.6, rot=rot)
+    # (round 12: the walk ends at the landing's edge and the pier starts at it; they ran 0.15 and 0.2 m onto it,
+    # 2 mm under its top: z-fighting on the web)
+    _slab(U.name(K, "rear_walk"), coll, root, _radial(REAR_A, (r_foot - 0.1 + LAND_R[0]) * 0.5),
+          (3.0, LAND_R[0] - (r_foot - 0.1)), REAR_Z - 0.002, REAR_Z - 0.6, rot=rot)
     A.platform(U.name(K, "rear_landing"), coll, LAND_W, depth=LAND_R[1] - LAND_R[0], height=0.5,
                style="plain", parent=root, location=_radial(REAR_A, sum(LAND_R) * 0.5) + (REAR_Z - 0.5,),
                rotation_z=rot)
-    A.platform(U.name(K, "rear_pier"), coll, PIER_W, depth=PIER_R1 - LAND_R[1] + 0.2, height=0.5,
-               style="plain", parent=root,
-               location=_radial(REAR_A, (LAND_R[1] - 0.2 + PIER_R1) * 0.5) + (REAR_Z - 0.502,),
+    A.platform(U.name(K, "rear_pier"), coll, PIER_W, depth=PIER_R1 - LAND_R[1], height=0.5,
+               style="plain", sink=PIER_SINK, parent=root,
+               location=_radial(REAR_A, (LAND_R[1] + PIER_R1) * 0.5) + (REAR_Z - 0.502,),
                rotation_z=rot)
     # low rails along the island edge, 20 m each way, leaving room for the stones at the pier
     for sx in (-1, 1):

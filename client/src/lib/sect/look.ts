@@ -115,7 +115,11 @@ export interface SectLook {
     splitShadow?: number;
     /** 1 = unchanged saturation. */
     saturation: number;
-    /** Share of green's lead over red and blue removed (0 = none): lime grass toward olive-gold. */
+    /**
+     * Share of green's lead over red and blue removed (0 = none): lime grass toward olive-gold.
+     * Materials that define SECT_KEEP_GREEN skip it (gradeGlsl): the formation's wood flag, whose
+     * jade would otherwise read slate blue.
+     */
     greenTame: number;
     /** Linear value above which highlights roll off softly toward 1 instead of clipping. */
     shoulder: number;
@@ -611,13 +615,19 @@ export function gradeLinear(c: Vec3, g: SectLook["grade"] = SECT_LOOK.grade): Ve
   }) as Vec3;
 }
 
-/** GLSL for the grade: `vec3 sectGrade( vec3 linear )`. */
+/**
+ * GLSL for the grade: `vec3 sectGrade( vec3 linear )`. A material that defines SECT_KEEP_GREEN
+ * keeps green's lead (no greenTame): the Five Element Banners' cloth (idle.ts swayCut), so the
+ * wood flag reads green, not slate blue.
+ */
 export function gradeGlsl(g: SectLook["grade"] = SECT_LOOK.grade): string {
   const k = glslFloat(g.shoulder);
   return /* glsl */ `
 vec3 sectGrade( vec3 c ) {
   c *= ${glslFloat(g.exposure)};
+#ifndef SECT_KEEP_GREEN
   c.g -= max( c.g - max( c.r, c.b ), 0.0 ) * ${glslFloat(g.greenTame)};
+#endif
   float l0 = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
   float l1 = l0 > 0.0 ? ${glslFloat(g.pivot)} * pow( l0 / ${glslFloat(g.pivot)}, ${glslFloat(g.contrast)} ) : 0.0;
   c *= l0 > 1e-6 ? l1 / l0 : 1.0;

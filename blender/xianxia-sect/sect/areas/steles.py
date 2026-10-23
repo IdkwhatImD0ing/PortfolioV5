@@ -28,6 +28,8 @@ the stair to the Jade Slip Pavilion starts.
 
 import math
 
+import bpy
+
 from sect.lib import util as U
 from sect.lib import materials as M
 from sect.lib import arch as A
@@ -74,6 +76,7 @@ CORR_Y_FRONT = -34.5
 CORNER_X = 12.0                # small square corner pavilion closing each corridor's front end
 CORNER_R = 2.4
 CORR_H = 3.4
+CORR_W = 3.2                   # post to post (arch.corridor's floor is 0.9 m wider)
 CORR_PLAT_H = 0.17             # one step up from the court
 WALL_Y = 35.5
 WALL_X = 28.6
@@ -92,6 +95,10 @@ FORE_Y0 = -56.0                # its outer edge: the arrival line (AREA['arrival
 ENTRY_GATE_Y = -50.0
 FLIGHT_YS = (-15.0, 1.0)       # three-step flights from the aisle up into each stele field
 FLIGHT_W = 3.0
+# Round 12: arch.platform's xumizuo plinth under each stele field flares out at its foot (field_foot, 4.4 cm), with a
+# ledge 5 mm under the walks' top (z 0.055); the aisle and the rear walks stop at that foot instead of running over it.
+# And each corridor's floor stops at its corner pavilion's platform edge (corridor_cut), where it ran on in the
+# platform's top plane (6.6 m2)
 
 # glyph colour per skill category (one per row), master stele gold
 ROW_GLYPHS = ("rune_cyan", "steles_rune_blue", "steles_rune_violet", "steles_rune_crimson",
@@ -148,6 +155,50 @@ def _boxes(name, coll, parent, rects, z0, z1, mats, top_mat_index=1):
                               smooth=False, parent=parent)
 
 
+def field_foot():
+    """How far the stele fields' plinths flare out at their foot past their top's edge (m), read from the built
+    'steles.field.e.body' (arch.platform's xumizuo: 0.044 m at FIELD_H 0.5)."""
+    body = bpy.data.objects[KEY + ".field.e.body"]
+    xs = [v.co.x for v in body.data.vertices]
+    return 0.5 * (max(xs) - min(xs)) - 0.5 * (FIELD_X1 - FIELD_X0)
+
+
+def corridor_cut(side):
+    """The corridor's floor stops at its corner pavilion's platform edge (round 12: it ran from the pavilion's inner
+    column line - 0.4 m, in the platform's top plane): (point on the cut line, outward direction), corridor frame."""
+    body = bpy.data.objects[_corner_pav_name(side) + ".platform.body"]
+    top = max(v.co.z for v in body.data.vertices)
+    half = max(abs(v.co.x) for v in body.data.vertices if v.co.z > top - 1e-4)
+    return (side * (CORNER_X + half), CORR_Y_FRONT), (-side, 0.0)
+
+
+def _corner_pav_name(side):
+    """'steles.corner_pav' (west, built first) or 'steles.corner_pav.001' (east)."""
+    return KEY + ".corner_pav" + ("" if side < 0 else ".001")
+
+
+def trim_corridor_floor(lang, cuts, width):
+    """Stop a corridor's floor (arch.corridor's '<lang>.floor*' meshes, in its frame) at the given lines: each cut is
+    (point, outward direction): floor vertices beyond the line through ``point`` (within the floor's half width
+    ``width`` / 2 + 0.5 of the direction's axis) move back onto it. Works on the built objects (sect/patch_r12_areas.py
+    trims a built file's). Returns the number of vertices moved."""
+    n = 0
+    for ob in lang.children:
+        if ob.type != 'MESH' or ".floor" not in ob.name[len(lang.name):]:
+            continue
+        me = ob.data
+        for v in me.vertices:
+            for (px, py), (dx, dy) in cuts:
+                along = (v.co.x - px) * dx + (v.co.y - py) * dy
+                lat = -(v.co.x - px) * dy + (v.co.y - py) * dx
+                if along > 1e-6 and abs(lat) <= 0.5 * width + 0.5:
+                    v.co.x -= along * dx
+                    v.co.y -= along * dy
+                    n += 1
+        me.update()
+    return n
+
+
 def _drum_front(pav):
     """(front y, bottom z, top z) of the pavilion's upper drum (frieze between the eaves), in the
     pavilion's local space, read from the drum mesh (built in parent space). None if not found."""
@@ -169,9 +220,6 @@ def build(collection):
     # base courtyard paving (grey slabs), z = 0 top, 0.8 m thick
     _box("paving", coll, root, -COURT_X, COURT_X, COURT_Y0, COURT_Y1, -0.8, 0.0,
          ["stone_grey", "steles_paving_grey"])
-    # white marble spirit-way aisle, a 6 cm kerb above the court
-    _box("aisle", coll, root, -AISLE_HW, AISLE_HW, COURT_Y0, 9.4, -0.3, 0.06,
-         ["marble_white", "marble_paving"])
 
     # ------------------------------------------------------------ stele fields
     fw = FIELD_X1 - FIELD_X0
@@ -181,6 +229,10 @@ def build(collection):
         A.platform(U.name(KEY, "field", "w" if side < 0 else "e"), coll, fw, fd, FIELD_H,
                    top_mat="steles_paving_grey", sink=0.3, parent=root,
                    location=(cx, (FIELD_Y0 + FIELD_Y1) * 0.5, 0.0))
+    foot = field_foot()
+    # white marble spirit-way aisle, a 6 cm kerb above the court; its sides stop at the stele fields' plinth feet
+    _box("aisle", coll, root, -(AISLE_HW - foot), AISLE_HW - foot, COURT_Y0, 9.4, -0.3, 0.06,
+         ["marble_white", "marble_paving"])
 
     # rows of steles on turtles, angled toward the aisle; one glow colour per row (category); each carves one Jin
     # Yong manual (STELE_MANUALS)
@@ -269,8 +321,9 @@ def build(collection):
                    parent=root, location=(side * CORNER_X, CORR_Y_FRONT, 0.0))
         pts = [(side * (CORNER_X + corner_in), CORR_Y_FRONT), (side * CORR_X, CORR_Y_FRONT),
                (side * CORR_X, CORR_Y_BACK), (side * CORR_BACK_END_X, CORR_Y_BACK)]
-        A.corridor(U.name(KEY, "lang"), coll, pts, width=3.2, height=CORR_H, bay=4.2,
-                   platform_h=CORR_PLAT_H, seats=False, hanging=False, parent=root)
+        lang = A.corridor(U.name(KEY, "lang"), coll, pts, width=CORR_W, height=CORR_H, bay=4.2,
+                          platform_h=CORR_PLAT_H, seats=False, hanging=False, parent=root)
+        trim_corridor_floor(lang, [corridor_cut(side)], CORR_W)
     # back wall in three pieces, open at both rear gates
     g0, g1 = REAR_GATE_X - REAR_GATE_W * 0.5, REAR_GATE_X + REAR_GATE_W * 0.5
     for x0, x1 in ((-WALL_X, -g1), (-g0, g0), (g1, WALL_X)):
@@ -310,12 +363,14 @@ def _rear_exit(coll, root):
     end to two one-bay gates in the back wall, a paved walk behind the wall joining them, and the
     stair-head landing at AREA['depart'] (-15, 44)."""
     mats = ["marble_white", "marble_paving"]
+    foot = field_foot()
     for side in (-1, 1):
         sfx = "w" if side < 0 else "e"
         # one L-shaped walk per side: west (east) between the stele field and the terrace from
         # the aisle edge, then north beside the terrace, through the gate to the court's back edge
+        # (round 12: from the aisle's edge and the field plinth's foot, both field_foot out; it ran over the foot)
         _boxes("walk.rear_" + sfx, coll, root,
-               [(side * FIELD_X0, side * (REAR_GATE_X + WALK_HW), WALK_Y0, WALK_Y1),
+               [(side * (FIELD_X0 - foot), side * (REAR_GATE_X + WALK_HW), WALK_Y0 + foot, WALK_Y1),
                 (side * (REAR_GATE_X - WALK_HW), side * (REAR_GATE_X + WALK_HW), WALK_Y1, BACK_Y0)],
                -0.3, WALK_TOP, mats)
         A.paifang(U.name(KEY, "gate_rear"), coll, bays=1, width=REAR_GATE_W, height=REAR_GATE_H,

@@ -10,6 +10,7 @@ import type {
   ChunkInfo,
   CameraFrame,
   CloudPuff,
+  FireAnchor,
   FlyerPath,
   Hold,
   HotspotInfo,
@@ -267,6 +268,38 @@ function normalize3(v: Vec3): Vec3 {
   return l > 1e-9 ? [v[0] / l, v[1] / l, v[2] / l] : [0, 1, 0];
 }
 
+/**
+ * meta.fires (export_web.py fire_meta, from forge.py's fire anchors): entries without a kind or a
+ * usable position are dropped; sizes left out are 0 (forge-flames.ts fireSourcesFromAnchors fills
+ * them in). A few other spellings are read too (center or pos, facing, type, size [w, h, d], r).
+ */
+export function parseFires(raw: unknown): FireAnchor[] {
+  if (!Array.isArray(raw)) return [];
+  const out: FireAnchor[] = [];
+  raw.forEach((e, i) => {
+    if (!isObj(e)) return;
+    const position = vec3(e.position ?? e.center ?? e.pos, [NaN, NaN, NaN]);
+    const kind = optStr(e.kind) ?? optStr(e.type);
+    if (!kind || position.some((x) => !Number.isFinite(x))) return;
+    const n = e.normal ?? e.facing;
+    const normal = Array.isArray(n) ? vec3(n, [NaN, NaN, NaN]) : null;
+    const size = Array.isArray(e.size) ? e.size : [];
+    out.push({
+      id: str(e.id, `fire.${i}`),
+      kind,
+      area: optStr(e.area),
+      chunk: optStr(e.chunk) ?? optStr(e.area),
+      position,
+      normal: normal && normal.every(Number.isFinite) ? normal : null,
+      width: Math.max(0, num(e.width ?? size[0], 0)),
+      height: Math.max(0, num(e.height ?? size[1], 0)),
+      depth: Math.max(0, num(e.depth ?? size[2], 0)),
+      radius: Math.max(0, num(e.radius ?? e.r, 0)),
+    });
+  });
+  return out;
+}
+
 export function parseMeta(raw: unknown): SectMeta {
   const o = requireObj(raw, "meta.json");
   const d = DEFAULT_META;
@@ -412,6 +445,7 @@ export function parseMeta(raw: unknown): SectMeta {
     hotspots,
     lore,
     areas,
+    fires: parseFires(o.fires),
     vignette: num(tone.vignette, d.vignette),
     exposure: num(tone.exposure, d.exposure),
   };

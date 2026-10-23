@@ -82,13 +82,17 @@ ROLE_Y = -0.3                                # board centre plane (under the bea
 ROLE_CORD = 0.40                             # cord from the suspension point down to the board's top edge
 ROLE_CORD_X = ROLE_W / 2 - 0.55              # the two cords' x on the board
 ROLE_NOTCH = 0.16                            # concave quarter-round corners (wei jiao)
-ROLE_FRAME = (0.05, 0.13, 0.012)             # gold frame: outer inset, inner inset, height above the face
-ROLE_RIM = (0.165, 0.19, 0.004)              # glowing rim line: outer inset, inner inset, height above the face
+ROLE_PROUD = 0.04                            # round 12: everything on the board's face stands this far proud of it.
+                                             # The letters (8 mm), the rim line (4 mm) and the gold frame (12 mm) lay so
+                                             # close to the jade that the web (every face double-sided, 24-bit depth)
+                                             # let the board show through them beyond ~130-220 m: 18 m2 on 7 boards
+ROLE_FRAME = (0.05, 0.13, ROLE_PROUD)        # gold frame: outer inset, inner inset, height above the face
+ROLE_RIM = (0.165, 0.19, ROLE_PROUD)         # glowing rim line: outer inset, inner inset, height above the face
 ROLE_RIM_GLOW = 0.6                          # obj['glow'] on the rim (rune_gold strength x this in Cycles)
 ROLE_TEXT_W = 4.3                            # the longest employer name spans this (one size for all seven)
 ROLE_YEAR_CAP = 0.28                         # cap height of the years line
 ROLE_LINE_GAP = 0.36                         # employer baseline -> years cap line
-ROLE_RELIEF = 0.008                          # letter relief above the face
+ROLE_RELIEF = ROLE_PROUD                     # letter relief above the face
 # Georgia Bold: a large x-height drawn for small sizes on screens. Palatino Bold for the years: lining figures
 # (Georgia's are old-style). On the render box both are copied to the font mirror /C:/Windows/Fonts/.
 ROLE_FONT = "C:/Windows/Fonts/georgiab.ttf"
@@ -106,6 +110,8 @@ TERRACE_MARGIN = 7.0     # terrace width = hall platform width + this
 TOWER_X, TOWER_Y = 25.0, -1.0
 TOWER_SIZE = 10.0
 CORRIDOR_X = 33.5
+CORRIDOR_W = 3.2          # gallery post-to-post width (arch.corridor's floor is 0.9 m wider)
+STEP_SINK = 0.12          # round 12: the depart steps' block reaches this far into the terrace
 GALLERY_Y = 22.0          # where each gallery meets the terrace side
 TOWER_RAIL_GAP = (-2.0, 2.0)      # opening in each tower's outer railing (plaza y), for the gallery
 TERRACE_RAIL_GAP = (20.4, 23.6)   # opening in the terrace side railings, for the gallery
@@ -260,7 +266,24 @@ def _side_gate(coll, root):
     _rect_slab("depart_landing", LAND_X0, LAND_X1, GATE_Y0, GATE_Y1, -0.6, 0.0, coll, root)
     st = A.stairs(U.name(K, "depart_steps"), coll, SPUR_W, 0.4, ramp=False, balustrade=False, parent=root,
                   location=(LAND_X1, SPUR_Y, -0.4), rotation_z=math.pi / 2)
+    sink_steps(st, STEP_SINK)     # round 12: it stood up to 5 cm over the terrace round 11 sank under the link stair
     return LAND_X1 + st["arch_run"]
+
+
+def sink_steps(st, depth):
+    """Let an arch.stairs flight's block (its '.steps' mesh: the treads and stringers) reach ``depth`` below its foot:
+    its bottom vertices (and the bevel ring just above them) move down. Works on the built object, so a fresh build
+    and sect/patch_r12_areas.py agree. Returns the number of vertices moved (0 when already sunk)."""
+    me = bpy.data.objects[st.name + ".steps"].data
+    if min(v.co.z for v in me.vertices) < -1e-4:
+        return 0
+    n = 0
+    for v in me.vertices:
+        if v.co.z < 0.05:
+            v.co.z -= depth
+            n += 1
+    me.update()
+    return n
 
 
 # ---------------------------------------------------------------- role boards
@@ -414,10 +437,10 @@ def _role_build(pc, label, years, scale):
     half = 0.5 * (x1 - x0) * s2
     rz = base2 + ROLE_YEAR_CAP / 2
     rr = 0.6 * ROLE_YEAR_CAP
-    _flat_prism(bm, _disc_pts(-half - 0.3, rz, rr), yf, 0.010, mat=1)
-    _ring_prism(bm, _disc_pts(-half - 0.3, rz, rr * 1.55), _disc_pts(-half - 0.3, rz, rr * 1.32), yf - 0.008,
+    _flat_prism(bm, _disc_pts(-half - 0.3, rz, rr), yf, ROLE_PROUD, mat=1)
+    _ring_prism(bm, _disc_pts(-half - 0.3, rz, rr * 1.55), _disc_pts(-half - 0.3, rz, rr * 1.32), yf - ROLE_PROUD,
                 yf + 0.003)
-    _flat_prism(bm, _crescent_pts(half + 0.3, rz, rr * 1.4), yf, 0.012)
+    _flat_prism(bm, _crescent_pts(half + 0.3, rz, rr * 1.4), yf, ROLE_PROUD)
     P._outward(bm)
     P._mk(P._nm("role.gold"), bm, pc, ["gold", "lacquer_red"], smooth=False)
     P._mk(P._nm("role.glyphs"), bt, pc, ["ink", "lacquer_red"], smooth=False)
@@ -606,15 +629,51 @@ def _towers(coll, root):
     return out
 
 
+def trim_corridor_floor(lang, cuts, width):
+    """Stop a corridor's floor (arch.corridor's '<lang>.floor*' meshes, in its frame) at the given lines: each cut is
+    (point, outward direction): floor vertices beyond the line through ``point`` (within the floor's half width
+    ``width`` / 2 + 0.5 of the direction's axis) move back onto it. arch.corridor runs the floor 0.4 m past the
+    polyline's ends; where an end meets a raised host (a tower base, the terrace, a pavilion platform) that piece lay
+    in the host's top's plane. Works on the built objects (sect/patch_r12_areas.py trims a built file's). Returns the
+    number of vertices moved."""
+    n = 0
+    for ob in lang.children:
+        if ob.type != 'MESH' or ".floor" not in ob.name[len(lang.name):]:
+            continue
+        me = ob.data
+        for v in me.vertices:
+            for (px, py), (dx, dy) in cuts:
+                along = (v.co.x - px) * dx + (v.co.y - py) * dy
+                lat = -(v.co.x - px) * dy + (v.co.y - py) * dx
+                if along > 1e-6 and abs(lat) <= 0.5 * width + 0.5:
+                    v.co.x -= along * dx
+                    v.co.y -= along * dy
+                    n += 1
+        me.update()
+    return n
+
+
+def corridor_points(sx, terrace_hw):
+    """The gallery's polyline on side sx: from the tower's outer side out, along the plaza side, in to the terrace."""
+    return [(sx * (TOWER_X + TOWER_SIZE / 2), 0.0), (sx * CORRIDOR_X, 0.0),
+            (sx * CORRIDOR_X, GALLERY_Y), (sx * terrace_hw, GALLERY_Y)]
+
+
+def corridor_cuts(sx, terrace_hw):
+    """trim_corridor_floor's cuts for side sx: the tower base's outer side and the terrace's side, both top edges
+    (the polyline's ends; the floor ran 0.4 m on past them, onto the base's and the terrace's tops at 0 mm)."""
+    pts = corridor_points(sx, terrace_hw)
+    return [(pts[0], (-sx, 0.0)), (pts[-1], (-sx, 0.0))]
+
+
 def _corridors(coll, root, terrace_hw):
     """Raised galleries (audit 4): from each tower's outer side (x +-30), out to x +-CORRIDOR_X,
     along the plaza side and in to the terrace side (x +-terrace_hw = 23.1), floor at terrace
-    height the whole way."""
+    height the whole way. Round 12: the floor stops at the tower base's and the terrace's edges
+    (trim_corridor_floor)."""
     for sx in (-1, 1):
-        lang = A.corridor(U.name(K, "lang"), coll,
-                          [(sx * (TOWER_X + TOWER_SIZE / 2), 0.0), (sx * CORRIDOR_X, 0.0),
-                           (sx * CORRIDOR_X, GALLERY_Y), (sx * terrace_hw, GALLERY_Y)],
-                          width=3.2, height=3.4, bay=4.2, platform_h=TERRACE_H, parent=root)
+        lang = A.corridor(U.name(K, "lang"), coll, corridor_points(sx, terrace_hw),
+                          width=CORRIDOR_W, height=3.4, bay=4.2, platform_h=TERRACE_H, parent=root)
         # arch._wall_box winds the floor box inside out (its walking top faces down), which hides the
         # gallery floor from walkcheck; recalculating outward normals is a no-op once the lib is fixed
         for ob in lang.children:
@@ -624,6 +683,7 @@ def _corridors(coll, root, terrace_hw):
                 bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
                 bm.to_mesh(ob.data)
                 bm.free()
+        trim_corridor_floor(lang, corridor_cuts(sx, terrace_hw), CORRIDOR_W)
 
 
 # ---------------------------------------------------------------- holy-fire altars 圣火坛

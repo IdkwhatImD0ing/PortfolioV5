@@ -67,6 +67,25 @@ VEINS = dict(mains=(-90.0, -72.0, -38.0, -14.0, 20.0), length=(30.0, 52.0), widt
              tri_budget=5600)                # a vein of n sections is 8n - 4 triangles; veins past this are dropped
 LAVA_GLOW = 1.6                      # obj['glow'] on the lava pieces (molten: emission 7 x glow x heat^1.5)
 LIFT, SINK = 0.12, 0.4               # lava slabs: top this far over the surface, keel this far under it
+# round 12 (the web draws both sides of every face; parallel faces a few mm apart z-fight): every vein lay at the same
+# LIFT, each fork starting on its main's centre line and each twig on its fork's, mains crossing mains (8 m2 of tops
+# within 12 mm of another vein's); at a sharp zigzag turn a slab's sections turned over and its top folded onto itself,
+# and over the cone's strata steps a side point's top fell onto the slab's own side (4 m2); between sections the crags
+# rose to within mm of a top (2 m2). Now (_lay_veins) the tops step down a level per branch (VEIN_LIFTS: a fork runs
+# VEIN_STEP under its main, so where it leaves it, it comes out from under the main's side); a vein runs only where it
+# keeps VEIN_GAP from the veins of its own level (it ends against one, or starts beside it); its sections are mitred
+# so a turn cannot fold them, more of them where the basalt between two bends away from the line joining them; each is
+# a box: a flat top across at the highest ground under it plus the lift, sides straight down past the lowest; and
+# every top keeps VEIN_CLEAR over the basalt (4 cm stays apart in the depth buffer out to about 410 m; the camera is
+# never nearer than 258 m), rising at most VEIN_RAISE: where a crag would need more, the vein breaks over it. The
+# random draws are the same as before, so the steam and everything after keep theirs
+VEIN_LIFTS = dict(mains=0.14, forks=0.09, cross=0.09, twigs=0.04)
+VEIN_STEP = 0.045                    # m: a branch's top under its parent's where it starts inside it, at least
+VEIN_GAP = 0.15                      # m between the footprints of two veins of one level
+VEIN_CLEAR = 0.04                    # m: a vein's top over the basalt under it, at least
+VEIN_FOLLOW = 0.04                   # m: a section is added between two whose midpoint's ground is this far off their line
+VEIN_KEEL = 0.15                     # m: the box's bottom under the lowest ground across its section
+VEIN_RAISE = 0.35                    # m: a top rises at most this much over its level to clear the basalt
 TRI_CAP = 6000                       # per piece: bake_web's island LOD floor keeps at most ISLAND_FLOOR_HI triangles
 
 
@@ -873,20 +892,27 @@ def _vein_walk(R, rnd, th0, z0, length, width, step, heading=None, sigma=None, r
     return out
 
 
-def build_lava_veins(rock, R, rim_end, th_rim, rnd, log=_log):
+def build_lava_veins(rock, R, rim_end, th_rim, rnd, log=_log, r12=True):
     """The crack network on the basalt underside: main fissures from just under the rim (VEINS['mains'], rock-local
     azimuths, plus one under the second lava stream's end), forks leaving them at 35-75 deg, short twigs off the forks,
-    and a few cross cracks running along the strata near the rim."""
+    and a few cross cracks running along the strata near the rim. The network is drawn first (the random draws and the
+    triangle budget as before), then laid by _lay_veins; ``r12`` False: each path laid whole as it was drawn (the
+    veins built before round 12, patch_r12_world's guard)."""
     C = VEINS
     bm = bmesh.new()
     counts = dict(mains=0, forks=0, twigs=0, cross=0)
     secs = 0
+    plan = []                        # (path, kind, parent plan index or None, the parent's section it starts at)
 
-    def lay(path, kind):
+    def lay(path, kind, parent=None, at=None):
         nonlocal secs
         if len(path) < 3 or 8 * (secs + len(path)) > C["tri_budget"]:
             return False
-        secs += _slab(bm, R.bvh, [p for p, _, _ in path], [n for _, n, _ in path], [w for _, _, w in path])
+        if r12:
+            plan.append((path, kind, parent, at))
+            secs += len(path)
+        else:
+            secs += _slab(bm, R.bvh, [p for p, _, _ in path], [n for _, n, _ in path], [w for _, _, w in path])
         counts[kind] += 1
         return True
 
@@ -901,28 +927,327 @@ def build_lava_veins(rock, R, rim_end, th_rim, rnd, log=_log):
                           taper_in=mid)
         if not lay(path, "mains"):
             continue
+        i_main = len(plan) - 1
         for _f in range(rnd.randint(*C["forks"])):
             i = rnd.randint(int(len(path) * 0.15), max(int(len(path) * 0.15), int(len(path) * 0.85) - 1))
             p, _n, w = path[i]
             fork = _vein_walk(R, rnd, math.atan2(p.y, p.x), p.z, rnd.uniform(*C["fork_len"]), w * C["fork_w"],
                               C["step"] * 0.8, heading=side_heading(), relax=0.7)
-            if not lay(fork, "forks"):
+            if not lay(fork, "forks", i_main, i):
                 continue
+            i_fork = len(plan) - 1
             for _t in range(rnd.randint(*C["twigs"])):
                 j = rnd.randint(1, len(fork) - 1)
                 q, _n, _w = fork[j]
                 twig = _vein_walk(R, rnd, math.atan2(q.y, q.x), q.z, rnd.uniform(*C["twig_len"]),
                                   rnd.uniform(0.85, 1.15) * C["twig_w"], C["step"] * 0.7, heading=side_heading(),
                                   relax=0.8)
-                lay(twig, "twigs")
+                lay(twig, "twigs", i_fork, j)
     for _c in range(C["cross"]):
         th0 = math.radians(rnd.uniform(-105.0, 10.0))
         lay(_vein_walk(R, rnd, th0, rnd.uniform(-3.0, -9.0), rnd.uniform(6.0, 12.0), rnd.uniform(0.5, 0.75),
                        C["step"] * 0.8, heading=rnd.choice((-1, 1)) * 1.3, sigma=math.radians(9.0), relax=0.97,
                        taper_in=True), "cross")
+    laid = _lay_veins(bm, _render_bvh(rock), plan, C["step"]) if r12 else None
     ob = _new_obj(rock, "lava_veins", bm, ["molten"], glow=LAVA_GLOW)
-    log("lava veins", ob.name, counts, "sections", secs, "tris", _tris(ob.data))
+    log("lava veins", ob.name, counts, "sections", secs, "tris", _tris(ob.data), "laid", laid)
     return ob
+
+
+def _render_bvh(rock):
+    """A BVH of the rock's triangles as Blender splits its faces to draw them (Rock.bvh splits its non-planar quads its
+    own way: on the crumpled cone the two surfaces lie up to 25 cm apart, so a top clear of one lay on the other)."""
+    me = rock.data
+    me.calc_loop_triangles()
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    tv = np.empty(len(me.loop_triangles) * 3, np.int32)
+    me.loop_triangles.foreach_get("vertices", tv)
+    return BVHTree.FromPolygons(co.reshape(-1, 3).tolist(), tv.reshape(-1, 3).tolist(), all_triangles=True)
+
+
+def _lay_veins(bm, bvh, plan, step):
+    """Round 12: lay the drawn network (build_lava_veins' plan): see VEIN_LIFTS. Per vein: its longest stretch from
+    its start (or from where it first keeps VEIN_GAP, beside a vein of its level) to where it would come within VEIN_GAP
+    of one (or of its own earlier stretch, beyond a turn); a branch is dropped when its parent does not reach where it
+    starts. Then more sections where the basalt bends away (_follow), mitred frames (_frames_mitred), tops raised where
+    the basalt comes within VEIN_CLEAR (_clear_tops), and, branch by branch, a parent raised where a branch inside it
+    would reach within VEIN_STEP of its top. Returns the counts."""
+    st = dict(veins=0, trimmed=0, dropped_parent=0, dropped_short=0, added=0, narrowed=0, raised=0, max_raise=0.0,
+              broken=0, parents_raised=0)
+    laid = []                  # per plan entry: dict(P, N, B, off, lift, level, keep, parent) or None
+
+    def seg_dist(p, C, H):
+        """Distance from p to the polyline C (k, 3) and the half-width H there."""
+        if len(C) == 1:
+            return float(np.linalg.norm(C[0] - p)), float(H[0])
+        a, b = C[:-1], C[1:]
+        ab = b - a
+        t = np.clip(((p - a) * ab).sum(1) / np.maximum((ab * ab).sum(1), 1e-12), 0.0, 1.0)
+        d = np.linalg.norm(a + ab * t[:, None] - p, axis=1)
+        k = int(np.argmin(d))
+        return float(d[k]), float(H[k] * (1 - t[k]) + H[k + 1] * t[k])
+
+    for path, kind, parent, at in plan:
+        P = np.array([tuple(p) for p, _, _ in path], float)
+        N = np.array([tuple(n) for _, n, _ in path], float)
+        W = np.array([w for _, _, w in path], float)
+        level = 0 if kind == "mains" else (2 if kind == "twigs" else 1)
+        if parent is not None:
+            pl = laid[parent]
+            if pl is None or not (pl["keep"][0] <= at < pl["keep"][1]):
+                laid.append(None)
+                st["dropped_parent"] += 1
+                continue
+        _B, off, _n = _frames_mitred(P, N, W.copy())
+        same = [x for x in laid if x is not None and x["level"] == level]
+        n = len(P)
+        clear = np.ones(n, bool)
+        for j in range(n):
+            for x in same:
+                d, h2 = seg_dist(P[j], x["P"], x["off"])
+                if d < off[j] + h2 + VEIN_GAP:
+                    clear[j] = False
+                    break
+        j0 = int(np.argmax(clear)) if clear.any() else n
+        j1 = j0
+        while j1 < n and clear[j1]:
+            if j1 - j0 >= 3:
+                arc = (j1 - np.arange(j0, j1)) * step
+                own = np.nonzero(arc > off[j0:j1] + off[j1] + 2.0 * step + VEIN_GAP)[0]
+                if len(own):
+                    d, h2 = seg_dist(P[j1], P[j0:j0 + own[-1] + 1], off[j0:j0 + own[-1] + 1])
+                    if d < off[j1] + h2 + VEIN_GAP:
+                        break
+            j1 += 1
+        if j1 - j0 < 3:
+            laid.append(None)
+            st["dropped_short"] += 1
+            continue
+        if j1 < n or j0 > 0:
+            st["trimmed"] += 1
+        P, N, W = P[j0:j1].copy(), N[j0:j1].copy(), W[j0:j1].copy()
+        if j1 < n:
+            for k, f in zip(range(-1, -4, -1), (0.35, 0.6, 0.85)):
+                if len(W) + k >= 0:
+                    W[k] *= f
+        if j0 > 0:
+            W[0] *= 0.6
+        P, N, W, added = _follow(bvh, P, N, W)
+        st["added"] += added
+        B, off, nar = _frames_mitred(P, N, W)
+        st["narrowed"] += nar
+        lift = np.full(len(P), VEIN_LIFTS[kind])
+        r, mx, bad, G = _clear_tops(bvh, P, N, B, off, lift)
+        st["raised"] += r
+        st["max_raise"] = round(max(st["max_raise"], mx), 3)
+        # where a crag would need more than VEIN_RAISE the vein breaks: its runs of 3 or more sections between
+        runs, k = [], 0
+        while k < len(P):
+            if bad[k]:
+                k += 1
+                continue
+            k0 = k
+            while k < len(P) and not bad[k]:
+                k += 1
+            if k - k0 >= 3:
+                runs.append((k0, k))
+        st["broken"] += len(runs) - 1 if runs else 0
+        if not runs:
+            laid.append(None)
+            st["dropped_short"] += 1
+            continue
+        laid.append(dict(P=P, N=N, B=B, off=off, lift=lift, G=G, level=level, keep=(j0, j1), parent=parent,
+                         runs=runs))
+        st["veins"] += 1
+    # a branch's top stays VEIN_STEP under its parent's where it lies inside it (the parent rises where it must)
+    for _ in range(3):
+        moved = 0
+        for x in laid:
+            if x is None or x["parent"] is None:
+                continue
+            pa = laid[x["parent"]]
+            for j in range(len(x["P"])):
+                d, h2 = seg_dist(x["P"][j], pa["P"], pa["off"])
+                if d > h2 + x["off"][j] + 0.1:
+                    continue
+                nj = x["N"][j] / max(np.linalg.norm(x["N"][j]), 1e-9)
+                top_c = x["P"][j] + nj * (x["G"][j].max() + x["lift"][j])
+                for kk in np.argsort(np.linalg.norm(pa["P"] - x["P"][j], axis=1))[:3].tolist():
+                    nk = pa["N"][kk] / max(np.linalg.norm(pa["N"][kk]), 1e-9)
+                    top_p = pa["P"][kk] + nk * (pa["G"][kk].max() + pa["lift"][kk])
+                    short = VEIN_STEP - float((top_p - top_c) @ nj)
+                    if short > 1e-4:
+                        pa["lift"][kk] += short
+                        moved += 1
+        st["parents_raised"] += moved
+        if not moved:
+            break
+    for x in laid:
+        if x is not None:
+            for k0, k1 in x["runs"]:
+                sl = slice(k0, k1)
+                _box_slab(bm, bvh, x["P"][sl], x["N"][sl], x["B"][sl], x["off"][sl], x["lift"][sl])
+    return st
+
+
+def _follow(bvh, P, N, W, depth=2):
+    """Add a section between two whose midpoint's ground lies more than VEIN_FOLLOW off their line (twice over at
+    most): the vein's sections then follow the crags instead of bridging them. Returns (P, N, W, sections added)."""
+    added = 0
+    for _ in range(depth):
+        P2, N2, W2 = [P[0]], [N[0]], [W[0]]
+        for i in range(len(P) - 1):
+            m = 0.5 * (P[i] + P[i + 1])
+            nm = N[i] + N[i + 1]
+            nm = nm / max(np.linalg.norm(nm), 1e-9)
+            g = _ground(bvh, m, nm)
+            if g is not None and abs(float((g - m) @ nm)) > VEIN_FOLLOW:
+                P2.append(g)
+                N2.append(nm)
+                W2.append(0.5 * (W[i] + W[i + 1]))
+                added += 1
+            P2.append(P[i + 1])
+            N2.append(N[i + 1])
+            W2.append(W[i + 1])
+        if len(P2) == len(P):
+            break
+        P, N, W = np.array(P2), np.array(N2), np.array(W2)
+    return P, N, W, added
+
+
+def _frames_mitred(P, N, W, keep=0.45):
+    """Per section: the across direction (normal x the bisector of the two segments, signs kept consistent along the
+    vein) and the half-offset of the side points along it: a mitre (w/2 / cos(turn/2)), with the width cut where the
+    inner side would run back past the shorter segment's ``keep`` share (a sharp zigzag turn). Returns (B, off,
+    sections narrowed); W is narrowed in place."""
+    n = len(P)
+    B = np.zeros((n, 3))
+    off = np.zeros(n)
+    narrowed = 0
+    prev_b = None
+    for i in range(n):
+        nr = N[i] / max(np.linalg.norm(N[i]), 1e-9)
+        ds = []
+        for a, b in ((i - 1, i), (i, i + 1)):
+            if 0 <= a and b < n:
+                d = P[b] - P[a]
+                d = d - nr * (d @ nr)
+                ln = float(np.linalg.norm(d))
+                if ln > 1e-6:
+                    ds.append((d / ln, ln))
+        if not ds:
+            t = np.array(Vector(tuple(nr)).orthogonal())
+            cos_h, lmin = 1.0, 1.0
+        elif len(ds) == 1:
+            t, cos_h, lmin = ds[0][0], 1.0, ds[0][1]
+        else:
+            (d0, l0), (d1, l1) = ds
+            t = d0 + d1
+            if np.linalg.norm(t) < 1e-3:
+                t = np.cross(nr, d0)
+            cos_h = max(float(np.sqrt(max(0.0, (1.0 + float(d0 @ d1)) * 0.5))), 0.0)
+            lmin = min(l0, l1)
+        t = t / max(np.linalg.norm(t), 1e-9)
+        b = np.cross(nr, t)
+        b = b / max(np.linalg.norm(b), 1e-9)
+        if prev_b is not None and float(b @ prev_b) < 0.0:
+            b = -b
+        prev_b = b
+        cos_h = max(cos_h, 0.05)
+        tan_h = float(np.sqrt(max(0.0, 1.0 - cos_h * cos_h))) / cos_h
+        wmax = 2.0 * keep * lmin / max(tan_h, 1e-6)
+        if W[i] > wmax:
+            W[i] = max(0.12, wmax)
+            narrowed += 1
+        B[i] = b
+        off[i] = 0.5 * W[i] / cos_h
+    return B, off, narrowed
+
+
+def _ground(bvh, p, nr):
+    """The basalt under point p along -nr (a ray from 0.6 m over it, 1.5 m long), else the nearest surface point."""
+    hit = bvh.ray_cast(Vector(tuple(p + nr * 0.6)), Vector(tuple(-nr)), 1.5)[0]
+    if hit is None:
+        hit = bvh.find_nearest(Vector(tuple(p)))[0]
+    return None if hit is None else np.array(hit)
+
+
+def _section_heights(bvh, P, N, B, off):
+    """Per section: the ground heights (along its normal, from P) under its left side, centre and right side."""
+    G = np.zeros((len(P), 3))
+    for i in range(len(P)):
+        nr = N[i] / max(np.linalg.norm(N[i]), 1e-9)
+        for k, c in enumerate((-1.0, 0.0, 1.0)):
+            q = P[i] + B[i] * c * off[i]
+            g = _ground(bvh, q, nr)
+            G[i, k] = float((g - P[i]) @ nr) if g is not None else 0.0
+    return G
+
+
+def _box_points(P, N, B, off, G, lift):
+    """Per section: top left, top right (flat across at the highest ground + lift), bottom right, bottom left
+    (VEIN_KEEL under the lowest ground)."""
+    out = np.zeros((len(P), 4, 3))
+    for i in range(len(P)):
+        nr = N[i] / max(np.linalg.norm(N[i]), 1e-9)
+        top = float(G[i].max()) + lift[i]
+        bot = float(G[i].min()) - VEIN_KEEL
+        l_, r_ = P[i] - B[i] * off[i], P[i] + B[i] * off[i]
+        out[i] = [l_ + nr * top, r_ + nr * top, r_ + nr * bot, l_ + nr * bot]
+    return out
+
+
+def _clear_tops(bvh, P, N, B, off, lift, tries=5):
+    """Raise the sections whose top (points over its triangles between sections) comes within VEIN_CLEAR of the nearest
+    basalt (along the section's normal; inside it counts as below), by at most VEIN_RAISE. Returns (sections raised,
+    the largest raise, per section: still short of VEIN_CLEAR at the cap, the ground heights per section)."""
+    base = lift.copy()
+    G = _section_heights(bvh, P, N, B, off)
+    raised = set()
+    for _ in range(tries):
+        T = _box_points(P, N, B, off, G, lift)[:, :2]
+        need = np.zeros(len(P))
+        for i in range(len(P) - 1):
+            nr = N[i] + N[i + 1]
+            nr = nr / max(np.linalg.norm(nr), 1e-9)
+            pts = []
+            for k in (0,):                              # the top quad (s0[0], s1[0], s1[1], s0[1]), split s0[0]-s1[1]
+                a0, a1, b1, b0 = T[i, k], T[i + 1, k], T[i + 1, k + 1], T[i, k + 1]
+                for tri in ((a0, a1, b1), (a0, b1, b0)):
+                    c = (tri[0] + tri[1] + tri[2]) / 3.0
+                    pts += [c, (tri[0] + tri[1]) * 0.5, (tri[1] + tri[2]) * 0.5, (tri[2] + tri[0]) * 0.5,
+                            (c + tri[0]) * 0.5, (c + tri[1]) * 0.5, (c + tri[2]) * 0.5]
+            for p in pts:
+                g = bvh.find_nearest(Vector(tuple(p)))[0]
+                if g is None:
+                    continue
+                h = float((p - np.array(g)) @ nr)           # the top's height over the nearest basalt (< 0: in it)
+                if h < VEIN_CLEAR:
+                    need[i] = max(need[i], VEIN_CLEAR - h)
+                    need[i + 1] = max(need[i + 1], VEIN_CLEAR - h)
+        bad = (need > 1e-4) & (lift >= base + VEIN_RAISE - 1e-6)
+        up = (need > 1e-4) & ~bad
+        if not up.any():
+            break
+        lift[up] = np.minimum(lift[up] + need[up], base[up] + VEIN_RAISE)
+        raised.update(np.nonzero(up)[0].tolist())
+    return len(raised), float((lift - base).max()) if len(lift) else 0.0, bad, G
+
+
+def _box_slab(bm, bvh, P, N, B, off, lift):
+    """A closed box along the sections (_box_points): the top, the right side, the bottom, the left side per stretch,
+    and the two end caps."""
+    G = _section_heights(bvh, P, N, B, off)
+    X = _box_points(P, N, B, off, G, lift)
+    secs = [[bm.verts.new(tuple(X[i, k])) for k in range(4)] for i in range(len(P))]
+    for s0, s1 in zip(secs, secs[1:]):
+        for k in range(4):
+            f = bm.faces.new((s0[k], s1[k], s1[(k + 1) % 4], s0[(k + 1) % 4]))
+            f.smooth = k == 0
+    bm.faces.new(tuple(secs[0][::-1]))
+    bm.faces.new(tuple(secs[-1]))
+    return len(P)
 
 
 # ---- steam -----------------------------------------------------------------------------------------

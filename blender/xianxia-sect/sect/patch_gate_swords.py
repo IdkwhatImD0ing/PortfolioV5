@@ -1,5 +1,10 @@
 """Turn the gate's two stone sword monoliths in out/sect_chase.blend into the Heaven Sword 倚天剑 (west) and the
-Dragon Saber 屠龙刀 (east) of sect/areas/gate.py (WEAPONS) and save the .blend. Run on the cloud box:
+Dragon Saber 屠龙刀 (east) of sect/areas/gate.py (WEAPONS) and save the .blend.
+
+Round 24: superseded by sect/patch_r24_swords.py, which rebuilds both from the round-12 file with the names on the
+plinths (gate.PLINTH_NAME) and plain blades (gate.BLADE_NAME), moves them to gate.weapon_transform (y -25 -> -22) and
+checks the result. This script keeps the file's locations, so it would leave the weapons where they are. Run on the
+cloud box:
 
     python E:/Github/PortfolioV5/blender/xianxia-sect/tools/rblender.py --fetch-blend --background \
         E:/Github/PortfolioV5/blender/xianxia-sect/out/sect_chase.blend \

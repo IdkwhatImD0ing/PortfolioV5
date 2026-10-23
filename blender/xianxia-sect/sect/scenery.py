@@ -327,9 +327,10 @@ def build_islands(coll, kd, pos, anchors):
         k = made
         placed.append((c.x, c.y, c.z, size))
         made += 1
-        N.floating_rock(coll, size=size, seed=900 + k, vegetation=True, roots=True,
-                        pine_on_top=size < 30.0, name="scenery.island", location=tuple(c),
-                        rotation=r.uniform(0, 2 * math.pi))
+        rock = N.floating_rock(coll, size=size, seed=900 + k, vegetation=True, roots=True,
+                               pine_on_top=size < 30.0, name="scenery.island", location=tuple(c),
+                               rotation=r.uniform(0, 2 * math.pi))
+        W.tidy_rock(rock)          # round 12: the cone's bottom closes in one point (it stood as folded fins)
         top_r = size * 0.42
         if size >= 26.0:                            # a little forest (and maybe a pavilion) on top
             n_trees = int(size / 7.0)

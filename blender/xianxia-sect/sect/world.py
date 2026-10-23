@@ -5,7 +5,8 @@ does not. ``build(scene, anchors)`` creates
 
 - sky + sun + haze + compositor (sect.lib.look, the same constants the previews use),
 - the colossal moon (14 deg wide, NNE, 16 deg up, exact from the final summit shot) with a halo,
-- THE FLOATING MOUNTAIN RANGE: one heightfield mass (top + inverted craggy underside) that
+- THE FLOATING MOUNTAIN RANGE: one heightfield mass (top + inverted craggy underside, joined by a
+  RIM_LIP m lip along the outline) that
   climbs from the gate (south, z = 40) to the summit (north, z = 320): a flat terrace at
   anchor z - 0.4 (radius >= footprint + 9) under every anchor except the arena, steep cliffs,
   ridges/saddles between consecutive anchors that stay >= 25 m under the anchor-to-anchor line,
@@ -431,16 +432,33 @@ def _boxes_obj(name, coll, boxes, material, smooth=False):
     return _mesh_np(name, coll, np.array(verts), np.array(faces), [material], smooth=smooth)
 
 
-def _tube_bm(bm, pts, radius, sides=5):
-    """Tapered tube along points (x, y, z, radius factor) into a BMesh (no caps)."""
+def _tube_bm(bm, pts, radius, sides=5, twist_free=False):
+    """Tapered tube along points (x, y, z, radius factor) into a BMesh (no caps). ``twist_free``: each ring's frame is
+    the last one carried along the tube (parallel transport) instead of to_track_quat's, which spins freely about a
+    near-vertical tube: the hanging roots' rings turned by up to half a turn from one to the next, their quads twisted
+    into bow ties whose two triangles folded onto each other (round 12: 7 m2 within 5 mm, 78 m2 within 12 mm)."""
     rings = []
+    nrm = None
     for i, p in enumerate(pts):
         a = Vector(pts[min(i + 1, len(pts) - 1)][:3]) - Vector(pts[max(i - 1, 0)][:3])
         if a.length < 1e-6:
             a = Vector((0, 0, -1))
-        q = a.normalized().to_track_quat("Z", "Y")
         r = radius * (p[3] if len(p) > 3 else 1.0)
         ring = []
+        if twist_free:
+            t = a.normalized()
+            if nrm is None:
+                ref = Vector((1.0, 0.0, 0.0)) if abs(t.x) < 0.9 else Vector((0.0, 1.0, 0.0))
+                nrm = (ref - t * ref.dot(t)).normalized()
+            else:
+                nrm = (nrm - t * nrm.dot(t)).normalized()
+            bi = t.cross(nrm)
+            for k in range(sides):
+                ang = 2 * math.pi * k / sides
+                ring.append(bm.verts.new(Vector(p[:3]) + (nrm * math.cos(ang) + bi * math.sin(ang)) * r))
+            rings.append(ring)
+            continue
+        q = a.normalized().to_track_quat("Z", "Y")
         for k in range(sides):
             ang = 2 * math.pi * k / sides
             ring.append(bm.verts.new(Vector(p[:3]) + q @ Vector((math.cos(ang) * r, math.sin(ang) * r, 0))))
@@ -582,8 +600,34 @@ def build_moon(coll):
 
 
 def build_terrain(rng_, coll, grid=None, name="world.range"):
-    """The range mesh (top + underside, closed at a knife-edge rim) on a ``grid`` m heightfield
-    (default GRID). Returns (obj, grid dict)."""
+    """The range mesh (top + underside, joined by a RIM_LIP m vertical lip along the outline) on a ``grid`` m
+    heightfield (default GRID). Returns (obj, grid dict)."""
+    d = terrain_data(rng_, grid)
+    ob = _mesh_np(name, coll, d["verts"], d["faces"], ["rock_cliff", "nature_soil_moss", "world_rock_under"],
+                  mat_idx=d["mats"])
+    at = ob.data.attributes.new("world_veg", 'FLOAT', 'FACE')
+    at.data.foreach_set("value", d["veg"].astype(np.float32))
+    try:
+        ob.data.set_sharp_from_angle(angle=math.radians(55))
+    except Exception:
+        pass
+    return ob, d["grid"]
+
+
+RIM_LIP = 0.5              # round 12: the underside starts this far under the rim and meets the top through a
+                           # vertical lip along the outline. It was a knife edge: the outline's vertices were the top's
+                           # and the underside's at once, so wherever a grid cell had three of them, its top and
+                           # underside triangle were one triangle twice (rock or moss against world_rock_under, 438 m2),
+                           # and next to the outline both lay within mm-cm of each other where the top barely cleared
+                           # the rim (another 460 m2). The web draws both sides of every face: they z-fought along
+                           # every edge of the range. Now the two are RIM_LIP apart everywhere
+
+
+def terrain_data(rng_, grid=None, lip=RIM_LIP):
+    """build_terrain's mesh as arrays: dict(verts (n, 3), faces (m, 4) quads, mats, veg, grid, n_top, n_inside,
+    n_rim, n_lip). Vertices: the top's (inside and outline nodes, row by row), the underside's under the inside nodes,
+    then (with ``lip``) one more under each outline node. Faces: the top's, the underside's, then the lip's.
+    ``lip`` None: the knife edge built before round 12 (outline vertices shared, no lip; patch_r12_world's guard)."""
     step = GRID if grid is None else grid
     x0, x1, y0, y1 = EXTENT
     xs = np.arange(x0, x1 + 1e-6, step)
@@ -593,6 +637,8 @@ def build_terrain(rng_, coll, grid=None, name="world.range"):
     f = rng_.fields(X, Y)
     T, F, rim = f["T"], f["F"], f["rim"]
     B = rng_.underside(X, Y, F, rim)
+    if lip is not None:
+        B = np.minimum(B, rim - lip)
     inside = F > 0.0
     dirs = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
 
@@ -608,6 +654,7 @@ def build_terrain(rng_, coll, grid=None, name="world.range"):
     # move boundary verts onto the zero crossing of F toward their inside neighbours
     sx = np.zeros(X.shape)
     sy = np.zeros(X.shape)
+    sz = np.zeros(X.shape)
     cnt = np.zeros(X.shape)
     for di, dj in dirs:
         Fn = shift(F, di, dj, -1e3)
@@ -615,26 +662,43 @@ def build_terrain(rng_, coll, grid=None, name="world.range"):
         fr = np.clip(-F / np.where(m, Fn - F, 1.0), 0.0, 1.0)
         sx += np.where(m, X + fr * dj * step, 0.0)
         sy += np.where(m, Y + fr * di * step, 0.0)
+        sz += np.where(m, rim + fr * (shift(rim, di, dj, 0.0) - rim), 0.0)
         cnt += m
     cnt = np.maximum(cnt, 1)
     VX = np.where(boundary, sx / cnt, X)
     VY = np.where(boundary, sy / cnt, Y)
-    topz = np.where(inside, T, rim)
+    # (round 12: an outline vertex stands at the rim's height where it is, on the crossing; it stood at the rim's
+    # height of its grid node, up to 2.5 m away, so where the crossing lay a few mm from an inside node the top's rim
+    # triangles stood on edge as slivers, and the underside's, 'lip' under them, lay in their plane)
+    topz = np.where(inside, T, rim if lip is None else sz / cnt)
+    rim_v = np.where(boundary, sz / cnt, rim)
 
     idx_t = -np.ones(X.shape, np.int64)
     idx_t[used] = np.arange(used.sum())
     n_used = int(used.sum())
+    n_in = int(inside.sum())
     idx_b = idx_t.copy()
-    idx_b[inside] = n_used + np.arange(inside.sum())
-    verts = np.concatenate([
-        np.stack([VX[used], VY[used], topz[used]], axis=1),
-        np.stack([X[inside], Y[inside], B[inside]], axis=1)])
+    idx_b[inside] = n_used + np.arange(n_in)
+    vlist = [np.stack([VX[used], VY[used], topz[used]], axis=1),
+             np.stack([X[inside], Y[inside], B[inside]], axis=1)]
+    n_rim = 0
+    if lip is not None:
+        # the outline's own underside vertices, lip m under its top ones (rim level)
+        n_rim = int(boundary.sum())
+        idx_b[boundary] = n_used + n_in + np.arange(n_rim)
+        vlist.append(np.stack([VX[boundary], VY[boundary], rim_v[boundary] - lip], axis=1))
+    verts = np.concatenate(vlist)
 
     c00, c01 = (slice(0, -1), slice(0, -1)), (slice(0, -1), slice(1, None))
     c11, c10 = (slice(1, None), slice(1, None)), (slice(1, None), slice(0, -1))
     cell = inside[c00] | inside[c01] | inside[c11] | inside[c10]
     q_t = np.stack([idx_t[c00][cell], idx_t[c01][cell], idx_t[c11][cell], idx_t[c10][cell]], axis=1)
     q_b = np.stack([idx_b[c00][cell], idx_b[c10][cell], idx_b[c11][cell], idx_b[c01][cell]], axis=1)
+    q_l = np.zeros((0, 4), np.int64)
+    if lip is not None:
+        bot_of = -np.ones(len(verts), np.int64)
+        bot_of[idx_t[used]] = idx_b[used]
+        q_l = rim_lip(q_t, bot_of)
     # top face slope -> rock (0) or green ledge (1); underside rock (2)
     P = verts
     d1 = P[q_t[:, 2]] - P[q_t[:, 0]]
@@ -647,18 +711,27 @@ def build_terrain(rng_, coll, grid=None, name="world.range"):
     green = (nzc > 0.8) & in_c & ~(near_c & ~flat_c)
     mat_t = np.where(green | flat_c, 1, 0)
     veg = (nzc > 0.78) & in_c & (~near_c) & (F[c00][cell] > 4.0)
-    faces = np.concatenate([q_t, q_b])
-    mats = np.concatenate([mat_t, np.full(len(q_b), 2)])
-    ob = _mesh_np(name, coll, verts, faces, ["rock_cliff", "nature_soil_moss", "world_rock_under"],
-                  mat_idx=mats)
-    at = ob.data.attributes.new("world_veg", 'FLOAT', 'FACE')
-    at.data.foreach_set("value", np.concatenate([veg, np.zeros(len(q_b), bool)]).astype(np.float32))
-    try:
-        ob.data.set_sharp_from_angle(angle=math.radians(55))
-    except Exception:
-        pass
+    faces = np.concatenate([q_t, q_b, q_l])
+    mats = np.concatenate([mat_t, np.full(len(q_b) + len(q_l), 2)])
+    veg = np.concatenate([veg, np.zeros(len(q_b) + len(q_l), bool)])
     grid = dict(X=X, Y=Y, T=T, F=F, B=B, rim=rim, inside=inside)
-    return ob, grid
+    return dict(verts=verts, faces=faces, mats=mats, veg=veg, grid=grid, n_top=n_used, n_inside=n_in, n_rim=n_rim,
+                n_lip=len(q_l), n_qt=len(q_t), n_qb=len(q_b))
+
+
+def rim_lip(q_t, bot_of):
+    """The lip quads under the top's outline: every edge only one top quad uses (bot_of: the underside vertex under
+    each top vertex), in the top quads' order, facing out (the top quads run counter-clockwise seen from above, so
+    their outside is right of each edge): (v, u, u', v') for the top's edge u -> v."""
+    e = np.stack([q_t, np.roll(q_t, -1, axis=1)], axis=2).reshape(-1, 2)
+    key = np.sort(e, axis=1)
+    big = int(e.max()) + 1
+    _u, inv, cnt = np.unique(key[:, 0] * big + key[:, 1], return_inverse=True, return_counts=True)
+    out = cnt[inv.ravel()] == 1
+    u, v = e[out, 0], e[out, 1]
+    if len(u) and (bot_of[u].min() < 0 or bot_of[v].min() < 0):
+        raise ValueError("rim_lip: an outline edge ends on a vertex with no underside vertex")
+    return np.stack([v, u, bot_of[u], bot_of[v]], axis=1)
 
 
 def build_forest(terrain, coll):
@@ -668,8 +741,9 @@ def build_forest(terrain, coll):
                         collection=coll, name="world.range.forest", align=0.1)
 
 
-def build_roots(grid, coll, count=90):
-    """Roots hanging from the underside, thinning out toward the cloud."""
+def build_roots(grid, coll, count=90, twist_free=True):
+    """Roots hanging from the underside, thinning out toward the cloud. ``twist_free`` False: the tubes built before
+    round 12 (patch_r12_world's guard)."""
     r = U.rng("world.roots", 1)
     X, Y, B, F, inside = grid["X"], grid["Y"], grid["B"], grid["F"], grid["inside"]
     cand = np.argwhere(inside & (F > 12.0) & (F < 120.0))
@@ -685,14 +759,15 @@ def build_roots(grid, coll, count=90):
             s = k / 5.0
             pts.append((x + r.uniform(-1.5, 1.5) * s + 2.0 * s * s, y + r.uniform(-1.5, 1.5) * s,
                         z + 2.0 - Lr * s, 1.0 - 0.85 * s))
-        _tube_bm(bm, pts, r.uniform(0.5, 1.3), sides=5)
+        _tube_bm(bm, pts, r.uniform(0.5, 1.3), sides=5, twist_free=twist_free)
         for c in range(r.randint(0, 2)):
             s0 = r.uniform(0.2, 0.5)
             px, py, pz = pts[int(s0 * 5)][:3]
             ang = r.uniform(0, 2 * math.pi)
             Lc = Lr * r.uniform(0.3, 0.6)
             _tube_bm(bm, [(px, py, pz, 0.6), (px + math.cos(ang) * 2, py + math.sin(ang) * 2, pz - Lc * 0.5, 0.4),
-                          (px + math.cos(ang) * 3, py + math.sin(ang) * 3, pz - Lc, 0.08)], 0.6, sides=4)
+                          (px + math.cos(ang) * 3, py + math.sin(ang) * 3, pz - Lc, 0.08)], 0.6, sides=4,
+                     twist_free=twist_free)
     ob = U.mesh_from_bmesh("world.roots", bm, coll, materials=["nature_bark_blossom"], smooth=True)
     return ob
 
@@ -862,6 +937,7 @@ def build_islets(rng_, coll, count=30):
         rot = r.uniform(0, 2 * math.pi)
         rock = N.floating_rock(coll, size=size, seed=500 + i, vegetation=True, roots=True, pine_on_top=False,
                                name="world.islet", location=(x, y, z), rotation=rot)
+        tidy_rock(rock)
         out.append(rock)
         roll = r.random()
         if size >= 12.0 and roll < 0.25:
@@ -1016,6 +1092,10 @@ COPING = 0.6               # parapet tops fall this much to the outer edge (a co
 # face. The landings shared faces with their own walls and treads, and the treads lay on the terrace grass)
 REVEAL = 0.02              # landing walls (rest_rail, foot_rail) stand this far in from their slab's outer faces and
 WALL_SINK = 0.1            # ends, their bottoms this far down in the slab: no wall face lies in a slab face's plane
+ARCH_REVEAL = 0.08         # round 12: a bridge arch's sides stand this far inside the parapets' outer faces. At REVEAL
+                           # (2 cm) the 0.3 m band where the arch reaches up into the stair z-fought with the parapets
+                           # from about 290 m on (24-bit depth, near 0.5 m), the whole length of the library -> steles
+                           # bridge; 8 cm stays apart to about 580 m, where that band is under a pixel
 SINK = 0.05                # the range sinks this far under a stairway's walking surfaces where it lay at their level
 SINK_UP = 0.03             # ... range vertices from SINK under to this far over a walking level count as at it
 SINK_REACH = 0.45          # ... a vertex inside the stair's own footprint takes the lowest walking level this near
@@ -1040,6 +1120,13 @@ CORBEL = ((2.1, 0.75, 0.12), (1.4, 0.75, 0.18), (0.7, 0.75, 0.22))   # stepped c
                            # soffit, top first: (reach past the shaft top along the stair on each side, depth, inset
                            # from the parapets' outer faces). They step out along the stair, not sideways: with a
                            # sideways lip they read as Doric capitals on columns
+CORBEL_GAP = 0.02          # round 12: the shaft's top stands this far inside the lowest course all round. The courses
+                           # were straight boxes between their two end stations: on a bend their sides cut out through
+                           # the curved parapets' and treads' faces at a few degrees, and the shaft's top corners out
+                           # through the lowest course's sides (z-fighting slivers along those cuts). Now each course
+                           # follows the stair's centreline through every sample (a _ribbon), so it keeps its inset
+TREAD_GAP = 0.02           # round 12: no tread ends within this of a riser or of the foot (round 11 used 1 cm): a tread
+                           # 1-1.5 cm long put two parallel end faces that close, which fight from about 300 m on
 FOOTING_INSET = 0.15       # the footing under the low stretches stands this far inside the parapets' faces
 FOOTING_SINK = 1.0         # ... and reaches this far into the ground
 PLAN_GRID = 5.0            # the stairs' riser plans read the range as the 5 m mesh they were planned on: planning
@@ -1466,26 +1553,44 @@ def _pier(rng_, c, nl, yaw, top, along=None, across=None, flare=1.3, sink=2.0):
         top - zb
 
 
-def _corbel_pier(rng_, s, xy, yaw, q, soffit, lat):
+def _corbel_pier(rng_, s, xy, yaw, q, soffit, lat, curved=True):
     """A stair pier at station q: CORBEL courses stepping out under the soffit (each level at the
     bottom, its top following the soffit 0.3 m into the stair body), then a shaft that widens by
-    PIER_BATTER per metre down (at most PIER_FLARE_MAX) into the ground. Returns (prisms, height)."""
-    prisms = []
+    PIER_BATTER per metre down (at most PIER_FLARE_MAX) into the ground. Returns (prisms, solids, height): the shaft
+    (a prism) and the courses (each a _ribbon through every centreline sample over its length; ``curved`` False: the
+    straight boxes between its two end stations built before round 12, in prisms, for patch_r12_world's guard)."""
+    prisms, solids = [], []
     top_q = None
+    w3 = None
     for reach, depth, inset in CORBEL:
         h = SHAFT_ALONG * 0.5 + reach
-        qs = np.array([q - h, q + h])
+        w = lat - inset
+        if curved:
+            qs = np.concatenate([[q - h], s[(s > q - h + 0.05) & (s < q + h - 0.05)], [q + h]])
+        else:
+            qs = np.array([q - h, q + h])
         cq, nq, _ = _frame(s, xy, yaw, qs)
         so = soffit(qs)
-        zt = (so + 0.3) if top_q is None else np.full(2, top_q + 0.05)
+        zt = (so + 0.3) if top_q is None else np.full(len(qs), top_q + 0.05)
         zb = float(min(so)) - depth if top_q is None else top_q - depth
-        w = lat - inset
-        prisms.append(_prism(_strip(cq, nq, 0, 1, -w, w), zb, [zt[0], zt[1], zt[1], zt[0]]))
+        if curved:
+            solids.append(_ribbon(cq, nq, -w, w, np.full(len(qs), zb), zt))
+        else:
+            prisms.append(_prism(_strip(cq, nq, 0, 1, -w, w), zb, [zt[0], zt[1], zt[1], zt[0]]))
         top_q = zb
+        w3 = w
     top = top_q + 0.05
     c, nl, a = _frame(s, xy, yaw, [q])
     c, nl, a = c[0], nl[0], float(a[0])
     hw, ha = lat - SHAFT_INSET, SHAFT_ALONG * 0.5
+    if curved:
+        # the shaft's top inside the lowest course by CORBEL_GAP all round: on a bend the course's sides follow the
+        # arc, which leaves the straight shaft's tangent line by up to ha^2 / 2R over its length
+        qq = np.linspace(q - ha, q + ha, 35)
+        cc, nn, _ = _frame(s, xy, yaw, qq)
+        dev = (cc - c) @ nl
+        cosd = nn @ nl
+        hw = min(hw, float((w3 * cosd - np.abs(dev)).min()) - CORBEL_GAP)
     q_top = _footprint(c, nl, a, ha, hw)
     g0, _, _ = _ground(rng_, np.array([c[0]]), np.array([c[1]]))
     zb = float(g0[0]) - 2.0
@@ -1496,10 +1601,10 @@ def _corbel_pier(rng_, s, xy, yaw, q, soffit, lat):
         g, _, _ = _ground(rng_, pts[:, 0], pts[:, 1])
         zb = float(g.min()) - 2.0
     prisms.append([(float(p[0]), float(p[1]), zb) for p in q_bot] + [(float(p[0]), float(p[1]), top) for p in q_top])
-    return prisms, top - zb
+    return prisms, solids, top - zb
 
 
-def _supports(rng_, nm, s, xy, yaw, nl, lat, zs, soffit, skip, foot=0.0):
+def _supports(rng_, nm, s, xy, yaw, nl, lat, zs, soffit, skip, foot=0.0, curved=True):
     """W4 (2026-10-21): what carries a stairway, on the range as GRID meshes it.
     - Piers (_corbel_pier) where the treads stand more than PIER_GAP over the ground: each such run
       is split into equal spans near PIER_SPAN[0] and never over PIER_SPAN[1] between supports (its
@@ -1517,7 +1622,7 @@ def _supports(rng_, nm, s, xy, yaw, nl, lat, zs, soffit, skip, foot=0.0):
     sb = soffit(s)
     high = (zs - gmax > PIER_GAP) & ~skip
     r = U.rng("world.piers", nm)
-    prisms, heights, spans, runs = [], [], [], 0
+    prisms, corbels, heights, spans, runs = [], [], [], [], 0
     k = 0
     while k < n:
         if not high[k]:
@@ -1537,8 +1642,9 @@ def _supports(rng_, nm, s, xy, yaw, nl, lat, zs, soffit, skip, foot=0.0):
         jit = min(PIER_JITTER * step, max(0.0, (PIER_SPAN[1] - step) * 0.5))
         qs = [a + j * step + r.uniform(-jit, jit) for j in range(1, m)]
         for q in qs:
-            pr, ph = _corbel_pier(rng_, s, xy, yaw, q, soffit, lat)
+            pr, so_, ph = _corbel_pier(rng_, s, xy, yaw, q, soffit, lat, curved=curved)
             prisms += pr
+            corbels += so_
             heights.append(ph)
         sup = [a] + qs + [b]
         spans.append(max(y_ - x_ for x_, y_ in zip(sup, sup[1:])))
@@ -1574,6 +1680,7 @@ def _supports(rng_, nm, s, xy, yaw, nl, lat, zs, soffit, skip, foot=0.0):
         foot_h = max(foot_h, float((zt[:, None] - zb).max()))
     # treads under the GRID mesh anywhere across the stair (the plan read the PLAN_GRID mesh)
     under = gmax - zs
+    solids = corbels + solids
     stats = dict(piers=len(heights), tallest_pier=round(max(heights), 1) if heights else 0.0,
                  pier_runs=runs, longest_span=round(max(spans), 1) if spans else 0.0,
                  footing_m=round(foot_m, 1), tallest_footing=round(foot_h, 1),
@@ -1682,10 +1789,12 @@ def _plan_stairway(rng_, seg, pa, pb):
     return best
 
 
-def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True):
+def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True, r11=False):
     """One marble stairway from port pa (depart) to port pb (arrival); see the section notes.
     ``arch_extras``: build the foot archway and the rest pavilion (sect.lib.arch; patches that
-    only replace the stair's own meshes skip them). Returns (objects, report, geometry)."""
+    only replace the stair's own meshes skip them). ``r11``: the treads, piers and arch as round 11 built them (1 cm
+    TREAD_GAP, straight corbel courses, the arch's sides REVEAL in; patch_r12_world's guard). Returns (objects, report,
+    geometry)."""
     A = _arch() if arch_extras else None
     p0, p1 = pa["p"], pb["p"]
     z0, z1 = float(p0[2]), float(p1[2])
@@ -1698,11 +1807,12 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True):
 
     # treads: one prism per stretch between centreline samples and risers. Round 11: none over the
     # foot landing, whose slab is the floor there, flush with the first tread (the treads lay 4 mm
-    # over it and z-fought with it); and no sample within 1 cm of a riser or of the foot (it cut a
+    # over it and z-fought with it); and no sample within TREAD_GAP of a riser or of the foot (it cut a
     # tread a few mm long, whose riser face stood mm from the next one's: z-fighting risers)
     foot = P["foot"] if gate else 0.0
     fixed = np.concatenate([sr, [foot] if foot else []])
-    s_cut = s[np.abs(s[:, None] - fixed[None, :]).min(axis=1) > 0.01] if len(fixed) else s
+    gap = 0.01 if r11 else TREAD_GAP
+    s_cut = s[np.abs(s[:, None] - fixed[None, :]).min(axis=1) > gap] if len(fixed) else s
     cuts = np.unique(np.concatenate([[0.0, L], s_cut, fixed]))
     cuts = cuts[np.concatenate([[True], np.diff(cuts) > 1e-4])]
     c, nlq, _ = _frame(s, xy, yaw, cuts)
@@ -1760,7 +1870,7 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True):
     if arch:
         on_bridge = (s >= arch[0]) & (s <= arch[1])
     piers, footing, sup = _supports(rng_, nm, s, xy, yaw, nl, lat, zs, soffit, on_bridge,
-                                    foot=P["foot"] if gate else 0.0)
+                                    foot=P["foot"] if gate else 0.0, curved=not r11)
     # the arch (W4): intrados springs from the ground at both ends, BRIDGE_CROWN under the deck
     # at the crown, so the bridge reaches the ground instead of hanging a fixed 22 m
     arch_pr = []
@@ -1775,9 +1885,11 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True):
         bot = np.maximum(intr, h - 1.0)
         topa = soffit(s) + 0.3
         # (round 11: its sides stand REVEAL inside the parapets' outer faces; flush with them, the
-        # two shared a 0.3 m band along the whole bridge, where the arch reaches up into the stair)
+        # two shared a 0.3 m band along the whole bridge, where the arch reaches up into the stair.
+        # Round 12: ARCH_REVEAL, as 2 cm still fought from about 290 m on)
+        ins = REVEAL if r11 else ARCH_REVEAL
         for k in range(k0, k1):
-            q4 = _strip(xy, nl, k, k + 1, -lat + REVEAL, lat - REVEAL)
+            q4 = _strip(xy, nl, k, k + 1, -lat + ins, lat - ins)
             arch_pr.append(_prism(q4, [bot[k], bot[k + 1], bot[k + 1], bot[k]],
                                   [topa[k], topa[k + 1], topa[k + 1], topa[k]]))
     # (the treads' and parapets' undersides in the supports' stone: a white soffit read as a lit band
@@ -2005,6 +2117,92 @@ def _chain_bridge(rng_, coll, p0, p1, name, sag=CHAIN_SAG, width=CHAIN_W, steps=
     return [o for o in objs if o is not None], rep, geo
 
 
+ROCK_TIP_RINGS = 4         # tidy_rock: the bottom rings of a floating_rock's cone that close into one point (3, 4, 6
+                           # left 40, 36, 33 m2 of the 117 m2 within 12 mm on the 151 rocks: the rest is spread up the
+                           # cone, mostly beyond 5 mm; 4 changes the shape of the smallest islets' last 2-3 m only)
+
+
+def rock_rings(me):
+    """The ring layout of a nature.floating_rock mesh: dict(segs, bands, ring(k) -> vertex indices of ring k, 0 = the
+    rim, ``bands`` = the bottom line), or None when the mesh is not one. floating_rock builds its cone as 3 rim rings
+    and nz rings down to a last ring of radius 0, with ``segs`` quads per band between consecutive rings (faces band by
+    band; remove_doubles turns some of the last band's into triangles where it merged neighbours on the bottom line),
+    then the grassy top (bands of segs quads and a centre fan of segs triangles, material 1), then the spurs. Ring k
+    (0 < k < bands) is what bands k - 1 and k share; the bottom line is the last band less ring bands - 1."""
+    npl = len(me.polygons)
+    if npl == 0 or len(me.materials) < 2:
+        return None
+    lt = np.empty(npl, np.int32)
+    me.polygons.foreach_get("loop_total", lt)
+    mi = np.empty(npl, np.int32)
+    me.polygons.foreach_get("material_index", mi)
+    top = np.nonzero(mi == 1)[0]
+    if not len(top):
+        return None
+    segs = int(((lt == 3) & (mi == 1)).sum())
+    first_top = int(top.min())
+    if segs < 8 or first_top % segs or first_top // segs < 4:
+        return None
+    nb = first_top // segs
+    if (lt[:(nb - 1) * segs] != 4).any() or (lt[(nb - 1) * segs:first_top] < 3).any() or             (lt[(nb - 1) * segs:first_top] > 4).any() or (mi[:first_top] != 0).any():
+        return None
+    ls = np.empty(npl, np.int32)
+    me.polygons.foreach_get("loop_start", ls)
+    cv = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get("vertex_index", cv)
+
+    def band(k):
+        f = np.arange(k * segs, (k + 1) * segs)
+        return set(np.concatenate([cv[ls[i]:ls[i] + lt[i]] for i in f.tolist()]).tolist())
+    cache = {}
+
+    def ring(k):
+        if k not in cache:
+            if k == nb:
+                r = band(nb - 1) - band(nb - 2)
+            elif k == 0:
+                r = band(0) - band(1)
+            else:
+                r = band(k - 1) & band(k)
+            cache[k] = np.array(sorted(r), np.int64)
+        return cache[k]
+    for k in (nb - 3, nb - 2, nb - 1):
+        if len(ring(k)) != segs:
+            return None
+    if not 0 < len(ring(nb)) <= segs:
+        return None
+    return dict(segs=segs, bands=nb, ring=ring)
+
+
+def tidy_rock(ob, rings=ROCK_TIP_RINGS):
+    """Round 12: close the bottom of a nature.floating_rock's cone in one point. floating_rock ends the cone in a ring
+    of radius 0 whose vertices keep their own heights (up to 0.15 x depth apart), so the last bands stood as vertical
+    fins round one line, folded onto each other, and the rings just over it crumpled the same way: faces within 5 mm
+    of each other on every island, islet and stepping stone (75 m2 in the last band, 16 m2 in the two over it, of 117
+    m2 within 12 mm on the 151 rocks). The last ``rings`` rings (the bottom line and the ones over it) move into one
+    point, under the middle of the last ring kept and as low as the lowest of them: the band over them becomes one cone
+    of triangles to that point (the moved bands' faces stay, with no area). Only vertices move: the
+    faces, their order and the top (where the plants grow) stay as they are. Returns the vertices moved (0 when it was
+    already done, -1 when the mesh is not a floating_rock)."""
+    me = ob.data
+    L = rock_rings(me)
+    if L is None:
+        return -1
+    idx = np.concatenate([L["ring"](k) for k in range(L["bands"] - rings + 1, L["bands"] + 1)])
+    co = np.empty(len(me.vertices) * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    # (under the middle of the last ring kept, so the cone of triangles to it cannot fold over itself)
+    apex = np.concatenate([co[L["ring"](L["bands"] - rings)][:, :2].mean(0), [co[idx, 2].min()]])
+    apex = apex.astype(np.float32).astype(np.float64)        # as the mesh stores it: a second run finds it in place
+    moved = int((np.abs(co[idx] - apex).max(axis=1) > 0.0).sum())
+    if moved:
+        co[idx] = apex
+        me.vertices.foreach_set("co", co.ravel())
+        me.update()
+    return moved
+
+
 def _top_faces_up(ob, top_index=1):
     """nature.floating_rock recalculates normals over a mesh with overlapping spurs, and for some
     seeds that turns the whole rock inside out: its grassy top then faces down (walkcheck sees no
@@ -2050,6 +2248,7 @@ def _stepping_stones(rng_, coll, p0, p1, name, seed=0, bulge=STONE_BULGE, land0=
                              location=(float(cx[i]), float(cy[i]), float(tops[i]) - 0.12),
                              rotation=r.uniform(0, 6.28))
         flipped += _top_faces_up(ob)
+        tidy_rock(ob)
         out.append(ob)
     cd = np.hypot(np.diff(cx), np.diff(cy))
     gaps = cd - (np.array(sizes[:-1]) + np.array(sizes[1:])) * 0.5

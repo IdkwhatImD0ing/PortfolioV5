@@ -474,14 +474,16 @@ function* compactGeometry(g: BufferGeometry, carved: ArrayLike<number>, used: Ui
 /**
  * A copy of a scenery material for pieces that sway, made as prepare.ts makes its glow copies:
  * the sway shader declares `sectSway`, and the scenery left behind, which has no such attribute,
- * must keep a program without it (WebGL would feed it a stale value).
+ * must keep a program without it (WebGL would feed it a stale value). `keepGreen`: the copy skips
+ * the grade's green tame (look.ts gradeGlsl, SECT_KEEP_GREEN; the define keys its own program).
  */
-function swayCopy(mat: Material, copies: Map<Material, Material>): Material {
+function swayCopy(mat: Material, copies: Map<Material, Material>, keepGreen = false): Material {
   let copy = copies.get(mat);
   if (!copy) {
     copy = mat.clone();
     copy.onBeforeCompile = mat.onBeforeCompile;
     copy.customProgramCacheKey = mat.customProgramCacheKey;
+    if (keepGreen) copy.defines = { ...(copy.defines ?? {}), SECT_KEEP_GREEN: "" };
     copies.set(mat, copy);
   }
   return copy;
@@ -606,6 +608,7 @@ function* carveRegion(root: Object3D, skip: Set<Mesh>, region: CarveRegion): Gen
 /**
  * Cuts the region's cloth out of the merged scenery, onto a copy of its material, and sets it
  * fluttering with `weights` (computed on its world positions), counting each piece in the plan.
+ * `keepGreen`: the copy keeps green's lead through the grade (swayCopy).
  */
 function* swayCut(
   plan: IdlePlan,
@@ -614,12 +617,13 @@ function* swayCut(
   region: CarveRegion,
   weights: (world: Float32Array) => Float32Array,
   motion: { amp: number; freq: number },
+  keepGreen = false,
 ): Generator<void, void, void> {
   const pieces = yield* carveRegion(main, skip, region);
   const copies = new Map<Material, Material>();
   for (const m of pieces) {
     yield;
-    m.material = swayCopy(m.material as Material, copies);
+    m.material = swayCopy(m.material as Material, copies, keepGreen);
     if (setSway(m, weights, motion.amp, motion.freq)) plan.sway++;
   }
 }
@@ -832,9 +836,11 @@ function* planSteps(
   const hangs = BANNER_HANGS[id];
   if (hangs?.length && main) yield* swayCut(plan, main, skip, hangRegion(hangs), (w) => hangSway(w, hangs), BANNER);
   // The flags flying from their poles' tops (FLAG_FLIES: the formation's Five Element Banners, in the
-  // formation's chunk and the abode's), the same way, rippling out from the pole.
+  // formation's chunk and the abode's), the same way, rippling out from the pole. Their cloth keeps
+  // its green through the grade, which takes green's lead out of every baked texel (look.ts
+  // greenTame) and drew the wood flag's jade slate blue.
   const flies = FLAG_FLIES[id];
-  if (flies?.length && main) yield* swayCut(plan, main, skip, flyRegion(flies), (w) => flySway(w, flies), FLAG);
+  if (flies?.length && main) yield* swayCut(plan, main, skip, flyRegion(flies), (w) => flySway(w, flies), FLAG, true);
   for (const h of SWAY_TREES[id] ?? []) {
     for (const m of hotspotMeshes.get(h) ?? []) {
       yield;

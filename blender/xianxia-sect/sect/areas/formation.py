@@ -16,7 +16,8 @@ the world. A 100 m round plaza of weathered bluestone with bronze and jade set i
   and meridian rings, the sect's sun-and-moon finial) and its turning rings round the sun-fire core
   (formation.core, the 'formation' hotspot, turned by the page and by a driver);
 - the Ming Sect's Five Element Banners 五行旗 on the east rim (formation.flag.<wood|fire|earth|metal|water>, front to
-  back in the generating order 木火土金水) on carved stone drums with the sect's emblem;
+  back in the generating order 木火土金水) on carved stone drums with the sect's emblem, each in its element's colour
+  (round 30: its own cloth, sect/lib/element_flags.py);
 - the Quanzhen Big Dipper array 天罡北斗阵: seven star-stones on the west side (formation.dipper.<star>) joined by
   inlaid silver lines;
 - stone lanterns along the axis walk, a censer before the front dais stair, a marble balustrade round the rim, a
@@ -47,6 +48,7 @@ from sect.lib import materials as M
 from sect.lib import arch as A
 from sect.lib import props as P
 from sect.lib import array_props as AP
+from sect.lib import element_flags as EF
 
 # arrival / depart: where the incoming and outgoing connector stairs meet this area, as
 # (x, y, z, heading) in the local frame. z is the stair's end step level (terrace grass, -0.4);
@@ -100,15 +102,18 @@ PILLAR_ANGLES = STATION_ANGLES                       # older name (export docs)
 CHANT = "焚我残躯，熊熊圣火。生亦何欢，死亦何苦？为善除恶，惟光明故。喜乐悲愁，皆归尘土。怜我世人，忧患实多！"
 
 # The Ming Sect's Five Element Banners 五行旗 (倚天屠龙记): (element, flag character, angle on the rim in degrees,
-# banner cloth index, brigade name). Front to back in the generating order 木 -> 火 -> 土 -> 金 -> 水; the angles keep
+# cloth material, brigade name). Front to back in the generating order 木 -> 火 -> 土 -> 金 -> 水; the angles keep
 # every flag clear of the stations, the armillary and the rear gate on screen at the hold (frame 1208).
+# Round 30: the Wu Xing colours, each flag on a cloth of its own (lib/element_flags.py CLOTH, registered by
+# lib/materials.py) with its flame teeth and character from element_flags.TRIM. Until round 29 they took the shared
+# banner palette (indices 2, 0, 1, 5, 7), where the earth flag's imperial gold was the trim's own gold.
 R_FLAGS = 45.0
 ELEMENT_FLAGS = [
-    ("wood", "木", 10.0, 2, "巨木旗"),     # jade
-    ("fire", "火", 24.0, 0, "烈火旗"),     # vermilion
-    ("earth", "土", 38.0, 1, "厚土旗"),    # imperial gold, ink trim
-    ("metal", "金", 52.0, 5, "锐金旗"),    # moon white, ink trim
-    ("water", "水", 66.0, 7, "洪水旗"),    # ink black (the water banner is black), gold trim
+    ("wood", "木", 10.0, "flag_wood", "巨木旗"),     # 青 jade green, gold trim
+    ("fire", "火", 24.0, "flag_fire", "烈火旗"),     # 赤 vermilion, gold trim
+    ("earth", "土", 38.0, "flag_earth", "厚土旗"),   # 黄 imperial yellow, ink trim
+    ("metal", "金", 52.0, "flag_metal", "锐金旗"),   # 白 moon white, ink trim
+    ("water", "水", 66.0, "flag_water", "洪水旗"),   # 黑 ink black, indigo flame teeth, gold character
 ]
 
 # The Quanzhen Big Dipper array 天罡北斗阵 (射雕英雄传): seven star-stones on the west side, (pinyin, name, x, y);
@@ -445,12 +450,32 @@ def _axis_walk_geom(sign):
     return _arc_slab_geom(STRIP_HW, R_DARK, STRIP_FOOT, sign, STRIP_Z, None, FLOOR_SEGS)
 
 
+STEP_SINK = 0.12      # round 12: the arrival steps' block reaches this far into the terrace
+
+
+def sink_steps(st, depth):
+    """Let an arch.stairs flight's block (its '.steps' mesh: the treads and stringers) reach ``depth`` below its foot:
+    its bottom vertices (and the bevel ring just above them) move down. Works on the built object, so a fresh build
+    and sect/patch_r12_areas.py agree. Returns the number of vertices moved (0 when already sunk)."""
+    me = bpy.data.objects[st.name + ".steps"].data
+    if min(v.co.z for v in me.vertices) < -1e-4:
+        return 0
+    n = 0
+    for v in me.vertices:
+        if v.co.z < 0.05:
+            v.co.z -= depth
+            n += 1
+    me.update()
+    return n
+
+
 def _route(coll, root):
     """Front approach and rear exit on the axis, plus the white strip across the floor."""
     # front: paved apron from the plaza edge to y -61, three low steps down to the arrival
     _arc_slab("arrival_apron", coll, root, APRON_HW[0], R_PLAZA, APRON_Y, -1.0, 0.0, -1.2)
-    A.stairs(U.name(KEY, "arrival_steps"), coll, 8.0, 0.4, ramp=False, balustrade=False, parent=root,
-             location=(0.0, -APRON_Y, -0.4))
+    st = A.stairs(U.name(KEY, "arrival_steps"), coll, 8.0, 0.4, ramp=False, balustrade=False, parent=root,
+                  location=(0.0, -APRON_Y, -0.4))
+    sink_steps(st, STEP_SINK)     # round 12: it stood up to 5.5 cm over the terrace round 11 sank under the link stair
     for sx in (-1.0, 1.0):
         P.lantern_stone(coll, name=U.name(KEY, "lantern"), parent=root, location=(sx * 5.0, -59.5, 0.0))
     # rear: apron behind the rear gate and three steps down to the depart point
@@ -540,14 +565,20 @@ def _stations(coll, root):
 
 def _flags(coll, root):
     """The Ming Sect's Five Element Banners on the east rim: tall qi flags (one character each), all flying toward
-    -X (one wind; the cloth faces the camera), on carved drums whose centre-facing side carries the sect's emblem."""
+    -X (one wind; the cloth faces the camera), on carved drums whose centre-facing side carries the sect's emblem.
+    Each cloth in its element's colour, its flame teeth (cloth slot 1) and its character with the ring (slot 2) from
+    element_flags.TRIM (sect/patch_r30_flags.py dresses an existing file the same way)."""
     for k, (key, ch, deg, mat, brigade) in enumerate(ELEMENT_FLAGS):
         t = math.radians(deg)
         x, y = R_FLAGS * math.cos(t), R_FLAGS * math.sin(t)
         AP.flag_drum(coll, "%s.flag_base.%s" % (KEY, key), root, (x, y, 0.0), (-math.cos(t), -math.sin(t)), brigade)
-        b = P.banner(coll, height=10.0, width=3.3, material=mat, style="qi", seed=k, text_zh=ch,
+        teeth, ink = EF.TRIM[key]
+        b = P.banner(coll, height=10.0, width=3.3, material=mat, trim=teeth, style="qi", seed=k, text_zh=ch,
                      name="%s.flag.%s" % (KEY, key), parent=root, location=(x, y, AP.DRUM_H),
                      rotation=(0.0, 0.0, math.pi), scale=1.4)
+        if ink != teeth:
+            cloth = [c for c in b.children if c.name.startswith(b.name + ".cloth")]
+            U.set_object_material(cloth[0], ink, 2)
         AP.tag_tree(b)
 
 

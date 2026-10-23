@@ -19,6 +19,7 @@ from a UV-driven bump added on top of the shared tile material (``tile_material`
 """
 
 import math
+import re
 
 import bmesh
 import bpy
@@ -37,6 +38,203 @@ __all__ = [
 
 TAU = 2.0 * math.pi
 Z = Vector((0.0, 0.0, 1.0))
+
+
+# ======================================================================== round 12: no coplanar faces
+# The web draws every baked face double-sided (24-bit depth, near 0.5 m, far 9000 m), so two faces within a few mm of
+# each other z-fight once the camera is far enough away (4 mm beyond ~130 m, 2 cm beyond ~290 m), and a face buried just
+# under another one bakes dark and bleeds through it. Round 12 takes such pairs out of the shared builders: parts that
+# overlap are joined into one surface by an exact boolean union (_self_union), and layers that stay apart sit at least
+# 2 cm apart. patch_r12_libs.py brings an existing .blend to the same state: it rebuilds each piece once with the old
+# settings (noted beside each one) to recognise the old piece, then with these. Meshes joined this way carry R12_TAG.
+R12_TAG = "sect_r12"
+COLUMN_SHAFT_ON_RING = True    # _p_column: the shaft starts on the foot ring's top (False: it ran down through the ring,
+                               # 8-10 mm inside the ring's faces)
+COLUMN_RING_TOP = 0.13         # m: the foot ring's top over the drum
+CORNER_ARM_W = 0.8             # _p_dougong, corner sets: width (bracket units) of the two tier-3 arms that run along the
+                               # side lines (the +-45 degree copies). bracket_band's wall-line beams are 1.0 wide at that
+                               # height and run 0.6 u past the corner, so at 1.0 those arms' faces lay in the beams' faces
+                               # (same facing, 0 mm) over the beam's last 1.2 u: a flickering strip at every corner of a
+                               # band. At 0.8 they sit 0.1 u inside the beam there (None: 1.0, as before)
+DOUGONG_UNION = True           # _p_dougong: arms, blocks and seat joined (False: crossing arms of a tier had their tops
+                               # and bottoms in one plane)
+BAND_UNION = True              # bracket_band: the beam boxes joined (False: they crossed at every corner)
+BAND_BEAM2_Z = (8.2, 9.4)      # bracket_band: the outer purlin beam's bottom and top, in bracket units over the plate. It
+                               # was (7.0, 8.2): flush with the sides and top of every dougong's outer tier-3 arm; it now
+                               # rests on those arms, like the inner purlin beam (8.2 .. 9.1)
+BEAMS_UNION = True             # _painted_beams: the beam boxes joined (False: separate boxes meeting face to face)
+LATTICE_UNION = True           # _p_lattice: frame, bars, boards, medallion and gold plates joined (False: separate boxes)
+LATTICE_LAYER_OFF = 0.0        # _p_lattice: the second bar layer's depth offset (was 0.002: crossing bars 2 mm apart)
+LATTICE_PAPER_GAP = 0.025      # _p_lattice: the paper's gap behind the bars' back faces (was 0.004)
+PANEL_UNION = True             # _p_panel: sill, board, carved border, vases and handrail joined (False: separate)
+SEAT_SKIRT_INSET = 0.025       # _p_seat: the skirt under the seat board stands this far in from the board's back and
+                               # ends and stops at the board's underside (None: 2 mm in at the back, flush at the ends,
+                               # its top 3.5 cm up inside the board)
+GABLE_UNION = True             # _gable_parts: the bargeboards joined (False: the two boards of a gable overlap at the apex)
+CHIWEN_LIFT = (0.0, 0.04, 0.08)    # _p_chiwen: bottom of the outline / head-and-body / core layers (unit height); all
+                                   # three were 0, one plane
+CHIWEN_FIN_T = 0.035           # _p_chiwen: the back fin's half thickness (was 0.045: 30 mm inside the outline layer)
+CHIWEN_HANDLE_T = 0.035        # _p_chiwen: the sword handle's half thickness (was 0.055: 20 mm inside it)
+CHIWEN_GUARD_TOP = 0.995       # _p_chiwen: top of the sword's cross guard (was 0.985: a guard 35 mm thick)
+DRUM_SCROLL_T = 0.36           # _p_drum_stone: the scroll's half thickness (x the stone's t; was 0.45: its faces lay 11 mm
+                               # inside the upper base block's)
+RAIL_SPLIT = True              # _p_rail_panel: balusters stop at the mid rail (False: they ran through it, their faces
+                               # 11 mm inside the rail's)
+CORRIDOR_MITRE = True          # corridor: neighbouring floor strips end on the bisector of their joint and meet edge to
+                               # edge (False: each ran half the width past the joint; they overlapped at 0 mm over the
+                               # corner and left a notch at its outer side)
+CORRIDOR_BENCH_DROP = 0.025    # corridor: where two bench rails cross (at an inner corner the side lines of the two
+                               # segments run past each other) the later one sits this much lower (None: their seat
+                               # boards lay in one plane over the crossing)
+CORRIDOR_CORNER_LIFT = 0.25    # corridor: the corner pyramid roof's seat over the post tops (was 0.12: its soffit
+                               # and tiles crossed the segment roofs' at a shallow angle, within 5 mm on a band)
+LATTICE_EXACT = True           # _p_lattice: frame members, boards and plates are exact boxes (False: built as bars, so
+                               # each ran half its width past its ends: a door's skirt board 0.4 m into the next leaf at
+                               # 0 mm, the stiles fw/2 under the sill and over the top)
+ROOF_KEEL_CLEAR = 0.04         # roof: a ridge's buried keel stops at least this far (vertically) over the soffit under it
+                               # (_clear_keels; 2.7 cm square to a 47-degree pyramid; None: as built, on gable rakes and
+                               # hips within mm of the soffit's underside)
+KEEL_KEEP = ("pyramid",)       # roof kinds whose keels stay as built (a pyramid's hips: the lift left ridge faces 5-12 mm
+                               # from the soffit by the corner instead of within 5 mm)
+BARGE_IN = 0.02                # _gable_parts: each bargeboard (and its studs) moves this far in toward the roof's middle
+                               # (None: its inner face lay 1 cm inside the tiles' rake closure; now 3 cm)
+PAIFANG_PLINTH = 2.64          # paifang: the marble plinth's side, x the column radius, plus 2 x PAIFANG_PLINTH_PAD (was
+PAIFANG_PLINTH_PAD = 0.025     # 2.6 and 0: the column's own base plinth, 2.64 x the radius, stood 13 mm out of it)
+BENCH_UNION = True             # _p_bench_rail: seat board, back board and balusters joined (the end faces lay in one
+                               # plane)
+FRIEZE_RIDGE_GAP = 0.025       # hall / tower: the frieze wall's face stands at least this far from the vertical faces of
+                               # the skirt roof's top ridge, which runs along the wall's foot (forge hall: 1-6 mm)
+WALLS_UNION = True             # hall / pagoda storey walls: the wall boxes joined into one solid (False: the boxes of
+                               # two sides crossed at each corner, their tops and bottoms in one plane)
+FRIEZE_HOLES = True            # hall: the frieze's lattice windows are set in openings in the wall, in its middle (False:
+                               # 2 cm in front of it, the frame's back 5 mm off the wall face)
+_EVAL_SCENE = "_props_eval"    # the private scene props.py evaluates temporary objects in
+
+
+def _paint_ref(me):
+    """What the arch paint attributes (arch_gen / arch_dims / arch_rand, per point, one box-like piece each) were on
+    mesh ``me``'s faces, to put them back after a union: (BVH of the faces, per face: 4x3 affine map position -> gen,
+    dims, rand, piece id). None when the mesh carries no paint attributes."""
+    import numpy as np
+    from mathutils.bvhtree import BVHTree
+    ag = me.attributes.get("arch_gen")
+    if ag is None or ag.domain != 'POINT' or not len(me.polygons):
+        return None
+    n = len(me.vertices)
+    co = np.empty(n * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(n, 3)
+    gen = np.empty(n * 3)
+    ag.data.foreach_get("vector", gen)
+    gen = gen.reshape(n, 3)
+    ad = me.attributes.get("arch_dims")
+    dims = np.ones((n, 3))
+    if ad is not None and ad.domain == 'POINT':
+        dd = np.empty(n * 3)
+        ad.data.foreach_get("vector", dd)
+        dims = dd.reshape(n, 3)
+    ar = me.attributes.get("arch_rand")
+    rand = np.zeros(n)
+    if ar is not None and ar.domain == 'POINT':
+        ar.data.foreach_get("value", rand)
+    # pieces: vertices joined by faces (union-find)
+    par = list(range(n))
+
+    def find(i):
+        while par[i] != i:
+            par[i] = par[par[i]]
+            i = par[i]
+        return i
+    faces, maps = [], []
+    for poly in me.polygons:
+        vs = list(poly.vertices)
+        for v in vs[1:]:
+            a, b = find(vs[0]), find(v)
+            if a != b:
+                par[b] = a
+        faces.append(vs)
+        X = np.hstack([co[vs], np.ones((len(vs), 1))])
+        W = np.linalg.lstsq(X, gen[vs], rcond=None)[0]
+        maps.append((W, dims[vs].mean(0), float(rand[vs[0]])))
+    piece = [find(vs[0]) for vs in faces]
+    tree = BVHTree.FromPolygons([tuple(c) for c in co], faces, all_triangles=False)
+    return tree, maps, piece
+
+
+def _paint_restore(me, ref):
+    """Put the arch paint attributes back on a mesh after its union (_paint_ref of the mesh before): every face takes
+    the values of the old face it lies on; the mesh is split along the seams between pieces, so that each point
+    belongs to one piece and its box frame (shapes and positions are unchanged)."""
+    import numpy as np
+    tree, maps, piece = ref
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bm.normal_update()
+    src = {}
+    for f in bm.faces:
+        c = f.calc_center_median()
+        best = None
+        for loc, nrm, i, d in tree.find_nearest_range(c, 0.02):
+            if nrm.dot(f.normal) > 0.9 and (best is None or d < best[1]):
+                best = (i, d)
+        if best is None:
+            loc, nrm, i, d = tree.find_nearest(c)
+            best = (i, d)
+        src[f] = best[0]
+    seams = [e for e in bm.edges if len(e.link_faces) == 2 and
+             piece[src[e.link_faces[0]]] != piece[src[e.link_faces[1]]]]
+    if seams:
+        bmesh.ops.split_edges(bm, edges=seams)
+    lg = bm.verts.layers.float_vector.get("arch_gen") or bm.verts.layers.float_vector.new("arch_gen")
+    ld = bm.verts.layers.float_vector.get("arch_dims") or bm.verts.layers.float_vector.new("arch_dims")
+    lr = bm.verts.layers.float.get("arch_rand") or bm.verts.layers.float.new("arch_rand")
+    for v in bm.verts:
+        if not v.link_faces:
+            continue
+        W, dims, rand = maps[src[v.link_faces[0]]]
+        g = np.array([v.co.x, v.co.y, v.co.z, 1.0]) @ W
+        v[lg] = tuple(float(x) for x in g)
+        v[ld] = tuple(float(x) for x in dims)
+        v[lr] = rand
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+
+
+def _self_union(me):
+    """Replace mesh ``me``'s geometry with the exact boolean union of its own overlapping closed parts (Boolean
+    modifier, Exact, Self Intersection, no operand), evaluated in a private empty scene: no face is left inside another
+    part or lying on another part's face. Keeps the material list, every face's material and the point attributes (new
+    points get interpolated values; the arch paint attributes are put back per piece, _paint_restore); tags the mesh
+    with R12_TAG. Returns ``me``."""
+    ref = _paint_ref(me)
+    sc = bpy.data.scenes.get(_EVAL_SCENE) or bpy.data.scenes.new(_EVAL_SCENE)
+    ob = bpy.data.objects.new("_arch_union_tmp", me)
+    sc.collection.objects.link(ob)
+    empty = bpy.data.collections.get("_arch_union_empty") or bpy.data.collections.new("_arch_union_empty")
+    mod = ob.modifiers.new("union", 'BOOLEAN')
+    mod.operation = 'UNION'
+    mod.solver = 'EXACT'
+    mod.use_self = True
+    mod.operand_type = 'COLLECTION'
+    mod.collection = empty
+    vl = sc.view_layers[0]
+    vl.update()
+    dg = vl.depsgraph
+    new = bpy.data.meshes.new_from_object(ob.evaluated_get(dg), preserve_all_data_layers=True, depsgraph=dg)
+    bpy.data.objects.remove(ob, do_unlink=True)
+    if empty.users == 0:
+        bpy.data.collections.remove(empty)
+    bm = bmesh.new()
+    bm.from_mesh(new)
+    bm.to_mesh(me)
+    bm.free()
+    bpy.data.meshes.remove(new)
+    if ref is not None:
+        _paint_restore(me, ref)
+    me[R12_TAG] = "union"
+    me.update()
+    return me
 
 
 # ======================================================================== small helpers
@@ -697,8 +895,9 @@ def _p_chiwen(tile_mat):
     the top, a small beast head on its back, gold eyes and a thick gold sword handle."""
     def build(col):
         bm = bmesh.new()
-        for outline, t in ((_CHIWEN_OUT, 0.075), (_CHIWEN_MID, 0.125), (_CHIWEN_CORE, 0.17)):
-            _bm_prism(bm, _ccw(outline), -t, t)
+        # the three layers' bottoms step up (CHIWEN_LIFT): at one height they lay in one plane
+        for (outline, t), lift in zip(((_CHIWEN_OUT, 0.075), (_CHIWEN_MID, 0.125), (_CHIWEN_CORE, 0.17)), CHIWEN_LIFT):
+            _bm_prism(bm, _ccw([(x, max(z, lift)) for x, z in outline]), -t, t)
         # scalloped back fin along the outer edge
         fin = [(0.36, 0.14)]
         for k in range(6):
@@ -706,7 +905,7 @@ def _p_chiwen(tile_mat):
             x0 = 0.385 + 0.07 * (z0 - 0.14)
             fin += [(x0 + 0.06, z0 + 0.02), (x0 + 0.075, z0 + 0.05), (x0 + 0.03, z0 + 0.075)]
         fin += [(0.43, 0.70), (0.36, 0.70)]
-        _bm_prism(bm, _ccw(fin), -0.045, 0.045)
+        _bm_prism(bm, _ccw(fin), -CHIWEN_FIN_T, CHIWEN_FIN_T)
         # tail curling outward over the top: a tapered tube on a shrinking spiral
         pts, tap = [], []
         for k in range(26):
@@ -733,9 +932,10 @@ def _p_chiwen(tile_mat):
             _bm_ellipsoid(g, (-0.355, 0.125 * s, 0.575), (0.045, 0.03, 0.04), 10, 6)        # eyes
             _bm_ellipsoid(g, (-0.07, 0.085 * s, 0.85), (0.018, 0.012, 0.016), 8, 4)         # back-beast eyes
         # sword handle (jianba): grip, cross guard and pommel, thick enough to read from the side
-        _bm_prism(g, _ccw([(0.02, 0.76), (0.10, 0.76), (0.10, 0.95), (0.13, 0.95), (0.13, 0.985),
-                           (0.10, 0.985), (0.10, 1.04), (0.075, 1.07), (0.045, 1.07), (0.02, 1.04),
-                           (0.02, 0.985), (-0.01, 0.985), (-0.01, 0.95), (0.02, 0.95)]), -0.055, 0.055)
+        gt = CHIWEN_GUARD_TOP
+        _bm_prism(g, _ccw([(0.02, 0.76), (0.10, 0.76), (0.10, 0.95), (0.13, 0.95), (0.13, gt),
+                           (0.10, gt), (0.10, 1.04), (0.075, 1.07), (0.045, 1.07), (0.02, 1.04),
+                           (0.02, gt), (-0.01, gt), (-0.01, 0.95), (0.02, 0.95)]), -CHIWEN_HANDLE_T, CHIWEN_HANDLE_T)
         bmesh.ops.recalc_face_normals(g, faces=g.faces[:])
         _proto_obj(col, "gold", g, ["gold"], smooth=math.radians(45), bevel=(0.006, 2))
     return _proto("chiwen2." + tile_mat, build)
@@ -1358,6 +1558,41 @@ class _Ornaments:
         return self.rm + [0] * (len(self.rf) - len(self.rm))
 
 
+def _clear_keels(ridges_me, soffit_me, clear=None):
+    """Lift every ridge vertex that lies less than ``clear`` (ROOF_KEEL_CLEAR) above the roof's soffit (the first
+    soffit face straight under it) or under it, to ``clear`` above it: the buried keels of gable rakes and hips met the
+    soffit's underside within mm (and z-fought) or poked through it. Both meshes in the roof root's frame. Returns the
+    number of vertices moved."""
+    from mathutils.bvhtree import BVHTree
+    clear = ROOF_KEEL_CLEAR if clear is None else clear
+    if clear is None or not len(soffit_me.polygons) or not len(ridges_me.vertices):
+        return 0
+    sv = [v.co.copy() for v in soffit_me.vertices]
+    tree = BVHTree.FromPolygons(sv, [tuple(p.vertices) for p in soffit_me.polygons])
+    down, up = Vector((0, 0, -1)), Vector((0, 0, 1))
+    moved = 0
+    co = [v.co.copy() for v in ridges_me.vertices]
+    for i, p in enumerate(co):
+        # the soffit straight under the vertex within 'clear', or over it within 0.5 m (the keel poked through)
+        hit = tree.ray_cast(p + up * 1e-5, down, clear)
+        lo = tree.ray_cast(p, up, 0.5) if hit[0] is None else (None,)
+        z = None
+        if hit[0] is not None:
+            z = hit[0].z
+        elif lo[0] is not None:
+            z = lo[0].z
+        if z is None:
+            continue
+        nz = z + clear
+        if nz > p.z + 1e-7:
+            co[i] = Vector((p.x, p.y, nz))
+            moved += 1
+    if moved:
+        ridges_me.vertices.foreach_set("co", [c for v in co for c in v])
+        ridges_me.update()
+    return moved
+
+
 def _hip_ridge(sh, orn, path_in, dims, beasts, protos, tip=True):
     """Hip ridge along ``path_in`` (from the corner inward), with an upturned tip, an immortal,
     ``beasts`` small beasts and a larger beast head (chuishou) behind them."""
@@ -1645,9 +1880,19 @@ def _gable_parts(sh, root, collection, dims, mode="full"):
                     q = c + t * (ox * bh * 0.16) + updir * (oy * bh * 0.16)
                     stud_m.append(_frame(t if sx > 0 else -t, -outward, q, (r, r, r)))
                 s += max(1.2, bh * 2.4)
+    if bv and BARGE_IN:
+        # each board (and its studs) a little in toward the middle: its inner face lay 1 cm inside the rake closure
+        bv = [(x - math.copysign(BARGE_IN, x), y, z) for x, y, z in bv]
+        for m in stud_m:
+            tr = m.translation
+            tr.x -= math.copysign(BARGE_IN, tr.x)
+            m.translation = tr
     if bv:
-        objs.append(U.mesh_from_pydata(_child(root, "bargeboard"), bv, bf, collection,
-                                       materials=[_mat("arch_paint_red")], smooth=False, parent=root))
+        bb = U.mesh_from_pydata(_child(root, "bargeboard"), bv, bf, collection,
+                                materials=[_mat("arch_paint_red")], smooth=False, parent=root)
+        if GABLE_UNION:
+            _self_union(bb.data)             # the two boards of a gable overlapped under its apex
+        objs.append(bb)
     if stud_m:
         objs.append(scatter(_child(root, "studs"), collection, _p_stud(), stud_m, parent=root))
     # gold medallion on the xieshan gable
@@ -1726,8 +1971,12 @@ def roof(name, collection, width, depth=None, kind="xieshan", sides=4, rise=None
     _eave_items(sh, orn, protos, rafter_ends, dims)
     _roof_ridges(sh, orn, dims, tile_mat, ornaments, beasts, finial)
     if orn.rv:
-        U.mesh_from_pydata(_child(root, "ridges"), orn.rv, orn.rf, collection,
-                           materials=[M.get(tile_mat)], smooth=math.radians(50), parent=root)
+        rg = U.mesh_from_pydata(_child(root, "ridges"), orn.rv, orn.rf, collection,
+                                materials=[M.get(tile_mat)], smooth=math.radians(50), parent=root)
+        if ROOF_KEEL_CLEAR is not None:
+            if kind not in KEEL_KEEP:
+                _clear_keels(rg.data, _soffit.data)
+            rg.data[R12_TAG] = "keels"
     for pname, (proto, mats) in sorted(orn.mats.items()):
         tag = pname.replace("arch.p.", "").split(".")[0]
         scatter(_child(root, tag), collection, proto, mats, parent=root)
@@ -1837,7 +2086,8 @@ def _bm_loft(bm, rings, center=(0.0, 0.0), cap=True):
 
 def _p_column(height, radius, mat="lacquer_red", base_mat="marble_white", ring_mat="gold"):
     """Column prototype: square marble plinth with a drum (guzheng) top, tapered lacquer shaft
-    with a gold foot ring. Origin at floor level (z = 0)."""
+    with a gold foot ring. Origin at floor level (z = 0). The shaft starts on the ring's top
+    (COLUMN_SHAFT_ON_RING): run down through the ring it lay 8-10 mm inside the ring's faces."""
     key = "column.%d_%d.%s" % (round(height * 100), round(radius * 1000), mat)
 
     def build(col):
@@ -1854,12 +2104,19 @@ def _p_column(height, radius, mat="lacquer_red", base_mat="marble_white", ring_m
         _proto_obj(col, "base", bm, [base_mat], smooth=math.radians(35))
         z0 = 0.07 + 0.5 * r
         sh = bmesh.new()
-        prof = [(0.0, z0 - 0.02), (r, z0 - 0.02)]
+
+        def taper(t):
+            return r * (1.0 - 0.07 * t + 0.015 * math.sin(math.pi * t))
+        if COLUMN_SHAFT_ON_RING:
+            zs = z0 + COLUMN_RING_TOP
+            prof = [(0.0, zs), (taper(COLUMN_RING_TOP / (height - z0)), zs)]
+        else:
+            prof = [(0.0, z0 - 0.02), (r, z0 - 0.02)]
         steps = 6
         for k in range(1, steps + 1):
             t = k / steps
             z = z0 + (height - z0) * t
-            rr = r * (1.0 - 0.07 * t + 0.015 * math.sin(math.pi * t))
+            rr = taper(t)
             prof.append((rr, z))
         prof.append((0.0, height))
         U.bm_lathe(sh, prof, segments=16)
@@ -1867,7 +2124,8 @@ def _p_column(height, radius, mat="lacquer_red", base_mat="marble_white", ring_m
         _proto_obj(col, "shaft", sh, [mat], smooth=math.radians(40))
         rg = bmesh.new()
         U.bm_lathe(rg, [(0.0, z0 - 0.01), (1.035 * r, z0 - 0.01), (1.05 * r, z0 + 0.05),
-                        (1.04 * r, z0 + 0.11), (1.0 * r, z0 + 0.13), (0.0, z0 + 0.13)], segments=16)
+                        (1.04 * r, z0 + 0.11), (1.0 * r, z0 + COLUMN_RING_TOP), (0.0, z0 + COLUMN_RING_TOP)],
+                   segments=16)
         bmesh.ops.remove_doubles(rg, verts=rg.verts[:], dist=1e-5)
         _proto_obj(col, "ring", rg, [ring_mat], smooth=math.radians(50))
     return _proto(key, build)
@@ -1917,8 +2175,9 @@ def _p_dougong(hs, corner=False):
             out = [(px + x * u, pz + z * u) for px, pz in _arm_outline(L * u, h * u)]
             tag(_bm_prism(bm, out, (y - 0.5 * w) * u, (y + 0.5 * w) * u))
 
-        def arm_y(y_in, y_out, z, h=1.4, w=1.0, beak=False, mask=False, rots=(0.0,)):
-            """Projecting member along -y from y_in (inside, > 0) to y_out (< 0)."""
+        def arm_y(y_in, y_out, z, h=1.4, w=1.0, beak=False, mask=False, rots=(0.0,), w_turned=None):
+            """Projecting member along -y from y_in (inside, > 0) to y_out (< 0); ``w_turned``: the width of the
+            turned copies (rots other than 0), default ``w``."""
             Li, Lo = y_in * u, -y_out * u
             hh = h * u
             if beak:
@@ -1932,7 +2191,8 @@ def _p_dougong(hs, corner=False):
                 out = [(px + off, pz) for px, pz in out]
             out = [(px, pz + z * u) for px, pz in out]
             for r in rots:
-                vs = _bm_prism(bm, out, -0.5 * w * u, 0.5 * w * u)
+                ww = w if (r == 0.0 or w_turned is None) else w_turned
+                vs = _bm_prism(bm, out, -0.5 * ww * u, 0.5 * ww * u)
                 tag(vs)
                 # outline x' -> -Y, then optional extra turn (corner sets)
                 bmesh.ops.rotate(bm, verts=vs, matrix=Matrix.Rotation(-math.pi / 2 + r, 3, 'Z'))
@@ -1954,9 +2214,11 @@ def _p_dougong(hs, corner=False):
         # tier 3
         arm_x(9.2, 0, -2.6, 6.8)
         arm_x(6.2, 0, -5.0, 6.8)
-        arm_y(1.6, -7.2, 6.8, mask=True, rots=rots)
+        arm_y(1.6, -7.2, 6.8, mask=True, rots=rots, w_turned=CORNER_ARM_W if corner else None)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-        _proto_obj(col, "set", bm, [_mat("arch_paint_box_fine")], smooth=False)
+        ob = _proto_obj(col, "set", bm, [_mat("arch_paint_box_fine")], smooth=False)
+        if DOUGONG_UNION:
+            _self_union(ob.data)
     return _proto(key, build)
 
 
@@ -2084,11 +2346,13 @@ def bracket_band(name, collection, width, depth=None, sides=4, height=None, bays
         box(a, b, -0.18 * u, 0.18 * u, zb + 2.0 * u, zb + 5.8 * u, 1, n)         # red panels
         box(pa, pb, -0.5 * u, 0.5 * u, zb + 5.8 * u, zb + 10.0 * u, 2, n)        # wall-line beams
         box(pa - t * 2.4 * u, pb + t * 2.4 * u, 2.1 * u, 3.1 * u, zb + 8.2 * u, zb + 9.1 * u, 2, n)
-        box(pa - t * 4.8 * u, pb + t * 4.8 * u, 4.5 * u, 5.5 * u, zb + 7.0 * u, zb + 8.2 * u, 2, n)
+        box(pa - t * 4.8 * u, pb + t * 4.8 * u, 4.5 * u, 5.5 * u, zb + BAND_BEAM2_Z[0] * u, zb + BAND_BEAM2_Z[1] * u, 2, n)
     beams_ob = U.mesh_from_pydata(_child(root, "beams"), bv, bf, collection, materials=mats,
                                   material_indices=bmi, smooth=False, parent=root)
     _recalc_normals(beams_ob)
     attrs.write(beams_ob.data)
+    if BAND_UNION:
+        _self_union(beams_ob.data)
     scatter(_child(root, "sets"), collection, _p_dougong(hs), m_set, parent=root)
     scatter(_child(root, "corner_sets"), collection, _p_dougong(hs, corner=True), m_corner, parent=root)
     root["arch_top_z"] = H
@@ -2214,6 +2478,17 @@ def _bar_box(verts, faces, p0, p1, bw, y0, y1):
         faces.append(tuple(base + k for k in f))
 
 
+def _rect_box(verts, faces, x0, x1, z0, z1, y0, y1):
+    """Axis box x0..x1, z0..z1, y0..y1 with _bar_box's vertex and face order (no overhang at its ends)."""
+    q = [(x0, z0), (x1, z0), (x1, z1), (x0, z1)]
+    base = len(verts)
+    for y in (y0, y1):
+        for x, z in q:
+            verts.append((x, y, z))
+    for f in ((0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)):
+        faces.append(tuple(base + k for k in f))
+
+
 def _p_lattice(width, height, pattern, kind, lit, seed, frame_mat, paper):
     key = "lattice.%d_%d.%s.%s.%s.%d.%s%s" % (round(width * 100), round(height * 100), pattern, kind,
                                             "lit" if lit else "dim", seed, frame_mat, "" if paper else ".open")
@@ -2228,9 +2503,12 @@ def _p_lattice(width, height, pattern, kind, lit, seed, frame_mat, paper):
 
         def add_box(x0, x1, z0, z1, y0, y1, m=0):
             n0 = len(faces)
-            _bar_box(verts, faces, ((x0 + x1) * 0.5, z0), ((x0 + x1) * 0.5, z1), x1 - x0, y0, y1) \
-                if (z1 - z0) >= (x1 - x0) else \
-                _bar_box(verts, faces, (x0, (z0 + z1) * 0.5), (x1, (z0 + z1) * 0.5), z1 - z0, y0, y1)
+            if LATTICE_EXACT:
+                _rect_box(verts, faces, x0, x1, z0, z1, y0, y1)
+            else:
+                _bar_box(verts, faces, ((x0 + x1) * 0.5, z0), ((x0 + x1) * 0.5, z1), x1 - x0, y0, y1) \
+                    if (z1 - z0) >= (x1 - x0) else \
+                    _bar_box(verts, faces, (x0, (z0 + z1) * 0.5), (x1, (z0 + z1) * 0.5), z1 - z0, y0, y1)
             mi.extend([m] * (len(faces) - n0))
 
         hx = w * 0.5
@@ -2253,7 +2531,7 @@ def _p_lattice(width, height, pattern, kind, lit, seed, frame_mat, paper):
         bd = 0.6 * t
         for p0, p1, layer in segs:
             n0 = len(faces)
-            off = 0.002 * layer
+            off = LATTICE_LAYER_OFF * layer
             _bar_box(verts, faces, p0, p1, bw, -bd / 2 - off, bd / 2 - off)
             mi.extend([0] * (len(faces) - n0))
         # solid boards (door skirt, bands), set back a little
@@ -2286,20 +2564,43 @@ def _p_lattice(width, height, pattern, kind, lit, seed, frame_mat, paper):
                 k2 = (k + 1) % 16
                 faces.append((base + k, base + k2, base + 16 + k2, base + 16 + k))
             mi.extend([1] * (len(faces) - n0))
-        # paper backing behind the lattice heart
+        # paper backing behind the lattice heart (LATTICE_PAPER_GAP behind the bars). With LATTICE_UNION the closed
+        # parts are joined first and the paper, an open sheet, is added after (it would spoil the boolean)
+        paper_q = []
         if paper:
-            n0 = len(faces)
-            base = len(verts)
-            yp = bd / 2 + 0.004
-            for x, z in ((lx0, lz0), (lx1, lz0), (lx1, lz1), (lx0, lz1)):
-                verts.append((x, yp, z))
-            faces.append((base, base + 1, base + 2, base + 3))
-            mi.append(2)
+            yp = bd / 2 + LATTICE_PAPER_GAP
+            paper_q = [(x, yp, z) for x, z in ((lx0, lz0), (lx1, lz0), (lx1, lz1), (lx0, lz1))]
+            if not LATTICE_UNION:
+                base = len(verts)
+                verts.extend(paper_q)
+                faces.append((base, base + 1, base + 2, base + 3))
+                mi.append(2)
         mats = [frame_mat, "gold", "paper_screen_lit" if lit else "paper_screen"]
         ob = U.mesh_from_pydata(U.name(col.name, "panel"), verts, faces, col, materials=mats,
                                 material_indices=mi, smooth=False)
         _recalc_normals_open(ob)
+        if LATTICE_UNION:
+            _self_union(ob.data)
+            if paper_q:
+                _add_paper(ob.data, paper_q)
     return _proto(key, build)
+
+
+def _add_paper(me, quad):
+    """Append the lattice's paper sheet (one quad, material slot 2, flat) to mesh ``me``, facing -Y (out, toward the
+    viewer, the side the lattice faces) as the old build's paper did."""
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    vs = [bm.verts.new(p) for p in quad]
+    f = bm.faces.new(vs)
+    f.material_index = 2
+    f.smooth = False
+    f.normal_update()
+    if f.normal.y > 0:
+        f.normal_flip()
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
 
 
 def _recalc_normals_open(ob):
@@ -2486,7 +2787,12 @@ def _p_panel(h, mat="marble_white"):
         bm.faces.new(list(reversed(ring_b)))
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-        _proto_obj(col, "panel", bm, [mat], smooth=math.radians(40))
+        ob = _proto_obj(col, "panel", bm, [mat], smooth=math.radians(40))
+        if PANEL_UNION:
+            # one surface: the carved border's back faces and the board under it, the sill top, the vases' feet
+            # lay inside other parts or on their faces (the border 14 mm over the board)
+            _self_union(ob.data)
+            U.auto_smooth(ob.data, math.radians(40))
     return _proto(key, build)
 
 
@@ -2507,8 +2813,8 @@ def _p_drum_stone(h, mat="marble_white"):
         bmesh.ops.rotate(bm, verts=vs, matrix=Matrix.Rotation(math.pi / 2, 3, 'X'))
         bmesh.ops.translate(bm, verts=vs, vec=(0.05 * h, 0.0, 0.72 * h - 0.04))
         # scroll under the drum
-        vs = U.bm_lathe(bm, [(0.0, -0.45 * t), (0.13 * h, -0.45 * t), (0.13 * h, 0.45 * t), (0.0, 0.45 * t)],
-                        segments=12)
+        ts = DRUM_SCROLL_T * t
+        vs = U.bm_lathe(bm, [(0.0, -ts), (0.13 * h, -ts), (0.13 * h, ts), (0.0, ts)], segments=12)
         bmesh.ops.rotate(bm, verts=vs, matrix=Matrix.Rotation(math.pi / 2, 3, 'X'))
         bmesh.ops.translate(bm, verts=vs, vec=(0.42 * h, 0.0, 0.42 * h - 0.04))
         bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)
@@ -2541,7 +2847,11 @@ def _p_rail_panel(h, mat):
         for z, hh in ((0.0, 0.07 * h), (0.42 * h, 0.05 * h), (0.9 * h, 0.08 * h)):
             U.bm_box(bm, (1.0, t * (1.4 if z > 0.5 * h else 1.0), hh), (0.5, 0, z + hh * 0.5))
         for k in range(1, 8):
-            U.bm_box(bm, (0.025, t * 0.6, 0.83 * h), (k / 8.0, 0, 0.07 * h + 0.415 * h))
+            if RAIL_SPLIT:              # below and above the mid rail (0.42 .. 0.47 h)
+                for z0, z1 in ((0.07 * h, 0.42 * h), (0.47 * h, 0.9 * h)):
+                    U.bm_box(bm, (0.025, t * 0.6, z1 - z0), (k / 8.0, 0, 0.5 * (z0 + z1)))
+            else:
+                U.bm_box(bm, (0.025, t * 0.6, 0.83 * h), (k / 8.0, 0, 0.07 * h + 0.415 * h))
         _proto_obj(col, "panel", bm, [mat], smooth=False)
     return _proto(key, build)
 
@@ -2961,8 +3271,10 @@ def hall(name, collection, bays_w=5, bays_d=3, bay=5.0, column_h=6.0, roof="xies
         a, b = Vector(p0), Vector(p1)
         _wall_box(wv, wf, wm, a, b, wt, z0 - 0.02, z0 + 1.0, 1)
         _wall_box(wv, wf, wm, a, b, wt * 0.94, z0 + 1.0, z0 + zt_wall + (0.0 if not ring else 0.0), 0)
-    U.mesh_from_pydata(_child(root, "walls"), wv, wf, collection, materials=[_mat("arch_plaster_red"), "stone_grey"],
-                       material_indices=wm, smooth=False, parent=root)
+    wo = U.mesh_from_pydata(_child(root, "walls"), wv, wf, collection, materials=[_mat("arch_plaster_red"), "stone_grey"],
+                            material_indices=wm, smooth=False, parent=root)
+    if WALLS_UNION:
+        _self_union(wo.data)
     nb = len(xs) - 1
     c = (nb - 1) / 2.0
     door_bays = [i for i in range(nb) if abs(i - c) <= (1.01 if nb >= 5 else 0.01)]
@@ -2997,22 +3309,23 @@ def hall(name, collection, bays_w=5, bays_d=3, bay=5.0, column_h=6.0, roof="xies
         for x, y in inner_pts:
             column(_child(root, "col_in"), collection, z_ut - z0, cr * 0.95, parent=root, location=(x, y, z0))
         # frieze wall between the skirt and the upper architrave, with small lattice windows
-        fv, ff, fm = [], [], []
         xi, yi = xs[1:-1], ys[1:-1]
-        quad = [(xi[0], yi[0]), (xi[-1], yi[0]), (xi[-1], yi[-1]), (xi[0], yi[-1])]
-        for k in range(4):
-            a, b = Vector(quad[k]), Vector(quad[(k + 1) % 4])
-            _wall_box(fv, ff, fm, a, b, wt * 0.6, skirt_top - 0.6, z_ut - 1.0 * hs2, 0)
-        U.mesh_from_pydata(_child(root, "frieze"), fv, ff, collection, materials=[_mat("arch_paint_red")],
-                           smooth=False, parent=root)
         fh = frieze * 0.62
+        wins = []
         for i in range(len(xi) - 1):
             bw = xi[i + 1] - xi[i] - 2 * cr
-            for sy, yy in ((-1, yi[0] - wt * 0.3 - 0.02), (1, yi[-1] + wt * 0.3 + 0.02)):
-                lattice_panel(_child(root, "frieze_win"), collection, round(bw * 0.8, 3), round(fh, 3), "grid",
-                              "window", lit=lit, seed=seed, parent=root,
-                              location=(0.5 * (xi[i] + xi[i + 1]), yy, skirt_top + 0.35 + (frieze - fh) * 0.5),
-                              rotation_z=0.0 if sy < 0 else math.pi)
+            for sy in (-1, 1):
+                wins.append((sy, 0.5 * (xi[i] + xi[i + 1]), round(bw * 0.8, 3), round(fh, 3),
+                             skirt_top + 0.35 + (frieze - fh) * 0.5))
+        rme, rM = _ridges_of(skirt, root)
+        half = frieze_clear_half(wt * 0.3, rme, rM, [(xi[0], yi[0]), (xi[-1], yi[0]), (xi[-1], yi[-1]), (xi[0], yi[-1])],
+                                 skirt_top - 0.6, z_ut - 1.0 * hs2)
+        _hall_frieze(root, collection, xi, yi, half, skirt_top - 0.6, z_ut - 1.0 * hs2, wins)
+        for sy, x, ww, wh, z in wins:
+            yy = (yi[0] if sy < 0 else yi[-1]) if FRIEZE_HOLES else \
+                (yi[0] - wt * 0.3 - 0.02 if sy < 0 else yi[-1] + wt * 0.3 + 0.02)
+            lattice_panel(_child(root, "frieze_win"), collection, ww, wh, "grid", "window", lit=lit, seed=seed,
+                          parent=root, location=(x, yy, z), rotation_z=0.0 if sy < 0 else math.pi)
         bracket_band(_child(root, "band_up"), collection, Wi, Di, height=H2, grid=(xi, yi), parent=root,
                      location=(0, 0, z_ut))
         up_ov = max(roof_shape(Wi, Di, roof).ov, 0.62 * (ring if ring else bay), 0.75 * sk.ov)
@@ -3035,6 +3348,115 @@ def hall(name, collection, bays_w=5, bays_d=3, bay=5.0, column_h=6.0, roof="xies
     root["arch_platform"] = (Wp, Dp)
     root["arch_columns"] = (W, D)
     return root
+
+
+def frieze_clear_half(half, ridges, M, quad, z0, z1, gap=None, min_half=0.06):
+    """Half thickness for a frieze wall round the plan ``quad`` [(x, y) x 4, counter-clockwise], z0..z1, centred on
+    each side's line, that keeps both its faces at least ``gap`` (FRIEZE_RIDGE_GAP) from every same-facing vertical
+    face of the skirt roof's top ridge (``ridges``: its Mesh; ``M``: Matrix from the mesh into the quad's frame), which
+    runs along the wall's foot and is wider than it, stepped and tapering toward the corners: ``half`` when nothing is
+    that close, else thinner (never under ``min_half``)."""
+    gap = FRIEZE_RIDGE_GAP if gap is None else gap
+    if gap is None or ridges is None:
+        return half
+    M = Matrix(M)
+    R = M.to_3x3()
+    co = [M @ v.co for v in ridges.vertices]
+    sides = []
+    for k in range(len(quad)):
+        a, b = Vector(quad[k]), Vector(quad[(k + 1) % len(quad)])
+        L = (b - a).length
+        if L < 1e-6:
+            continue
+        t = (b - a) / L
+        sides.append((a, t, Vector((t.y, -t.x)), L))
+    vals = []
+    for p in ridges.polygons:
+        n = (R @ p.normal)
+        if n.length < 1e-9:
+            continue
+        n.normalize()
+        if abs(n.z) > 0.2:
+            continue
+        pts = [co[i] for i in p.vertices]
+        if max(q.z for q in pts) <= z0 or min(q.z for q in pts) >= z1:
+            continue
+        for a, t, m, L in sides:
+            c = n.x * m.x + n.y * m.y
+            if abs(c) < 0.98:
+                continue
+            ss = [(q.x - a.x) * t.x + (q.y - a.y) * t.y for q in pts]
+            if max(ss) <= 0.0 or min(ss) >= L:
+                continue
+            ds = [(q.x - a.x) * m.x + (q.y - a.y) * m.y for q in pts]
+            if min(abs(d) for d in ds) > 0.6:
+                continue
+            # how far out of the side's line the wall face of the same facing would meet it (a face a little askew
+            # spans a range)
+            vals.append((min(ds), max(ds)) if c > 0 else (-max(ds), -min(ds)))
+    h = half
+    for _ in range(256):
+        near = [lo for lo, hi in vals if lo < h + gap and hi > h - gap]
+        if not near:
+            return h
+        h = min(near) - gap
+        if h < min_half:
+            return min_half
+    return h
+
+
+def _ridges_of(roof_root, frame_root):
+    """(Mesh, Matrix into frame_root's space) of a roof's ridges (from the transforms themselves: valid before a fresh
+    build's depsgraph update), or (None, None)."""
+    rg = bpy.data.objects.get(roof_root.name + ".ridges")
+    if rg is None or rg.type != 'MESH':
+        return None, None
+    M = rg.matrix_parent_inverse @ rg.matrix_basis
+    p = rg.parent
+    while p is not None and p != frame_root:
+        M = p.matrix_parent_inverse @ p.matrix_basis @ M
+        p = p.parent
+    return rg.data, M
+
+
+def hall_frieze_geo(quad, half, z0, z1, wins, holes=None):
+    """pydata (verts, faces, material indices) of a double-eave hall's frieze wall round the inner column quad
+    [(x, y) x 4: front-left, front-right, back-right, back-left], ``half`` thick either side of the column lines,
+    z0..z1. With ``holes`` (default FRIEZE_HOLES) an opening for every window in ``wins`` [(side -1 front / 1 back,
+    x centre, width, height, z bottom)]: solid pieces between the openings and the parts over and under each."""
+    holes = FRIEZE_HOLES if holes is None else holes
+    fv, ff, fm = [], [], []
+    for k in range(4):
+        a, b = Vector(quad[k]), Vector(quad[(k + 1) % 4])
+        side = -1 if k == 0 else (1 if k == 2 else 0)
+        ops = sorted((x - w / 2, x + w / 2, zb, zb + h) for s_, x, w, h, zb in wins if s_ == side) if side else []
+        if not holes or not ops:
+            _wall_box(fv, ff, fm, a, b, 2.0 * half, z0, z1, 0)
+            continue
+        xa, xb_ = min(a.x, b.x), max(a.x, b.x)
+        y = a.y
+        cuts = [xa] + [c for o in ops for c in o[:2]] + [xb_]
+        for j in range(0, len(cuts), 2):
+            if cuts[j + 1] - cuts[j] > 1e-6:
+                _wall_box(fv, ff, fm, Vector((cuts[j], y)), Vector((cuts[j + 1], y)), 2.0 * half, z0, z1, 0)
+        for x0, x1, zb, zt in ops:
+            _wall_box(fv, ff, fm, Vector((x0, y)), Vector((x1, y)), 2.0 * half, z0, zb, 0)
+            _wall_box(fv, ff, fm, Vector((x0, y)), Vector((x1, y)), 2.0 * half, zt, z1, 0)
+    return fv, ff, fm
+
+
+def _hall_frieze(root, collection, xi, yi, half, z0, z1, wins):
+    """The double-eave hall's frieze wall (hall_frieze_geo), joined into one solid when it has openings. Returns the
+    object."""
+    quad = [(xi[0], yi[0]), (xi[-1], yi[0]), (xi[-1], yi[-1]), (xi[0], yi[-1])]
+    fv, ff, fm = hall_frieze_geo(quad, half, z0, z1, wins)
+    ob = U.mesh_from_pydata(_child(root, "frieze"), fv, ff, collection, materials=[_mat("arch_paint_red")],
+                            smooth=False, parent=root)
+    if FRIEZE_HOLES:
+        _self_union(ob.data)
+    if FRIEZE_RIDGE_GAP is not None:
+        ob.data[R12_TAG] = "frieze"
+    return ob
 
 
 def _p_spire(metal="gold"):
@@ -3112,8 +3534,10 @@ def _polygon_body(root, collection, pts, z0, body_h, cr, arch_z, lit, pattern, s
                           pattern, "door" if door else "window", lit=lit, seed=seed + j % 2, parent=root,
                           location=(p.x, p.y, z0 + zl), rotation_z=rot)
     if wv:
-        U.mesh_from_pydata(_child(root, "walls"), wv, wf, collection, materials=[_mat(wall_mat)],
-                           smooth=False, parent=root)
+        wo = U.mesh_from_pydata(_child(root, "walls"), wv, wf, collection, materials=[_mat(wall_mat)],
+                                smooth=False, parent=root)
+        if WALLS_UNION:
+            _self_union(wo.data)
 
 
 def pagoda(name, collection, tiers=7, sides=8, radius=9.0, tier_h=5.5, taper=0.065, lit_floors=(),
@@ -3207,7 +3631,14 @@ def _p_seat(length, depth=0.42, h=0.46, mat="lacquer_red"):
     def build(col):
         bm = bmesh.new()
         U.bm_box(bm, (length, depth, 0.07), (0, 0, h))                       # seat board
-        U.bm_box(bm, (length, 0.08, h), (0, depth * 0.4, h * 0.5))           # skirt under the seat
+        if SEAT_SKIRT_INSET is None:
+            U.bm_box(bm, (length, 0.08, h), (0, depth * 0.4, h * 0.5))       # skirt under the seat
+        else:
+            # skirt under the seat, SEAT_SKIRT_INSET in from the board's back and ends, up to the board's underside
+            # (its back face lay 2 mm behind the board's, its ends in the board's end faces)
+            hk = h - 0.035
+            U.bm_box(bm, (length - 2 * SEAT_SKIRT_INSET, 0.08, hk),
+                     (0, depth * 0.5 - SEAT_SKIRT_INSET - 0.04, hk * 0.5))
         # backrest: lattice of slats leaning outward
         nb = max(4, int(length / 0.16))
         for k in range(nb + 1):
@@ -3339,6 +3770,8 @@ def _painted_beams(name, collection, parent, beams):
                             material_indices=bmi, smooth=False, parent=parent)
     _recalc_normals(ob)
     attrs.write(ob.data)
+    if BEAMS_UNION:
+        _self_union(ob.data)
     return ob
 
 
@@ -3450,7 +3883,8 @@ def paifang(name, collection, bays=5, width=34.0, height=24.0, roofs=True, roof_
         column(_child(root, "col"), collection, ch, cr, parent=root, location=(x, 0, 0))
         # tall marble plinth (jiagan shi) and drum stones front and back
         bm = bmesh.new()
-        U.bm_box(bm, (2.6 * cr, 2.6 * cr, plinth_h + 0.3), (x, 0, (plinth_h - 0.3) * 0.5))
+        side = PAIFANG_PLINTH * cr + 2.0 * PAIFANG_PLINTH_PAD
+        U.bm_box(bm, (side, side, plinth_h + 0.3), (x, 0, (plinth_h - 0.3) * 0.5))
         U.mesh_from_bmesh(_child(root, "plinth"), bm, collection, materials=["marble_white"], smooth=False,
                           parent=root)
         for sy in (-1, 1):
@@ -3489,6 +3923,7 @@ def corridor(name, collection, points, width=3.0, height=3.0, bay=3.3, roof_mat=
     cr = _clamp(0.035 * height + 0.05, 0.12, 0.22)
     hw = width * 0.5
     beams = []
+    benches = []
     zt = platform_h + height
     for si in range(len(pts) - 1):
         a, b = pts[si], pts[si + 1]
@@ -3497,11 +3932,14 @@ def corridor(name, collection, points, width=3.0, height=3.0, bay=3.3, roof_mat=
             continue
         rot = math.atan2(t.y, t.x)
         # floor strip
-        e0 = hw if si > 0 else 0.4
-        e1 = hw if si < len(pts) - 2 else 0.4
-        fa, fb = a - t * e0, b + t * e1
         fv, ff, fm = [], [], []
-        _wall_box(fv, ff, fm, fa, fb, width + 0.9, -0.5, platform_h, 0)
+        if CORRIDOR_MITRE:
+            _quad_box(fv, ff, fm, _corridor_floor_quad(pts, si, hw + 0.45), -0.5, platform_h, 0)
+        else:
+            e0 = hw if si > 0 else 0.4
+            e1 = hw if si < len(pts) - 2 else 0.4
+            fa, fb = a - t * e0, b + t * e1
+            _wall_box(fv, ff, fm, fa, fb, width + 0.9, -0.5, platform_h, 0)
         U.mesh_from_pydata(_child(root, "floor"), fv, ff, collection, materials=["stone_grey", "marble_paving"],
                            material_indices=[1 if k == 1 else 0 for k in range(len(ff))], smooth=False,
                            parent=root)
@@ -3530,8 +3968,9 @@ def corridor(name, collection, points, width=3.0, height=3.0, bay=3.3, roof_mat=
                                   paper=False, seed=seed, parent=root, location=(c.x, c.y, zt - 0.38 - gh),
                                   rotation_z=frot)
                 if seats:
-                    U.collection_instance(_p_bench_rail(round(fl, 2)), _child(root, "bench"), collection,
-                                          location=(c.x, c.y, platform_h), rotation=(0, 0, frot), parent=root)
+                    benches.append(U.collection_instance(_p_bench_rail(round(fl, 2)), _child(root, "bench"), collection,
+                                                         location=(c.x, c.y, platform_h), rotation=(0, 0, frot),
+                                                         parent=root))
         # gable roof over the segment
         r_len = L + (0.0 if si > 0 else 0.3) + (0.0 if si < len(pts) - 2 else 0.3)
         mid = (a + b) * 0.5 + t * ((0.15 if si == 0 else 0.0) * -1 + (0.15 if si == len(pts) - 2 else 0.0))
@@ -3544,10 +3983,95 @@ def corridor(name, collection, points, width=3.0, height=3.0, bay=3.3, roof_mat=
         t0, _, _ = _seg_frame(pts[k - 1], p)
         _roof(_child(root, "corner_roof"), collection, width, kind="pyramid", sides=4, tile_mat=roof_mat,
               ornaments="simple", overhang=_clamp(0.35 * width, 0.8, 1.4), finial="gold", detail=detail,
-              parent=root, location=(p.x, p.y, zt + 0.12), rotation_z=math.atan2(t0.y, t0.x))
+              parent=root, location=(p.x, p.y, zt + CORRIDOR_CORNER_LIFT), rotation_z=math.atan2(t0.y, t0.x))
     if beams:
         _painted_beams(_child(root, "beams"), collection, root, beams)
+    if CORRIDOR_BENCH_DROP is not None:
+        for b in benches_crossed(benches):
+            b.location.z -= CORRIDOR_BENCH_DROP
     return root
+
+
+def _bench_rect(ob):
+    """(centre, unit axis, half length, half depth) in plan of a corridor bench rail instance (_p_bench_rail: the
+    seat board, length x 0.36 m, centred on its origin; the length is in its prototype's name)."""
+    m = re.match(r"^arch\.p\.bench\.(\d+)\.", ob.instance_collection.name) if ob.instance_collection else None
+    if m is None:
+        return None
+    a = ob.rotation_euler.z
+    return (Vector((ob.location.x, ob.location.y)), Vector((math.cos(a), math.sin(a))), int(m.group(1)) / 200.0, 0.18)
+
+
+def benches_crossed(benches, pad=0.0):
+    """The bench rails (in build order) whose plan rectangle overlaps an earlier one's: each later one of a crossing
+    pair (CORRIDOR_BENCH_DROP lowers it)."""
+    rects = [(b, _bench_rect(b)) for b in benches]
+    rects = [(b, r) for b, r in rects if r is not None]
+    out = []
+    for j in range(len(rects)):
+        bj, (cj, uj, lj, dj) = rects[j]
+        for i in range(j):
+            _bi, (ci, ui, li, di) = rects[i]
+            axes = (uj, Vector((-uj.y, uj.x)), ui, Vector((-ui.y, ui.x)))
+            apart = False
+            for ax in axes:
+                def ext(c, u, l, d):
+                    v = Vector((-u.y, u.x))
+                    r = abs(u.dot(ax)) * l + abs(v.dot(ax)) * d
+                    m_ = c.dot(ax)
+                    return m_ - r, m_ + r
+                a0, a1 = ext(cj, uj, lj, dj)
+                b0, b1 = ext(ci, ui, li, di)
+                if a1 <= b0 + pad or b1 <= a0 + pad:
+                    apart = True
+                    break
+            if not apart:
+                out.append(bj)
+                break
+    return out
+
+
+def _corridor_floor_quad(pts, si, half, e_free=0.4):
+    """Plan corners (counter-clockwise from above: start right, end right, end left, start left) of segment ``si`` of a
+    corridor polyline's floor strip, ``half`` m either side of the centre line: ``e_free`` m past a free end, and on the
+    bisector of an inner joint (CORRIDOR_MITRE), so the neighbouring strips share that edge exactly. A neighbour
+    shorter than 0.5 m (corridor() builds none) leaves the strip running ``half`` m past the joint instead."""
+    a, b = pts[si], pts[si + 1]
+    t, _n, _L = _seg_frame(a, b)
+    left = Vector((-t.y, t.x))
+
+    def end(j, other, sgn):
+        # j: the joint point; other: the neighbouring segment (its end points) or None for a free end
+        if other is None:
+            p = j + t * (sgn * e_free)
+            return p - left * half, p + left * half
+        t2, _n2, L2 = _seg_frame(*other)
+        if L2 < 0.5:
+            p = j + t * (sgn * half)
+            return p - left * half, p + left * half
+        l2 = Vector((-t2.y, t2.x))
+        m = left + l2
+        if m.length < 1e-6:
+            p = j + t * (sgn * half)
+            return p - left * half, p + left * half
+        m.normalize()
+        k = half / m.dot(left)
+        return j - m * k, j + m * k
+    a_r, a_l = end(a, (pts[si - 1], a) if si > 0 else None, -1.0)
+    b_r, b_l = end(b, (b, pts[si + 2]) if si < len(pts) - 2 else None, 1.0)
+    return [a_r, b_r, b_l, a_l]
+
+
+def _quad_box(verts, faces, mats, q, z0, z1, mi=0):
+    """Prism over the plan quad ``q`` (4 points, counter-clockwise from above) from z0 to z1, with _wall_box's vertex and
+    face order (bottom, top, then the sides), every face outward."""
+    base = len(verts)
+    for z in (z0, z1):
+        for p in q:
+            verts.append((p.x, p.y, z))
+    for f in ((0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)):
+        faces.append(tuple(base + k for k in f))
+        mats.append(mi)
 
 
 def _p_bench_rail(length, mat="lacquer_red"):
@@ -3562,7 +4086,9 @@ def _p_bench_rail(length, mat="lacquer_red"):
         for k in range(n + 1):
             x = -length * 0.5 + length * k / n
             U.bm_box(bm, (0.04, 0.04, 0.4), (x, -0.05, 0.24))
-        _proto_obj(col, "bench", bm, [mat], smooth=False)
+        ob = _proto_obj(col, "bench", bm, [mat], smooth=False)
+        if BENCH_UNION:
+            _self_union(ob.data)
     return _proto(key, build)
 
 
@@ -3822,17 +4348,22 @@ def tower(name, collection, kind="bell", size=9.0, base_h=3.2, column_h=4.0, roo
     zr = z0 + column_h + H1
     inset = 0.24 * W
     sk = roof_shape(W, W, "skirt", top_inset=inset)
-    _roof(_child(root, "skirt"), collection, W, W, "skirt", top_inset=inset, tile_mat=roof_mat, parent=root,
-          location=(0, 0, zr))
+    skirt = _roof(_child(root, "skirt"), collection, W, W, "skirt", top_inset=inset, tile_mat=roof_mat, parent=root,
+                  location=(0, 0, zr))
     z_sk = zr + sk.z_top(sk.cut)
     Wi = W - 2 * inset
     fr = 0.5 + 0.05 * W
     fv, ff, fm = [], [], []
     q = [Vector((-Wi / 2, -Wi / 2)), Vector((Wi / 2, -Wi / 2)), Vector((Wi / 2, Wi / 2)), Vector((-Wi / 2, Wi / 2))]
+    rme, rM = _ridges_of(skirt, root)
+    th = 2.0 * frieze_clear_half(0.15, rme, rM, [(p.x, p.y) for p in q], z_sk - 0.5, z_sk + fr)
     for k in range(4):
-        _wall_box(fv, ff, fm, q[k], q[(k + 1) % 4], 0.3, z_sk - 0.5, z_sk + fr, 0)
-    U.mesh_from_pydata(_child(root, "frieze"), fv, ff, collection, materials=[_mat("arch_paint_red")],
-                       smooth=False, parent=root)
+        _wall_box(fv, ff, fm, q[k], q[(k + 1) % 4], th, z_sk - 0.5, z_sk + fr, 0)
+    fz = U.mesh_from_pydata(_child(root, "frieze"), fv, ff, collection, materials=[_mat("arch_paint_red")],
+                            smooth=False, parent=root)
+    if FRIEZE_RIDGE_GAP is not None:
+        _self_union(fz.data)
+        fz.data[R12_TAG] = "frieze"
     for p in q:
         column(_child(root, "col_up"), collection, fr + 0.5, cr * 0.9, parent=root, location=(p.x, p.y, z_sk - 0.5))
     H2 = band_height_for(Wi) * 0.8

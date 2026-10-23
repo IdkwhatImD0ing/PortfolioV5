@@ -218,6 +218,17 @@ describe("gradeLinear", () => {
     expect(src).toContain("0.18");
     expect(src).not.toMatch(/NaN|undefined/);
   });
+
+  it("lets a material keep green's lead (SECT_KEEP_GREEN skips the green tame)", () => {
+    const src = gradeGlsl();
+    expect(src).toContain("#ifndef SECT_KEEP_GREEN\n  c.g -= max( c.g - max( c.r, c.b ), 0.0 ) * ");
+    expect(src).toMatch(/c\.g -= max\( c\.g - max\( c\.r, c\.b \), 0\.0 \) \* [0-9.]+;\n#endif\n/);
+    const jade: Vec3 = [0.021, 0.246, 0.064];
+    const tamed = gradeLinear(jade);
+    const kept = gradeLinear(jade, { ...SECT_LOOK.grade, greenTame: 0 });
+    expect(tamed[1]).toBeLessThanOrEqual(Math.max(tamed[0], tamed[2]) + 1e-9);
+    expect(kept[1]).toBeGreaterThan(Math.max(kept[0], kept[2]) * 1.5);
+  });
 });
 
 describe("hotspotTint", () => {

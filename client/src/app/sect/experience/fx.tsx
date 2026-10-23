@@ -260,12 +260,18 @@ interface FireShape {
 const FORGE_FIRE: FireShape = { rise: SPARK_HEIGHT, sparkSize: 0.13, wander: 0.35, glowSize: 2.6, core: "#ff9a45", hot: "#ffd27a" };
 
 /**
+ * The cauldron glow's strength (1 as it always was): forge-flames.tsx lowers it while its flames
+ * stand over the cauldron and carry the light themselves (the big soft glow washed them out).
+ */
+export const FORGE_FIRE_GLOW = { value: 1 };
+
+/**
  * Fires as one instanced draw of camera-facing sprites. Each instance has a seed (iSeed; w < 0 is
  * a fire's glow, w < -1.5 a breathing glow) and its fire (iFire: the fire's foot in the mesh's
  * frame and its radius), so one draw holds many fires. A fire at the mesh's origin flickers in the
  * forge's original phase.
  */
-function fireMaterial(shape: FireShape = FORGE_FIRE): ShaderMaterial {
+function fireMaterial(shape: FireShape = FORGE_FIRE, glow: { value: number } = { value: 1 }): ShaderMaterial {
   return new ShaderMaterial({
     name: "sect.forgefire",
     transparent: true,
@@ -282,6 +288,7 @@ function fireMaterial(shape: FireShape = FORGE_FIRE): ShaderMaterial {
       uCore: { value: new Color(shape.core) },
       uHot: { value: new Color(shape.hot) },
       uBreath: { value: 0 },
+      uGlow: glow,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iSeed;
@@ -335,6 +342,7 @@ uniform float uTime;
 uniform vec3 uCore;
 uniform vec3 uHot;
 uniform float uBreath;
+uniform float uGlow;
 varying vec2 vUv;
 varying float vLife;
 varying float vKind;
@@ -347,7 +355,7 @@ void main() {
     col = uHot * exp( - q * q * 4.0 ) * uBreath;
   } else if ( vKind < 0.0 ) {
     float flicker = 0.85 + 0.1 * sin( uTime * 7.3 + vPhase ) + 0.06 * sin( uTime * 13.1 + 1.7 + vPhase * 2.3 );
-    col = uCore * exp( - q * q * 4.5 ) * 1.25 * flicker;
+    col = uCore * exp( - q * q * 4.5 ) * 1.25 * flicker * uGlow;
   } else {
     float a = ( 1.0 - smoothstep( 0.2, 1.0, q ) ) * pow( 1.0 - vLife, 1.4 );
     col = mix( uHot, uCore, vLife ) * a * 3.0;
@@ -397,7 +405,7 @@ export function ForgeFire({ set, store }: { set: LoadedSet | null; store: SectSt
     for (let i = 0; i <= SPARKS; i++) fire[i * 4 + 3] = radius;
     geo.setAttribute("iFire", new InstancedBufferAttribute(fire, 4));
     geo.instanceCount = SPARKS + 1;
-    const material = fireMaterial();
+    const material = fireMaterial(FORGE_FIRE, FORGE_FIRE_GLOW);
     const mesh = new Mesh(geo, material);
     // On the bowl: the embers' footprint, just above their lowest point (the cauldron's rim).
     mesh.position.set((box.min.x + box.max.x) / 2, box.min.y + 0.5, (box.min.z + box.max.z) / 2);

@@ -313,41 +313,38 @@ describe("the stops' framing on the baked path", () => {
     expect(at("mission-bell", "mission", true).c[0]).toBeLessThan(0.45);
   });
 
-  it("brings the jade slip's left roller in from the edge, the slip still square to the view", () => {
-    // The film's hold cut the slip by the left edge. Turned square to the 6 degree turn (the bake of
-    // 2026-10-22), it was wider: that turn alone left its roller 5 px in (18 px as drawn).
-    const old = { ...STOP_FRAMING, scroll: { yaw: 6, pitch: 0 } };
-    expect(at("resume", "scroll", false).min[0]).toBeLessThan(-0.99);
-    expect(at("resume", "scroll", true, old).min[0]).toBeLessThan(-0.98);
-    // Now the roller is 108 px in (120 drawn) and the whole slip in the left half, below the middle.
+  it("shows the jade slip as the film frames it: big and close on the left, past the left edge, the pavilion clear", () => {
+    // The owner preferred the first build to the slip turned square to a turned view (2026-10-22): the
+    // slip stands where it first stood (blender scroll.py, patch_r15_scroll_restore.py) and the page
+    // shows the film's own pose at the hold, neither stood back nor turned.
+    const h = camera.holds.find((x) => x.id === "scroll")!.frame;
+    expect(STOP_FRAMING.scroll).toBeUndefined();
+    expect(framingAt(camera.holds, h)).toEqual({ yaw: 0, pitch: 0 });
+    expect(framingFrame(camera.holds, h)).toBe(h);
+    expect(view("scroll", true)).toEqual(view("scroll", false));
+    // The slip's middle at the left edge, its left half past it; its right end a third of the way in
+    // (x 516 of 1600 in the owner's screenshot; the hotspot's box, square to the world, reaches a little
+    // further), its top over the middle of the picture: big and close, the characters about 21 px tall.
     const slip = at("resume", "scroll", true);
-    expect(slip.min[0]).toBeGreaterThan(-0.88);
-    expect(slip.max[0]).toBeLessThan(0);
-    expect(slip.min[1]).toBeGreaterThan(-0.8);
-    expect(slip.max[1]).toBeLessThan(0);
-    // The pavilion right of it, a little right of the middle and wholly under the panel's bottom (0.39
-    // up at 1600 x 900, 0.31 at 1366 x 768).
+    expect(slip.c[0]).toBeGreaterThan(-1.25);
+    expect(slip.c[0]).toBeLessThan(-0.9);
+    expect(slip.min[0]).toBeLessThan(-1);
+    expect(slip.max[0]).toBeGreaterThan(-0.45);
+    expect(slip.max[0]).toBeLessThan(-0.15);
+    expect(slip.max[1]).toBeGreaterThan(0.2);
+    expect(slip.max[1]).toBeLessThan(0.5);
+    // The pavilion right of it near the middle, wholly under the panel's bottom (0.39 up at 1600 x 900).
     const pav = at("scroll", "scroll", true);
-    expect(pav.c[0]).toBeGreaterThan(0);
-    expect(pav.c[0]).toBeLessThan(0.3);
+    expect(pav.c[0]).toBeGreaterThan(slip.max[0]);
+    expect(Math.abs(pav.c[0])).toBeLessThan(0.2);
     expect(pav.max[1]).toBeLessThan(0.3);
-    // Still square: the view heads 6 degrees left of the film's at the hold, give or take 1.5 (the
-    // stand-back looks from a little further left).
-    const heading = (v: CameraFrame) => {
-      const f = projectFwd(v.q);
-      return Math.atan2(-f[0], -f[2]) / DEG;
-    };
-    expect(Math.abs(heading(view("scroll", true)) - heading(view("scroll", false)) - 6)).toBeLessThan(1.5);
   });
 
-  it("turns the view on the way to and from the jade slip no faster than the old turn did", () => {
-    // Out of the stop the film turns right and tilts up the stair at a degree a frame (0.999). The old
-    // 6 degree turn added 0.14; standing back speeds the camera along there, and the tilt up, fading
-    // out, takes back as much.
-    const old = { ...STOP_FRAMING, scroll: { yaw: 6, pitch: 0 } };
+  it("turns the view on the way to and from the jade slip as the film does", () => {
+    // Out of the stop the film turns right and tilts up the stair at a degree a frame (0.999); with
+    // no framing there the page adds nothing to it.
     expect(steepest("scroll", false)).toBeLessThan(1);
-    expect(steepest("scroll", true, old)).toBeGreaterThan(1.13);
-    expect(steepest("scroll", true)).toBeLessThanOrEqual(steepest("scroll", true, old));
+    expect(Math.abs(steepest("scroll", true) - steepest("scroll", false))).toBeLessThan(1e-9);
   });
 
   it("brings the whole formation up into the picture", () => {

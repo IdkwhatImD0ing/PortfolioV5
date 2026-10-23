@@ -175,9 +175,9 @@ export function openingMegabytes(raw: unknown, low: boolean): number | null {
  * - library: the pagoda's spire reached under the hint. 5 up puts its tip 8 px below; more would
  *   take the feet of the gate below it under the panel.
  * - steles: the end pavilion's finial touched the hint. 3 up puts it 15 px below.
- * - scroll: the framing shows the jade slip whole on a 16:9 screen; on a phone only its right third
- *   was in, cut by the left edge. 11 more left (17 in all) put the whole slip in, 40 px from the
- *   left edge, and the pavilion's near side on the right.
+ * - scroll: no turn (the film's own view, as on 16:9, and as before the slip's framing of
+ *   2026-10-22): the slip's right end, with the first verses, along the left edge, its moon post
+ *   above it, the pavilion in the middle.
  * - abode: the cliff's 洞天福地 ran down under the label and the hint. 3 right moves it left of
  *   them, 30 px from the edge, the moon gate and the waterfall still in.
  * The poster's view is the start of the flight (frame 27, scroll 0), in no hold, so it never turns.
@@ -191,7 +191,6 @@ export const PORTRAIT_TURN_DEG: Readonly<Record<string, { yaw?: number; pitch?: 
   mission: { yaw: 5, pitch: 7 },
   library: { pitch: 5 },
   steles: { pitch: 3 },
-  scroll: { yaw: 11 },
   abode: { yaw: -3 },
 };
 

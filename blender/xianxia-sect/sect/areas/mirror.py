@@ -24,6 +24,7 @@ where the stair to the forge starts. A rail runs right round the rim, open at bo
 import math
 
 import bmesh
+import bpy
 from mathutils import Vector
 
 from sect.lib import util as U
@@ -108,6 +109,19 @@ RIM_R_EAST, RIM_EAST, RIM_RAMP = 50.5, (-20.0, 56.0), 8.0
 # 3 m of rail on the landing beside the gate's south column.)
 DEPART_FOOT_WALL = 10.0 * 0.5 + 0.6 - 0.02     # that wall's outer face, from the depart line (m)
 RIM_END_EMBED = 0.06
+# Round 12 (web flicker: every face is drawn double-sided with a 24-bit depth buffer, so surfaces a few mm apart fight
+# beyond ~100-200 m, and anything closer than ~2-4 cm within the area's ~400 m draw range):
+TERRACE_Z = -0.4             # world.py's flat terrace under the area
+LAWN_CLEAR = 0.04            # the lawn keeps at least this much over the terrace or dives LAWN_SINK under it
+LAWN_SINK = 0.2              # (seat_lawn: round the pond basin it crossed the terrace's plane 0-12 mm off it; 0.2,
+                             # the basin's own depth under it, so the lawn's box stays as it was)
+STEP_SINK = 0.12             # the arrival / depart steps' blocks reach this far into the terrace (round 11 sank the
+                             # range under the link stairs: they stood up to 6 cm over it)
+LOTUS_LIFT = 0.04            # the lotus pads float this much higher (their rims dipped into the water: 0-8 mm)
+DRUM_PLINTH = (0.30, 0.05, 0.04)   # stone plinth under each stair balustrade's drum stone: width, reach past the
+                             # drum's front, how far the drum's base sits in it. The 1 m drums at the foot of these
+                             # 3-step stairs stood on the sloping stringer's top with a wedge of air under their front
+                             # half, their front 0.2 m past the stair's foot, 0.4 m over the ground
 
 
 def _mirror_face_builder(g):
@@ -193,12 +207,117 @@ def _box_obj(name, coll, size, center, mat, parent, rotation=(0, 0, 0), location
 
 # ---------------------------------------------------------------- pieces
 
+def seat_lawn(lawn, floor_z=TERRACE_Z, clear=LAWN_CLEAR, sink=LAWN_SINK):
+    """Keep the lawn off the world terrace's plane (floor_z, flat under the area): every vertex less than ``clear``
+    over it goes ``sink`` under it (or stays where it is if it is deeper already), so the lawn meets the terrace at a
+    steep angle with no surface within ``clear`` of it. Works on the built object (sect/patch_r12_areas.py seats a
+    built file's lawn the same way). Round 12 verify: the lawn is first cut along z = floor_z + clear (bisect), so
+    its lip follows the lawn's own smooth contour there; moving whole vertices left a zigzag of the 0.8 m grid along
+    the edge. The lip's top edge is sharp and its steep faces are soil, as ground_patch makes steep faces. Returns
+    the number of vertices moved (0 when the lawn is seated already)."""
+    me = lawn.data
+    zc, zs = floor_z + clear, floor_z - sink
+    if not any(zs + 1e-6 < v.co.z < zc - 1e-6 for v in me.vertices):
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    cut = [f for f in bm.faces
+           if min(v.co.z for v in f.verts) < zc - 1e-6 and max(v.co.z for v in f.verts) > zc + 1e-6]
+    if cut:
+        geom = list({v for f in cut for v in f.verts}) + list({e for f in cut for e in f.edges}) + cut
+        bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=(0.0, 0.0, zc), plane_no=(0.0, 0.0, 1.0))
+    moved = set()
+    for v in bm.verts:
+        if zs + 1e-6 < v.co.z < zc - 1e-6:
+            v.co.z = zs
+            moved.add(v)
+    bm.normal_update()
+    for f in {f for v in moved for f in v.link_faces}:
+        if f.normal.z <= 0.8:
+            f.material_index = 1                    # soil (slot 1 of ground_patch's lawn)
+    for e in bm.edges:
+        if all(abs(v.co.z - zc) < 1e-6 for v in e.verts) and any(w in moved for f in e.link_faces for w in f.verts):
+            e.smooth = False                        # the lawn's top keeps its own normals at the lip
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return len(moved)
+
+
+def sink_steps(st, depth):
+    """Let an arch.stairs flight's block (its '.steps' mesh: the treads and stringers) reach ``depth`` below its foot:
+    its bottom vertices (and the bevel ring just above them) move down. Works on the built object, so a fresh build
+    and sect/patch_r12_areas.py agree. Returns the number of vertices moved (0 when already sunk)."""
+    me = bpy.data.objects[st.name + ".steps"].data
+    if min(v.co.z for v in me.vertices) < -1e-4:
+        return 0
+    n = 0
+    for v in me.vertices:
+        if v.co.z < 0.05:
+            v.co.z -= depth
+            n += 1
+    me.update()
+    return n
+
+
+def drum_plinths(st, sink=STEP_SINK):
+    """A stone plinth under each drum stone of an arch.stairs flight's balustrades, added to its '.steps' mesh: a box
+    DRUM_PLINTH[0] wide (inside the stringer, clear of its faces), from DRUM_PLINTH[1] past the drum's front to where
+    the stringer's sloping top climbs past it, its top DRUM_PLINTH[2] over the drum's base (the drum sits in it),
+    its bottom ``sink`` under the stair's foot. Reads the drums from the balustrades' point clouds (in the stairs'
+    frame) and arch.drum_stone's proportions (1.0 x bal height long, centred 0.05 x ahead of its point, base 0.04
+    under it). Works on the built object (sect/patch_r12_areas.py adds them to a built file's). Returns the
+    number of plinths added (0 when the mesh has them)."""
+    steps = bpy.data.objects[st.name + ".steps"]
+    me = steps.data
+    if me.get("drum_plinths"):
+        return 0
+    run, n, riser = float(st["arch_run"]), int(st["arch_steps"]), float(st["arch_riser"])
+    height = n * riser
+    step_run = run / n
+
+    def ztop(y):                     # the outer stringer's top (arch.stairs' sloped_block, top_off 0.08)
+        if y >= -step_run:
+            return height + 0.08
+        return riser + 0.08 + (height - riser) * (y + run) / (run - step_run)
+    w, reach, embed = DRUM_PLINTH
+    boxes = []
+    for bal in sorted((c for c in st.children if c.name.startswith(st.name + ".bal")), key=lambda o: o.name):
+        drums = bpy.data.objects.get(bal.name + ".drums")
+        if drums is None:
+            continue
+        for v in drums.data.vertices:
+            x, y0, z0 = v.co
+            front = y0 - 0.55               # the drum faces down the stair: its base runs 0.45 back, 0.55 forward
+            top = z0 - 0.04 + embed
+            # back end: where the stringer's top has climbed DRUM_PLINTH[1] over the plinth's top
+            yb = y0
+            while yb < 0.0 and ztop(yb) < top + reach:
+                yb += 0.01
+            boxes.append((x - 0.5 * w, x + 0.5 * w, front - reach, yb, -sink, top))
+    if not boxes:
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    for x0, x1, ya, yb, za, zb in boxes:
+        vs = [bm.verts.new((x, y, z)) for z in (za, zb) for y in (ya, yb) for x in (x0, x1)]
+        for f in ((0, 2, 3, 1), (4, 5, 7, 6), (0, 1, 5, 4), (1, 3, 7, 5), (3, 2, 6, 7), (2, 0, 4, 6)):
+            face = bm.faces.new([vs[i] for i in f])
+            face.smooth = False
+    bm.to_mesh(me)
+    bm.free()
+    me["drum_plinths"] = len(boxes)
+    me.update()
+    return len(boxes)
+
+
 def _ground(coll, root):
     # edge_drop 0.2 (was 0.5): the lawn rim stays above the paths' -0.35 bottoms, so no path
-    # hovers over a dip near the rim
+    # hovers over a dip near the rim. Round 12: kept off the terrace's plane round the pond (seat_lawn)
     lawn = N.ground_patch(coll, radius=43.0, seed=5, height=0.08,
                           holes=[(POND_C[0], POND_C[1], POND_R - 0.8, 0.6)], edge_drop=0.2,
                           name=_n("lawn"), parent=root)
+    seat_lawn(lawn)
     _strip(_n("path_main"), coll, PATH_MAIN, 3.0, PATH_Z, -0.35, "marble_paving", root)
     _strip(_n("path_east"), coll, PATH_EAST, 2.4, PATH_Z, -0.35, "marble_paving", root)
     _strip(_n("path_forge"), coll, PATH_FORGE, 2.4, PATH_Z, -0.35, "marble_paving", root)
@@ -212,14 +331,19 @@ def _landings(coll, root):
     rise = PATH_Z + 0.4
     # arrival: 7 m strip from the path's south end out to y -50.5, steps down to y -51.5
     _strip(_n("arrival"), coll, ARRIVAL, 7.0, PATH_Z, -0.6, "marble_paving", root)
-    A.stairs(_n("arrival_steps"), coll, 5.0, rise, ramp=False, max_riser=0.18, parent=root,
-             location=(ARRIVAL[0][0], ARRIVAL[0][1], -0.4))
+    st = A.stairs(_n("arrival_steps"), coll, 5.0, rise, ramp=False, max_riser=0.18, parent=root,
+                  location=(ARRIVAL[0][0], ARRIVAL[0][1], TERRACE_Z))
+    # (round 12: each block reaches STEP_SINK into the terrace, and its balustrades' drum stones stand on plinths)
+    sink_steps(st, STEP_SINK)
+    drum_plinths(st)
     # depart: 6 x 6 m landing on the east rim, steps down its east edge (heading +x)
     cx, cy, s = DEPART_LANDING
     _strip(_n("depart_landing"), coll, [(cx - s / 2, cy), (cx + s / 2, cy)], s, PATH_Z, -0.6,
            "marble_paving", root)
-    A.stairs(_n("depart_steps"), coll, 5.0, rise, ramp=False, max_riser=0.18, parent=root,
-             location=(cx + s / 2, cy, -0.4), rotation_z=math.pi / 2)
+    st = A.stairs(_n("depart_steps"), coll, 5.0, rise, ramp=False, max_riser=0.18, parent=root,
+                  location=(cx + s / 2, cy, TERRACE_Z), rotation_z=math.pi / 2)
+    sink_steps(st, STEP_SINK)
+    drum_plinths(st)
 
 
 def rim_radius(a):
@@ -321,7 +445,7 @@ def _pond(coll, root):
     for k, (x, y, r, cnt) in enumerate(((6.0, -7.0, 3.2, 20), (-14.0, -12.0, 2.2, 12),
                                         (3.0, 7.0, 2.4, 12))):
         N.lotus_patch(coll, radius=r, count=cnt, seed=11 + k, name=_n("lotus"), parent=root,
-                      location=(x, y, WATER_Z))
+                      location=(x, y, WATER_Z + LOTUS_LIFT))
     return pond
 
 

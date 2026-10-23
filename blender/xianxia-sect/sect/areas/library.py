@@ -60,6 +60,17 @@ RIM_RAIL_R = 50.0             # rim rail radius (the world terrace edge is at r 
 RIM_RAIL_LEN = 8.0            # rail length on each side of a stair head
 RIM_GAP_HALF = 3.5            # half the opening left for a 5 m connector stair (its rails at ~2.9)
 
+# Round 12 (web flicker: every face is drawn double-sided with a 24-bit depth buffer, so two surfaces a few mm apart
+# fight beyond ~100-200 m, and anything closer than ~2 cm at the area's ~400 m draw range):
+LAWN_CLEAR = 0.04             # the lawn keeps at least this much over the world terrace (TERRACE_Z) ...
+LAWN_SINK = 0.2               # ... or dives this far under it (seat_lawn): it used to cross it at a few degrees, its
+                              # rim and the pond basin lying 0-12 mm off the terrace over ~40 m2
+STEP_SINK = 0.12              # the area steps at the link stairs' ends reach this far down into the terrace (round 11
+                              # sank the range up to 6 cm under the link stairs; the arrival steps stood 16 cm over it)
+LOTUS_LIFT = 0.04             # the lotus pads float this much higher (their rims dipped into the water: 0-8 mm)
+ARRIVAL_LANDING_Y1 = -40.0 - math.ceil((PLAZA_TOP - ARRIVAL_TOP) / 0.17 - 1e-6) * STEP_RUN   # the arrival steps' foot
+ARRIVAL_LANDING_Y1_OLD = -41.0
+
 # Scroll spiral
 SPIRAL_FRAMES = (1, 1500)
 SPIRAL_TURNS = 1.0            # parent rotation over the frame range (slow)
@@ -88,21 +99,86 @@ def _slab(name, coll, root, x0, x1, y0, y1, top=PLAZA_TOP, bottom=-0.5, mat="mar
     return U.mesh_from_bmesh(name, bm, coll, materials=[mat], parent=root)
 
 
+def seat_lawn(lawn, floor_z=TERRACE_Z, clear=LAWN_CLEAR, sink=LAWN_SINK):
+    """Keep the lawn off the world terrace's plane (floor_z, flat under the area): every vertex less than ``clear``
+    over it goes ``sink`` under it (or stays where it is if it is deeper already), so the lawn meets the terrace at a
+    steep angle with no surface within ``clear`` of it. Works on the built object (sect/patch_r12_areas.py seats a
+    built file's lawn the same way). Round 12 verify: the lawn is first cut along z = floor_z + clear (bisect), so
+    its lip follows the lawn's own smooth contour there; moving whole vertices left a zigzag of the 0.8 m grid along
+    the edge. The lip's top edge is sharp and its steep faces are soil, as ground_patch makes steep faces. Returns
+    the number of vertices moved (0 when the lawn is seated already)."""
+    me = lawn.data
+    zc, zs = floor_z + clear, floor_z - sink
+    if not any(zs + 1e-6 < v.co.z < zc - 1e-6 for v in me.vertices):
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    cut = [f for f in bm.faces
+           if min(v.co.z for v in f.verts) < zc - 1e-6 and max(v.co.z for v in f.verts) > zc + 1e-6]
+    if cut:
+        geom = list({v for f in cut for v in f.verts}) + list({e for f in cut for e in f.edges}) + cut
+        bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=(0.0, 0.0, zc), plane_no=(0.0, 0.0, 1.0))
+    moved = set()
+    for v in bm.verts:
+        if zs + 1e-6 < v.co.z < zc - 1e-6:
+            v.co.z = zs
+            moved.add(v)
+    bm.normal_update()
+    for f in {f for v in moved for f in v.link_faces}:
+        if f.normal.z <= 0.8:
+            f.material_index = 1                    # soil (slot 1 of ground_patch's lawn)
+    for e in bm.edges:
+        if all(abs(v.co.z - zc) < 1e-6 for v in e.verts) and any(w in moved for f in e.link_faces for w in f.verts):
+            e.smooth = False                        # the lawn's top keeps its own normals at the lip
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return len(moved)
+
+
+def trim_path(path, axis, limit, sign):
+    """Cut a straight paved slab back so it ends at ``limit`` along ``axis`` (0 = x, 1 = y) on its ``sign`` end: its
+    vertices beyond the limit move onto it. Returns the number moved."""
+    me = path.data
+    n = 0
+    for v in me.vertices:
+        if sign * (v.co[axis] - limit) > 1e-6:
+            v.co[axis] = limit
+            n += 1
+    me.update()
+    return n
+
+
+def steps_foot(steps_root, root):
+    """The foot line of an arch.stairs flight in ``root``'s frame: (a point on it, the stairs' down direction)."""
+    from mathutils import Vector
+    m = _local(steps_root)
+    p = steps_root.parent
+    while p is not None and p != root:
+        m = _local(p) @ m
+        p = p.parent
+    run = float(steps_root["arch_run"])
+    a, b = m @ Vector((0.0, -run, 0.0)), m @ Vector((0.0, 0.0, 0.0))
+    return a, (a - b).normalized()
+
+
 def _ground(coll, root):
-    # lawn with the pond basin dug into it
-    N.ground_patch(coll, radius=40.0, seed=61, height=0.12, edge_drop=0.5,
-                   holes=[(POND_XY[0], POND_XY[1], POND_R + 1.2, 1.3)],
-                   name=_n("lawn"), parent=root)
+    # lawn with the pond basin dug into it, kept off the world terrace's plane (seat_lawn)
+    lawn = N.ground_patch(coll, radius=40.0, seed=61, height=0.12, edge_drop=0.5,
+                          holes=[(POND_XY[0], POND_XY[1], POND_R + 1.2, 1.3)],
+                          name=_n("lawn"), parent=root)
+    seat_lawn(lawn)
     # octagonal marble plaza round the pagoda
     A.platform(_n("plaza"), coll, 2 * PLAZA_R, sides=8, height=0.45, style="plain", sink=0.3,
                parent=root, location=(PAGODA_XY[0], PAGODA_XY[1], PLAZA_TOP - 0.45))
     ap = PLAZA_R * math.cos(math.pi / 8)
     front_y = PAGODA_XY[1] - ap
-    # main axis path from the south edge to the plaza
-    _slab(_n("path_main"), coll, root, -4.0, 4.0, -40.0, front_y + 0.5)
-    # side paths to the two study pavilions
-    _slab(_n("path_east"), coll, root, 3.5, 19.0, -11.5, -8.5)
-    _slab(_n("path_west"), coll, root, -21.0, PAGODA_XY[0] - ap + 0.5, 9.0, 12.0)
+    # main axis path from the south edge to the plaza. Round 12: the paths stop at the plaza's edge (they ran 0.5 m
+    # onto it, in its top's plane), and the east one starts at the main one's edge (it overlapped it by 0.5 m)
+    _slab(_n("path_main"), coll, root, -4.0, 4.0, -40.0, front_y)
+    # side paths to the two study pavilions (trimmed to their step feet in _garden)
+    _slab(_n("path_east"), coll, root, 4.0, 19.0, -11.5, -8.5)
+    _slab(_n("path_west"), coll, root, -21.0, PAGODA_XY[0] - ap, 9.0, 12.0)
     _arrival(coll, root)
     _depart(coll, root)
 
@@ -121,9 +197,13 @@ def _arrival(coll, root):
     """Arrival from the Mission Hall (audit 1.6 item 2): landing on the axis, entrance gate,
     three low steps up to the axis walkway, and a rim balustrade either side of the stair head."""
     x, y0, z, _ = AREA["arrival"]
-    _slab(_n("arrival_landing"), coll, root, -6.0, 6.0, y0, -41.0, top=ARRIVAL_TOP, bottom=-0.6)
-    A.stairs(_n("arrival_steps"), coll, 8.0, PLAZA_TOP - ARRIVAL_TOP, ramp=False, balustrade=False,
-             parent=root, location=(0.0, -40.0, ARRIVAL_TOP))
+    # the landing runs to the steps' foot (round 12: it stopped 1 cm short, -41.0, and left a crack down to the
+    # terrace at the foot of the steps)
+    _slab(_n("arrival_landing"), coll, root, -6.0, 6.0, y0, ARRIVAL_LANDING_Y1, top=ARRIVAL_TOP, bottom=-0.6)
+    st = A.stairs(_n("arrival_steps"), coll, 8.0, PLAZA_TOP - ARRIVAL_TOP, ramp=False, balustrade=False,
+                  parent=root, location=(0.0, -40.0, ARRIVAL_TOP))
+    # its block reaches STEP_SINK into the terrace (round 12: it stood 15-16 cm over the terrace grass)
+    sink_steps(st, ARRIVAL_TOP - TERRACE_Z + STEP_SINK)
     gate = A.paifang(_n("arrival_gate"), coll, bays=3, width=12.0, height=9.0, parent=root,
                      location=(0.0, -42.5, ARRIVAL_TOP))
     anchor = bpy.data.objects[gate["plaque_anchor"]]
@@ -138,6 +218,88 @@ def _arrival(coll, root):
                      [(x0, yb, ARRIVAL_TOP), (sx * 5.7, yb, ARRIVAL_TOP), (sx * 6.3, yb, TERRACE_Z),
                       (x0 + sx * RIM_RAIL_LEN, yb, TERRACE_Z)],
                      height=1.0, end_drum="start", parent=root)
+
+
+def sink_steps(st, depth):
+    """Let an arch.stairs flight's block (its '.steps' mesh: the treads and stringers) reach ``depth`` below its foot:
+    its bottom vertices (and the bevel ring just above them) move down. Works on the built object, so a fresh build
+    and sect/patch_r12_areas.py agree. Returns the number of vertices moved (0 when already sunk)."""
+    me = bpy.data.objects[st.name + ".steps"].data
+    zs = [v.co.z for v in me.vertices]
+    if min(zs) < -1e-4:
+        return 0
+    n = 0
+    for v in me.vertices:
+        if v.co.z < 0.05:
+            v.co.z -= depth
+            n += 1
+    me.update()
+    return n
+
+
+def _plaza_face_cut(p0, d, w):
+    """Where a straight path of width ``w`` from ``p0`` (inside the plaza) along unit ``d`` leaves the octagonal
+    plaza's top: its two side lines' crossings with the plaza edge it passes, in the order (left, right)."""
+    c = PAGODA_XY
+    corners = [(c[0] + PLAZA_R * math.cos(-math.pi / 2 - math.pi / 8 + 2 * math.pi * k / 8),
+                c[1] + PLAZA_R * math.sin(-math.pi / 2 - math.pi / 8 + 2 * math.pi * k / 8)) for k in range(8)]
+    n = (-d[1], d[0])
+
+    def cross(o, k):
+        a, b = corners[k], corners[(k + 1) % 8]
+        ex, ey = b[0] - a[0], b[1] - a[1]
+        den = d[0] * ey - d[1] * ex
+        if abs(den) < 1e-12:
+            return None
+        s = ((a[0] - o[0]) * ey - (a[1] - o[1]) * ex) / den
+        t = ((a[0] - o[0]) * d[1] - (a[1] - o[1]) * d[0]) / den
+        return s, t
+    best = None
+    for k in range(8):
+        r = cross(p0, k)
+        if r is not None and r[0] > 0 and -1e-9 <= r[1] <= 1 + 1e-9 and (best is None or r[0] < best[0]):
+            best = (r[0], k)
+    k = best[1]
+    out = []
+    for side in (0.5 * w, -0.5 * w):
+        o = (p0[0] + n[0] * side, p0[1] + n[1] * side)
+        s, t = cross(o, k)
+        if not -1e-9 <= t <= 1 + 1e-9:
+            raise RuntimeError("library: the depart path's side crosses a plaza corner")
+        out.append((o[0] + d[0] * s, o[1] + d[1] * s))
+    return out
+
+
+def depart_walk_geom():
+    """(verts, faces) of the depart path's slab in the root frame (_depart_walk with _depart's numbers)."""
+    hd = DEPART_HEADING
+    dx, dy = math.cos(hd), math.sin(hd)
+    run = math.ceil(DEPART_STEP_H / 0.17 - 1e-6) * STEP_RUN
+    top_edge = (DEPART_XY[0] - dx * run, DEPART_XY[1] - dy * run)
+    start = (DEPART_PATH_START[0] - dx * 2.5, DEPART_PATH_START[1] - dy * 2.5)
+    return _depart_walk_geom(start, top_edge, DEPART_W, PLAZA_TOP, -0.6)
+
+
+def _depart_walk(name, coll, root, p0, p1, width, top, bottom, mat="marble_paving"):
+    """The depart path: a straight slab ``width`` wide from where it leaves the plaza (its start edge on the plaza's
+    edge, _plaza_face_cut; round 12: it started 2.5 m inside, 4 mm under the plaza's top, 5 m2 of z-fighting) to p1,
+    top at ``top`` (flush with the plaza and the steps' top tread)."""
+    verts, faces = _depart_walk_geom(p0, p1, width, top, bottom)
+    return U.mesh_from_pydata(name, verts, faces, coll, materials=[mat], parent=root)
+
+
+def _depart_walk_geom(p0, p1, width, top, bottom):
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    ln = math.hypot(dx, dy)
+    d = (dx / ln, dy / ln)
+    n = (-d[1], d[0])
+    sl, sr = _plaza_face_cut(p0, d, width)
+    el = (p1[0] + n[0] * 0.5 * width, p1[1] + n[1] * 0.5 * width)
+    er = (p1[0] - n[0] * 0.5 * width, p1[1] - n[1] * 0.5 * width)
+    quad = [sr, er, el, sl]                                  # counter-clockwise from +z
+    verts = [(x, y, bottom) for x, y in quad] + [(x, y, top) for x, y in quad]
+    faces = [(3, 2, 1, 0), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+    return verts, faces
 
 
 def _ray_circle(p, heading, r):
@@ -156,11 +318,12 @@ def _depart(coll, root):
     dx, dy = math.cos(hd), math.sin(hd)
     run = math.ceil(DEPART_STEP_H / 0.17 - 1e-6) * STEP_RUN      # arch.stairs' horizontal run
     top_edge = (DEPART_XY[0] - dx * run, DEPART_XY[1] - dy * run)
-    # start 2.5 m back inside the plaza so the diagonal end is covered; 4 mm under the plaza top
+    # from the plaza's edge (from a point 2.5 m back inside it, along the line) to the steps, flush with both
     start = (DEPART_PATH_START[0] - dx * 2.5, DEPART_PATH_START[1] - dy * 2.5)
-    _strip(_n("depart_path", "walk"), coll, root, start, top_edge, DEPART_W, PLAZA_TOP - 0.004, -0.6)
-    A.stairs(_n("depart_steps"), coll, DEPART_W, DEPART_STEP_H, ramp=False, balustrade=False,
-             parent=root, location=(top_edge[0], top_edge[1], TERRACE_Z), rotation_z=hd + math.pi / 2)
+    _depart_walk(_n("depart_path", "walk"), coll, root, start, top_edge, DEPART_W, PLAZA_TOP, -0.6)
+    st = A.stairs(_n("depart_steps"), coll, DEPART_W, DEPART_STEP_H, ramp=False, balustrade=False,
+                  parent=root, location=(top_edge[0], top_edge[1], TERRACE_Z), rotation_z=hd + math.pi / 2)
+    sink_steps(st, STEP_SINK)
     # rim rail: arcs on r = RIM_RAIL_R either side of where the outgoing stair crosses it
     cx, cy = _ray_circle(DEPART_XY, hd, RIM_RAIL_R)
     ac = math.atan2(cy, cx)
@@ -362,14 +525,17 @@ def _garden(coll, root):
     N.pond(coll, radius=POND_R, seed=17, depth=1.2, name=_n("pond"), parent=root,
            location=(POND_XY[0], POND_XY[1], 0.0))
     N.lotus_patch(coll, radius=POND_R * 0.7, count=30, seed=5, name=_n("lotus"), parent=root,
-                  location=(POND_XY[0] + 0.6, POND_XY[1] - 0.4, -0.18))
+                  location=(POND_XY[0] + 0.6, POND_XY[1] - 0.4, -0.18 + LOTUS_LIFT))
 
-    # study pavilions (round roofs): east on the side path, west on the pond's north bank
-    for nm, rad, h, loc, rot in (("study_east", 3.0, 3.3, (22.5, -10.0, 0.0), -90),
-                                 ("study_west", 2.8, 3.2, (-24.5, 10.5, 0.0), 90)):
+    # study pavilions (round roofs): east on the side path, west on the pond's north bank; the side paths stop at
+    # their steps' feet (round 12: they ran on under the steps, 0.6 m2 each lying in one of the steps' faces)
+    for nm, rad, h, loc, rot, path, sign in (("study_east", 3.0, 3.3, (22.5, -10.0, 0.0), -90, "path_east", 1.0),
+                                             ("study_west", 2.8, 3.2, (-24.5, 10.5, 0.0), 90, "path_west", -1.0)):
         pav = A.pavilion(_n(nm), coll, sides=8, radius=rad, height=h, roof="round",
                          roof_mat="roof_tile_black", parent=root, location=loc, rotation_z=math.radians(rot))
         _seat_finial(pav)
+        foot, _down = steps_foot(bpy.data.objects[pav.name + ".steps"], root)
+        trim_path(bpy.data.objects[KEY + "." + path], 0, foot.x, sign)
 
     # stone lanterns flanking the axis path and the pagoda stairs, on the lawn beside the path (not at the
     # path's top: the lawn undulates 0.0-0.15 m under it)
@@ -482,9 +648,7 @@ def _scrolls(coll, root, pagoda_height):
                                   parent=spiral, location=loc, rotation=rot)
             _halo(coll, o, w * 1.45, w * 0.36 * 2.0)
     _spin(spiral)
-    # spirit motes drifting around the pagoda (jade-cyan dust)
-    P.spirit_motes(coll, 260, ((-17.0, -9.0, 3.0), (17.0, 25.0, pagoda_height - 4.0)), seed=21,
-                   size=0.09, drift=0.4, name=_n("motes"), parent=root)
+    # Round 21: no spirit motes around the pagoda (the web bake froze them into still white specks over the sky)
     return spiral
 
 

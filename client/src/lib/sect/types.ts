@@ -178,6 +178,30 @@ export interface AreaMeta {
   heroFrame: number;
 }
 
+/**
+ * A fire as export_web.py writes it to meta.fires (from forge.py's fire anchors): the page draws
+ * flames in it (lib/sect/forge-flames.ts).
+ */
+export interface FireAnchor {
+  id: string;
+  /** "furnace" (an opening), "kiln" (a fire box) or "cauldron" (a molten surface); others are skipped. */
+  kind: string;
+  area: string | null;
+  chunk: string | null;
+  /** furnace: centre of the opening's bottom edge on its face; kiln, cauldron: centre of the fire's foot. */
+  position: Vec3;
+  /** furnace: the opening's outward facing (horizontal). */
+  normal: Vec3 | null;
+  /** furnace: the opening's size (m); kiln: its fire box's width when there is no radius. */
+  width: number;
+  /** furnace: the opening's height; kiln, cauldron: how tall the flames stand (0: from the size). */
+  height: number;
+  /** furnace: how deep its fire box goes (0: from the opening's size). */
+  depth: number;
+  /** kiln, cauldron: half the bed's width. */
+  radius: number;
+}
+
 export interface SectMeta {
   sun: { direction: Vec3; color: string };
   sky: {
@@ -219,6 +243,8 @@ export interface SectMeta {
   lore?: LoreBox[];
   /** The areas along the path (may be empty in older files). */
   areas: AreaMeta[];
+  /** Fires the page draws flames in (forge-flames.ts; parseMeta: empty when the file has none). */
+  fires?: FireAnchor[];
   /** Blender's vignette strength (0.22 = 22 % corner darkening). */
   vignette: number;
   /** Blender's view exposure in stops. */

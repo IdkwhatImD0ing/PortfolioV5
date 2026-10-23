@@ -440,14 +440,16 @@ def _xf(bm, matrix, verts):
 
 
 def _faces_of(verts):
-    """Faces whose vertices are all in ``verts`` (the faces a helper just created)."""
+    """Faces whose vertices are all in ``verts`` (the faces a helper just created), in a fixed order (that of ``verts``,
+    then of each vertex's faces). Round 12: it was a set, whose order changes from run to run, and the banner cuts
+    (_imprint) build from it, so their vertex order (and patch_r12_libs.py's DIGEST) changed with every run."""
     vs = set(verts)
-    out = set()
-    for v in vs:
+    out = {}
+    for v in verts:
         for f in v.link_faces:
             if f not in out and all(w in vs for w in f.verts):
-                out.add(f)
-    return out
+                out[f] = None
+    return list(out)
 
 
 def _set_mat(verts, index):
@@ -1096,6 +1098,380 @@ def title_lines(title):
     return [title[:h], title[h:]]
 
 
+# ============================================================ round 12: decals cut into their surface
+# The web draws every baked face double-sided with a 24-bit depth buffer (near 0.5 m, far 9000 m): a decal a few mm in
+# front of its surface (stele glyphs, scroll text and seals, slip script, banner characters and emblems) z-fights with
+# it once the camera is far enough away (4 mm beyond ~130 m). Round 12 cuts such decals into the surface instead: the
+# surface's faces under a decal are removed and the decal's faces fill the hole in the same plane, edge to edge
+# (_imprint), or, on one mesh (banner cloth), become a material region of it. patch_r12_libs.py applies the same cut to
+# an existing .blend's meshes; R12_TAG marks a mesh it was applied to.
+R12_TAG = "sect_r12"
+STELE_CUT = True               # _build_stele: glyphs cut into the slab and the crown (they lay 3-4 mm in front)
+SCROLL_CUT = True              # _build_scroll: text and seal cut into the paper (2 mm in front; the seal a 2 mm box)
+SLIPS_CUT = True               # bamboo_slip_scroll: the script cut into each slip's front (1.5 mm in front)
+BANNER_REGIONS = True          # _banner_cloth_mesh: characters and emblem are regions of the cloth (layers 3-5 mm off
+                               # both faces)
+BOOKS_SOLID = True             # _build_books: each book one box, covers, slip, ink and stitching regions of its faces
+                               # (1.5 mm cover boxes, 0.4-0.6 mm slips, 1 mm stitches: layers 1-8 mm apart at 5.5x scale)
+ANVIL_OPEN_STUMP = True        # _build_anvil: the stump has no top cap; the end-grain disc closes it, one-sided (the cap
+                               # and a two-sided disc lay in one plane)
+DING_MOLTEN_CAP = False        # _ding_fill: the molten surface has no flat cap under it (3-4 mm under its rim)
+LANTERN_UNION = True           # _build_stone_lantern: the chamber's walls, corner posts, relief windows and cap joined
+                               # into one solid before its bevel (the wall boxes crossed at the corners, the relief frame
+                               # bars overlapped at 0 mm and stood 5-15 mm over faces left under them)
+LION_UNION = True              # _build_lion: the body, curls, eyes, ball and ribbons joined into one solid (layers 1-4 mm
+                               # apart where a curl or a ribbon lay on the body)
+
+
+def _union(me):
+    """Exact boolean union of a mesh's own overlapping closed parts (arch._self_union)."""
+    from . import arch
+    return arch._self_union(me)
+
+
+def _dissolve_flat(me, angle=math.radians(0.5)):
+    """Merge a mesh's coplanar neighbouring faces (a boolean's triangle fans) into n-gons, so a bevel after it makes
+    no slivers where the parts met."""
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.dissolve_limit(bm, angle_limit=angle, verts=bm.verts[:], edges=bm.edges[:], delimit={'NORMAL'})
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return me
+
+
+def _area2(pts):
+    """Signed area of a 2D polygon [(x, y), ...] (counter-clockwise positive)."""
+    a = 0.0
+    n = len(pts)
+    for i in range(n):
+        x0, y0 = pts[i][0], pts[i][1]
+        x1, y1 = pts[(i + 1) % n][0], pts[(i + 1) % n][1]
+        a += x0 * y1 - x1 * y0
+    return 0.5 * a
+
+
+def _imprint(bm, faces, to2d, to3d, regions, holes=False, eps=1e-7):
+    """Cut flat ``regions`` into the ``faces`` of ``bm``, which lie on one surface that ``to2d`` maps one to one onto a
+    plane: the faces are replaced by the constrained Delaunay triangles of their own outlines and the regions' outlines,
+    each triangle keeping the material, smoothing, face attributes and facing of the face it lies in.
+    ``to2d(co) -> (x, y)`` and ``to3d(x, y) -> Vector`` map between the surface and that plane. ``regions``:
+    [(polygon [(x, y), ...], tag)], any winding, overlapping allowed (the later region's tag wins). Region parts outside
+    every face are dropped.
+    holes=False: the triangles inside a region stay in ``bm``; returns {tag: [BMFace]} (the rest under None).
+    holes=True: they are left out (holes) and returned as {tag: [(p0, p1, p2, normal), ...]} for the decal that fills
+    them: its vertices are exactly the hole's."""
+    from mathutils.geometry import delaunay_2d_cdt
+    faces = [f for f in faces if f.is_valid]
+    if not faces:
+        return {}
+    vco, vref, vidx, in_faces = [], [], {}, []
+    for f in faces:
+        ids = []
+        for w in f.verts:
+            k = vidx.get(w)
+            if k is None:
+                k = vidx[w] = len(vco)
+                x, y = to2d(w.co)
+                vco.append(Vector((x, y)))
+                vref.append(w)
+            ids.append(k)
+        if _area2([vco[i] for i in ids]) < 0:
+            ids.reverse()
+        in_faces.append(ids)
+    nf = len(in_faces)
+    tags = []
+    for poly, tag in regions:
+        if len(poly) < 3:
+            continue
+        a = _area2(poly)
+        if abs(a) < 1e-14:
+            continue
+        ids = list(range(len(vco), len(vco) + len(poly)))
+        vco.extend(Vector((p[0], p[1])) for p in poly)
+        vref.extend([None] * len(poly))
+        if a < 0:
+            ids.reverse()
+        in_faces.append(ids)
+        tags.append(tag)
+    out_v, _e, out_f, orig_v, _oe, orig_f = delaunay_2d_cdt(vco, [], in_faces, 1, eps)
+    flay = list(bm.faces.layers.float.values()) + list(bm.faces.layers.int.values())
+    info = [(f.normal.copy(), f.material_index, f.smooth, [f[L] for L in flay]) for f in faces]
+    old_edges = list(dict.fromkeys(e for f in faces for e in f.edges))     # (ordered: the same mesh every run)
+    old_verts = list(dict.fromkeys(v for f in faces for v in f.verts))
+    bmesh.ops.delete(bm, geom=faces, context='FACES_ONLY')
+
+    def ref_of(k):
+        return next((vref[i] for i in orig_v[k] if vref[i] is not None), None)
+    made = {}
+
+    def vert(k):
+        w = made.get(k)
+        if w is None:
+            r = ref_of(k)
+            w = made[k] = r if r is not None else bm.verts.new(to3d(out_v[k].x, out_v[k].y))
+        return w
+
+    def pos(k):
+        r = ref_of(k)
+        return r.co.copy() if r is not None else Vector(to3d(out_v[k].x, out_v[k].y))
+    out = {}
+    for k, tri in enumerate(out_f):
+        src = orig_f[k]
+        base = [i for i in src if i < nf]
+        if not base:
+            continue
+        regs = [i - nf for i in src if i >= nf]
+        tag = tags[max(regs)] if regs else None
+        nrm, mi, sm, vals = info[min(base)]
+        if holes and tag is not None:
+            out.setdefault(tag, []).append(tuple(pos(i) for i in tri) + (nrm,))
+            continue
+        vs = [vert(i) for i in tri]
+        if len(set(vs)) < 3:
+            continue
+        try:
+            f = bm.faces.new(vs)
+        except ValueError:
+            continue
+        f.normal_update()
+        if f.normal.dot(nrm) < 0:
+            f.normal_flip()
+        f.material_index = mi
+        f.smooth = sm
+        for L, val in zip(flay, vals):
+            f[L] = val
+        out.setdefault(tag, []).append(f)
+    loose = [e for e in old_edges if e.is_valid and not e.link_faces]
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context='EDGES')
+    loose = [v for v in old_verts if v.is_valid and not v.link_edges]
+    if loose:
+        bmesh.ops.delete(bm, geom=loose, context='VERTS')
+    return out
+
+
+def _fill_mesh(me, tris, smooth=False):
+    """Replace mesh ``me``'s geometry with triangles [(p0, p1, p2, normal), ...] (shared corners merged exactly), each
+    facing its normal; material slot 0. Keeps the material list."""
+    bm = bmesh.new()
+    vmap = {}
+
+    def v(p):
+        key = (p.x, p.y, p.z)
+        w = vmap.get(key)
+        if w is None:
+            w = vmap[key] = bm.verts.new(p)
+        return w
+    for p0, p1, p2, nrm in tris:
+        vs = [v(p0), v(p1), v(p2)]
+        if len(set(vs)) < 3:
+            continue
+        try:
+            f = bm.faces.new(vs)
+        except ValueError:
+            continue
+        f.normal_update()
+        if f.normal.dot(nrm) < 0:
+            f.normal_flip()
+        f.smooth = smooth
+    bm.to_mesh(me)
+    bm.free()
+    me.update()
+    return me
+
+
+def _reharden(me, angle_limit=math.radians(30), mark=U.EDGE_ATTR):
+    """Recompute the hardened custom normals util.bevel_mesh gave mesh ``me`` (flat faces flat, the bevel strips
+    round), after its faces changed. A mesh without the bevel mark is left alone."""
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    layer = bm.faces.layers.float.get(mark)
+    if layer is None:
+        bm.free()
+        return me
+    for f in bm.faces:
+        f.smooth = True
+    bm.normal_update()
+    areas = {f: max(f.calc_area(), 1e-12) for f in bm.faces}
+    loop_normals = []
+    for f in bm.faces:
+        is_bevel = f[layer] >= 0.5
+        for lp in f.loops:
+            v = lp.vert
+            n = Vector((0, 0, 0))
+            if not is_bevel:
+                for g in v.link_faces:
+                    if g[layer] < 0.5 and f.normal.angle(g.normal, 0.0) <= angle_limit:
+                        n += g.normal * areas[g]
+            else:
+                for g in v.link_faces:
+                    if g[layer] < 0.5:
+                        n += g.normal * areas[g]
+                if n.length < 1e-9:
+                    for g in v.link_faces:
+                        n += g.normal * areas[g]
+            loop_normals.append(n.normalized() if n.length > 1e-9 else f.normal.copy())
+    bm.to_mesh(me)
+    bm.free()
+    me.normals_split_custom_set([tuple(n) for n in loop_normals])
+    me.update()
+    return me
+
+
+def _plane_frame(origin, normal):
+    """(to2d, to3d) for the plane through ``origin`` facing ``normal`` (horizontal), u x v = normal with v = +Z."""
+    O = Vector(origin)
+    n = Vector(normal).normalized()
+    u = Vector((-n.y, n.x, 0.0)).normalized()
+    v = Vector((0.0, 0.0, 1.0))
+
+    def to2d(co):
+        d = co - O
+        return d.dot(u), d.dot(v)
+
+    def to3d(x, y):
+        return O + u * x + v * y
+    return to2d, to3d
+
+
+def _cut_decal(host_me, decal_me, groups, smooth=False):
+    """Cut the decal faces of ``decal_me`` into ``host_me``: ``groups`` is [(host faces' normal, a point on their plane,
+    [decal polygon indices])]. Per group the host faces lying in that plane and facing that way get holes where the
+    decal polygons' outlines (projected onto the plane) lie, and the decal mesh becomes the faces that fill the holes.
+    Returns the decal triangle count."""
+    bm = bmesh.new()
+    bm.from_mesh(host_me)
+    dv = [v.co.copy() for v in decal_me.vertices]
+    fills = []
+    for nrm, origin, polys in groups:
+        n = Vector(nrm).normalized()
+        d0 = Vector(origin).dot(n)
+        to2d, to3d = _plane_frame(origin, n)
+        host = [f for f in bm.faces if f.normal.dot(n) > 0.9999 and all(abs(v.co.dot(n) - d0) < 2e-5 for v in f.verts)]
+        regions = [([to2d(dv[i]) for i in decal_me.polygons[p].vertices], "d") for p in polys]
+        got = _imprint(bm, host, to2d, to3d, regions, holes=True)
+        fills += got.get("d", [])
+    bm.to_mesh(host_me)
+    bm.free()
+    host_me.update()
+    _fill_mesh(decal_me, fills, smooth)
+    return len(fills)
+
+
+def _scroll_cut(paper_me, text_me, seal_me):
+    """Cut an open hand scroll's text and seal into its paper (SCROLL_CUT): the paper (a grid whose depth depends only
+    on x, the S-wave) gets holes where the characters and the seal's face lie, and the text and seal meshes become the
+    faces that fill them, on the paper's facets. The text lay 2 mm in front of the paper and the seal was a 2 mm box."""
+    cols = {}
+    for v in paper_me.vertices:
+        cols.setdefault(v.co.x, v.co.y)
+    xs = sorted(cols)
+    ys = [cols[x] for x in xs]
+
+    def depth(x):
+        if x <= xs[0]:
+            return ys[0]
+        if x >= xs[-1]:
+            return ys[-1]
+        import bisect
+        k = bisect.bisect_right(xs, x)
+        x0, x1 = xs[k - 1], xs[k]
+        return ys[k - 1] + (ys[k] - ys[k - 1]) * (x - x0) / (x1 - x0)
+    to2d = lambda co: (co.x, co.z)                                  # noqa: E731 (the paper faces -Y: (x, z) ccw)
+    to3d = lambda x, z: Vector((x, depth(x), z))                    # noqa: E731
+    tv = [v.co for v in text_me.vertices]
+    regions = [([to2d(tv[i]) for i in p.vertices], "text") for p in text_me.polygons]
+    sv = [v.co for v in seal_me.vertices]
+    face = max((p for p in seal_me.polygons if p.normal.y < -0.999), key=lambda p: p.area)
+    regions.append(([to2d(sv[i]) for i in face.vertices], "seal"))
+    bm = bmesh.new()
+    bm.from_mesh(paper_me)
+    got = _imprint(bm, bm.faces[:], to2d, to3d, regions, holes=True)
+    bm.to_mesh(paper_me)
+    bm.free()
+    _fill_mesh(text_me, got.get("text", []))
+    _fill_mesh(seal_me, got.get("seal", []))
+    for me in (paper_me, text_me, seal_me):
+        me[R12_TAG] = "cut"
+        me.update()
+
+
+def _slips_cut(slips_me, script_me):
+    """Cut a bamboo-slip scroll's script into the slips (SLIPS_CUT): each character's faces go into the front face of
+    the slip it lies 1.5 mm in front of (found by a ray back along its normal), which gets holes, and the script mesh
+    becomes the faces that fill them. The slips keep their hardened bevel normals."""
+    from mathutils.bvhtree import BVHTree
+    sv = [v.co.copy() for v in slips_me.vertices]
+    tree = BVHTree.FromPolygons(sv, [tuple(p.vertices) for p in slips_me.polygons])
+    groups = {}
+    for p in script_me.polygons:
+        if p.area < 1e-12:
+            continue
+        c, n = p.center, p.normal
+        loc, nrm, fi, d = tree.ray_cast(c + n * 0.001, -n, 0.05)
+        if fi is None or slips_me.polygons[fi].normal.dot(n) < 0.9999:
+            continue
+        groups.setdefault(fi, []).append(p.index)
+    gl = [(slips_me.polygons[fi].normal.copy(), sv[slips_me.polygons[fi].vertices[0]], ps) for fi, ps in groups.items()]
+    _cut_decal(slips_me, script_me, gl)
+    _reharden(slips_me)
+    slips_me[R12_TAG] = "cut"
+    script_me[R12_TAG] = "cut"
+
+
+def _stele_cut(slab_me, crown_me, glyph_me, border_me=None):
+    """Cut a stele prototype's glyphs (stele.glyphs: the front and back columns 3 mm off the slab, the title 4 mm off
+    the crown) into the slab's faces and the crown's front (STELE_CUT): the slab and crown get holes, the glyph mesh
+    becomes the faces that fill them, and both keep their hardened bevel normals. ``border_me`` (stele.border: the
+    key-fret relief, strokes open at the bottom just inside the slab's faces) gets holes under its strokes too, so no
+    slab face is left under a stroke 12 mm x s behind its top. Reads the planes off the meshes."""
+    def plane(me, ny):
+        p = max((p for p in me.polygons if p.normal.y * ny > 0.9999), key=lambda p: p.area)
+        return me.vertices[p.vertices[0]].co.y
+    yf, yb, yc = plane(slab_me, -1.0), plane(slab_me, 1.0), plane(crown_me, -1.0)
+    co = [v.co for v in glyph_me.vertices]
+    front, back, crown = [], [], []
+    for p in glyph_me.polygons:
+        y = sum(co[i].y for i in p.vertices) / len(p.vertices)
+        (back if y > 0.0 else (crown if abs(y - yc) < abs(y - yf) else front)).append(p.index)
+    if border_me is not None:
+        # the fret's footprint: its stroke tops (facing out of the slab), cut out of the slab's faces, no fill
+        bv = [v.co for v in border_me.vertices]
+        for ny, y0 in ((-1.0, yf), (1.0, yb)):
+            polys = [[bv[i] for i in p.vertices] for p in border_me.polygons
+                     if p.normal.y * ny > 0.9999 and (sum(bv[i].y for i in p.vertices) / len(p.vertices) - y0) * ny > 0]
+            if not polys:
+                continue
+            to2d, to3d = _plane_frame((0.0, y0, 0.0), (0.0, ny, 0.0))
+            bm = bmesh.new()
+            bm.from_mesh(slab_me)
+            host = [f for f in bm.faces if f.normal.y * ny > 0.9999 and all(abs(v.co.y - y0) < 2e-5 for v in f.verts)]
+            _imprint(bm, host, to2d, to3d, [([to2d(c) for c in pl], "fret") for pl in polys], holes=True)
+            bm.to_mesh(slab_me)
+            bm.free()
+    tris = []
+    for host, groups in ((slab_me, [((0, -1, 0), (0, yf, 0), front), ((0, 1, 0), (0, yb, 0), back)]),
+                         (crown_me, [((0, -1, 0), (0, yc, 0), crown)])):
+        tmp = glyph_me.copy()
+        _cut_decal(host, tmp, groups)
+        tris.append(tmp)
+        _reharden(host)
+    # the glyph mesh: both cuts' fills
+    bm = bmesh.new()
+    for t in tris:
+        bm.from_mesh(t)
+        bpy.data.meshes.remove(t)
+    bm.to_mesh(glyph_me)
+    bm.free()
+    U.shade_flat(glyph_me)
+    glyph_me[R12_TAG] = "cut"
+    slab_me[R12_TAG] = "cut"
+    crown_me[R12_TAG] = "cut"
+    glyph_me.update()
+
+
 # ============================================================ geometry-node instancers
 
 def _gn_group(proto_obj, drift=None):
@@ -1411,10 +1787,12 @@ def lantern_hanging(collection, style='palace', size=1.0, cord=0.25, name=None, 
                   tuple(res * c for c in _v3(scale)))
 
 
-def _arch_wall(bm, w, h, t, hole_w, hole_h, sill, matrix, segs=10):
+def _arch_wall(bm, w, h, t, hole_w, hole_h, sill, matrix, segs=10, closed=False):
     """Wall panel (XZ plane, thickness t along Y, base at z=0, centred on x) with a round-arched
     opening ``hole_w`` wide and ``hole_h`` tall starting ``sill`` above the base; transformed by
-    ``matrix``. Coincident verts are merged by the caller (one _merge at the end)."""
+    ``matrix``. Coincident verts are merged by the caller (one _merge at the end). closed: the rim
+    strip has the panel halves' corner points at x = 0 too (no T-junction: after the merge the panel
+    is a closed solid, as an exact boolean needs)."""
     hw = hole_w / 2
     straight = max(0.0, hole_h - hw)
     half = [(0.0, sill), (hw, sill), (hw, sill + straight)]
@@ -1438,7 +1816,10 @@ def _arch_wall(bm, w, h, t, hole_w, hole_h, sill, matrix, segs=10):
         for i in range(len(pts) - 1):
             bm.faces.new((a[i], a[i + 1], b[i + 1], b[i]))
     strip([(-x, z) for x, z in half[::-1]] + half[1:])
-    strip([(-w / 2, 0.0), (-w / 2, h), (w / 2, h), (w / 2, 0.0), (-w / 2, 0.0)])
+    if closed:
+        strip([(-w / 2, 0.0), (-w / 2, h), (0.0, h), (w / 2, h), (w / 2, 0.0), (0.0, 0.0), (-w / 2, 0.0)])
+    else:
+        strip([(-w / 2, 0.0), (-w / 2, h), (w / 2, h), (w / 2, 0.0), (-w / 2, 0.0)])
     _xf(bm, matrix, made)
 
 
@@ -1520,7 +1901,7 @@ def _build_stone_lantern(pc, H, material, lit):
         R = Matrix.Rotation(i * math.pi / 4, 4, 'Z')
         if i % 2 == 0:
             _arch_wall(bm, side_len, ch, t, 0.125, 0.30, 0.09,
-                       S @ R @ Matrix.Translation((0, -(ap - t / 2), zc0)))
+                       S @ R @ Matrix.Translation((0, -(ap - t / 2), zc0)), closed=LANTERN_UNION)
         else:
             _box(bm, (side_len, t, ch), (0, -(ap - t / 2), zc0 + ch / 2), matrix=S @ R)
             fw, fh, zw = 0.125, 0.25, zc0 + 0.09 + 0.125
@@ -1538,7 +1919,13 @@ def _build_stone_lantern(pc, H, material, lit):
                     (0.0, zc0 + ch + 0.05)], matrix=S)
     _merge(bm, 1e-6)
     _outward(bm)
-    _mk(_nm("stone_lantern.chamber"), bm, pc, [material], smooth=False, bevel=0.005 * k)
+    if LANTERN_UNION:
+        chamber = _mk(_nm("stone_lantern.chamber"), bm, pc, [material], smooth=False)
+        _union(chamber.data)
+        _dissolve_flat(chamber.data)
+        U.bevel_mesh(chamber, 0.005 * k, 2, math.radians(30))
+    else:
+        _mk(_nm("stone_lantern.chamber"), bm, pc, [material], smooth=False, bevel=0.005 * k)
     # ---- octagonal roof: soffit, stepped fascia, thick eave edge, concave slopes, lifted corners
     z_e = zc0 + ch + 0.05                       # 1.90
     rings = [(0.29, z_e, 0.05, 0.0), (0.38, z_e, 0.05, 1.0), (0.38, z_e + 0.03, 0.05, 1.0),
@@ -1949,12 +2336,35 @@ def _banner_cloth_mesh(W, L, seed, wind, style, text, emblem, fresh=False):
         swing = r.uniform(0.7, 1.0)
         bm = bmesh.new()
         rest = []
+        # BANNER_REGIONS: the characters and the emblem are drawn once, flat, into ``rb`` and cut into the body as
+        # material regions (_imprint) before any piece is bent; ``fns`` keeps each vertex's bend until then
+        rb = bmesh.new() if BANNER_REGIONS else bm
+        fns = {}
+        body = []
 
         def take(n0, fn):
             bm.verts.ensure_lookup_table()
             for v in bm.verts[n0:]:
+                if BANNER_REGIONS:
+                    fns[v] = fn
+                    continue
                 rest.append(v.co.copy())
                 v.co = fn(v.co)
+
+        def sides(both):
+            return both if not BANNER_REGIONS else both[:1]
+
+        def finish(body_fn):
+            regions = [([(v.co.x, v.co.y) for v in f.verts], f.material_index) for f in rb.faces]
+            rb.free()
+            for mat, fl in _imprint(bm, [f for f in body if f.is_valid], lambda co: (co.x, co.y),
+                                    lambda x, y: Vector((x, y, 0.0)), regions).items():
+                if mat is not None:
+                    for f in fl:
+                        f.material_index = mat
+            for v in bm.verts:
+                rest.append(v.co.copy())
+                v.co = fns.get(v, body_fn)(v.co)
 
         if style == "qi":
             Wq, Hq = W, L
@@ -1972,6 +2382,7 @@ def _banner_cloth_mesh(W, L, seed, wind, style, text, emblem, fresh=False):
             vs = _cloth_rows(bm, [[(x, y) for x in xs] for y in ys],
                              lambda i, j: 1 if (j == 0 or j == 7 or i == 11) else 0)
             _orient_up(bm, vs)
+            body = list(_faces_of(vs))
             take(n0, dq)
             # flame-tooth border on the top, the fly (outer) edge and the bottom
             th, tw = 0.16 * Hq, 0.14 * Hq
@@ -2004,17 +2415,21 @@ def _banner_cloth_mesh(W, L, seed, wind, style, text, emblem, fresh=False):
                 me = _text_mesh(text[0], 1.0, 3)
                 dm = _mesh_dims(me)
                 f = 1.15 * R / max(dm.x, dm.y, 1e-6)
-                for zo, mir in ((0.004, 1), (-0.004, -1)):
-                    _add_mesh(bm, me, Matrix.Translation((cx, cy, zo)) @ Matrix.Diagonal((f * mir, f, f, 1)), 2)
-                for zo in (0.003, -0.003):
-                    _annulus(bm, R * 1.0, R * 1.08, 48, zo, matrix=Matrix.Translation((cx, cy, 0)), mat=2)
+                for zo, mir in sides(((0.004, 1), (-0.004, -1))):
+                    zo = 0.0 if BANNER_REGIONS else zo
+                    _add_mesh(rb, me, Matrix.Translation((cx, cy, zo)) @ Matrix.Diagonal((f * mir, f, f, 1)), 2)
+                for zo in sides((0.003, -0.003)):
+                    zo = 0.0 if BANNER_REGIONS else zo
+                    _annulus(rb, R * 1.0, R * 1.08, 48, zo, matrix=Matrix.Translation((cx, cy, 0)), mat=2)
             elif emblem == "sunmoon":
-                for zo in (0.003, -0.003):
-                    _sunmoon_flat(bm, cx, cy, R * 0.8 * 1.22, z=zo, back=zo < 0)
+                for zo in sides((0.003, -0.003)):
+                    _sunmoon_flat(rb, cx, cy, R * 0.8 * 1.22, z=0.0 if BANNER_REGIONS else zo, back=zo < 0)
             elif emblem:
-                for zo in (0.003, -0.003):
-                    _crescent(bm, cx, cy, R * 0.8, 2, z=zo)
+                for zo in sides((0.003, -0.003)):
+                    _crescent(rb, cx, cy, R * 0.8, 2, z=0.0 if BANNER_REGIONS else zo)
             take(n0, dq)
+            if BANNER_REGIONS:
+                finish(dq)
             weights = [min(1.0, max(0.0, c.x / Wq)) ** 1.2 for c in rest]
         else:
             hh = 0.42 * W                         # head triangle height
@@ -2065,8 +2480,9 @@ def _banner_cloth_mesh(W, L, seed, wind, style, text, emblem, fresh=False):
             bw = 0.075 * W
             xs = [-W / 2, -W / 2 + bw] + [-W / 2 + bw + (W - 2 * bw) * q / 6 for q in range(1, 6)] + [W / 2 - bw, W / 2]
             n0 = len(bm.verts)
-            _cloth_rows(bm, [[(x, yy) for x in xs] for yy in ys],
-                        lambda i, j: 1 if (i == 0 or i == len(xs) - 2 or kinds[j]) else 0)
+            vs = _cloth_rows(bm, [[(x, yy) for x in xs] for yy in ys],
+                             lambda i, j: 1 if (i == 0 or i == len(xs) - 2 or kinds[j]) else 0)
+            body = list(_faces_of(vs))
             take(n0, df)
             body_bottom = y
             # three tapered tails (fan zu)
@@ -2113,22 +2529,26 @@ def _banner_cloth_mesh(W, L, seed, wind, style, text, emblem, fresh=False):
                     me = _text_mesh(text[s_], 1.0, 3)
                     dm = _mesh_dims(me)
                     f = min(0.66 * W, 0.78 * hs) / max(dm.x, dm.y, 1e-6)
-                    for zo, mir in ((0.005, 1), (-0.005, -1)):
-                        _add_mesh(bm, me, Matrix.Translation((0, yc, zo)) @ Matrix.Diagonal((f * mir, f, f, 1)), 2)
+                    for zo, mir in sides(((0.005, 1), (-0.005, -1))):
+                        zo = 0.0 if BANNER_REGIONS else zo
+                        _add_mesh(rb, me, Matrix.Translation((0, yc, zo)) @ Matrix.Diagonal((f * mir, f, f, 1)), 2)
                 elif emblem == "sunmoon" and s_ == 0:
-                    for zo in (0.004, -0.004):
-                        _sunmoon_flat(bm, 0.0, yc, 1.22 * min(0.26 * W, 0.3 * hs), z=zo, back=zo < 0)
+                    for zo in sides((0.004, -0.004)):
+                        _sunmoon_flat(rb, 0.0, yc, 1.22 * min(0.26 * W, 0.3 * hs), z=0.0 if BANNER_REGIONS else zo,
+                                      back=zo < 0)
                 elif emblem and s_ == 0:
-                    for zo in (0.004, -0.004):
-                        _crescent(bm, 0.0, yc, min(0.26 * W, 0.3 * hs), 2, z=zo)
+                    for zo in sides((0.004, -0.004)):
+                        _crescent(rb, 0.0, yc, min(0.26 * W, 0.3 * hs), 2, z=0.0 if BANNER_REGIONS else zo)
                 y -= hs + bh
             take(n0, df)
+            if BANNER_REGIONS:
+                finish(df)
             weights = [min(1.0, max(0.0, -c.y / Lt)) ** 1.2 for c in rest]
         me = bpy.data.meshes.new(key)
         bm.to_mesh(me)
         bm.free()
         mats = [p.material_index for p in me.polygons]
-        smooth = [m_ in (0, 1, 3) for m_ in mats]
+        smooth = [True] * len(mats) if BANNER_REGIONS else [m_ in (0, 1, 3) for m_ in mats]
         me.polygons.foreach_set("use_smooth", smooth)
         me["props_weights"] = weights
         me.update()
@@ -2559,7 +2979,7 @@ def _ding_fill(pc, s, lit, r_in, z_top, sparks, light, smoke):
     """Molten (lit) or ash (unlit) surface, heat aura, rising embers and an optional light."""
     bm = bmesh.new()
     _lathe(bm, [(r_in * s, (z_top - 0.012) * s), (r_in * 0.7 * s, (z_top - 0.004) * s), (0.0, z_top * s)], 48,
-           cap_start=True)
+           cap_start=DING_MOLTEN_CAP)
     _mk(_nm("ding.molten" if lit else "ding.ash"), bm, pc, ["props_molten" if lit else "props_ash"], smooth=True,
         glow=1.0 if lit else None)
     if not lit:
@@ -3214,6 +3634,8 @@ def _build_lion(pc, s, female, material, plinth_material):
         _curl(bm, bc + Vector((0.0, -0.1, 0.12)), Vector((0, -0.6, 0.8)).normalized(), 0.04)
     bmesh.ops.transform(bm, matrix=S @ Matrix.Translation((0, 0, top)), verts=bm.verts[:])
     lion = _mk(_nm("lion.body"), bm, pc, [material], smooth=True)
+    if LION_UNION:
+        _union(lion.data)
     U.auto_smooth(lion, math.radians(60))
     bpy.data.meshes.remove(me)
     return lion
@@ -3309,7 +3731,7 @@ def _build_stele(pc, H, glyph_mat, turtle, seed, material, manual=None):
     zc = 3.3 * s                                      # crown base
     bm = bmesh.new()
     _box(bm, (W, T, zc - z0 + 0.02 * s), (0, 0, (z0 + zc) / 2 - 0.01 * s))
-    _mk(_nm("stele.slab"), bm, pc, [material], smooth=False, bevel=0.012 * s)
+    slab = _mk(_nm("stele.slab"), bm, pc, [material], smooth=False, bevel=0.012 * s)
     # carved border: key-fret band on both faces (relief)
     bm = bmesh.new()
     Hs = zc - z0
@@ -3317,7 +3739,7 @@ def _build_stele(pc, H, glyph_mat, turtle, seed, material, manual=None):
         m = Matrix.Translation((0, -face * T / 2, (z0 + zc) / 2)) @ (Matrix.Identity(4) if face == 1 else
                                                                     Matrix.Rotation(math.pi, 4, 'Z'))
         _frame_fret(bm, W - 0.04 * s, Hs - 0.04 * s, 0.03 * s, 0.13 * s, 0.0, 0.012 * s, matrix=m)
-    _mk(_nm("stele.border"), bm, pc, [material], smooth=False)
+    border = _mk(_nm("stele.border"), bm, pc, [material], smooth=False)
     # crown: arched top with two coiling dragons holding a pearl, title panel
     bm = bmesh.new()
     cw, ch = 1.36 * s, 0.70 * s
@@ -3351,12 +3773,15 @@ def _build_stele(pc, H, glyph_mat, turtle, seed, material, manual=None):
                                    (0.165, 0.33, 0.03, 0.43)):
             _box(bm, (sx_ * s, 0.03 * s, sz_ * s), (cx * s, yf - face * 0.01 * s, zc + cz * s))
     _outward(bm)
-    _mk(_nm("stele.crown"), bm, pc, [material], smooth=math.radians(40), bevel=0.006 * s)
-    # glowing glyphs: columns of classical text (right to left) on the front, title in the crown
+    crown = _mk(_nm("stele.crown"), bm, pc, [material], smooth=math.radians(40), bevel=0.006 * s)
+    # glowing glyphs: columns of classical text (right to left) on the front, title in the crown, cut into the slab
+    # and the crown (STELE_CUT)
     bm = bmesh.new()
     _stele_glyphs(bm, s, z0, seed, manual)
     g = _mk(_nm("stele.glyphs"), bm, pc, [glyph_mat], smooth=False, glow=1.3)
     U.set_visibility(g, shadow=False)
+    if STELE_CUT:
+        _stele_cut(slab.data, crown.data, g.data, border.data)
 
 
 def _stele_glyphs(bm, s, z0, seed, manual=None):
@@ -3432,7 +3857,8 @@ def _manual_key(manual):
 
 def stele_glyph_mesh(name, height=4.0, turtle_base=True, seed=0, manual=None):
     """New mesh data (no material, flat) of the glyphs stele(height, turtle_base=..., seed=..., manual=...) puts in
-    its prototype's 'stele.glyphs' object, in the prototype frame: for patch scripts that re-letter a built stele."""
+    its prototype's 'stele.glyphs' object, in the prototype frame, as laid out before round 12 cuts them into the slab
+    (_stele_cut): for patch scripts that re-letter a built stele."""
     b, _res = _bucket(height, 4.0)
     s = b / 4.0
     if manual is not None:
@@ -4835,10 +5261,12 @@ def bamboo_slip_scroll(collection, width=3.0, height=1.2, curve=0.25, glow=True,
             rr = pitch * 0.55 + pitch * 0.13 * th
             p = axis + Vector((rr * math.cos(th + 0.6), rr * math.sin(th + 0.6), 0))
             _box(bm, (sw, st, height), (0, 0, 0), matrix=Matrix.Translation(p) @ Matrix.Rotation(th + 0.6 + math.pi / 2, 4, 'Z'))
-    _mk(U.unique_name(pn + ".slips"), bm, collection, ["jade_slip" if glow else "jade"], parent=root,
-        smooth=False, bevel=st * 0.25, glow=0.7 if glow else None)
+    sl = _mk(U.unique_name(pn + ".slips"), bm, collection, ["jade_slip" if glow else "jade"], parent=root,
+             smooth=False, bevel=st * 0.25, glow=0.7 if glow else None)
     g = _mk(U.unique_name(pn + ".script"), bt, collection, [tm], parent=root, smooth=False, glow=1.1 if glow else None)
     U.set_visibility(g, shadow=False)
+    if SLIPS_CUT:
+        _slips_cut(sl.data, g.data)
     bm = bmesh.new()
     for zc in (-height * 0.32, height * 0.32):
         pts = []
@@ -4874,7 +5302,7 @@ def _build_scroll(pc, w, opened, glow, seed):
         for j in range(nv):
             for i in range(nu):
                 bm.faces.new((grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]))
-        _mk(_nm("scroll.paper"), bm, pc, ["paper_aged"], smooth=True)
+        paper = _mk(_nm("scroll.paper"), bm, pc, ["paper_aged"], smooth=True)
         bm = bmesh.new()
         for x, rr in ((-w / 2, 0.035 * w), (w / 2, 0.018 * w)):
             _cyl(bm, rr, h + 0.02 * w, 20, (x, wave(x) + rr * 0.6, 0))
@@ -4909,7 +5337,9 @@ def _build_scroll(pc, w, opened, glow, seed):
         bm = bmesh.new()
         xs = w * 0.40 - (cols + 0.3) * cell * 1.25
         _box(bm, (cell * 1.1, 0.002, cell * 1.1), (xs, wave(xs) - 0.0025, h * 0.40 - cell * (rows - 1.2)))
-        _mk(_nm("scroll.seal"), bm, pc, ["lacquer_red"], smooth=False)
+        seal = _mk(_nm("scroll.seal"), bm, pc, ["lacquer_red"], smooth=False)
+        if SCROLL_CUT:
+            _scroll_cut(paper.data, g.data, seal.data)
     else:
         bm = bmesh.new()
         L = h + 0.02 * w
@@ -4943,6 +5373,49 @@ def floating_scroll(collection, width=1.2, open=True, glow=True, seed=0, name=No
 _BOOK_COVERS = ["banner_4", "cloth_teal", "props_cover_ochre", "props_cover_brown"]
 
 
+def _rect(cx, cy, hx, hy):
+    return [(cx - hx, cy - hy), (cx + hx, cy - hy), (cx + hx, cy + hy), (cx - hx, cy + hy)]
+
+
+def _imprint_mats(b, faces, to2d, to3d, regions):
+    """_imprint with material-index tags: each region's triangles take its tag as their material."""
+    for mat, fl in _imprint(b, faces, to2d, to3d, regions).items():
+        if mat is not None:
+            for f in fl:
+                f.material_index = mat
+
+
+def _book_solid(bm, w, d, t, cov, m):
+    """One thread-bound book as a single box (BOOKS_SOLID): cover cloth (slot ``cov``) on the top, the bottom and the
+    spine (+X), paper edges (slot 0) on the other three sides; the white title slip with three ink marks and the white
+    stitching (four threads over the spine, wrapping onto the top and the bottom) are regions of those faces.
+    Transformed by ``m`` into ``bm``."""
+    b = bmesh.new()
+    _box(b, (w, d, t), (0, 0, t / 2))
+    for f in b.faces:
+        f.normal_update()
+        f.material_index = cov if (abs(f.normal.z) > 0.5 or f.normal.x > 0.5) else 0
+    ys = [-d / 2 + d * (k + 0.5) / 4 for k in range(4)]
+    e = 0.002                       # regions stay this far inside a face's edges (the bevel takes 1.2 mm)
+    regs = [(_rect(-w / 2 + 0.03, 0.03, 0.016, 0.065), 5)]
+    regs += [(_rect(-w / 2 + 0.03, 0.075 - k * 0.03, 0.006, 0.007), 6) for k in range(3)]
+    regs += [(_rect(w / 2 - 0.0135, y, 0.0115, 0.0015), 5) for y in ys]
+    _imprint_mats(b, [f for f in b.faces if f.normal.z > 0.5],              # top: plane (x, y)
+                  lambda co: (co.x, co.y), lambda x, y: Vector((x, y, t)), regs)
+    _imprint_mats(b, [f for f in b.faces if f.normal.z < -0.5],             # bottom: plane (-x, y)
+                  lambda co: (-co.x, co.y), lambda x, y: Vector((-x, y, 0.0)),
+                  [(_rect(-(w / 2 - 0.0135), y, 0.0115, 0.0015), 5) for y in ys])
+    _imprint_mats(b, [f for f in b.faces if f.normal.x > 0.5],              # spine: plane (y, z)
+                  lambda co: (co.y, co.z), lambda x, y: Vector((w / 2, x, y)),
+                  [(_rect(y, t / 2, 0.0015, t / 2 - e), 5) for y in ys])
+    b.transform(m)
+    me = bpy.data.meshes.new("_book_tmp")
+    b.to_mesh(me)
+    b.free()
+    bm.from_mesh(me)
+    bpy.data.meshes.remove(me)
+
+
 def _build_books(pc, n, seed):
     r = U.rng(seed, "books")
     mats = ["paper_aged"] + _BOOK_COVERS + ["cloth_white", "ink"]
@@ -4954,6 +5427,10 @@ def _build_books(pc, n, seed):
         m = Matrix.Translation((r.uniform(-0.012, 0.012), r.uniform(-0.012, 0.012), z)) @ \
             Matrix.Rotation(r.uniform(-0.14, 0.14), 4, 'Z')
         cov = 1 + r.randrange(len(_BOOK_COVERS))
+        if BOOKS_SOLID:
+            _book_solid(bm, w, d, t, cov, m)
+            z += t
+            continue
         _box(bm, (w - 0.004, d - 0.004, t - 0.003), (0, 0, t / 2), matrix=m)
         for zz in (0.00075, t - 0.00075):
             _box(bm, (w, d, 0.0015), (0, 0, zz), matrix=m, mat=cov)
@@ -5225,12 +5702,18 @@ def weapon_rack(collection, width=2.0, seed=0, name=None, parent=None, location=
 def _build_anvil(pc, s):
     S = Matrix.Diagonal((s, s, s, 1.0))
     bm = bmesh.new()
-    _lathe(bm, [(0.0, 0.0), (0.36, 0.0), (0.33, 0.06), (0.30, 0.15), (0.30, 0.44), (0.0, 0.44)], 24,
+    prof = [(0.0, 0.0), (0.36, 0.0), (0.33, 0.06), (0.30, 0.15), (0.30, 0.44)]
+    _lathe(bm, prof if ANVIL_OPEN_STUMP else prof + [(0.0, 0.44)], 24,
            rmod=lambda a, i, r, z: r * (1 + 0.05 * math.sin(5 * a + i)), cap_end=False, matrix=S)
     _mk(_nm("anvil.stump"), bm, pc, ["bark_dark"], smooth=True)
     bm = bmesh.new()
-    _lathe(bm, [(0.0, 0.0), (0.298, 0.0), (0.0, 0.0)], 24, matrix=S @ Matrix.Translation((0, 0, 0.44)),
-           rmod=lambda a, i, r, z: r * (1 + 0.05 * math.sin(5 * a + 4)))
+    if ANVIL_OPEN_STUMP:
+        # the end grain: one upward disc on the stump's rim (same radii), closing its open top
+        _lathe(bm, [(0.30, 0.0), (0.0, 0.0)], 24, matrix=S @ Matrix.Translation((0, 0, 0.44)),
+               rmod=lambda a, i, r, z: r * (1 + 0.05 * math.sin(5 * a + 4)), cap_start=False)
+    else:
+        _lathe(bm, [(0.0, 0.0), (0.298, 0.0), (0.0, 0.0)], 24, matrix=S @ Matrix.Translation((0, 0, 0.44)),
+               rmod=lambda a, i, r, z: r * (1 + 0.05 * math.sin(5 * a + 4)))
     _mk(_nm("anvil.stump_top"), bm, pc, ["wood_light"], smooth=True)
     bm = bmesh.new()
     for z in (0.10, 0.36):
@@ -5620,32 +6103,64 @@ def _build_rune_ring(radius, width, kind, seed):
     return build
 
 
+# Round 12: the ring is a raised inlay, not a sheet. It was the flat pattern 8 mm over the floor (RUNE_LIFT_OLD), which
+# z-fought with the paving beyond ~180 m on the web (summit, arena, forge, gate, scroll, mirror). Now every face of the
+# pattern stands RUNE_TOP over the ring's origin plane (the floor) with closed sides down to RUNE_SINK under it and no
+# bottom face, so nothing lies within mm of the floor.
+RUNE_TOP = 0.04
+RUNE_SINK = 0.02
+RUNE_LIFT_OLD = 0.008          # the old sheet's lift (patch_r12_libs.py recognises it)
+RUNE_KEY_VERSION = 5           # the shared mesh key's version (the flat sheets were v4)
+
+
+def _rune_band(bm, top=RUNE_TOP, sink=RUNE_SINK):
+    """Raise a flat pattern (every vertex at z 0) into a band: the faces lifted to ``top``, facing up, and closed sides
+    from each outline down to -``sink`` (no bottom face)."""
+    faces = list(bm.faces)
+    for f in faces:
+        f.normal_update()
+        if f.normal.z < 0:
+            f.normal_flip()
+    rim = [e for e in bm.edges if len(e.link_faces) == 1]
+    for v in bm.verts:
+        v.co.z = top
+    low = {}
+
+    def under(v):
+        w = low.get(v)
+        if w is None:
+            w = low[v] = bm.verts.new((v.co.x, v.co.y, -sink))
+        return w
+    for e in rim:
+        f = e.link_faces[0]
+        lp = next(lp for lp in f.loops if lp.edge == e)
+        a, b = lp.vert, lp.link_loop_next.vert            # counter-clockwise round the (upward) face
+        side = bm.faces.new((b, a, under(a), under(b)))    # faces out of the face it closes
+        side.smooth = False
+    return bm
+
+
 def rune_ring(collection, radius=5.0, width=0.6, kind="trigram", material="rune_cyan", seed=0, spin=0.0,
               groove=False, name=None, parent=None, location=(0, 0, 0), rotation=(0, 0, 0)):
-    """Flat glowing rune circle on the ground (8 mm above the local origin plane), ``radius`` m to
-    the centre of a band ``width`` m wide, framed by two thin rings. kind 'trigram': the eight bagua
-    trigrams (yang solid, yin broken bars, bottom line innermost, Fu Xi order, qian at +Y) repeated
-    around the ring with diamond markers; 'sigil': procedural talisman sigils linked by arcs;
-    'script': classical characters standing outward around the circle. ``spin`` (rad/s) adds a
-    frame driver that slowly rotates it; groove=True lays a dark engraved channel underneath.
-    Mesh shared per parameter set. Returns the ring object."""
+    """Glowing rune circle inlaid in the ground: a raised band whose top is RUNE_TOP (4 cm) over the local origin
+    plane (the floor), with sides down into it, ``radius`` m to the centre of a band ``width`` m wide, framed by two
+    thin rings. kind 'trigram': the eight bagua trigrams (yang solid, yin broken bars, bottom line innermost, Fu Xi
+    order, qian at +Y) repeated around the ring with diamond markers; 'sigil': procedural talisman sigils linked by
+    arcs; 'script': classical characters standing outward around the circle. ``spin`` (rad/s) adds a frame driver that
+    slowly rotates it. ``groove`` is accepted and ignored: the dark channel it laid under the ring was one more sheet a
+    few mm over the floor (a dark channel belongs in the host floor's own top). Mesh shared per parameter set. Returns
+    the ring object."""
     if kind not in ("trigram", "sigil", "script"):
         raise ValueError("rune_ring kind must be 'trigram', 'sigil' or 'script'")
-    key = "props.rune_ring.%s.%s.%s.%d.v%d" % (kind, _k(radius), _k(width), seed, _VERSION)
-    me = U.shared_mesh(key, _build_rune_ring(radius, width, kind, seed))
+    key = "props.rune_ring.%s.%s.%s.%d.v%d" % (kind, _k(radius), _k(width), seed, RUNE_KEY_VERSION)
+    flat = _build_rune_ring(radius, width, kind, seed)
+    me = U.shared_mesh(key, lambda: _rune_band(flat()))
     if not len(me.materials):
         U.set_materials(me, [material])
     ob = _obj(U.unique_name(name or PREFIX + ".rune_ring"), me, collection, parent=parent,
-              location=Vector(location) + Vector((0, 0, 0.008)), rotation=rotation)
+              location=Vector(location), rotation=rotation)
     U.set_object_material(ob, material, 0)
     U.set_visibility(ob, shadow=False)
-    if groove:
-        def gb():
-            bm = bmesh.new()
-            _annulus(bm, radius - width / 2 - 0.02, radius + width / 2 + 0.02, max(64, int(TAU * radius / 0.1)), 0.0)
-            return bm
-        gm = _mesh("props.rune_groove.%s.%s" % (_k(radius), _k(width)), gb, ["stone_dark"], smooth=False)
-        _obj(U.unique_name(ob.name + ".groove"), gm, collection, parent=ob, location=(0, 0, -0.005))
     if spin:
         fc = ob.driver_add("rotation_euler", 2)
         fc.driver.type = 'SCRIPTED'
