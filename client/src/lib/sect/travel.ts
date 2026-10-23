@@ -1,8 +1,9 @@
 /**
  * Fast travel from the map (app/sect/experience/ink-travel.tsx), as in Black Myth: Wukong: ink
  * blooms out from the seal the visitor picked until it covers the screen, the camera jumps to the
- * place while it is covered (its area streams in meanwhile), then the ink clears from the middle.
- * With reduced motion: a plain quick fade.
+ * place while it is covered and the place is drawn there until it has settled (every area its view
+ * draws loaded and on the GPU, grass grown, reflections captured: lib/sect/settle.ts), then the ink
+ * clears from the middle. With reduced motion: the same wait, under a plain fade.
  *
  * The timings and the ink's shapes. Plain numbers, so they are unit-tested; the component draws.
  */
@@ -11,25 +12,22 @@
 export interface TravelTiming {
   /** The ink spreads until it covers the screen. */
   cover: number;
-  /** Covered at least this long (the place's name reads), however fast the place is ready. */
+  /**
+   * Covered at least this long (the place's name reads, and the travel feels deliberate), however
+   * fast the place settles. The Loading seal shows only past it.
+   */
   hold: number;
   /** The ink clears. */
   reveal: number;
   /**
-   * How long the camera waits under the ink for the place's chunks before it goes anyway (the
-   * backdrop's stand-ins show until they come): longer than a scroll's far jump waits (12 s), since
-   * the ink and its Loading seal are already up, and well inside `giveUp`, so the camera has always
-   * moved before the ink clears.
+   * The place never takes longer than this to settle (a very slow network): the ink clears anyway,
+   * the camera already there, and what has not come yet streams in as it would after a scroll.
    */
-  patience: number;
-  /** The place never takes longer than this to come: the ink clears anyway (the stand-ins show). */
   giveUp: number;
 }
 
 export function travelTiming(reducedMotion: boolean): TravelTiming {
-  return reducedMotion
-    ? { cover: 160, hold: 120, reveal: 220, patience: 16000, giveUp: 20000 }
-    : { cover: 700, hold: 650, reveal: 950, patience: 16000, giveUp: 20000 };
+  return reducedMotion ? { cover: 160, hold: 1200, reveal: 220, giveUp: 30000 } : { cover: 700, hold: 1200, reveal: 950, giveUp: 30000 };
 }
 
 /** A small seeded random generator (mulberry32): the same place always gets the same splash. */

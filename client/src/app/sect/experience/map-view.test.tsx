@@ -124,13 +124,16 @@ describe("MapButton", () => {
 describe("InkTravel", () => {
   it("names the place it travels to, in Chinese and English, with its section", () => {
     const html = renderToStaticMarkup(
-      <InkTravel request={{ key: 1, area: "library", at: [10, 10] }} reducedMotion={false} gathering={false} arrive={() => Promise.resolve()} onDone={noop} />,
+      <InkTravel request={{ key: 1, area: "library", at: [10, 10] }} reducedMotion={false} progress={0.4} arrive={() => Promise.resolve()} onDone={noop} />,
     );
     expect(html).toContain("藏经阁");
     expect(html).toContain("Scripture Pavilion");
     expect(html).toContain("Education");
     expect(html).toContain('data-phase="cover"');
-    // A status line for screen readers, empty until the place is slow to come.
+    // A status line for screen readers, empty until the place is slow to come, and no progress bar yet.
     expect(html).toMatch(/role="status"[^>]*><\/p>/);
+    expect(html).not.toContain('role="progressbar"');
+    // The Loading line is drawn (hidden) at the progress so far.
+    expect(html).toContain("scaleX(0.4)");
   });
 });

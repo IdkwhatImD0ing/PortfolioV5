@@ -4,7 +4,8 @@
  * camera rests), cancels loads nobody wants any more, keeps the area on screen until the next one
  * can be drawn, retries failed loads a few times and hands dropped chunks back for disposal once
  * React has taken them out of the scene. On roomy desktops it measures what each loaded chunk holds,
- * so passed areas can stay within a residency budget (STREAM_BUDGETS.retain).
+ * so passed areas can stay within a residency budget (STREAM_BUDGETS.retain). For fast travel's
+ * settled wait it says what a camera resting at a stop will draw and how far that has come (settleAt).
  *
  * Not React: the page calls update() on a timer and on jumps, and re-renders on onChange.
  */
@@ -25,6 +26,7 @@ import {
   type Travel,
 } from "@/lib/sect/chunks";
 import type { DeviceInfo, Tier } from "@/lib/sect/runtime";
+import { chunkDone, destinationChunks, type SettleSnapshot } from "@/lib/sect/settle";
 import type { ChunkInfo } from "@/lib/sect/types";
 import { chunkFiles, disposeSet, loadSet, retireSet, type LoadedSet, type SetLoadOptions, type WorldContext } from "./assets";
 
@@ -213,6 +215,14 @@ export interface StreamStatus {
   failed: string[];
 }
 
+/** What a camera resting at a stop will draw, and how far it has come (ChunkStreamer.settleAt). */
+export interface DestinationStatus {
+  /** The chunks it draws there (and the one the plan will fetch next for it, `expected`). */
+  chunks: SettleSnapshot["chunks"];
+  /** Chunks drawn there now that go once those are in. */
+  leaving: string[];
+}
+
 /** Someone waiting for a chunk (whenReady): released when it is ready, or when nobody wants it any more. */
 interface Waiter {
   done: () => void;
@@ -225,6 +235,8 @@ export class ChunkStreamer {
   private readonly onChange: () => void;
   private readonly sets = new Map<string, LoadedSet>();
   private readonly loading = new Map<string, AbortController>();
+  /** Bytes each loading chunk has downloaded so far, per file (settleAt's progress). */
+  private readonly received = new Map<string, Map<string, number>>();
   /** Failed tries per chunk and when the last one failed (cleared by a load that works). */
   private readonly failures = new Map<string, { count: number; at: number }>();
   private readonly waiters = new Map<string, Waiter[]>();
@@ -337,6 +349,58 @@ export class ChunkStreamer {
     return this.needAt(frame).filter((id) => !this.isReady(id) && !this.isFailed(id));
   }
 
+  /**
+   * What a camera resting at `frame` will draw once streaming there has run its course (fast
+   * travel's settled wait, lib/sect/settle.ts destinationChunks): the chunks the plan at rest keeps,
+   * needs or prefetches there, each with how far it has come (chunkDone) and its download size, and
+   * the drawn chunks that go once those are in. The prefetch counts only when this budget fetches
+   * ahead (not with the data saver: its stand-in stays). The area the plan will fetch next once these
+   * are in is listed too, `expected` (for the progress shown: it may not come after all).
+   */
+  settleAt(frame: number): DestinationStatus {
+    const failed = this.failedIds();
+    const ready = new Set<string>(failed);
+    for (const [id, s] of this.sets) if (s.ready) ready.add(id);
+    const resident = new Set([...this.sets.keys(), ...failed]);
+    const loading = new Set(this.loading.keys());
+    const base = { chunks: this.spans, frame, direction: this.travel?.direction ?? 1, loaded: this.costs, window: this.window };
+    const ahead = this.budget.prefetch !== "off";
+    const now = destinationChunks({ ...base, resident, loading, ready }, ahead);
+    // As if those were all in: what the plan wants then (the prefetch it starts once they are).
+    const assumed = new Set(now.want);
+    const next = destinationChunks(
+      {
+        ...base,
+        resident: new Set([...resident, ...assumed]),
+        loading: new Set([...loading].filter((id) => !assumed.has(id))),
+        ready: new Set([...ready, ...assumed]),
+      },
+      ahead,
+    );
+    const status = (id: string, expected: boolean) => ({
+      id,
+      done: chunkDone({
+        done: ready.has(id),
+        resident: this.sets.has(id),
+        received: [...(this.received.get(id)?.values() ?? [])].reduce((a, b) => a + b, 0),
+        total: this.downloadBytes(id),
+      }),
+      weight: this.downloadBytes(id),
+      ...(expected ? { expected } : {}),
+    });
+    return {
+      chunks: [...now.want.map((id) => status(id, false)), ...next.want.filter((id) => !assumed.has(id)).map((id) => status(id, true))],
+      leaving: now.leaving,
+    };
+  }
+
+  /** A chunk's download for the texture set in use (bytes; 0 when the manifest does not say). */
+  private downloadBytes(id: string): number {
+    const c = this.chunks.find((x) => x.id === id);
+    if (!c) return 0;
+    return (this.ctx.lowTextures && c.filesLow !== null ? c.bytesLow : null) ?? c.bytes ?? 0;
+  }
+
   /** Resident sets in flight order (loaded; possibly not yet uploaded). */
   list(): LoadedSet[] {
     return this.chunks.map((c) => this.sets.get(c.id)).filter((s): s is LoadedSet => s !== undefined);
@@ -433,6 +497,7 @@ export class ChunkStreamer {
       if (this.waiters.has(id)) continue;
       this.loading.get(id)?.abort();
       this.loading.delete(id);
+      this.received.delete(id);
     }
     for (const id of plan.drop) {
       const set = this.sets.get(id);
@@ -487,12 +552,23 @@ export class ChunkStreamer {
     if (!chunk || this.loading.has(id) || this.sets.has(id)) return;
     const ac = new AbortController();
     this.loading.set(id, ac);
+    const got = new Map<string, number>();
+    this.received.set(id, got);
     loadSet(this.ctx, id, [chunk.need[0], chunk.need[1]], chunkFiles(chunk, this.ctx.lowTextures), {
       signal: ac.signal,
       calm: () => this.calm(id),
       ...opts,
+      // Bytes per file for settleAt, and on to the caller's tracker when it has one.
+      onBytes: (url) => {
+        const outer = opts?.onBytes?.(url);
+        return (loaded, total) => {
+          got.set(url, loaded);
+          outer?.(loaded, total);
+        };
+      },
     })
       .then((set) => {
+        if (this.received.get(id) === got) this.received.delete(id);
         if (this.loading.get(id) !== ac || this.disposed || ac.signal.aborted) {
           disposeSet(this.ctx, set);
           return;
@@ -506,6 +582,7 @@ export class ChunkStreamer {
         this.onChange();
       })
       .catch((e) => {
+        if (this.received.get(id) === got) this.received.delete(id);
         if (this.loading.get(id) === ac) this.loading.delete(id);
         if (ac.signal.aborted) return;
         const count = (this.failures.get(id)?.count ?? 0) + 1;
@@ -587,6 +664,7 @@ export class ChunkStreamer {
     if (typeof window !== "undefined" && typeof window.removeEventListener === "function") window.removeEventListener("online", this.onOnline);
     for (const ac of this.loading.values()) ac.abort();
     this.loading.clear();
+    this.received.clear();
     this.openGates();
     for (const s of this.sets.values()) disposeSet(this.ctx, s);
     this.sets.clear();

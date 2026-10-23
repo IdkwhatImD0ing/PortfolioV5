@@ -110,10 +110,11 @@ export class ProbeSchedule {
 
   /**
    * The face to render this frame (or -1). `near`: the mirror is close enough to matter; `dt` the
-   * frame's length (ms) for the fade.
+   * frame's length (ms) for the fade; `snap`: a whole capture shows at once (nobody sees it come:
+   * fast travel's ink covers the view).
    */
-  next(now: number, near: boolean, signature: string, dt: number): number {
-    if (this.complete) this.fade = Math.min(1, this.fade + Math.max(dt, 0) / this.fadeMs);
+  next(now: number, near: boolean, signature: string, dt: number, snap = false): number {
+    if (this.complete) this.fade = snap ? 1 : Math.min(1, this.fade + Math.max(dt, 0) / this.fadeMs);
     if (!near) {
       // A capture under way finishes (it is cheap); none starts.
       return this.face >= 0 ? this.take() : -1;

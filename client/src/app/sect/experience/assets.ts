@@ -809,6 +809,16 @@ export interface ContextOptions {
 
 /** Detail textures waiting for startDetail (createWorldContext with deferDetail). */
 const pendingDetail = new WeakMap<WorldContext, () => void>();
+/** Whether each context's detail texture is on its way or still fading in (detailSettling). */
+const detailBusy = new WeakMap<WorldContext, () => boolean>();
+
+/**
+ * The detail texture has started downloading and has not arrived and faded in yet (false once it
+ * has, when it failed, before startDetail, and without one): fast travel's ink waits for it.
+ */
+export function detailSettling(ctx: WorldContext): boolean {
+  return !pendingDetail.has(ctx) && (detailBusy.get(ctx)?.() ?? false);
+}
 
 /** Starts a deferred detail texture download; nothing when it started already or there is none. */
 export function startDetail(ctx: WorldContext): void {
@@ -857,6 +867,7 @@ export function createWorldContext(data: SectData, sky: Texture | null, opts: Co
     detail: detail?.uniforms ?? null,
   };
   setOverlayTier(ctx.overlay, tier);
+  if (detail) detailBusy.set(ctx, detail.busy);
   if (detail && opts.deferDetail) pendingDetail.set(ctx, detail.start);
   else detail?.start();
   return ctx;
@@ -904,7 +915,9 @@ export function retuneWorld(ctx: WorldContext, tier: Tier): void {
 function loadDetailTexture(
   url: string,
   shared: { time: IUniform<number>; sunDir: Vector3; rockOctaves: number },
-): { uniforms: DetailUniforms; start: () => void } {
+): { uniforms: DetailUniforms; start: () => void; busy: () => boolean } {
+  /** Downloading, or fading in (detailSettling). */
+  let busy = false;
   const tex = new Texture();
   tex.name = "sect.detail";
   tex.wrapS = tex.wrapT = RepeatWrapping;
@@ -924,12 +937,17 @@ function loadDetailTexture(
       const k = Math.min(1, (performance.now() - t0) / DETAIL_FADE_MS);
       uniforms.uSectDetailOn.value = k * k * (3 - 2 * k);
       if (k < 1) requestAnimationFrame(fade);
+      else busy = false;
     };
     fade();
   };
-  const failed = (e: unknown) => console.warn("[sect] the detail texture failed to load; rock and ground stay plain", e);
+  const failed = (e: unknown) => {
+    busy = false;
+    console.warn("[sect] the detail texture failed to load; rock and ground stay plain", e);
+  };
   const start = () => {
     if (tex.userData.disposed) return;
+    busy = true;
     if (typeof createImageBitmap !== "undefined") {
       // An ImageBitmap is not flipped on upload; a tiling texture does not care which way up it is.
       tex.flipY = false;
@@ -938,7 +956,7 @@ function loadDetailTexture(
       new ImageLoader().load(url, done, undefined, failed);
     }
   };
-  return { uniforms, start };
+  return { uniforms, start, busy: () => busy && !tex.userData.disposed };
 }
 
 /** How long the detail texture takes to fade in once it has arrived. */

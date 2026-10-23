@@ -12,7 +12,9 @@
  * Navigation: scroll; the rail (desktop) or its compact row (phones); the map (the Map button or
  * M: a painted map of the sect with every stop's seal, fast travel to any of them under an ink wash,
  * and the list of every place and item); PageDown/PageUp, the up and down arrows and J/K between
- * holds, Home to the start and End to the last place;
+ * holds, Home to the start and End to the last place. Fast travel's ink stays up until the place has
+ * settled (lib/sect/settle.ts), and a far jump from the rail, the list, a link, the voice agent, Home
+ * or End to a place not loaded yet goes under the same ink rather than gathering it in view;
  * #<section> deep links (also on hashchange, and the hash follows the current hold);
  * ?open=<hotspot id>; the voice agent (VoiceBus). Free look turns the view all the way round: drag
  * the view, swipe sideways, or hold the left and right arrows; Escape or the Recentre button turns
@@ -90,7 +92,7 @@ import {
   uToScroll,
   type TrackViewport,
 } from "@/lib/sect/scroll-map";
-import { travelTiming } from "@/lib/sect/travel";
+import { SettleWatch } from "@/lib/sect/settle";
 import type { Vec3 } from "@/lib/sect/types";
 import type { VoiceCommand } from "@/lib/voice-bus";
 import { AreaPanel, AreaReader, ContentFallback, hotspotLabel, hotspotTarget, type ContentTarget } from "../content";
@@ -99,6 +101,7 @@ import { LoadingScreen } from "../loading-screen";
 import {
   chunkFiles,
   createWorldContext,
+  detailSettling,
   disposeSet,
   disposeWorldContext,
   globalFiles,
@@ -159,12 +162,21 @@ function mapLoader(onFail: () => void) {
   );
 }
 
-/** Resolves after `n` animation frames. */
-function nextFrames(n: number): Promise<void> {
-  return new Promise((resolve) => {
-    const step = (left: number) => (left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1)));
-    step(n);
-  });
+/**
+ * Where the ink of a far jump starts: the middle of the control that asked for it (the rail's place,
+ * a list item, the voice orb's box, when it has the focus), else the middle of the screen.
+ */
+function inkOrigin(): [number, number] {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const el = document.activeElement;
+  if (el instanceof HTMLElement && el !== document.body) {
+    const r = el.getBoundingClientRect();
+    if (r.width > 0 && r.height > 0) {
+      return [Math.min(w, Math.max(0, r.left + r.width / 2)), Math.min(h, Math.max(0, r.top + r.height / 2))];
+    }
+  }
+  return [w / 2, h / 2];
 }
 
 interface Probe {
@@ -330,8 +342,12 @@ export default function SectExperience() {
   const [veil, setVeil] = useState(true);
   const [hovered, setHovered] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
-  /** Fast travel from the map under way (ink-travel.tsx), or null. */
+  /** Fast travel under way (ink-travel.tsx), or null. */
   const [travel, setTravel] = useState<TravelRequest | null>(null);
+  const travelRef = useRef<TravelRequest | null>(null);
+  travelRef.current = travel;
+  /** How far the place fast travel lands on has come toward settled (the ink's Loading line). */
+  const [travelProgress, setTravelProgress] = useState(0);
   const [activeArea, setActiveArea] = useState<string | null>(null);
   const [atHold, setAtHold] = useState(false);
   const [reader, setReader] = useState<ContentTarget | null>(null);
@@ -361,9 +377,13 @@ export default function SectExperience() {
   const pendingVoice = useRef<VoiceCommand | null>(null);
   /** The load under way (the error screen stops its downloads). */
   const loadAbort = useRef<AbortController | null>(null);
-  /** A reader, the page view or the map covers the flight: page scrolls must not move the camera. */
+  /**
+   * A reader, the page view, the map or fast travel's ink covers the flight: page scrolls must not
+   * move the camera (under the ink, the voice orb's own scroll to a section would move it off the
+   * place being drawn).
+   */
   const modalRef = useRef(false);
-  modalRef.current = reader !== null || fallback !== null || mapOpen;
+  modalRef.current = reader !== null || fallback !== null || mapOpen || travel !== null;
   const readerRef = useRef<ContentTarget | null>(null);
   readerRef.current = reader;
   const fallbackRef = useRef<FallbackState | null>(null);
@@ -840,14 +860,15 @@ export default function SectExperience() {
   );
 
   /**
-   * Flies to scroll position `toU` (or is there at once, `instant`: fast travel). Chunks the
-   * destination needs that are not on the GPU yet are gathered first (the indicator shows; the
-   * backdrop proxies stand in meanwhile), so the camera never arrives at nothing; after `patienceMs`
-   * it goes anyway and the proxies stand in until they come. A newer jump or the visitor's own
-   * scrolling cancels a waiting one. Resolves false when cancelled so.
+   * Flies to scroll position `toU`. Chunks the destination needs that are not on the GPU yet are
+   * gathered first (the indicator shows; the backdrop proxies stand in meanwhile), so the camera
+   * never arrives at nothing; after 12 s it goes anyway and the proxies stand in until they come. A
+   * newer jump or the visitor's own scrolling cancels a waiting one. Resolves false when cancelled so.
+   * (The keys' steps between stops; the rail's, the list's, links', the voice agent's and Home and
+   * End's jumps go under the ink instead when their place is not loaded: goTo.)
    */
   const jumpTo = useCallback(
-    async (toU: number, onArrive?: () => void, instant = false, patienceMs = 12000): Promise<boolean> => {
+    async (toU: number, onArrive?: () => void): Promise<boolean> => {
       if (!store) return false;
       const token = ++jumpToken.current;
       if (Math.abs(store.u - toU) < 1 && !store.flight) {
@@ -866,26 +887,43 @@ export default function SectExperience() {
         setGathering(area && isAreaId(area) ? area : null);
         streamer.update(store.frame, frame, false);
         // Wanted while this is still the latest jump: a cancelled one lets go of its loads.
-        await Promise.all(missing.map((id) => streamer.whenReady(id, patienceMs, () => token === jumpToken.current)));
+        await Promise.all(missing.map((id) => streamer.whenReady(id, 12000, () => token === jumpToken.current)));
         // A newer jump, the visitor's own scrolling, or the page went away meanwhile.
         if (token !== jumpToken.current || !alive.current || streamer.isDisposed) return false;
         store.gatherFrame = null;
         setGathering(null);
       }
-      startFlight(toU, onArrive, instant);
+      startFlight(toU, onArrive);
       return true;
     },
     [store, streamer, startFlight],
   );
 
-  /** Flies to an area's hold. */
-  const flyTo = useCallback(
-    async (area: string, onArrive?: () => void) => {
+  /**
+   * Goes to an area's hold: flies there, or, when its area is not loaded yet (the jump would have to
+   * gather it in view) and the overlay is up, goes there under fast travel's ink (spreading from the
+   * control that asked: inkOrigin), so the place is drawn and settled before it shows, as from the
+   * map. `onArrive` runs once the camera is there (after the ink has cleared). `toU`: a place on the
+   * track other than the hold (Home: the very start), the ink's card still naming `area`. While the
+   * ink is up for another travel, that one wins and this does nothing.
+   */
+  const goTo = useCallback(
+    (area: string, onArrive?: () => void, toU?: number) => {
+      if (travelRef.current) return;
       const hold = store?.map.holds.find((h) => h.id === area);
-      if (!hold) onArrive?.();
-      else await jumpTo(hold.uMid, onArrive);
+      if (!store || !hold) {
+        onArrive?.();
+        return;
+      }
+      const u = toU ?? hold.uMid;
+      const missing = streamer?.missingAt(uToFrame(store.map, u)) ?? [];
+      if (params.ui && phase === "ready" && isAreaId(area) && missing.length > 0) {
+        setTravel({ key: performance.now(), area, at: inkOrigin(), then: onArrive, ...(toU !== undefined ? { u: toU } : {}) });
+        return;
+      }
+      void jumpTo(u, onArrive);
     },
-    [store, jumpTo],
+    [store, streamer, params, phase, jumpTo],
   );
 
   /**
@@ -991,12 +1029,14 @@ export default function SectExperience() {
         arrive();
         return;
       }
+      // Fast travel's ink is up: the place it goes to wins.
+      if (travelRef.current) return;
       setReader(null);
       readerRef.current = null;
       shownItem.current = null;
-      void flyTo(t.area, arrive);
+      goTo(t.area, arrive);
     },
-    [store, flyTo, openReader],
+    [store, goTo, openReader],
   );
 
   // --- scroll and input ----------------------------------------------------------------------------
@@ -1068,11 +1108,15 @@ export default function SectExperience() {
               : store.targetU;
       const stop = navKeyTarget(store.map, from, intent);
       if (!stop) return;
-      void jumpTo(stop.u);
+      // Home and End are far jumps: to a place not loaded yet they go under the ink, as the rail's
+      // do (goTo). The steps between stops fly, gathering what they must, as a scroll does.
+      const area = intent === "first" || intent === "last" ? nearestHold(store.map, stop.u) : null;
+      if (area) goTo(area, undefined, stop.u);
+      else void jumpTo(stop.u);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [store, phase, jumpTo]);
+  }, [store, phase, jumpTo, goTo]);
 
   // Keep the same place in the journey when the track changes height (not while a finger is down).
   useEffect(() => {
@@ -1309,7 +1353,8 @@ export default function SectExperience() {
           turn = null;
           return;
         }
-        const k = store.reducedMotion ? 1 : Math.min(1, (performance.now() - turn.t0) / (PORTRAIT_TURN_SECONDS * 1000));
+        // Under fast travel's ink the turn is done at once (the place shows already turned).
+        const k = store.reducedMotion || store.inked ? 1 : Math.min(1, (performance.now() - turn.t0) / (PORTRAIT_TURN_SECONDS * 1000));
         const e = easeInOut(k, 1);
         look.yaw = turn.from.yaw + (turn.to.yaw - turn.from.yaw) * e;
         look.pitch = turn.from.pitch + (turn.to.pitch - turn.from.pitch) * e;
@@ -1500,9 +1545,9 @@ export default function SectExperience() {
       if (!store || !isAreaId(id)) return;
       const hold = store.map.holds.find((h) => h.id === id);
       if (hold && Math.abs(store.targetU - hold.uMid) < AT_HOLD_UNITS && !store.flight) openReader({ area: id, item: null });
-      else void flyTo(id);
+      else goTo(id);
     },
-    [store, flyTo, openReader],
+    [store, goTo, openReader],
   );
 
   // --- the map and fast travel ----------------------------------------------------------------------
@@ -1567,37 +1612,124 @@ export default function SectExperience() {
     };
   }, [phase, params, streamer, prefetchMap]);
 
-  /** A seal on the map was picked: the ink spreads from it (ink-travel.tsx), then arriveAt runs. */
+  /**
+   * A seal on the map was picked: the ink spreads from it (ink-travel.tsx), then arriveAt runs. Not
+   * while one is under way (it would start the ink over).
+   */
   const startTravel = useCallback((area: AreaId, at: readonly [number, number]) => {
+    if (travelRef.current) return;
     setTravel({ key: performance.now(), area, at });
   }, []);
 
   /**
-   * Under the ink: the map closes, the camera is at the stop's hold at once (its area gathered
-   * first when it is not in yet, the backdrop's stand-ins after travelTiming's patience), and the
-   * scene draws it.
+   * Under the ink, until the place at scroll position `toU` has settled (lib/sect/settle.ts): every
+   * area its view draws streamed in, on the GPU and drawn (the neighbours' stand-ins swapped for
+   * them), nothing filling in any more (grass, the mirror's capture, the hold focus, the detail
+   * texture), then the renderer's counts and the view still for a few frames. The scene draws it
+   * behind the ink meanwhile (every display frame once its areas are in; at the idle rate while they
+   * stream, which leaves the loading its time). Reports the progress for the ink's Loading line.
+   * Resolves when settled, when `signal` aborts (the ink gave up, or went), or when something moved
+   * the camera off the place.
+   */
+  const settleAt = useCallback(
+    (toU: number, signal: AbortSignal) =>
+      new Promise<void>((resolve) => {
+        if (!store || !streamer || !ctx || signal.aborted) {
+          resolve();
+          return;
+        }
+        const frame = uToFrame(store.map, toU);
+        const watch = new SettleWatch();
+        let raf = 0;
+        let shown = -1;
+        let unculled = false;
+        const stop = () => {
+          cancelAnimationFrame(raf);
+          signal.removeEventListener("abort", stop);
+          resolve();
+        };
+        signal.addEventListener("abort", stop);
+        const tick = () => {
+          if (!alive.current || streamer.isDisposed || store.flight || Math.abs(store.targetU - toU) > 1) {
+            stop();
+            return;
+          }
+          const place = streamer.settleAt(frame);
+          const r = store.report;
+          const busy: string[] = [];
+          if (r.grass) busy.push("grass");
+          if (r.reflection) busy.push("reflection");
+          if (r.focus) busy.push("focus");
+          if (detailSettling(ctx)) busy.push("detail");
+          const st = watch.push({
+            now: performance.now(),
+            frames: r.frames,
+            chunks: place.chunks,
+            leaving: place.leaving.length,
+            busy,
+            gpu: `${r.geometries}:${r.textures}:${r.programs}`,
+            view: `${store.frame.toFixed(2)}|${store.look.yaw.toFixed(4)}|${store.look.pitch.toFixed(4)}`,
+          });
+          if (params.debug) (window as unknown as { __sectSettle?: unknown }).__sectSettle = { ...st, chunks: place.chunks, leaving: place.leaving, busy };
+          const pct = Math.round(st.progress * 50) / 50;
+          if (pct !== shown) {
+            shown = pct;
+            setTravelProgress(pct);
+          }
+          if (place.chunks.every((c) => c.expected || c.done >= 1)) wake(store, 250);
+          // Everything is in: one frame with nothing culled puts every mesh around the place on the
+          // GPU (scene.tsx UncullOnce), so a look round after the ink uploads nothing. Its uploads
+          // start the still count again.
+          if (!unculled && st.waiting.length === 1 && st.waiting[0] === "still") {
+            unculled = true;
+            store.uncull = true;
+          }
+          if (st.settled) stop();
+          else raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+      }),
+    [store, streamer, ctx, params],
+  );
+
+  /**
+   * Under the ink: the map closes, the camera is at the stop's hold (or at `toU`) at once (a far jump
+   * still gathering gives way), and the place is drawn there until it has settled (settleAt). What
+   * would grow or fade in meanwhile is there at once (store.inked).
    */
   const arriveAt = useCallback(
-    async (area: AreaId) => {
+    async (area: AreaId, signal: AbortSignal, toU?: number) => {
       setMapOpen(false);
       const hold = store?.map.holds.find((h) => h.id === area);
       if (!store || !hold) return;
-      await jumpTo(hold.uMid, undefined, true, travelTiming(store.reducedMotion).patience);
-      // A few frames for the scene to draw the place (textures are up; any first-use shaders compile).
-      wake(store, 800);
-      await nextFrames(4);
+      const u = toU ?? hold.uMid;
+      jumpToken.current++;
+      // The streamer counts it as a far jump (so it then faces the way a visitor reads on from the
+      // place: lib/sect/chunks.ts travelAfterJump) and starts on the place's own area at once.
+      streamer?.update(store.frame, uToFrame(store.map, u), false);
+      startFlight(u, undefined, true);
+      store.inked = true;
+      try {
+        await settleAt(u, signal);
+      } finally {
+        store.inked = false;
+      }
     },
-    [store, jumpTo],
+    [store, streamer, startFlight, settleAt],
   );
-  const travelArrive = useCallback(() => (travel ? arriveAt(travel.area) : Promise.resolve()), [travel, arriveAt]);
+  const travelArrive = useCallback((signal: AbortSignal) => (travel ? arriveAt(travel.area, signal, travel.u) : Promise.resolve()), [travel, arriveAt]);
   const endTravel = useCallback(() => {
+    const then = travelRef.current?.then;
     setTravel(null);
+    setTravelProgress(0);
+    // What the jump was for (a reader to open there), now that the place shows.
+    then?.();
     // The focus was in the map (gone now, so back on the Map button that opened it, or on the panel or
     // the rail's place left behind): the panel of the place arrived at takes it (else the rail's place,
     // else the Map button). Not out of the orb's chat, nor out of a reader that opened meanwhile.
     window.setTimeout(() => {
       const a = document.activeElement;
-      if (keepsFocus(a) || a?.closest('[role="dialog"]')) return;
+      if (keepsFocus(a) || a?.closest('[role="dialog"]') || readerRef.current) return;
       flightFocusFallback()?.focus({ preventScroll: true });
     }, 0);
   }, []);
@@ -1836,7 +1968,7 @@ export default function SectExperience() {
             </Suspense>
           )}
           {travel && (
-            <InkTravel request={travel} reducedMotion={reducedMotion} gathering={gathering !== null} arrive={travelArrive} onDone={endTravel} />
+            <InkTravel request={travel} reducedMotion={reducedMotion} progress={travelProgress} arrive={travelArrive} onDone={endTravel} />
           )}
           {/* Fast travel's ink says it is gathering itself. */}
           {gatherInfo && !travel && <Gathering label={gatherInfo.label} />}

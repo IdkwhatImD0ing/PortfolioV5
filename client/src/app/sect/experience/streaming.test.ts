@@ -4,6 +4,7 @@ const loads: {
   id: string;
   signal: AbortSignal;
   calm?: () => Promise<void>;
+  onBytes?: (url: string) => (loaded: number, total: number) => void;
   resolve: (set: unknown) => void;
   reject: (e: unknown) => void;
 }[] = [];
@@ -18,7 +19,7 @@ vi.mock("./assets", () => ({
     set.drawn = false;
     for (const r of set.scenes) r.visible = false;
   },
-  loadSet: vi.fn((ctx: WorldContext, id: string, need: [number, number], _files: string[], opts: { signal: AbortSignal; calm?: () => Promise<void> }) => {
+  loadSet: vi.fn((ctx: WorldContext, id: string, need: [number, number], _files: string[], opts: { signal: AbortSignal; calm?: () => Promise<void>; onBytes?: (url: string) => (loaded: number, total: number) => void }) => {
     // The set holds the manifest's triangles and one 4096 px mipmapped atlas (LinearMipmapLinearFilter).
     const tris = ctx.data.manifest.chunks.find((c) => c.id === id)?.tris ?? 0;
     const textures = [{ image: { width: 4096, height: 4096 }, generateMipmaps: true, minFilter: 1008, userData: {} }];
@@ -27,6 +28,7 @@ vi.mock("./assets", () => ({
         id,
         signal: opts.signal,
         calm: opts.calm,
+        onBytes: opts.onBytes,
         resolve: () => resolve({ id, need, scenes: [], ready: false, drawn: false, tris, bytes: 0, textures }),
         reject,
       });
@@ -434,6 +436,92 @@ describe("ChunkStreamer", () => {
     expect(STREAM_BUDGETS.low.retainTris).toBe(0);
     expect(STREAM_BUDGETS.full.retainTris).toBe(0);
     expect({ ...STREAM_BUDGETS.retain, retainTris: 0, retainTexBytes: 0 }).toEqual(STREAM_BUDGETS.full);
+  });
+});
+
+describe("ChunkStreamer.settleAt (fast travel's settled wait)", () => {
+  /** A stop whose view reaches three areas (wide need ranges, as the full flight's), and one beyond. */
+  function wide(): WorldContext {
+    const c = ctx() as unknown as {
+      data: { manifest: { chunks: unknown[] }; camera: { holds: { id: string; frame: number }[] } };
+    };
+    c.data.manifest.chunks = [
+      { id: "a", files: ["a.glb", "a_trees.glb"], need: [1, 600], tris: 1_000_000, bytes: 1000 },
+      { id: "b", files: ["b.glb"], need: [1, 800], tris: 900_000, bytes: 3000 },
+      { id: "c", files: ["c.glb"], need: [1, 1000], tris: 800_000, bytes: 2000 },
+      { id: "d", files: ["d.glb"], need: [500, 1200], tris: 800_000, bytes: 2000 },
+    ];
+    c.data.camera.holds = [
+      { id: "a", frame: 100 },
+      { id: "b", frame: 300 },
+      { id: "c", frame: 500 },
+      { id: "d", frame: 700 },
+    ];
+    return c as unknown as WorldContext;
+  }
+
+  it("wants the areas the stop draws, and expects the one it will prefetch there", () => {
+    const st = new ChunkStreamer(wide(), () => {});
+    const d = st.settleAt(100);
+    expect(d.chunks.map((c) => [c.id, c.done, c.expected === true])).toEqual([
+      ["a", 0, false],
+      ["b", 0, false],
+      ["c", 0, true],
+    ]);
+    expect(d.chunks.map((c) => c.weight)).toEqual([1000, 3000, 2000]);
+    expect(d.leaving).toEqual([]);
+  });
+
+  it("follows each area's download, then its upload, and wants the prefetch once they are in", async () => {
+    const st = new ChunkStreamer(wide(), () => {});
+    st.update(100, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["a", "b"]);
+    // Half of the gate's files arrived: 40% (the download is 80% of the way).
+    loads[0].onBytes?.("a.glb")(300, 600);
+    loads[0].onBytes?.("a_trees.glb")(200, 400);
+    expect(st.settleAt(100).chunks[0].done).toBeCloseTo(0.4);
+    for (const l of loads.splice(0)) l.resolve(null);
+    await flush();
+    // Loaded, still uploading.
+    expect(st.settleAt(100).chunks.slice(0, 2).map((c) => c.done)).toEqual([0.9, 0.9]);
+    for (const s of st.list()) st.markReady(s.id);
+    const d = st.settleAt(100);
+    expect(d.chunks.map((c) => [c.id, c.done, c.expected === true])).toEqual([
+      ["a", 1, false],
+      ["b", 1, false],
+      ["c", 0, false],
+    ]);
+    // The prefetch it waits for is the one the streamer then starts.
+    st.update(100, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["c"]);
+  });
+
+  it("waits for no prefetch with the data saver on (the stand-in stays)", async () => {
+    const st = new ChunkStreamer(wide(), () => {}, streamBudget("mid", false, {}, true));
+    st.update(100, null, true);
+    await settle(st);
+    const d = st.settleAt(100);
+    expect(d.chunks.map((c) => c.id)).toEqual(["a", "b"]);
+    expect(d.chunks.every((c) => c.done === 1)).toBe(true);
+  });
+
+  it("names a drawn area the stop does not keep as leaving, and counts a failed one as done", async () => {
+    const st = new ChunkStreamer(wide(), () => {});
+    // At the stop c, then a jump back to a on the phone budget: there it keeps a and, in its spare
+    // slot, b (both drawn at a's frame), but not c, drawn there now.
+    st.update(500, null, true);
+    await settle(st);
+    expect(st.list().map((s) => s.id)).toEqual(["b", "c"]);
+    st.setBudget(STREAM_BUDGETS.low);
+    const d = st.settleAt(100);
+    expect(d.chunks.map((c) => c.id)).toEqual(["a", "b"]);
+    expect(d.leaving).toEqual(["c"]);
+    // a fails for good: nothing to wait for.
+    st.update(100, null, true);
+    const a = loads.find((l) => l.id === "a");
+    a?.reject(new Error("offline"));
+    await flush();
+    expect(st.settleAt(100).chunks.find((c) => c.id === "a")?.done).toBe(1);
   });
 });
 

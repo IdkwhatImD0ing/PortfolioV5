@@ -20,6 +20,25 @@ export interface Flight {
   onArrive?: () => void;
 }
 
+/**
+ * What the canvas says about the frame it has just rendered, for fast travel's settled wait
+ * (lib/sect/settle.ts): how many frames it has rendered, what the renderer holds, and what on
+ * screen is still filling in.
+ */
+export interface CanvasReport {
+  frames: number;
+  /** gl.info after the frame: geometries and textures on the GPU, programs compiled. */
+  geometries: number;
+  textures: number;
+  programs: number;
+  /** A drawn area's grass is still being built, or grass on screen is still growing in. */
+  grass: boolean;
+  /** The Heart-Mirror's cube map is being captured, or is still fading in. */
+  reflection: boolean;
+  /** The hold focus is still coming in at the stop. */
+  focus: boolean;
+}
+
 export interface SectStore {
   map: ScrollMap;
   camera: CameraData;
@@ -40,6 +59,19 @@ export interface SectStore {
   paused: boolean;
   /** A reader covers most of the view: a pulsing highlight renders at the idle rate. */
   modal: boolean;
+  /**
+   * Fast travel's ink covers the whole view (ink-travel.tsx): what would grow or fade in at the place
+   * it lands on (grass, the hold focus, the mirror's reflection, a phone's turn) is there at once.
+   */
+  inked: boolean;
+  /** The canvas's report on its last rendered frame (CanvasReport). */
+  report: CanvasReport;
+  /**
+   * Fast travel asks for one frame drawn with nothing in the drawn areas culled (scene.tsx
+   * UncullOnce): every mesh there reaches the GPU behind the ink, so a look round once it has
+   * cleared uploads nothing. The canvas clears it once done.
+   */
+  uncull: boolean;
   hovered: string | null;
   /** Hotspot focused in the keyboard list or highlighted by the reader. */
   focused: string | null;
@@ -73,6 +105,9 @@ export function createStore(map: ScrollMap, camera: CameraData, u: number, frame
     reducedMotion,
     paused: false,
     modal: false,
+    inked: false,
+    report: { frames: 0, geometries: 0, textures: 0, programs: 0, grass: false, reflection: false, focus: false },
+    uncull: false,
     hovered: null,
     focused: null,
     selected: null,

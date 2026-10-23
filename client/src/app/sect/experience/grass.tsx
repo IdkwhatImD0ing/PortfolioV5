@@ -487,7 +487,7 @@ interface CellDraw {
  * An area's grass, built while the area is on screen (on arrival, or after a fast scroll), grows in
  * over this many milliseconds (ms): each cell draws a rising share of its instances, lowest rank
  * first, so the lawn thickens evenly instead of appearing at once. With reduced motion it appears
- * at once.
+ * at once, and so it does under fast travel's ink (nobody sees it grow).
  */
 const GROW_MS = 1500;
 
@@ -956,6 +956,7 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
     const R = runner.current;
     return () => {
       R.unmounted = true;
+      store.report.grass = false;
       for (const b of kit.built.values()) {
         for (const d of b.draws) {
           kit.group.remove(d.mesh);
@@ -969,7 +970,7 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
       kit.warmed = false;
       releaseRootReader(gl);
     };
-  }, [kit, gl]);
+  }, [kit, gl, store]);
 
   const pick = useMemo(() => ({ list: [] as CellDraw[], dists: [] as number[], order: [] as number[], cells: [] as GrassCell[], kept: [] as number[] }), []);
   useFrame((state) => {
@@ -994,11 +995,17 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
     kit.frustum.setFromProjectionMatrix(kit.m);
     pick.list.length = 0;
     pick.dists.length = 0;
+    // Fast travel's settled wait (store.ts CanvasReport): a drawn area whose grass is not built yet
+    // (below: grass on screen still growing in).
+    let busy = false;
+    if (on) for (const s of live.current) if (s.drawn && !s.dropped && !kit.built.has(s)) busy = true;
     for (const b of kit.built.values()) {
       const shown = on && b.set.drawn && !b.set.dropped;
       for (const d of b.draws) {
         d.mesh.visible = false;
         if (!shown) continue;
+        // Under the ink it is grown at once (and stays grown once the ink clears).
+        if (store.inked && t0 - d.born < GROW_MS) d.born = t0 - GROW_MS;
         const dist = cellDistance(d.cell, cam.x, cam.y, cam.z);
         if (cellCount(d.cell, dist, tier) === 0) continue;
         kit.sphere.center.set(d.cell.center[0], d.cell.center[1], d.cell.center[2]);
@@ -1026,6 +1033,7 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
     for (const i of pick.order) {
       const d = pick.list[i];
       const grow = store.reducedMotion ? 1 : Math.min(1, (t0 - d.born) / GROW_MS);
+      if (grow < 1) busy = true;
       const n = Math.ceil(cellCount(d.cell, pick.dists[i], tier, scale) * grow * grow);
       if (n === 0) continue;
       d.geo.instanceCount = n;
@@ -1039,6 +1047,7 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
     st.triangles = instances * 9;
     st.scale = scale;
     st.cpuMs += (performance.now() - t0 - st.cpuMs) * 0.1;
+    store.report.grass = busy;
   }, -1);
 
   return <primitive object={kit.group} />;

@@ -1539,7 +1539,14 @@ function Post({
     return m;
   }, [store, meta]);
   const atmos = useMemo(() => ({ rest: 0, fwd: new Vector3(), frame: Number.NaN, yaw: 0, pitch: 0 }), []);
+  useEffect(
+    () => () => {
+      store.report.focus = false;
+    },
+    [store],
+  );
   useFrame((state, delta) => {
+    store.report.focus = false;
     if (!pipe) {
       state.gl.render(state.scene, state.camera);
       return;
@@ -1570,9 +1577,11 @@ function Post({
         atmos.yaw = L.yaw;
         atmos.pitch = L.pitch;
         atmos.rest = still ? atmos.rest + Math.min(delta, 0.1) : 0;
-        const w = holdFocusStep(hf.weight, still ? "still" : viewMoved ? "view" : "input", atmos.rest, delta);
+        // Under fast travel's ink the focus is in at once (nobody sees it come).
+        const w = store.inked && still ? 1 : holdFocusStep(hf.weight, still ? "still" : viewMoved ? "view" : "input", atmos.rest, delta);
         if (w !== hf.weight || (still && w < 1)) wake(store, 250);
         hf.weight = w;
+        store.report.focus = still && w < 1;
         if (framed) hf.focus = axial;
       }
     }
@@ -1594,7 +1603,7 @@ function Post({
  * the mirror keep their analytic sky. With ?debug=1, window.__sectReflect measures the passes' GPU
  * time (`mode` "passes") or the whole frame's ("frame"), and can switch either pass off.
  */
-function Reflections({ sets, quality, ctx, debug }: { sets: LoadedSet[]; quality: Quality; ctx: WorldContext; debug: boolean }) {
+function Reflections({ sets, quality, ctx, store, debug }: { sets: LoadedSet[]; quality: Quality; ctx: WorldContext; store: SectStore; debug: boolean }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
@@ -1632,10 +1641,11 @@ function Reflections({ sets, quality, ctx, debug }: { sets: LoadedSet[]; quality
       r.dispose();
       timer?.dispose();
       p.timer = null;
+      store.report.reflection = false;
       setRefl((cur: SectReflections | null) => (cur === r ? null : cur));
       if ((w.__sectReflect as { reflections?: unknown } | undefined)?.reflections === r) delete w.__sectReflect;
     };
-  }, [tier, debug, gl]);
+  }, [tier, debug, gl, store]);
   const qualityKey = `${tier}|${quality.noCards ? "nc" : ""}|${quality.standIns ? "si" : ""}|${quality.lowTextures ? "lt" : ""}`;
   // The whole frame's GPU time (debug "frame" mode): from before anything draws to after the composer.
   useFrame(() => {
@@ -1646,7 +1656,7 @@ function Reflections({ sets, quality, ctx, debug }: { sets: LoadedSet[]; quality
   // After every default-priority update (grass, idle motion, decoration) and the debug probe's
   // counter reset, before the composer (priority 1).
   useFrame((_, delta) => {
-    refl?.update({
+    const st = refl?.update({
       gl,
       scene,
       camera: camera as PerspectiveCamera,
@@ -1656,7 +1666,9 @@ function Reflections({ sets, quality, ctx, debug }: { sets: LoadedSet[]; quality
       dt: delta * 1000,
       quality: qualityKey,
       lean: quality.standIns === true || quality.noCards === true,
+      snap: store.inked,
     });
+    store.report.reflection = st?.settling ?? false;
   }, 0.5);
   useFrame(() => {
     if (probe.current.timer && probe.current.mode === "frame") probe.current.timer.end();
@@ -2040,6 +2052,69 @@ function WarmDecor({ sets, overlay, post }: { sets: LoadedSet[]; overlay: Scene;
   return null;
 }
 
+/**
+ * The canvas's report on each frame it renders (store.ts CanvasReport), for fast travel's settled
+ * wait: the frame count and what the renderer holds once everything has drawn. Grass, the
+ * reflections and the hold focus add what they are still filling in.
+ */
+function FrameReport({ store }: { store: SectStore }) {
+  const gl = useThree((s) => s.gl);
+  useFrame(() => {
+    const r = store.report;
+    r.frames++;
+    r.geometries = gl.info.memory.geometries;
+    r.textures = gl.info.memory.textures;
+    r.programs = gl.info.programs?.length ?? 0;
+  }, 4.5);
+  return null;
+}
+
+/**
+ * One frame with nothing in the drawn sets culled, when fast travel asks for it (store.uncull)
+ * behind its ink: three uploads a mesh's buffers the first time it is drawn, so every mesh of the
+ * areas around the place, and every grass cell on them (grass.tsx culls its own cells), reaches
+ * the GPU then, rather than in the frames of a look round after the ink has cleared. Culling is back
+ * on for the next frame.
+ */
+function UncullOnce({ store, sets }: { store: SectStore; sets: LoadedSet[] }) {
+  const scene = useThree((s) => s.scene);
+  const culled = useRef<Object3D[]>([]);
+  const hidden = useRef<Object3D[]>([]);
+  // After the world and grass have set this frame's visibility, before the composer draws.
+  useFrame(() => {
+    if (!store.uncull) return;
+    store.uncull = false;
+    const drawn = new Set<string>();
+    for (const s of sets) {
+      if (!s.drawn) continue;
+      drawn.add(s.id);
+      for (const root of s.scenes) {
+        root.traverse((o) => {
+          if (o.frustumCulled && (o as Mesh).isMesh) {
+            o.frustumCulled = false;
+            culled.current.push(o);
+          }
+        });
+      }
+    }
+    for (const g of scene.children) {
+      if (g.name !== "sect.grass") continue;
+      for (const m of g.children) {
+        if (m.visible || !drawn.has(m.name.slice("sect.grass.".length))) continue;
+        m.visible = true;
+        hidden.current.push(m);
+      }
+    }
+  }, 0.9);
+  useFrame(() => {
+    for (const o of culled.current) o.frustumCulled = true;
+    for (const o of hidden.current) o.visible = false;
+    culled.current = [];
+    hidden.current = [];
+  }, 4.6);
+  return null;
+}
+
 function fmtTris(n: number): string {
   return n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : String(n);
 }
@@ -2331,13 +2406,15 @@ function SectCanvas(props: SectCanvasProps) {
       />
       <IdleMotion sets={sets} store={store} />
       {flyer && flyerPath && <Flyer store={store} object={flyer} path={flyerPath} />}
-      {global && <Reflections sets={sets} quality={quality} ctx={ctx} debug={debug} />}
+      {global && <Reflections sets={sets} quality={quality} ctx={ctx} store={store} debug={debug} />}
       {quality.post ? (
         <Post quality={quality} ceiling={ceiling} overlay={overlay} meta={meta} ctx={ctx} sets={sets} store={store} />
       ) : (
         <PlainRender overlay={overlay} ctx={ctx} sets={sets} />
       )}
       {global && <WarmDecor sets={sets} overlay={overlay} post={quality.post} />}
+      <UncullOnce store={store} sets={sets} />
+      <FrameReport store={store} />
       {debug && (
         <DebugProbe
           el={debugEl}

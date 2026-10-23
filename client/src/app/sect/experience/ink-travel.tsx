@@ -2,10 +2,12 @@
 
 /**
  * Fast travel's ink (lib/sect/travel.ts), as in Black Myth: Wukong. Ink blooms from the seal the
- * visitor picked on the map until it covers the screen; the place's name shows on it while the
- * camera jumps there underneath (its area streams in meanwhile, and a turning seal says so when that
- * takes a while, as the Gathering status does on the flight); then the ink clears from the middle of
- * the screen. With reduced motion a plain quick fade stands in for the ink.
+ * visitor picked on the map (or the control that asked for a far jump) until it covers the screen;
+ * the place's name shows on it while the camera jumps there underneath and the place is drawn until
+ * it has settled (lib/sect/settle.ts: its areas streamed in and on the GPU, grass grown, reflections
+ * captured). When that takes longer than the ink's own hold, a turning seal says Loading over a thin
+ * line that fills as the pieces come. Then the ink clears from the middle of the screen onto the
+ * finished place. With reduced motion a plain fade stands in for the ink (the same wait).
  *
  * Drawn on one 2D canvas at half the screen's resolution (soft edges suit ink, and it is cheap), and
  * only while a travel is under way: nothing of it exists otherwise. While it is up it takes the
@@ -21,13 +23,21 @@ export interface TravelRequest {
   /** New for every travel. */
   key: number;
   area: AreaId;
-  /** Where the ink starts (the seal), in screen pixels. */
+  /** Where the ink starts (the seal, or the control that asked for the jump), in screen pixels. */
   at: readonly [number, number];
+  /** Runs once the ink has cleared (a reader to open there, the voice agent's highlight). */
+  then?: () => void;
+  /** Where on the track it lands (scroll units), when not at the area's hold (Home: the very start). */
+  u?: number;
 }
 
 const INK = "rgb(15, 12, 20)";
-/** Keys that would move the camera or close something while the ink is up. */
-const HELD_KEYS = new Set([" ", "Spacebar", "Escape", "PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "j", "J", "k", "K", "m", "M"]);
+/**
+ * Keys that would move the camera or close something while the ink is up, and Enter and Tab: the
+ * map still under the ink while it spreads keeps the focus, and a second Enter (or Tab and Enter)
+ * there started the ink over, or opened a reader for the place being left.
+ */
+const HELD_KEYS = new Set([" ", "Spacebar", "Enter", "Tab", "Escape", "PageUp", "PageDown", "Home", "End", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "j", "J", "k", "K", "m", "M"]);
 
 /** One blot: its ragged rim filled with ink, a soft halo just outside it and a few spatters. */
 function blotSprite(seed: number, size = 256): HTMLCanvasElement {
@@ -83,16 +93,19 @@ function wait(ms: number): Promise<void> {
 export function InkTravel({
   request,
   reducedMotion,
-  gathering,
+  progress,
   arrive,
   onDone,
 }: {
   request: TravelRequest;
   reducedMotion: boolean;
-  /** The place is still streaming in (the jump is gathering it). */
-  gathering: boolean;
-  /** The screen is covered: move the camera there. Resolves once the place is drawn. */
-  arrive: () => Promise<void>;
+  /** How far the place has come toward settled (0..1), for the Loading line. */
+  progress: number;
+  /**
+   * The screen is covered: move the camera there. Resolves once the place has settled; `signal`
+   * aborts when the ink gives up waiting (travelTiming giveUp) or goes.
+   */
+  arrive: (signal: AbortSignal) => Promise<void>;
   /** The ink has cleared. */
   onDone: () => void;
 }) {
@@ -111,6 +124,7 @@ export function InkTravel({
     if (!root || !canvas) return;
     let cancelled = false;
     let raf = 0;
+    const waiting = new AbortController();
     // From the start (a run cut short, as React's development double run does, leaves nothing).
     root.style.opacity = "";
     const timing = travelTiming(reducedMotion);
@@ -178,9 +192,12 @@ export function InkTravel({
       fillInk();
       setPhase("hold");
       const shownAt = performance.now();
-      const slowTimer = window.setTimeout(() => !cancelled && setSlow(true), 900);
-      // The camera jumps underneath; the place streams in if it must, and is drawn.
-      await Promise.race([arriveRef.current().catch(() => {}), wait(timing.giveUp)]);
+      // Loading shows only once the place takes longer than the ink's own hold.
+      const slowTimer = window.setTimeout(() => !cancelled && setSlow(true), timing.hold);
+      // The camera jumps underneath, and the place is drawn there until it has settled.
+      await Promise.race([arriveRef.current(waiting.signal).catch(() => {}), wait(timing.giveUp)]);
+      // Given up (or done): whatever still waits lets go.
+      waiting.abort();
       window.clearTimeout(slowTimer);
       const left = timing.hold - (performance.now() - shownAt);
       if (left > 0) await wait(left);
@@ -210,6 +227,7 @@ export function InkTravel({
     }
     return () => {
       cancelled = true;
+      waiting.abort();
       cancelAnimationFrame(raf);
       root.getAnimations().forEach((x) => x.cancel());
     };
@@ -242,7 +260,8 @@ export function InkTravel({
   }, []);
 
   const info = areaInfo(request.area);
-  const waiting = slow && gathering;
+  const waiting = slow && phase === "hold";
+  const pct = Math.round(Math.min(1, Math.max(0, progress)) * 100);
   return (
     <div ref={rootRef} className="sect-travel" data-phase={phase}>
       <canvas ref={canvasRef} aria-hidden className="absolute inset-0 h-full w-full" />
@@ -254,14 +273,23 @@ export function InkTravel({
         <span className="mt-5 block h-px w-16 bg-[var(--sect-gold)] opacity-70" />
         <p className="mt-4 text-[0.75rem] uppercase tracking-[0.34em] text-[var(--sect-gold)]">{info.label}</p>
         <p className="mt-1.5 text-[0.8125rem] text-[var(--sect-paper-soft)]">{SECTION_NAMES[request.area]}</p>
-        <span className={`mt-6 flex items-center gap-3 transition-opacity duration-300 ${waiting ? "opacity-100" : "opacity-0"}`}>
-          <span className="sect-gather block h-3 w-3 rotate-45 border border-[var(--sect-gold)]" />
-          <span className="text-[0.68rem] uppercase tracking-[0.26em] text-[var(--sect-paper-soft)]">Loading</span>
+        <span className={`mt-6 flex flex-col items-center transition-opacity duration-300 ${waiting ? "opacity-100" : "opacity-0"}`}>
+          <span className="flex items-center gap-3">
+            <span className="sect-gather block h-3 w-3 rotate-45 border border-[var(--sect-gold)]" />
+            <span className="text-[0.68rem] uppercase tracking-[0.26em] text-[var(--sect-paper-soft)]">Loading</span>
+          </span>
+          {/* A thin brush line, as the loading screen's: how far the place has come. */}
+          <span className="mt-3 block h-px w-28 bg-[var(--sect-gold-soft)]">
+            <span className="block h-px origin-left bg-[var(--sect-gold)]" style={{ transform: `scaleX(${pct / 100})` }} />
+          </span>
         </span>
       </div>
       <p className="sr-only" role="status" aria-live="polite">
         {waiting ? `Loading ${info.label}` : ""}
       </p>
+      {waiting && (
+        <span className="sr-only" role="progressbar" aria-label={`Loading ${info.label}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} />
+      )}
     </div>
   );
 }

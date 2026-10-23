@@ -37,6 +37,8 @@ export interface ReflectFrame {
    * time): the pond keeps its analytic reflection, which costs no second scene render.
    */
   lean: boolean;
+  /** Fast travel's ink covers the view: a finished capture shows at once instead of fading in. */
+  snap?: boolean;
 }
 
 /** What the last update did (the debug probe shows it). */
@@ -53,6 +55,11 @@ export interface ReflectStatus {
   cpuMs: number;
   /** The targets hold GPU memory (released while the mirror's area is not loaded). */
   allocated: boolean;
+  /**
+   * The mirror's area is drawn and its cube is being captured, or the capture is still fading in:
+   * fast travel's ink waits for it (lib/sect/settle.ts).
+   */
+  settling: boolean;
 }
 
 export class SectReflections {
@@ -74,7 +81,7 @@ export class SectReflections {
   constructor(readonly tier: ReflectTier) {
     this.planar = new PondReflector(REFLECT.pond.scale[tier]);
     this.probe = new MirrorProbe(REFLECT.mirror.size[tier]);
-    this.status = { tier, pond: false, pondTexels: 0, face: -1, complete: false, fade: 0, cpuMs: 0, allocated: false };
+    this.status = { tier, pond: false, pondTexels: 0, face: -1, complete: false, fade: 0, cpuMs: 0, allocated: false, settling: false };
   }
 
   update(f: ReflectFrame): ReflectStatus {
@@ -83,6 +90,7 @@ export class SectReflections {
     st.pondTexels = 0;
     st.face = -1;
     st.cpuMs = 0;
+    st.settling = false;
     // Last frame's pond reads the analytic path again unless it is rendered below.
     for (const u of this.fed) {
       u.uHasReflect.value = 0;
@@ -116,7 +124,9 @@ export class SectReflections {
         ? d < REFLECT.mirror.refreshDistance && this.frustum.intersectsSphere(this.mirrorSphere)
         : d < REFLECT.mirror.maxDistance;
       const signature = near ? `${f.sets.map((s) => (s.drawn ? s.id : "")).join(",")}|${f.quality}` : "";
-      face = this.probe.schedule.next(f.now, near, signature, f.dt);
+      const sched = this.probe.schedule;
+      face = sched.next(f.now, near, signature, f.dt, f.snap === true);
+      st.settling = sched.face >= 0 || face >= 0 || (sched.complete && sched.fade < 1);
     }
     let img: PondImage | null = null;
     if (this.enabled.pond && !f.lean && pond.box.distanceToPoint(f.camera.position) <= REFLECT.pond.maxDistance && this.frustum.intersectsBox(pond.box)) {

@@ -26,6 +26,15 @@ describe("mirror capture schedule", () => {
     expect(s.fade).toBe(1);
   });
 
+  it("shows a whole capture at once under fast travel's ink (snap)", () => {
+    const s = new ProbeSchedule(6000, 600);
+    for (let i = 0; i < 6; i++) s.next(i * 16, true, "a", 16, true);
+    expect(s.complete).toBe(true);
+    expect(s.fade).toBe(0);
+    expect(s.next(100, true, "a", 16, true)).toBe(-1);
+    expect(s.fade).toBe(1);
+  });
+
   it("refreshes every few seconds while near, and at once when the scene changes", () => {
     const s = new ProbeSchedule(6000, 600);
     for (let i = 0; i < 6; i++) s.next(i, true, "a", 16);

@@ -2,20 +2,23 @@ import { describe, expect, it } from "vitest";
 import { BLOT_CORE, BLOT_SOLID, blotOutline, coverRadius, dropGrowth, easeInOutCubic, farCorner, inkDrops, seedOf, seededRandom, travelTiming } from "./travel";
 
 describe("travelTiming", () => {
-  it("is short and plain with reduced motion, and never waits forever", () => {
+  it("moves plainly with reduced motion, and never waits forever", () => {
     const ink = travelTiming(false);
     const plain = travelTiming(true);
-    expect(plain.cover + plain.hold + plain.reveal).toBeLessThan(600);
-    expect(ink.cover + ink.hold + ink.reveal).toBeLessThan(2600);
+    expect(plain.cover + plain.reveal).toBeLessThan(500);
+    expect(ink.cover + ink.hold + ink.reveal).toBeLessThan(3000);
     expect(ink.cover).toBeGreaterThan(plain.cover);
-    for (const t of [ink, plain]) expect(t.giveUp).toBeLessThanOrEqual(20000);
+    for (const t of [ink, plain]) expect(t.giveUp).toBeLessThanOrEqual(30000);
   });
 
-  it("waits for the place longer than a scroll's far jump does, and moves the camera before it gives up", () => {
+  it("stays covered long enough to feel deliberate, the same with reduced motion, and waits long for a slow place", () => {
     for (const t of [travelTiming(false), travelTiming(true)]) {
-      expect(t.patience).toBeGreaterThan(12000);
-      expect(t.giveUp - t.patience).toBeGreaterThanOrEqual(3000);
+      expect(t.hold).toBeGreaterThanOrEqual(1000);
+      expect(t.hold).toBeLessThanOrEqual(1500);
+      // Longer than the 16 s the slowest measured arrival (700 KB/s) took for the place's own area.
+      expect(t.giveUp).toBeGreaterThanOrEqual(20000);
     }
+    expect(travelTiming(true).hold).toBe(travelTiming(false).hold);
   });
 });
 
