@@ -2,8 +2,8 @@
  * Idle motion for the areas, as plain math (the scene applies it, experience/idle.ts): the film's
  * turning rings fitted from the baked geometry, glow rhythms (breathing, a wave running along a row,
  * a flicker), the per-vertex weights that let a banner's cloth flutter and a tree sway while
- * their poles and trunks stay put (with where the banners merged into the scenery hang, and where
- * the flags merged into it fly), and the gliding loop and wing beat of the baked cranes.
+ * their poles, fittings and trunks stay put (with where the sect's pole banners hang and where the
+ * flags merged into the scenery fly), and the gliding loop and wing beat of the baked cranes.
  *
  * Pure: plain arrays, no three.js.
  */
@@ -124,82 +124,10 @@ export function flicker(t: number, seed = 0): number {
 // ---- cloth and branches -------------------------------------------------------------------------
 
 /**
- * Per-vertex flutter for a banner hanging from a crossbar beside its pole (positions in a y-up
- * frame, xyz triples). The cloth is the wide, thin part above the base; the pole is where the base
- * stands. Returns four numbers per vertex: the cloth's normal times the vertex's weight (0 on the
- * pole, the crossbar and the base, growing toward the free bottom and outer edge), and a phase so
- * a ripple runs across the cloth.
- */
-export function bannerSway(positions: ArrayLike<number>): Float32Array {
-  const n = Math.floor(positions.length / 3);
-  const out = new Float32Array(n * 4);
-  if (n === 0) return out;
-  let yMin = Infinity, yMax = -Infinity;
-  for (let i = 0; i < n; i++) {
-    yMin = Math.min(yMin, positions[i * 3 + 1]);
-    yMax = Math.max(yMax, positions[i * 3 + 1]);
-  }
-  const H = yMax - yMin;
-  if (!(H > 1)) return out;
-  // The cloth's plane: horizontal principal axes of the upper part.
-  const clothFloor = yMin + H * 0.3;
-  let mx = 0, mz = 0, m = 0;
-  for (let i = 0; i < n; i++) {
-    if (positions[i * 3 + 1] < clothFloor) continue;
-    mx += positions[i * 3];
-    mz += positions[i * 3 + 2];
-    m++;
-  }
-  if (m < 3) return out;
-  mx /= m;
-  mz /= m;
-  let sxx = 0, sxz = 0, szz = 0;
-  for (let i = 0; i < n; i++) {
-    if (positions[i * 3 + 1] < clothFloor) continue;
-    const dx = positions[i * 3] - mx;
-    const dz = positions[i * 3 + 2] - mz;
-    sxx += dx * dx;
-    sxz += dx * dz;
-    szz += dz * dz;
-  }
-  const ang = 0.5 * Math.atan2(2 * sxz, sxx - szz);
-  const ux = Math.cos(ang), uz = Math.sin(ang);
-  // Normal of the cloth (horizontal, across the width axis).
-  const nx = -uz, nz = ux;
-  // The pole stands where the base is: the mean width coordinate of the lowest vertices.
-  let poleA = 0, pc = 0;
-  for (let i = 0; i < n; i++) {
-    if (positions[i * 3 + 1] > yMin + H * 0.12) continue;
-    poleA += (positions[i * 3] - mx) * ux + (positions[i * 3 + 2] - mz) * uz;
-    pc++;
-  }
-  poleA = pc ? poleA / pc : 0;
-  let reach = 0;
-  for (let i = 0; i < n; i++) {
-    if (positions[i * 3 + 1] < clothFloor) continue;
-    const a = (positions[i * 3] - mx) * ux + (positions[i * 3 + 2] - mz) * uz;
-    reach = Math.max(reach, Math.abs(a - poleA));
-  }
-  const top = yMax - H * 0.1; // the crossbar and the finial stay put
-  const span = Math.max(1, top - clothFloor);
-  for (let i = 0; i < n; i++) {
-    const x = positions[i * 3], y = positions[i * 3 + 1], z = positions[i * 3 + 2];
-    const a = (x - mx) * ux + (z - mz) * uz;
-    const off = Math.abs(a - poleA);
-    const down = Math.min(1, Math.max(0, (top - y) / span));
-    const side = reach > 0.3 ? Math.min(1, Math.max(0, (off - 0.3) / Math.max(0.3, reach - 0.3))) : 0;
-    const w = y < clothFloor ? 0 : Math.pow(down, 1.2) * (0.35 + 0.65 * side) * (off > 0.3 ? 1 : 0);
-    out[i * 4] = nx * w;
-    out[i * 4 + 1] = 0;
-    out[i * 4 + 2] = nz * w;
-    out[i * 4 + 3] = a * 1.4 + y * 0.5;
-  }
-  return out;
-}
-
-/**
  * Per-vertex sway for a tree (y-up positions): a wind direction times a weight that is 0 at the
- * base and grows with the square of the height, plus a phase that varies across the crown.
+ * base and grows with the square of the height, plus a phase that varies across the crown. Four
+ * numbers per vertex, as for the banners and flags below: the offset's direction times the
+ * vertex's weight, then a phase.
  */
 export function treeSway(positions: ArrayLike<number>, wind: [number, number] = [0.94, 0.34]): Float32Array {
   const n = Math.floor(positions.length / 3);
@@ -222,14 +150,15 @@ export function treeSway(positions: ArrayLike<number>, wind: [number, number] = 
   return out;
 }
 
-// ---- banners merged into the baked scenery ------------------------------------------------------
+// ---- pole banners -------------------------------------------------------------------------------
 
 /**
- * A pole banner (props.banner, 'fan' style) that the web export merged into its area's baked
- * scenery with the stone and the roofs: no node, name or wind weight of its own reaches the page,
- * so the scene finds its cloth by where it hangs (experience/idle.ts cuts it out to flutter).
- * Three space. The cloth hangs from a hook at the end of a gold arm; `out` points from the pole
- * along the arm, and the cloth spans that direction and the vertical.
+ * A pole banner (props.banner, 'fan' style), three space. The cloth hangs from a hook at the end
+ * of a gold arm; `out` points from the pole along the arm, and the cloth spans that direction and
+ * the vertical. Most reach the page merged into their area's baked scenery with the stone and the
+ * roofs (no node, name or wind weight of their own: the scene finds the cloth by where it hangs
+ * and cuts it out to flutter, experience/idle.ts); the arena's hackathon banners are hotspots, a
+ * node each holding the whole banner (hotspotHang). Either way only the cloth moves.
  */
 export interface BannerHang {
   /** The hook at the cloth's apex. */
@@ -239,6 +168,8 @@ export interface BannerHang {
   /** props.banner's cloth length below the hook, and its width (m). */
   length: number;
   width: number;
+  /** Its own offset in the flutter's phase (radians), when its hook's place alone would not keep it out of step (hangPhase). */
+  phase?: number;
 }
 
 /**
@@ -260,20 +191,26 @@ export function inHang(h: BannerHang, x: number, y: number, z: number): boolean 
 }
 
 /**
- * How far (m) below its hook a banner holds still: the hook's ring and the arm's curled end hang
- * about 0.1 m down, and the cloth's head is pinned there.
+ * How far (m) below its hook a banner holds still. props.banner: the cloth's head (fan tou) hangs
+ * from the hook down to its gold stiffener rod, 0.42 width under it, and the body and the side
+ * streamers hang from that rod, whose knobs reach 0.035 width round it. The hook, the head and the
+ * rod stay where they hang (with 2 cm of room under the knobs); the cloth below them flutters.
  */
-export const HANG_STILL = 0.15;
+export function hangStill(h: BannerHang): number {
+  return 0.455 * h.width + 0.02;
+}
 
 /** A banner's own offset in the flutter's phase, so neighbours do not swing in step. */
-const hangPhase = (h: BannerHang) => h.hook[0] * 0.9 + h.hook[2] * 0.37;
+const hangPhase = (h: BannerHang) => h.phase ?? h.hook[0] * 0.9 + h.hook[2] * 0.37;
 
 /**
- * Per-vertex flutter for banner cloth cut from the merged scenery (y-up world positions, xyz
- * triples), with props.banner's wave weights: each vertex follows its nearest hang and moves along
- * that cloth's normal times (depth below the hook / length)^1.2 (measured from HANG_STILL down), so
- * the hook holds and the tails swing most. Same layout as bannerSway (direction times weight, then
- * a phase that runs a ripple down and across the cloth).
+ * Per-vertex flutter for banner cloth (y-up world positions, xyz triples), with props.banner's wave
+ * weights: each vertex follows its nearest hang and moves along that cloth's normal times (depth
+ * below the rod / the cloth's length below it)^1.2 (from hangStill down), so the head and the rod
+ * hold and the tails swing most. Nothing outside the hang's space moves (inHang): for a banner
+ * whose whole node sways, its pole, clamping stones, finial, arm and brace keep a weight of 0.
+ * Four numbers per vertex: the cloth's normal times the weight, then a phase that runs a ripple
+ * down and across the cloth.
  */
 export function hangSway(positions: ArrayLike<number>, hangs: readonly BannerHang[]): Float32Array {
   const n = Math.floor(positions.length / 3);
@@ -290,7 +227,9 @@ export function hangSway(positions: ArrayLike<number>, hangs: readonly BannerHan
         h = c;
       }
     }
-    const w = Math.min(1, Math.max(0, (h.hook[1] - y - HANG_STILL) / (h.length - HANG_STILL))) ** 1.2;
+    if (!inHang(h, x, y, z)) continue;
+    const still = hangStill(h);
+    const w = Math.min(1, Math.max(0, (h.hook[1] - y - still) / (h.length - still))) ** 1.2;
     const along = (x - h.hook[0]) * h.out[0] + (z - h.hook[2]) * h.out[1];
     out[i * 4] = -h.out[1] * w;
     out[i * 4 + 1] = 0;
@@ -349,17 +288,51 @@ export function fanHang(f: AreaFrame, x: number, y: number, z: number, rot: numb
 const ARENA_RING = { r: 32.2, z: -0.35, n: 40, gap: (13 * Math.PI) / 180 };
 
 /**
- * The arena's banners 36 to 39, the four left of the open front that no hackathon claims (the
- * others are hotspots, which sway on their own): banner i stands at angle -90 deg + gap +
- * (360 deg - 2 gap) i / 39 on the ring, its arm along the ring, and its height is the file's (9 m
- * give or take 0.4, drawn from arena.py's seeded random).
+ * The ring banners' heights, in ring order: 9 m give or take 0.4, drawn from arena.py's seeded
+ * random (U.rng("arena", "banners"): a colour, then a height, per banner), replayed in plain
+ * Python. meta.json's hackathon boxes stand each one's height and its 0.52 m finial tall.
  */
-const ARENA_DECOR: [number, number][] = [
-  [36, 8.7202],
-  [37, 9.1187],
-  [38, 9.1405],
-  [39, 8.6914],
+const ARENA_HEIGHTS = [
+  9.0198, 9.017, 8.7581, 9.3395, 9.3688, 9.0375, 8.6407, 9.0436, 9.3688, 9.2977, 9.0716, 8.6148, 8.8362, 8.6442, 8.7012, 8.7313, 9.2951, 8.703,
+  8.7274, 8.9185, 9.2022, 8.8983, 9.1748, 8.6541, 8.9658, 9.309, 8.7681, 8.9036, 9.0079, 9.1097, 9.1021, 8.752, 9.2778, 8.7498, 8.7822, 9.2482,
+  8.7202, 9.1187, 9.1405, 8.6914,
 ];
+
+/** Ring banners 0 to 35 are the hackathon hotspots (export_web.py N_HACKATHONS); 36 to 39 are merged decor. */
+const ARENA_HACKATHONS = 36;
+
+/**
+ * How far round each ring banner's flutter runs from its neighbour's: the golden angle (2.4 rad,
+ * 137.5 deg). The offset by where a hook hangs keeps a row out of step, but round the ring it
+ * cancels wherever the ring runs across it: banners 1 and 2, 9 and 10, 22 and 23 swung within
+ * 0.14 rad of each other. By the golden angle no two neighbours swing within 2 rad of each other
+ * (their heights add at most 0.4), and the next but one about 1.5 rad apart.
+ */
+const RING_PHASE_STEP = Math.PI * (3 - Math.sqrt(5));
+
+/**
+ * The arena's ring of banners (arena.py _build_banners), 1.3 m cloths: banner i stands at angle
+ * -90 deg + gap + (360 deg - 2 gap) i / 39 on the ring, its arm along the ring. The one that would
+ * stand within 1 deg of +x (banner 9, before the centre aisle's foot) moves 2 m back round it.
+ */
+export const ARENA_HANGS: readonly BannerHang[] = ARENA_HEIGHTS.map((height, i) => {
+  let a = -Math.PI / 2 + ARENA_RING.gap + ((2 * Math.PI - 2 * ARENA_RING.gap) * i) / (ARENA_RING.n - 1);
+  if (Math.abs(a) < Math.PI / 180) a -= 2 / ARENA_RING.r;
+  const hang = fanHang(AREA_FRAMES.arena, ARENA_RING.r * Math.cos(a), ARENA_RING.r * Math.sin(a), ARENA_RING.z, a - Math.PI / 2, height, 1.3);
+  return { ...hang, phase: i * RING_PHASE_STEP };
+});
+
+/**
+ * The hang of a banner that is a hotspot of its own: its node holds the whole banner (the pole and
+ * its stones in the area's atlas, the gold fittings and stiffener rod in its metal), and only the
+ * cloth may flutter. The arena's hackathon:i is ring banner i (export_web.py: arena.banner.%03d).
+ * Null for every other hotspot.
+ */
+export function hotspotHang(id: string): BannerHang | null {
+  const m = /^hackathon:(\d+)$/.exec(id);
+  const i = m ? Number(m[1]) : -1;
+  return i >= 0 && i < ARENA_HACKATHONS ? ARENA_HANGS[i] : null;
+}
 
 /**
  * The banners each area's export merged into its baked scenery, from the area scripts (checked
@@ -370,7 +343,8 @@ const ARENA_DECOR: [number, number][] = [
  * - the stairway's two pairs, on landings 1 and 3 (_stairway), 12 m poles at x = ±9.5: 1.5 m
  *   cloths, 7.2 m long, from a hook 11.59 m up at the end of a 1.65 m arm.
  * The forge (forge.py): the approach's pair, 10 m poles at x = ±13 by y = -37, arms toward the axis.
- * The arena (arena.py _build_banners): the four of ARENA_DECOR.
+ * The arena (arena.py _build_banners): ARENA_HANGS 36 to 39, the four left of the open front that
+ * no hackathon claims.
  * The mission hall (mission.py _props): the plaza's front corners, 9 m poles at x = ±16 by y = -40,
  * arms toward the axis.
  * The formation's Five Element Banners fly from their poles' tops instead: FLAG_FLIES.
@@ -382,10 +356,7 @@ export const BANNER_HANGS: Record<string, readonly BannerHang[]> = {
     ...hangPair(7.85, 34.31, 74.22, 7.2, 1.5),
   ],
   forge: [-1, 1].map((s) => fanHang(AREA_FRAMES.forge, s * 13, -37, 0, s < 0 ? 0 : Math.PI, 10, 1.5)),
-  arena: ARENA_DECOR.map(([i, height]) => {
-    const a = -Math.PI / 2 + ARENA_RING.gap + ((2 * Math.PI - 2 * ARENA_RING.gap) * i) / (ARENA_RING.n - 1);
-    return fanHang(AREA_FRAMES.arena, ARENA_RING.r * Math.cos(a), ARENA_RING.r * Math.sin(a), ARENA_RING.z, a - Math.PI / 2, height, 1.3);
-  }),
+  arena: ARENA_HANGS.slice(ARENA_HACKATHONS),
   mission: [-1, 1].map((s) => fanHang(AREA_FRAMES.mission, s * 16, -40, 0, s < 0 ? 0 : Math.PI, 9, 1.3)),
 };
 
@@ -493,7 +464,7 @@ export const FLY_LIFT = 0.5;
  * in (else the nearest pole) and moves along that cloth's normal, and FLY_LIFT as much up, times
  * (distance out from the pole's rings / the cloth's reach)^1.2, so the hoist edge holds and the
  * fly swings most. The phase falls going out, so the ripple runs from the pole to the fly. Same
- * layout as bannerSway.
+ * layout as hangSway.
  */
 export function flySway(positions: ArrayLike<number>, flies: readonly FlagFly[]): Float32Array {
   const n = Math.floor(positions.length / 3);

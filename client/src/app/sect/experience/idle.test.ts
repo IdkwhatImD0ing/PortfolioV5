@@ -15,7 +15,20 @@ import {
   Vector3,
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { BANNER_HANGS, FIVE_ELEMENT_FLAGS, FLY_LIFT, inCylinder, inFly, inHang, splitTriangles, type Cylinder } from "@/lib/sect/idle";
+import {
+  AREA_FRAMES,
+  BANNER_HANGS,
+  FIVE_ELEMENT_FLAGS,
+  FLY_LIFT,
+  hangStill,
+  hotspotHang,
+  inCylinder,
+  inFly,
+  inHang,
+  splitTriangles,
+  type BannerHang,
+  type Cylinder,
+} from "@/lib/sect/idle";
 import { planIdle, planIdleSliced } from "./idle";
 import type { HotspotEntry } from "./prepare";
 
@@ -91,6 +104,32 @@ function reference(m: Mesh): { kept: number[]; carved: number[] } {
 
 function carvedOf(m: Mesh): Mesh | undefined {
   return m.parent!.children.find((c) => c !== m && (c as Mesh).isMesh && c.name === `${m.name}.idle`) as Mesh | undefined;
+}
+
+/** A baked metal material, as GLTFLoader leaves the exporter's extras.sectSurface tag. */
+function metalMaterial(name: string): MeshBasicMaterial {
+  const m = new MeshBasicMaterial({ name });
+  m.userData.sectSurface = "metal";
+  return m;
+}
+
+/**
+ * A banner's gold fittings round its hang (three space): the arm out to the hook, the hook's ring,
+ * the finial on the pole's top, and the stiffener rod with its knobs 0.42 width under the hook.
+ */
+function goldParts(h: BannerHang): BufferGeometry {
+  const La = 0.75 + 0.6 * h.width;
+  const turn = Math.atan2(-h.out[1], h.out[0]);
+  const rod = 0.42 * h.width;
+  const reach = 0.685 * h.width;
+  return mergeGeometries([
+    new BoxGeometry(La, 0.06, 0.06).translate(-La / 2, 0.06, 0),
+    new TorusGeometry(0.022, 0.006, 6, 12).translate(0, 0.015, 0),
+    new CylinderGeometry(0.03, 0.07, 0.52, 8).translate(-La, 0.41 + 0.26, 0),
+    new CylinderGeometry(0.02 * h.width, 0.02 * h.width, 2 * reach, 8).rotateZ(Math.PI / 2).translate(0, -rod, 0),
+    new BoxGeometry(0.07 * h.width, 0.07 * h.width, 0.07 * h.width).translate(-reach, -rod, 0),
+    new BoxGeometry(0.07 * h.width, 0.07 * h.width, 0.07 * h.width).translate(reach, -rod, 0),
+  ].map((g) => g.rotateY(turn).translate(h.hook[0], h.hook[1], h.hook[2])))!;
 }
 
 describe("planIdle (the library's spiral)", () => {
@@ -188,7 +227,7 @@ describe("planIdle (the gate's banners)", () => {
    * Merged scenery as the bake leaves it: the plaza's ground, the pole, the arm above the hook and
    * the banner's cloth (6 x 20 quads, 1.7 x 8.4 m under the hook) in one mesh, under a moved parent.
    */
-  function gateScene(scale = 1): { root: Object3D; mesh: Mesh; mat: MeshBasicMaterial; before: number[] } {
+  function gateScene(scale = 1): { root: Object3D; mesh: Mesh; mat: MeshBasicMaterial; before: number[]; gold: Mesh; goldBefore: number[] } {
     const [x, y, z] = HANG.hook;
     const merged = mergeGeometries([
       new PlaneGeometry(60, 60, 6, 6).rotateX(-Math.PI / 2).translate(0, 40, 20),
@@ -208,9 +247,13 @@ describe("planIdle (the gate's banners)", () => {
       mesh.position.set(1, 1, 1);
       mesh.scale.setScalar(scale);
     }
-    parent.add(mesh);
+    // The banner's gold (its stiffener rod and knobs, the hook's ring, in the cloth's space) in the
+    // area's metal mesh.
+    const gold = new Mesh(goldParts(HANG).translate(-3, 2, -5), metalMaterial("baked.gate_A0.surface.metal"));
+    gold.name = "gate.baked.A0.surface.metal.c0";
+    parent.add(mesh, gold);
     root.updateMatrixWorld(true);
-    return { root, mesh, mat, before: Array.from(g.index!.array) };
+    return { root, mesh, mat, before: Array.from(g.index!.array), gold, goldBefore: Array.from(gold.geometry.index!.array) };
   }
 
   /** World positions of a mesh's triangles, corner by corner. */
@@ -222,7 +265,11 @@ describe("planIdle (the gate's banners)", () => {
 
   for (const scale of [1, 512]) {
     it(`cuts out only the cloth, onto a small geometry and a sway copy of its material (scale ${scale})`, () => {
-      const { root, mesh, mat, before } = gateScene(scale);
+      const { root, mesh, mat, before, gold, goldBefore } = gateScene(scale);
+      // The rod's and the ring's triangles lie wholly in the cloth's space: only their material keeps them.
+      const gp = gold.geometry.getAttribute("position");
+      const inside = Array.from(gold.geometry.index!.array).filter((i) => inHang(HANG, ...new Vector3().fromBufferAttribute(gp, i).applyMatrix4(gold.matrixWorld).toArray())).length;
+      expect(inside).toBeGreaterThan(100);
       const all = triangles(mesh);
       const plan = planIdle("gate", root, new Map(), new Map());
       expect(plan.sway).toBe(1);
@@ -249,21 +296,32 @@ describe("planIdle (the gate's banners)", () => {
       expect(copy.name).toBe(mat.name);
       expect(copy.userData.sectSway).toBe(true);
       expect(copy.customProgramCacheKey()).toMatch(/\|sway$/);
-      // Still at the hook, a full swing at the tails, along the cloth's normal (world z).
+      // Still from the hook down past the rod, a full swing at the tails, along the cloth's normal
+      // (world z).
       const sway = piece.geometry.getAttribute("sectSway");
       const v = new Vector3();
       let top = 0;
       let tail = 0;
+      let rows = 0;
       for (let i = 0; i < pos.count; i++) {
         const y = v.fromBufferAttribute(pos, i).applyMatrix4(piece.matrixWorld).y;
         const s = new Vector3(sway.getX(i), sway.getY(i), sway.getZ(i)).multiplyScalar(scale);
         expect(Math.abs(s.x) + Math.abs(s.y)).toBeLessThan(1e-6);
-        if (Math.abs(y - HANG.hook[1]) < 0.01) top = Math.max(top, Math.abs(s.z));
+        // (Quantized positions sit up to 8 mm off the plane's rows: rows 0 and 0.42 m down.)
+        if (HANG.hook[1] - y < hangStill(HANG) - 0.01) {
+          top = Math.max(top, Math.abs(s.z));
+          rows++;
+        }
         if (Math.abs(y - (HANG.hook[1] - HANG.length)) < 0.01) tail = Math.max(tail, Math.abs(s.z));
       }
-      // (Quantized positions sit up to 8 mm off the plane's rows.)
-      expect(top).toBeLessThan(1e-3);
+      expect(rows).toBe(2 * 7);
+      expect(top).toBe(0);
       expect(tail).toBeCloseTo(1, 2);
+      // The gold stays in the scenery, whole, on its own material, and never sways.
+      expect(carvedOf(gold)).toBeUndefined();
+      expect(Array.from(gold.geometry.index!.array)).toEqual(goldBefore);
+      expect(gold.geometry.getAttribute("sectSway")).toBeUndefined();
+      expect((gold.material as MeshBasicMaterial).userData.sectSway).toBeUndefined();
       // Bounded with room for the swing.
       const s = piece.geometry.boundingSphere!;
       expect(s.radius * scale).toBeGreaterThan(Math.hypot(0.85, 4.2) + 0.44);
@@ -298,7 +356,7 @@ describe("planIdle (the forge's, the arena's and the mission hall's banners)", (
    * pole, the arm out to the hook and a cloth (4 x 12 quads) hanging from the hook, turned along
    * the arm. The arena also has a hackathon banner, a hotspot of its own, between two of them.
    */
-  function areaScene(area: string): { root: Object3D; mesh: Mesh; before: number; hotspots: Map<string, Mesh[]>; hot: Mesh | null } {
+  function areaScene(area: string): { root: Object3D; mesh: Mesh; before: number; hotspots: Map<string, Mesh[]>; hot: Mesh[] } {
     const hangs = BANNER_HANGS[area];
     const parts: BufferGeometry[] = [];
     let cx = 0;
@@ -322,14 +380,28 @@ describe("planIdle (the forge's, the arena's and the mission hall's banners)", (
     mesh.name = `${area}.baked.A0.c3`;
     root.add(mesh);
     const hotspots = new Map<string, Mesh[]>();
-    let hot: Mesh | null = null;
+    const hot: Mesh[] = [];
     if (area === "arena") {
-      const [a, b] = hangs;
-      const g = new PlaneGeometry(1.3, 5.2, 4, 12).translate((a.hook[0] + b.hook[0]) / 2, a.hook[1] - 2.6, (a.hook[2] + b.hook[2]) / 2);
-      hot = new Mesh(g, new MeshBasicMaterial({ name: "hotspot.hackathon" }));
-      hot.name = "hotspot.hackathon:0";
-      root.add(hot);
-      hotspots.set("hackathon:0", [hot]);
+      // Hackathon banner 0, a hotspot node of its own: its pole, stones and cloth (4 x 12 quads) in
+      // the atlas, its gold in the metal.
+      const h = hotspotHang("hackathon:0")!;
+      const turn = Math.atan2(-h.out[1], h.out[0]);
+      const arm = 0.75 + 0.6 * h.width;
+      const foot = AREA_FRAMES.arena.at[2] - 0.35 - h.hook[1];
+      const top = 0.41;
+      const atlas = mergeGeometries([
+        new CylinderGeometry(0.05, 0.07, top - foot, 8, 6).translate(-arm, (top + foot) / 2, 0),
+        new BoxGeometry(0.68, 0.74, 0.68).translate(-arm, foot + 0.37, 0),
+        new PlaneGeometry(h.width, h.length, 4, 12).translate(0, -h.length / 2, 0),
+      ].map((g) => g.rotateY(turn).translate(h.hook[0], h.hook[1], h.hook[2])))!;
+      const node = new Group();
+      node.name = "hotspot.hackathon:0";
+      const a = new Mesh(atlas, new MeshBasicMaterial({ name: "baked.arena_A0" }));
+      const m = new Mesh(goldParts(h), metalMaterial("baked.arena_A0.surface.metal"));
+      node.add(a, m);
+      root.add(node);
+      hot.push(a, m);
+      hotspots.set("hackathon:0", hot);
     }
     root.updateMatrixWorld(true);
     return { root, mesh, before: mesh.geometry.index!.count, hotspots, hot };
@@ -340,7 +412,7 @@ describe("planIdle (the forge's, the arena's and the mission hall's banners)", (
       const hangs = BANNER_HANGS[area];
       const { root, mesh, before, hotspots, hot } = areaScene(area);
       const plan = planIdle(area, root, hotspots, new Map());
-      // The carved piece, and the arena's hackathon banner by its own shape.
+      // The carved piece, and the arena's hackathon banner's atlas (its cloth, by its own hang).
       expect(plan.sway).toBe(area === "arena" ? 2 : 1);
       const piece = carvedOf(mesh)!;
       expect(piece.geometry.index!.count).toBe(CLOTH_TRIS * 3 * hangs.length);
@@ -367,10 +439,32 @@ describe("planIdle (the forge's, the arena's and the mission hall's banners)", (
         expect(sway.getX(i) * h.out[0] + sway.getZ(i) * h.out[1]).toBeCloseTo(0, 6);
         if (Math.abs(p.y - (h.hook[1] - h.length)) < 1e-3) expect(Math.hypot(sway.getX(i), sway.getZ(i))).toBeCloseTo(1, 5);
       }
-      // The hackathon banner stays whole, swaying on its own.
-      if (hot) {
-        expect(hot.geometry.getAttribute("sectSway")).toBeDefined();
-        expect(root.children.filter((c) => c.name === `${hot.name}.idle`)).toHaveLength(0);
+      // The hackathon banner stays whole: its cloth sways from the rod down, its pole and stones
+      // hold still, and its gold has no sway at all.
+      if (hot.length) {
+        const [atlas, metal] = hot;
+        const h = hotspotHang("hackathon:0")!;
+        for (const m of hot) expect(m.parent!.children.filter((c) => c.name.endsWith(".idle"))).toHaveLength(0);
+        expect(metal.geometry.getAttribute("sectSway")).toBeUndefined();
+        expect((metal.material as MeshBasicMaterial).userData.sectSway).toBeUndefined();
+        const s = atlas.geometry.getAttribute("sectSway");
+        const p = atlas.geometry.getAttribute("position");
+        let pole = 0, head = 0, tail = 0, cloth = 0;
+        for (let i = 0; i < p.count; i++) {
+          v.fromBufferAttribute(p, i).applyMatrix4(atlas.matrixWorld);
+          const w = Math.hypot(s.getX(i), s.getY(i), s.getZ(i));
+          const along = (v.x - h.hook[0]) * h.out[0] + (v.z - h.hook[2]) * h.out[1];
+          if (along < -1) pole = Math.max(pole, w);
+          else if (h.hook[1] - v.y <= hangStill(h)) head = Math.max(head, w);
+          else {
+            cloth++;
+            if (Math.abs(v.y - (h.hook[1] - h.length)) < 1e-3) tail = Math.max(tail, w);
+          }
+        }
+        expect(cloth).toBeGreaterThan(40);
+        expect(pole).toBe(0);
+        expect(head).toBe(0);
+        expect(tail).toBeCloseTo(1, 5);
       }
     });
   }

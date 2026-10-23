@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  ARENA_HANGS,
   AREA_FRAMES,
   BANNER_HANGS,
   CRANE_GLIDES,
@@ -10,8 +11,6 @@ import {
   FLAG_FLIES,
   FLY_LIFT,
   FORMATION_CORE_SPEED,
-  HANG_STILL,
-  bannerSway,
   bobLift,
   breathe,
   craneFlap,
@@ -21,7 +20,9 @@ import {
   fitRing,
   flicker,
   flySway,
+  hangStill,
   hangSway,
+  hotspotHang,
   inCylinder,
   inFly,
   inHang,
@@ -109,38 +110,120 @@ describe("rhythms", () => {
   });
 });
 
-describe("bannerSway", () => {
-  /** A pole at x = 1 from y 0 to 10, a crossbar at y 9.5, cloth from x -1.5 to 0.8 between y 3.5 and 9.5. */
-  function banner(): Float32Array {
-    const p: number[] = [];
-    for (let y = 0; y <= 10; y += 0.5) p.push(1, y, 0.05, 1, y, -0.05);
-    for (let x = -1.5; x <= 1; x += 0.25) p.push(x, 9.5, 0);
-    for (let x = -1.5; x <= 0.8; x += 0.25) for (let y = 3.5; y <= 9.4; y += 0.5) p.push(x, y, 0.01 * Math.sin(x * 4));
-    return new Float32Array(p);
-  }
+/**
+ * Points of a props.banner 'fan' banner as banner() builds it round a hang, its pole standing on
+ * `foot` (three space): the pole and its clamping stones, the gold fittings (finial, the arm out
+ * to the hook, the arm's brace, the hook's ring and the arm's curled end), the stiffener rod with
+ * its knobs, the head above it, and the cloth and its tails below it.
+ */
+function fanParts(h: BannerHang, foot: number): Record<"pole" | "stones" | "finial" | "arm" | "brace" | "hook" | "curl" | "rod" | "head" | "cloth" | "tails", V3[]> {
+  const W = h.width;
+  const La = 0.75 + 0.6 * W;
+  const za = h.hook[1] + 0.06;
+  const top = za + 0.35;
+  /** `along` from the hook (toward the pole is negative), `across` off the cloth's plane, at height y. */
+  const at = (along: number, across: number, y: number): V3 => [
+    h.hook[0] + h.out[0] * along - h.out[1] * across,
+    y,
+    h.hook[2] + h.out[1] * along + h.out[0] * across,
+  ];
+  /** n points round the pole (or, `along` from it, round that point) at radius r and height y. */
+  const round = (r: number, y: number, along = 0, n = 8) =>
+    Array.from({ length: n }, (_, k) => at(-La + along + r * Math.cos((2 * Math.PI * k) / n), r * Math.sin((2 * Math.PI * k) / n), y));
+  const span = (n: number, f: (t: number) => V3) => Array.from({ length: n + 1 }, (_, k) => f(k / n));
+  const rod = 0.42 * W;
+  return {
+    pole: [0.1, 0.5, 0.9, 0.999].flatMap((t) => round(0.07, foot + t * (top - 0.02 - foot))),
+    stones: [0.05, 0.6].flatMap((y) => [...round(0.34, foot + y), ...round(0.48, foot + y)]),
+    finial: [0, 0.2, 0.52].flatMap((y) => round(0.05, top + y)),
+    arm: span(8, (t) => at(-La + t * La, 0.03, za - 0.03)),
+    brace: span(6, (t) => at(-La + 0.5 * t, 0, za - 0.55 + 0.53 * t)),
+    hook: round(0.028, za - 0.045, La, 6),
+    curl: span(4, (t) => at(0.075 + 0.1 * t, 0, za - 0.125 + 0.06 * t)),
+    // The knobs' undersides (0.035 width round the rod's ends) and the rod between them, billowed.
+    rod: [-0.685, -0.4, 0, 0.4, 0.685].flatMap((s) => [at(s * W, 0.035 * W, h.hook[1] - rod - 0.035 * W), at(s * W, -0.035 * W, h.hook[1] - rod + 0.035 * W)]),
+    head: span(4, (t) => at(0.4 * W * t, 0, h.hook[1] - rod * t)),
+    cloth: span(6, (t) => at(-0.5 * W + W * t, 0.2, h.hook[1] - rod - 0.5 - t * (h.length - rod - 0.8))),
+    tails: [-0.33, 0, 0.33].map((s) => at(s * W + 0.05 * h.length, 0.4, h.hook[1] - h.length)),
+  };
+}
 
-  it("keeps the pole and crossbar still and lets the free corner move most", () => {
-    const pos = banner();
-    const w = bannerSway(pos);
-    const weight = (i: number) => Math.hypot(w[i * 4], w[i * 4 + 1], w[i * 4 + 2]);
-    let maxPole = 0, maxCloth = 0, corner = 0;
-    for (let i = 0; i < pos.length / 3; i++) {
-      const x = pos[i * 3], y = pos[i * 3 + 1];
-      if (x === 1) maxPole = Math.max(maxPole, weight(i));
-      else if (y >= 9.5) maxPole = Math.max(maxPole, weight(i));
-      else maxCloth = Math.max(maxCloth, weight(i));
-      if (x === -1.5 && y === 3.5) corner = weight(i);
+describe("the arena's ring of banners", () => {
+  const ring = ARENA_HANGS;
+  /** The band the poles stand on (arena.py Z_BAND), in three space. */
+  const ARENA_FOOT = AREA_FRAMES.arena.at[2] - 0.35;
+
+  it("hangs forty, the hackathon banners first and the four decor ones the merged scenery holds last", () => {
+    expect(ring).toHaveLength(40);
+    expect(BANNER_HANGS.arena).toEqual(ring.slice(36));
+    for (let i = 0; i < 36; i++) expect(hotspotHang(`hackathon:${i}`)).toBe(ring[i]);
+    for (const id of ["hackathon:36", "hackathon:x", "arena", "arena-judges", "role:0", "project:tft"]) expect(hotspotHang(id)).toBeNull();
+    // Banner 35, next to the four, as arena.py stands it.
+    expect(Math.abs(ring[35].hook[0] - -37.797)).toBeLessThan(0.01);
+    expect(Math.abs(ring[35].hook[2] - -452.885)).toBeLessThan(0.01);
+    for (const h of ring) {
+      expect(h.width).toBe(1.3);
+      expect(Math.hypot(h.out[0], h.out[1])).toBeCloseTo(1, 9);
     }
-    expect(maxPole).toBe(0);
-    expect(maxCloth).toBeGreaterThan(0.5);
-    expect(corner).toBeCloseTo(maxCloth, 5);
-    // It moves across the cloth (z here), not along it.
-    for (let i = 0; i < pos.length / 3; i++) expect(Math.abs(w[i * 4])).toBeLessThan(0.05 + Math.abs(w[i * 4 + 2]));
   });
 
-  it("is empty for a flat or empty mesh", () => {
-    expect(bannerSway(new Float32Array(0))).toHaveLength(0);
-    expect([...bannerSway(new Float32Array([0, 0, 0, 1, 0, 0, 0, 0, 1]))].every((v) => v === 0)).toBe(true);
+  it("stands each hackathon banner in its meta.json box, its height and its finial tall", () => {
+    const meta = JSON.parse(readFileSync(path.resolve(__dirname, "../../../public/sect/full/meta.json"), "utf8")) as {
+      hotspots: { id: string; center: V3; size: V3 }[];
+    };
+    const boxes = meta.hotspots.filter((b) => b.id.startsWith("hackathon:"));
+    expect(boxes).toHaveLength(36);
+    for (const b of boxes) {
+      const h = hotspotHang(b.id)!;
+      const La = 0.75 + 0.6 * h.width;
+      const pole: V3 = [h.hook[0] - h.out[0] * La, h.hook[1], h.hook[2] - h.out[1] * La];
+      const inBox = (p: V3) => [0, 2].every((i) => Math.abs(p[i] - b.center[i]) <= b.size[i] / 2 + 0.02);
+      expect(inBox(h.hook)).toBe(true);
+      expect(inBox(pole)).toBe(true);
+      // The box runs from the pole's foot to its finial's tip, 0.52 m over the pole's top; the
+      // hook hangs 0.41 m under that top.
+      expect(Math.abs(b.center[1] + b.size[1] / 2 - (h.hook[1] + 0.41 + 0.52))).toBeLessThan(0.01);
+      expect(Math.abs(b.center[1] - b.size[1] / 2 - ARENA_FOOT)).toBeLessThan(0.01);
+    }
+  });
+
+  it("swings no two neighbours round the ring in step", () => {
+    // Each banner's tails, under its hook: the flutter's phase there (the ring is one row, 39 pairs).
+    const w = hangSway(ring.flatMap((h) => [h.hook[0], h.hook[1] - h.length, h.hook[2]]), ring);
+    const apart = (a: number, b: number) => {
+      const d = (((w[b * 4 + 3] - w[a * 4 + 3]) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+      return Math.min(d, 2 * Math.PI - d);
+    };
+    for (let i = 0; i < ring.length; i++) expect(Math.hypot(w[i * 4], w[i * 4 + 2])).toBeCloseTo(1, 6);
+    for (let i = 0; i + 1 < ring.length; i++) expect(apart(i, i + 1)).toBeGreaterThan(2);
+    for (let i = 0; i + 2 < ring.length; i++) expect(apart(i, i + 2)).toBeGreaterThan(1.2);
+  });
+
+  it("moves banner 9 off the centre aisle's foot, 2 m back round the ring", () => {
+    const pole = (h: BannerHang) => [h.hook[0] - h.out[0] * 1.53, h.hook[2] - h.out[1] * 1.53];
+    const gap = (a: BannerHang, b: BannerHang) => Math.hypot(pole(a)[0] - pole(b)[0], pole(a)[1] - pole(b)[1]);
+    // Neighbours stand 32.2 m x (334 / 39) deg apart (4.81 m on the chord).
+    expect(gap(ring[7], ring[8])).toBeCloseTo(4.809, 2);
+    expect(gap(ring[8], ring[9])).toBeCloseTo(4.809 - 2, 1);
+    expect(gap(ring[9], ring[10])).toBeCloseTo(4.809 + 2, 1);
+  });
+
+  it("sways only a hackathon banner's cloth: its pole, stones, gold fittings, rod and head hold still", () => {
+    for (const k of [0, 9, 20, 35]) {
+      const h = ring[k];
+      const parts = fanParts(h, ARENA_FOOT);
+      const names = Object.keys(parts) as (keyof typeof parts)[];
+      const w = hangSway(names.flatMap((n) => parts[n].flat()), [h]);
+      const weight = (i: number) => Math.hypot(w[i * 4], w[i * 4 + 1], w[i * 4 + 2]);
+      let i = 0;
+      for (const n of names) {
+        for (let j = 0; j < parts[n].length; j++, i++) {
+          if (n === "cloth") expect(weight(i)).toBeGreaterThan(j === 0 ? 0.03 : 0.1);
+          else if (n === "tails") expect(weight(i)).toBeCloseTo(1, 6);
+          else expect(weight(i)).toBe(0);
+        }
+      }
+    }
   });
 });
 
@@ -184,24 +267,43 @@ describe("banners merged into the scenery", () => {
     expect(inHang(eastLanding, lx, ly - 5, lz)).toBe(true);
   });
 
-  it("holds the hook still and swings the tails most, across the cloth", () => {
+  it("holds the hook, the head and the stiffener rod still and swings the tails most, across the cloth", () => {
     const [x, y, z] = westPlaza.hook;
     const L = westPlaza.length;
-    // The hook, the arm's curled end just under it, halfway down, a tail.
-    const pts = [x, y, z, x + 0.17, y - 0.1, z, x, y - L / 2, z, x + 0.5, y - L, z];
+    const still = hangStill(westPlaza);
+    // The hook, the arm's curled end just under it, the rod's knobs' undersides (0.42 width down,
+    // 0.685 width out, 0.035 width round), halfway down, a tail.
+    const knob = 0.42 * 1.7 + 0.035 * 1.7;
+    const pts = [x, y, z, x + 0.17, y - 0.1, z, x - 1.165, y - knob, z, x + 1.165, y - knob, z, x, y - L / 2, z, x + 0.5, y - L, z];
     const w = hangSway(pts, gate);
     const weight = (i: number) => Math.hypot(w[i * 4], w[i * 4 + 1], w[i * 4 + 2]);
-    expect(weight(0)).toBe(0);
-    expect(weight(1)).toBe(0);
-    expect(weight(2)).toBeCloseTo(((L / 2 - HANG_STILL) / (L - HANG_STILL)) ** 1.2, 6);
-    expect(weight(3)).toBeCloseTo(1, 6);
+    for (let i = 0; i < 4; i++) expect(weight(i)).toBe(0);
+    expect(weight(4)).toBeCloseTo(((L / 2 - still) / (L - still)) ** 1.2, 6);
+    expect(weight(5)).toBeCloseTo(1, 6);
+    // The cloth hangs from the rod: still down to its knobs, with 2 cm of room.
+    expect(still).toBeCloseTo(knob + 0.02, 9);
+    expect(hangSway([x, y - still + 1e-4, z], gate)[2]).toBe(0);
+    expect(hangSway([x, y - still - 1e-3, z], gate)[2]).toBeGreaterThan(0);
+    expect(hangSway([x, y - still - 0.3, z], gate)[2]).toBeGreaterThan(0);
     // Along the cloth's normal (z here): never along the arm, never up.
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       expect(w[i * 4]).toBeCloseTo(0, 9);
       expect(w[i * 4 + 1]).toBe(0);
     }
     // A ripple runs across the cloth.
-    expect(w[15]).not.toBe(w[11]);
+    expect(w[23]).not.toBe(w[19]);
+  });
+
+  it("moves nothing outside a banner's space (a pole, its stones, its fittings), wherever it is", () => {
+    for (const h of [westPlaza, eastLanding]) {
+      const foot = h.hook[1] + 0.41 - (h.width === 1.7 ? 14 : 12);
+      const parts = fanParts(h, foot);
+      for (const n of ["pole", "stones", "finial", "arm", "brace", "hook", "curl", "rod", "head"] as const) {
+        const w = hangSway(parts[n].flat(), gate);
+        expect([...w].filter((_, i) => i % 4 !== 3).every((v) => v === 0)).toBe(true);
+      }
+      expect(Math.max(...[...hangSway(parts.tails.flat(), gate)].filter((_, i) => i % 4 === 2).map(Math.abs))).toBeCloseTo(1, 6);
+    }
   });
 
   it("gives each vertex its nearest banner's weight and phase, so neighbours swing out of step", () => {
@@ -212,9 +314,11 @@ describe("banners merged into the scenery", () => {
     expect(w[2]).toBeCloseTo(1, 6);
     expect(w[6]).toBeCloseTo(1, 6);
     expect(w[3]).not.toBeCloseTo(w[7], 3);
-    // A landing banner (shorter cloth) by its own length.
+    // A landing banner (shorter, narrower cloth) by its own length and rod.
     const l = hangSway([eastLanding.hook[0], eastLanding.hook[1] - 3.6, eastLanding.hook[2]], gate);
-    expect(Math.abs(l[2])).toBeCloseTo(((3.6 - HANG_STILL) / (7.2 - HANG_STILL)) ** 1.2, 6);
+    const still = hangStill(eastLanding);
+    expect(still).toBeLessThan(hangStill(westPlaza));
+    expect(Math.abs(l[2])).toBeCloseTo(((3.6 - still) / (7.2 - still)) ** 1.2, 6);
   });
 
   it("is empty without banners", () => {
@@ -295,7 +399,7 @@ describe("the forge's, the arena's and the mission hall's merged banners", () =>
     }
   });
 
-  it("leaves the arena's hackathon banners (hotspots of their own) to bannerSway", () => {
+  it("keeps the arena's hackathon banners (hotspots of their own) out of the four's spaces", () => {
     // Banner 35, the hackathon next to the four, hangs well clear of every one of their spaces.
     const gap = (13 * Math.PI) / 180;
     const a = -Math.PI / 2 + gap + ((2 * Math.PI - 2 * gap) * 35) / 39;

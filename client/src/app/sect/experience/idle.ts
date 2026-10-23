@@ -12,6 +12,8 @@
  *   banners, at the gate, the forge, the arena and the mission hall, and the formation's Five
  *   Element flags (cut out of the merged scenery where they hang or fly); the mirror's and the
  *   abode's peach trees sway (a vertex offset in the shader, weighted so poles and trunks stay put).
+ *   Only cloth moves: a banner's pole, its gold fittings (finial, arm, brace, hook, stiffener rod)
+ *   and its head above the rod hold still, as do a flag's pole, hoist rings and finial.
  * Nothing moves with reduced motion. planIdleSliced (or planIdle, in one go) runs once per loaded
  * chunk; updateIdle every frame.
  */
@@ -39,7 +41,6 @@ import {
   FILM_TURN_SPEED,
   FLAG_FLIES,
   FORMATION_CORE_SPEED,
-  bannerSway,
   bobLift,
   breathe,
   craneFlap,
@@ -49,6 +50,7 @@ import {
   flicker,
   flySway,
   hangSway,
+  hotspotHang,
   inCylinder,
   inFly,
   inHang,
@@ -60,6 +62,7 @@ import {
   type FlagFly,
   type V3,
 } from "@/lib/sect/idle";
+import { sectSurfaceOf } from "./materials";
 import { PREPARE_SLICE_MS, yieldToBrowser, type HotspotEntry, type SliceOptions } from "./prepare";
 
 /** Seconds since the page started, for the sway shader (one clock for every chunk). */
@@ -232,6 +235,17 @@ function addSway(mat: Material, amp: number, freq: number): void {
   mat.needsUpdate = true;
 }
 
+/**
+ * A banner's or a flag's gold fittings: the finial, the arm, its brace and hook, a fan's stiffener
+ * rod, a flag's hoist rings. The exporter bakes gold (and iron and bronze) into the metal class
+ * (extras.sectSurface "metal"), and the cloth never: its gold trim and emblem are cloth. They hold
+ * still while the cloth flutters.
+ */
+function rigidFitting(mat: Material): boolean {
+  const s = sectSurfaceOf(mat);
+  return s === "metal" || s === "iron";
+}
+
 /** Writes per-vertex sway weights (computed in world space) into the mesh's own frame. */
 function setSway(m: Mesh, weights: (world: Float32Array) => Float32Array, amp: number, freq: number): boolean {
   if (Array.isArray(m.material) || m.geometry.getAttribute("sectSway")) return false;
@@ -316,6 +330,8 @@ interface CarveRegion {
   touches: (box: Box3) => boolean;
   /** Which part (1..255) a world position inside the band lies in, or 0 for none. */
   part: (x: number, y: number, z: number) => number;
+  /** Materials it never cuts, wherever their triangles lie (a banner's gold fittings stay with the scenery). */
+  rigid?: (mat: Material) => boolean;
   /**
    * Cut the pieces into small geometries of their own (else they share the scenery's vertex
    * buffers), with their bounding spheres this much (m) larger: for pieces that sway in the shader.
@@ -354,6 +370,7 @@ function flyRegion(flies: readonly FlagFly[]): CarveRegion {
     },
     // Room for the flutter (FLAG.amp at full weight, across and FLY_LIFT up, both waves at their peak).
     compact: { pad: 0.6 },
+    rigid: rigidFitting,
   };
 }
 
@@ -373,6 +390,8 @@ function hangRegion(hangs: readonly BannerHang[]): CarveRegion {
       return 0;
     },
     compact: { pad: 0.45 },
+    // The stiffener rod and its knobs, the hook's ring and the arm's curled end lie in the space too.
+    rigid: rigidFitting,
   };
 }
 
@@ -518,6 +537,7 @@ function* carveRegion(root: Object3D, skip: Set<Mesh>, region: CarveRegion): Gen
     const g = m.geometry;
     const pos = g.getAttribute("position");
     if (!pos) continue;
+    if (region.rigid?.(m.material as Material)) continue;
     // A compact piece carries no morph targets along.
     if (region.compact && Object.keys(g.morphAttributes).length) continue;
     if (!g.boundingBox) {
@@ -793,14 +813,17 @@ function* planSteps(
     }
   }
 
-  // Banners flutter; peach trees sway (a mesh at a time).
-  if (id === "arena") {
-    for (const [h, meshes] of hotspotMeshes) {
-      if (!h.startsWith("hackathon:")) continue;
-      for (const m of meshes) {
-        yield;
-        if (setSway(m, bannerSway, BANNER.amp, BANNER.freq)) plan.sway++;
-      }
+  // Banners flutter; peach trees sway (a mesh at a time). A hotspot banner (the arena's hackathon
+  // banners) is a whole node: its cloth flutters from its rod as a merged one's does, and its pole
+  // and stones (in the atlas, outside the cloth's space) and its gold fittings and rod (in the metal,
+  // left without a sway) hold still.
+  for (const [h, meshes] of hotspotMeshes) {
+    const hang = hotspotHang(h);
+    if (!hang) continue;
+    for (const m of meshes) {
+      yield;
+      if (Array.isArray(m.material) || rigidFitting(m.material)) continue;
+      if (setSway(m, (w) => hangSway(w, [hang]), BANNER.amp, BANNER.freq)) plan.sway++;
     }
   }
   // The banners merged into the baked scenery (BANNER_HANGS: the gate's, the forge's, the arena's
