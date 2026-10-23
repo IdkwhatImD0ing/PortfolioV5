@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const loads: {
   id: string;
+  files: string[];
   signal: AbortSignal;
   calm?: () => Promise<void>;
   onBytes?: (url: string) => (loaded: number, total: number) => void;
@@ -19,13 +20,14 @@ vi.mock("./assets", () => ({
     set.drawn = false;
     for (const r of set.scenes) r.visible = false;
   },
-  loadSet: vi.fn((ctx: WorldContext, id: string, need: [number, number], _files: string[], opts: { signal: AbortSignal; calm?: () => Promise<void>; onBytes?: (url: string) => (loaded: number, total: number) => void }) => {
+  loadSet: vi.fn((ctx: WorldContext, id: string, need: [number, number], files: string[], opts: { signal: AbortSignal; calm?: () => Promise<void>; onBytes?: (url: string) => (loaded: number, total: number) => void }) => {
     // The set holds the manifest's triangles and one 4096 px mipmapped atlas (LinearMipmapLinearFilter).
     const tris = ctx.data.manifest.chunks.find((c) => c.id === id)?.tris ?? 0;
     const textures = [{ image: { width: 4096, height: 4096 }, generateMipmaps: true, minFilter: 1008, userData: {} }];
     return new Promise((resolve, reject) => {
       loads.push({
         id,
+        files,
         signal: opts.signal,
         calm: opts.calm,
         onBytes: opts.onBytes,
@@ -41,16 +43,18 @@ import type { ChunkInfo } from "@/lib/sect/types";
 import {
   ChunkStreamer,
   STREAM_BUDGETS,
-  canRetain,
   chunkTexBytes,
   estimateTexBytes,
   retryDelayMs,
+  roomyMemory,
   streamBudget,
   textureBytes,
 } from "./streaming";
 import type { WorldContext } from "./assets";
 
 vi.stubGlobal("window", globalThis);
+
+type Fixture = { data: { manifest: { chunks: unknown[] }; camera: { holds: { id: string; frame: number }[] } } };
 
 function ctx(): WorldContext {
   const chunks = [
@@ -78,9 +82,7 @@ function ctx(): WorldContext {
 
 /** Three areas in a row (gate, mirror, forge) with their holds. */
 function three(): WorldContext {
-  const c = ctx() as unknown as {
-    data: { manifest: { chunks: unknown[] }; camera: { holds: { id: string; frame: number }[] } };
-  };
+  const c = ctx() as unknown as Fixture;
   c.data.manifest.chunks = [
     { id: "gate", files: ["gate.glb"], need: [1, 300], tris: 1_000_000 },
     { id: "mirror", files: ["mirror.glb"], need: [100, 500], tris: 700_000 },
@@ -94,8 +96,27 @@ function three(): WorldContext {
   return c as unknown as WorldContext;
 }
 
+const EIGHT = ["gate", "mirror", "forge", "arena", "mission", "library", "steles", "scroll"];
+
+/**
+ * Eight areas in a row, holds 100 frames apart (at 50, 150, ... 750), each seen from two areas
+ * away either way (its need range), so every area of a stop's window is drawn there.
+ */
+function eight(): WorldContext {
+  const c = ctx() as unknown as Fixture;
+  c.data.manifest.chunks = EIGHT.map((id, i) => ({ id, files: [`${id}.glb`], need: [Math.max(1, 100 * i - 150), 100 * i + 250], tris: 1_000_000, bytes: 1000 }));
+  c.data.camera.holds = EIGHT.map((id, i) => ({ id, frame: 100 * i + 50 }));
+  return c as unknown as WorldContext;
+}
+
 async function flush(): Promise<void> {
   for (let i = 0; i < 6; i++) await Promise.resolve();
+}
+
+/** Every file of the load in flight for `id` has all its bytes (it is parsed and prepared next). */
+function arrive(id: string): void {
+  const l = loads.find((x) => x.id === id)!;
+  for (const f of l.files) l.onBytes?.(f)(100, 100);
 }
 
 /** Every load in flight arrives, and (as the render loop would) is uploaded and marked ready. */
@@ -104,6 +125,16 @@ async function settle(st: ChunkStreamer): Promise<void> {
   await flush();
   for (const s of st.list()) st.markReady(s.id);
 }
+
+/** The camera rests at `frame` until streaming there has run its course (two loads at a time). */
+async function rest(st: ChunkStreamer, frame: number): Promise<void> {
+  for (let i = 0; i < 8; i++) {
+    st.update(frame, null, true);
+    await settle(st);
+  }
+}
+
+const ids = (st: ChunkStreamer) => st.status().resident.map((r) => r.id);
 
 beforeEach(() => {
   loads.length = 0;
@@ -131,25 +162,25 @@ describe("ChunkStreamer", () => {
   });
 
   it("does not cancel a chunk a far jump is waiting for when a newer plan looks elsewhere", () => {
-    const st = new ChunkStreamer(ctx(), () => {});
-    // A jump to the summit gathers it...
-    st.update(217, 1647, false);
-    const summit = loads.find((l) => l.id === "summit");
-    expect(summit).toBeDefined();
-    void st.whenReady("summit", 5000);
-    // ...while the flight still under way plans around the mirror: the summit is outside every
+    const st = new ChunkStreamer(eight(), () => {});
+    // A jump from the mirror to the scroll gathers it...
+    st.update(150, 750, false);
+    const scroll = loads.find((l) => l.id === "scroll");
+    expect(scroll).toBeDefined();
+    void st.whenReady("scroll", 5000);
+    // ...while the flight still under way plans around the mirror: the scroll is outside every
     // window, but it keeps loading for the jump.
-    st.update(217, 217, false);
-    expect(summit!.signal.aborted).toBe(false);
-    expect(st.status().loading).toContain("summit");
+    st.update(150, 150, false);
+    expect(scroll!.signal.aborted).toBe(false);
+    expect(st.status().loading).toContain("scroll");
   });
 
   it("cancels a load nobody waits for", () => {
-    const st = new ChunkStreamer(ctx(), () => {});
-    st.update(217, 1647, false);
-    const summit = loads.find((l) => l.id === "summit")!;
-    st.update(217, 217, false);
-    expect(summit.signal.aborted).toBe(true);
+    const st = new ChunkStreamer(eight(), () => {});
+    st.update(150, 750, false);
+    const scroll = loads.find((l) => l.id === "scroll")!;
+    st.update(150, 150, false);
+    expect(scroll.signal.aborted).toBe(true);
   });
 
   it("dispose releases waiters and says so", async () => {
@@ -161,19 +192,21 @@ describe("ChunkStreamer", () => {
     expect(st.isDisposed).toBe(true);
   });
 
-  it("the phone budget keeps only the area the camera is in", () => {
-    const full = new ChunkStreamer(ctx(), () => {}, STREAM_BUDGETS.full);
-    const low = new ChunkStreamer(ctx(), () => {}, STREAM_BUDGETS.low);
-    full.setGlobalTris(700_000);
-    low.setGlobalTris(700_000);
-    // At frame 200, between the gate and the mirror, both areas are wanted.
-    expect(full.update(200, null, false)!.need).toEqual(["mirror", "gate"]);
-    expect(low.update(200, null, false)!.need).toEqual(["mirror"]);
+  it("desktops need the area and two each side, phones and smaller Medium machines one, a touch screen on High the area alone", () => {
+    const at = (budget: (typeof STREAM_BUDGETS)[keyof typeof STREAM_BUDGETS]) => new ChunkStreamer(eight(), () => {}, budget).update(350, null, false)!.need;
+    // At the arena's stop, nearest first (the forge and the mission 50 frames off, the mirror and
+    // the library 150), triangles not counted.
+    expect(at(STREAM_BUDGETS.full)).toEqual(["arena", "forge", "mission", "mirror", "library"]);
+    expect(at(STREAM_BUDGETS.narrow)).toEqual(["arena", "forge", "mission"]);
+    expect(at(STREAM_BUDGETS.low)).toEqual(["arena", "forge", "mission"]);
+    expect(at(STREAM_BUDGETS.lean)).toEqual(["arena"]);
+    // A stop's own area alone for a jump's gathering (the rest comes once it is there).
+    expect(new ChunkStreamer(eight(), () => {}, STREAM_BUDGETS.full).needAt(350)).toEqual(["arena"]);
   });
 
   it("a dropped set is marked so a stale scene list can never draw it again", async () => {
-    const st = new ChunkStreamer(ctx(), () => {});
-    st.update(93, null, false);
+    const st = new ChunkStreamer(eight(), () => {});
+    st.update(50, null, false);
     const gate = loads.find((l) => l.id === "gate")!;
     gate.resolve(null);
     await Promise.resolve();
@@ -182,104 +215,142 @@ describe("ChunkStreamer", () => {
     expect(set).toBeDefined();
     st.markReady("gate");
     expect(set.ready).toBe(true);
-    // Far from the gate (the summit), nothing keeps it.
-    st.update(1647, null, false);
+    // At the scroll, the gate is outside the window: nothing keeps it.
+    st.update(750, null, false);
     expect(st.list().some((s) => s.id === "gate")).toBe(false);
     expect(set.dropped).toBe(true);
     expect(set.ready).toBe(false);
     expect(st.takeDisposals()).toContain(set);
   });
 
-  it("prefetches the next area past the budget once the needed ones are ready: a desktop even while moving, a phone only at rest", async () => {
-    const full = new ChunkStreamer(three(), () => {}, STREAM_BUDGETS.full);
-    full.setGlobalTris(700_000);
-    full.update(93, null, false);
+  it("loads the window nearest first, one download at a time, then prefetches the next area past it: a desktop even while moving, a phone only at rest", async () => {
+    const full = new ChunkStreamer(eight(), () => {}, STREAM_BUDGETS.full);
+    full.update(50, null, false);
+    // The nearest area has the line to itself...
+    expect(loads.map((l) => l.id)).toEqual(["gate"]);
+    full.update(50, null, false);
+    expect(loads.map((l) => l.id)).toEqual(["gate"]);
+    // ...and the next starts once its bytes are in, while it is parsed and prepared.
+    arrive("gate");
+    full.update(50, null, false);
+    expect(loads.map((l) => l.id)).toEqual(["gate", "mirror"]);
+    // Two at most.
+    arrive("mirror");
+    full.update(50, null, false);
+    expect(full.status().loading).toEqual(["gate", "mirror"]);
     await settle(full);
-    expect(full.status().resident.map((r) => r.id)).toEqual(["gate", "mirror"]);
-    // The gate and the mirror fill the budget (1.7 of 1.8M); the forge starts anyway, mid-flight.
-    full.update(93, null, false);
+    full.update(50, null, false);
     expect(full.status().loading).toEqual(["forge"]);
+    await settle(full);
+    expect(ids(full)).toEqual(["gate", "mirror", "forge"]);
+    // The window is in: the arena starts, mid-flight.
+    full.update(50, null, false);
+    expect(full.status().loading).toEqual(["arena"]);
 
     loads.length = 0;
-    const low = new ChunkStreamer(three(), () => {}, STREAM_BUDGETS.low);
-    low.setGlobalTris(700_000);
-    low.update(93, null, false);
-    await settle(low);
-    expect(low.status().resident.map((r) => r.id)).toEqual(["gate"]);
-    low.update(93, null, false);
+    const low = new ChunkStreamer(eight(), () => {}, STREAM_BUDGETS.low);
+    for (let i = 0; i < 2; i++) {
+      low.update(50, null, false);
+      await settle(low);
+    }
+    expect(ids(low)).toEqual(["gate", "mirror"]);
+    low.update(50, null, false);
     expect(low.status().loading).toEqual([]);
-    // At rest the phone fetches the mirror into its spare slot.
-    low.update(93, null, true);
-    expect(low.status().loading).toEqual(["mirror"]);
+    // At rest the phone fetches the forge into its spare slot.
+    low.update(50, null, true);
+    expect(low.status().loading).toEqual(["forge"]);
   });
 
   it("a prefetch downloaded mid-flight waits for a rest (or for its area to be needed) before using the main thread", async () => {
-    const full = new ChunkStreamer(three(), () => {}, STREAM_BUDGETS.full);
-    full.setGlobalTris(700_000);
-    full.update(93, null, false);
+    const full = new ChunkStreamer(eight(), () => {}, STREAM_BUDGETS.full);
+    full.update(50, null, false);
     // The needed areas go straight on.
     let needed = false;
     void loads.find((l) => l.id === "gate")!.calm!().then(() => (needed = true));
     await flush();
     expect(needed).toBe(true);
-    await settle(full);
-    full.update(93, null, false);
-    const forge = loads.find((l) => l.id === "forge")!;
+    // The mirror, then the forge, then the arena (the prefetch).
+    for (let i = 0; i < 3; i++) {
+      await settle(full);
+      full.update(50, null, false);
+    }
+    const arena = loads.find((l) => l.id === "arena")!;
     let calm = false;
-    void forge.calm!().then(() => (calm = true));
+    void arena.calm!().then(() => (calm = true));
     await flush();
     expect(calm).toBe(false);
-    full.update(95, null, false);
+    full.update(55, null, false);
     await flush();
     expect(calm).toBe(false);
     // The camera stops: it may go on.
-    full.update(95, null, true);
+    full.update(55, null, true);
     await flush();
     expect(calm).toBe(true);
   });
 
-  it("a phone keeps the area it is in drawn until the next one is ready", async () => {
-    const low = new ChunkStreamer(three(), () => {}, STREAM_BUDGETS.low);
-    low.setGlobalTris(700_000);
-    low.update(93, null, false);
-    await settle(low);
-    // Into the mirror's stretch without having rested: the mirror loads, the gate stays meanwhile.
-    low.update(240, null, false);
-    expect(low.status().loading).toEqual(["mirror"]);
-    expect(low.plan!.handover).toEqual(["gate"]);
-    expect(low.status().resident.map((r) => r.id)).toEqual(["gate"]);
-    await settle(low);
-    low.update(240, null, false);
-    expect(low.status().resident.map((r) => r.id)).toEqual(["mirror"]);
+  it("keeps the area and two each side through a flight, with the next one ready ahead, and loads nothing twice at the line between two areas", async () => {
+    const st = new ChunkStreamer(eight(), () => {}, STREAM_BUDGETS.full);
+    await rest(st, 50);
+    expect(ids(st)).toEqual(["gate", "mirror", "forge", "arena"]);
+    await rest(st, 150);
+    expect(ids(st)).toEqual(EIGHT.slice(0, 5));
+    await rest(st, 250);
+    expect(ids(st)).toEqual(EIGHT.slice(0, 6));
+    // At the arena the gate is three back: it goes, and the steles come ahead.
+    await rest(st, 350);
+    expect(ids(st)).toEqual(EIGHT.slice(1, 7));
+    // To and fro over the line into the mission's stretch (it starts at 401): nothing loads or drops.
+    for (const f of [395, 405, 398, 410]) {
+      const p = st.update(f, null, false)!;
+      expect(p.load).toEqual([]);
+      expect(p.drop).toEqual([]);
+      expect(loads).toEqual([]);
+    }
+    await rest(st, 450);
+    expect(ids(st)).toEqual(EIGHT.slice(2, 8));
+    // Every one drawn at the mission's stop: none is its stand-in.
+    expect(st.plan!.draw).toEqual(EIGHT.slice(2, 7));
   });
 
-  it("at either end of the flight a phone prefetches the only way on, whichever way it came", async () => {
-    const low = new ChunkStreamer(three(), () => {}, STREAM_BUDGETS.low);
-    low.setGlobalTris(700_000);
+  it("a touch screen on High keeps the area it is in drawn until the next one is ready", async () => {
+    const lean = new ChunkStreamer(three(), () => {}, STREAM_BUDGETS.lean);
+    lean.update(93, null, false);
+    await settle(lean);
+    // Into the mirror's stretch without having rested: the mirror loads, the gate stays meanwhile.
+    lean.update(240, null, false);
+    expect(lean.status().loading).toEqual(["mirror"]);
+    expect(lean.plan!.handover).toEqual(["gate"]);
+    expect(ids(lean)).toEqual(["gate"]);
+    await settle(lean);
+    lean.update(240, null, false);
+    expect(ids(lean)).toEqual(["mirror"]);
+  });
+
+  it("at either end of the flight the spare slot faces the only way on, whichever way the camera came", async () => {
+    const lean = new ChunkStreamer(three(), () => {}, STREAM_BUDGETS.lean);
     // Out to the forge, then Home: the flight back leaves the camera travelling backward.
     for (const f of [93, 217, 352]) {
-      low.update(f, null, false);
-      await settle(low);
+      lean.update(f, null, false);
+      await settle(lean);
     }
     // At the last area the only way on is back: the mirror keeps the spare slot.
-    low.update(352, null, true);
-    expect(low.status().resident.map((r) => r.id)).toEqual(["mirror", "forge"]);
+    lean.update(352, null, true);
+    expect(ids(lean)).toEqual(["mirror", "forge"]);
     for (const f of [352, 250, 150, 93]) {
-      low.update(f, 93, false);
-      await settle(low);
+      lean.update(f, 93, false);
+      await settle(lean);
     }
-    expect(low.status().resident.map((r) => r.id)).toEqual(["gate"]);
-    // Resting at the gate, nothing lies behind it: the mirror is fetched into the spare slot.
-    low.update(93, null, true);
-    expect(low.status().loading).toEqual(["mirror"]);
-    await settle(low);
-    low.update(93, null, true);
-    expect(low.status().resident.map((r) => r.id)).toEqual(["gate", "mirror"]);
+    // Back at the gate nothing lies behind it: the spare slot holds the mirror ahead.
+    lean.update(93, null, true);
+    await settle(lean);
+    lean.update(93, null, true);
+    expect(ids(lean)).toEqual(["gate", "mirror"]);
+    expect(lean.status().loading).toEqual([]);
   });
 
   it("after a far jump back a resting phone prefetches the area ahead, and after a step back the one behind", async () => {
     const four = () => {
-      const c = three() as unknown as { data: { manifest: { chunks: unknown[] }; camera: { holds: { id: string; frame: number }[] } } };
+      const c = three() as unknown as Fixture;
       c.data.manifest.chunks.push({ id: "arena", files: ["arena.glb"], need: [400, 800], tris: 800_000 });
       c.data.camera.holds.push({ id: "arena", frame: 516 });
       return c as unknown as WorldContext;
@@ -291,20 +362,18 @@ describe("ChunkStreamer", () => {
       }
     };
     // From the arena back to the mirror (the rail, Places): the visitor reads on from there.
-    const low = new ChunkStreamer(four(), () => {}, STREAM_BUDGETS.low);
-    low.setGlobalTris(700_000);
-    await walkOut(low);
+    const lean = new ChunkStreamer(four(), () => {}, STREAM_BUDGETS.lean);
+    await walkOut(lean);
     for (const f of [516, 400, 300, 217]) {
-      low.update(f, 217, false);
-      await settle(low);
+      lean.update(f, 217, false);
+      await settle(lean);
     }
-    low.update(217, null, true);
-    expect(low.status().loading).toEqual(["forge"]);
+    lean.update(217, null, true);
+    expect(lean.status().loading).toEqual(["forge"]);
 
     // From the forge to the mirror, one stop back (K): it keeps going the way it went.
     loads.length = 0;
-    const step = new ChunkStreamer(four(), () => {}, STREAM_BUDGETS.low);
-    step.setGlobalTris(700_000);
+    const step = new ChunkStreamer(four(), () => {}, STREAM_BUDGETS.lean);
     await walkOut(step);
     for (const f of [516, 352]) {
       step.update(f, null, false);
@@ -322,8 +391,7 @@ describe("ChunkStreamer", () => {
     // K at the arena, K again before the forge is reached (it steps on from the flight's end): two
     // steps back, not one far jump, so the phone still fetches the way the visitor goes.
     loads.length = 0;
-    const twice = new ChunkStreamer(four(), () => {}, STREAM_BUDGETS.low);
-    twice.setGlobalTris(700_000);
+    const twice = new ChunkStreamer(four(), () => {}, STREAM_BUDGETS.lean);
     await walkOut(twice);
     for (const [f, t] of [
       [516, 352],
@@ -341,26 +409,27 @@ describe("ChunkStreamer", () => {
   });
 
   it("a cancelled jump lets go of its wait, and of a load only it kept going", async () => {
-    const st = new ChunkStreamer(ctx(), () => {});
-    st.update(217, 1647, false);
+    const st = new ChunkStreamer(eight(), () => {});
+    st.update(150, 750, false);
     let current = true;
     let released = false;
-    void st.whenReady("summit", 60_000, () => current).then(() => (released = true));
-    st.update(217, 217, false);
-    const summit = loads.find((l) => l.id === "summit")!;
-    expect(summit.signal.aborted).toBe(false);
+    void st.whenReady("scroll", 60_000, () => current).then(() => (released = true));
+    st.update(150, 150, false);
+    const scroll = loads.find((l) => l.id === "scroll")!;
+    expect(scroll.signal.aborted).toBe(false);
     // The visitor scrolls instead: the jump is no longer wanted.
     current = false;
-    st.update(217, null, false);
+    st.update(150, null, false);
     await flush();
     expect(released).toBe(true);
-    expect(summit.signal.aborted).toBe(true);
+    expect(scroll.signal.aborted).toBe(true);
   });
 
   it("retries a failed chunk after 2 s and then 8 s, then lets the stand-in stay until the network is back", async () => {
     vi.useFakeTimers();
     try {
-      const st = new ChunkStreamer(ctx(), () => {});
+      // The area alone, so the gate is the only load.
+      const st = new ChunkStreamer(ctx(), () => {}, STREAM_BUDGETS.lean);
       const fail = async () => {
         for (const l of loads.splice(0)) l.reject(new Error("offline"));
         await flush();
@@ -396,110 +465,181 @@ describe("ChunkStreamer", () => {
     }
   });
 
-  it("every touch screen gets the one-area budget, whatever its tier", () => {
-    // Even with all the memory in the world: only the high tier with a mouse retains.
+  it("gives every device its window: High and roomy Medium two each side, other Medium and phones one, High on a touch screen the area alone", () => {
     const roomy = { deviceMemory: 8, hardwareConcurrency: 16 };
-    expect(streamBudget("low", false, roomy, false)).toBe(STREAM_BUDGETS.low);
-    expect(streamBudget("mid", true, roomy, false)).toBe(STREAM_BUDGETS.low);
-    expect(streamBudget("high", true, roomy, false)).toBe(STREAM_BUDGETS.low);
+    const small = { deviceMemory: 4, hardwareConcurrency: 4 };
+    expect(streamBudget("high", false, small, false)).toBe(STREAM_BUDGETS.full);
+    expect(streamBudget("high", false, roomy, false)).toBe(STREAM_BUDGETS.full);
     expect(streamBudget("mid", false, roomy, false)).toBe(STREAM_BUDGETS.full);
-    expect(streamBudget("high", false, { deviceMemory: 4 }, false)).toBe(STREAM_BUDGETS.full);
+    expect(streamBudget("mid", false, small, false)).toBe(STREAM_BUDGETS.narrow);
+    expect(streamBudget("low", false, roomy, false)).toBe(STREAM_BUDGETS.low);
+    // Every touch screen, whatever its memory: the 2048 px set and one each side, or the area
+    // alone when High keeps the 4096 px set.
+    expect(streamBudget("low", true, roomy, false)).toBe(STREAM_BUDGETS.low);
+    expect(streamBudget("mid", true, roomy, false)).toBe(STREAM_BUDGETS.low);
+    expect(streamBudget("high", true, roomy, false)).toBe(STREAM_BUDGETS.lean);
+    expect(STREAM_BUDGETS.full.around).toEqual({ behind: 2, ahead: 2 });
+    expect(STREAM_BUDGETS.low.around).toEqual({ behind: 1, ahead: 1 });
     // Phones prefetch at rest into one spare slot; desktops while moving.
     expect(STREAM_BUDGETS.low.spare).toBe(1);
     expect(STREAM_BUDGETS.low.prefetch).toBe("rest");
+    expect(STREAM_BUDGETS.lean.prefetch).toBe("rest");
     expect(STREAM_BUDGETS.full.prefetch).toBe("moving");
+    expect(STREAM_BUDGETS.narrow.prefetch).toBe("moving");
+  });
+
+  it("calls a Medium machine roomy with 8 GB, or 8 cores when the memory is hidden", () => {
+    expect(roomyMemory({ deviceMemory: 8, hardwareConcurrency: 4 })).toBe(true);
+    // A known small memory wins over many cores.
+    expect(roomyMemory({ deviceMemory: 4, hardwareConcurrency: 32 })).toBe(false);
+    // Hidden memory (Firefox, Safari): the core count decides.
+    expect(roomyMemory({ hardwareConcurrency: 8 })).toBe(true);
+    expect(roomyMemory({ hardwareConcurrency: 6 })).toBe(false);
+    expect(roomyMemory({})).toBe(false);
   });
 
   it("fetches nothing ahead with the data saver on", async () => {
     const saver = streamBudget("high", false, { deviceMemory: 8 }, true);
-    expect(saver).toEqual({ ...STREAM_BUDGETS.retain, prefetch: "off" });
-    const st = new ChunkStreamer(three(), () => {}, streamBudget("mid", false, {}, true));
-    st.setGlobalTris(700_000);
-    st.update(93, null, false);
-    await settle(st);
-    st.update(93, null, true);
+    expect(saver).toEqual({ ...STREAM_BUDGETS.full, prefetch: "off" });
+    const st = new ChunkStreamer(eight(), () => {}, streamBudget("mid", false, {}, true));
+    await rest(st, 50);
+    expect(ids(st)).toEqual(["gate", "mirror"]);
+    st.update(50, null, true);
     expect(st.status().loading).toEqual([]);
   });
 
-  it("keeps passed areas only on a high-tier desktop with 8 GB, or 8 cores when the memory is hidden", () => {
-    expect(streamBudget("high", false, { deviceMemory: 8 })).toBe(STREAM_BUDGETS.retain);
-    expect(canRetain("high", false, { deviceMemory: 8, hardwareConcurrency: 4 })).toBe(true);
-    // A known small memory wins over many cores.
-    expect(canRetain("high", false, { deviceMemory: 4, hardwareConcurrency: 32 })).toBe(false);
-    // Hidden memory (Firefox): the core count decides.
-    expect(canRetain("high", false, { hardwareConcurrency: 8 })).toBe(true);
-    expect(canRetain("high", false, { hardwareConcurrency: 6 })).toBe(false);
-    expect(canRetain("high", false, {})).toBe(false);
-    expect(canRetain("mid", false, { deviceMemory: 8 })).toBe(false);
-    expect(canRetain("high", true, { deviceMemory: 8 })).toBe(false);
-    // Phones, tablets and the mid tier keep their budgets unchanged (no residency budget).
-    expect(STREAM_BUDGETS.low.retainTris).toBe(0);
-    expect(STREAM_BUDGETS.full.retainTris).toBe(0);
-    expect({ ...STREAM_BUDGETS.retain, retainTris: 0, retainTexBytes: 0 }).toEqual(STREAM_BUDGETS.full);
+  it("a new budget applies in place (a live switch between High and Medium on a smaller machine)", async () => {
+    const st = new ChunkStreamer(eight(), () => {}, STREAM_BUDGETS.full);
+    await rest(st, 350);
+    expect(ids(st)).toEqual(EIGHT.slice(1, 7));
+    st.setBudget(STREAM_BUDGETS.narrow);
+    st.update(350, null, true);
+    expect(ids(st)).toEqual(["forge", "arena", "mission", "library"]);
+    st.setBudget(STREAM_BUDGETS.full);
+    expect(st.update(350, null, true)!.load).toEqual(["mirror"]);
+  });
+
+  it("reports the global set's triangles, and plans nothing from them", () => {
+    const st = new ChunkStreamer(eight(), () => {});
+    const before = st.update(350, null, false)!.need;
+    st.setGlobalTris(1_450_000);
+    expect(st.status().globalTris).toBe(1_450_000);
+    expect(st.update(350, null, false)!.need).toEqual(before);
   });
 });
 
 describe("ChunkStreamer.settleAt (fast travel's settled wait)", () => {
-  /** A stop whose view reaches three areas (wide need ranges, as the full flight's), and one beyond. */
+  /** Six areas seen from everywhere (wide need ranges), holds 200 frames apart (100, 300, ... 1100). */
   function wide(): WorldContext {
-    const c = ctx() as unknown as {
-      data: { manifest: { chunks: unknown[] }; camera: { holds: { id: string; frame: number }[] } };
-    };
-    c.data.manifest.chunks = [
-      { id: "a", files: ["a.glb", "a_trees.glb"], need: [1, 600], tris: 1_000_000, bytes: 1000 },
-      { id: "b", files: ["b.glb"], need: [1, 800], tris: 900_000, bytes: 3000 },
-      { id: "c", files: ["c.glb"], need: [1, 1000], tris: 800_000, bytes: 2000 },
-      { id: "d", files: ["d.glb"], need: [500, 1200], tris: 800_000, bytes: 2000 },
-    ];
-    c.data.camera.holds = [
-      { id: "a", frame: 100 },
-      { id: "b", frame: 300 },
-      { id: "c", frame: 500 },
-      { id: "d", frame: 700 },
-    ];
+    const c = ctx() as unknown as Fixture;
+    c.data.manifest.chunks = ["a", "b", "c", "d", "e", "f"].map((id, i) => ({ id, files: i === 0 ? ["a.glb", "a_trees.glb"] : [`${id}.glb`], need: [1, 1729], tris: 900_000, bytes: 1000 * (i + 1) }));
+    c.data.camera.holds = ["a", "b", "c", "d", "e", "f"].map((id, i) => ({ id, frame: 200 * i + 100 }));
     return c as unknown as WorldContext;
   }
 
-  it("wants the areas the stop draws, and expects the one it will prefetch there", () => {
+  it("waits for the stop's own area and one each side, not for the window's further ones", () => {
     const st = new ChunkStreamer(wide(), () => {});
-    const d = st.settleAt(100);
+    const d = st.settleAt(500);
     expect(d.chunks.map((c) => [c.id, c.done, c.expected === true])).toEqual([
-      ["a", 0, false],
       ["b", 0, false],
-      ["c", 0, true],
+      ["c", 0, false],
+      ["d", 0, false],
     ]);
-    expect(d.chunks.map((c) => c.weight)).toEqual([1000, 3000, 2000]);
+    expect(d.chunks.map((c) => c.weight)).toEqual([2000, 3000, 4000]);
     expect(d.leaving).toEqual([]);
   });
 
-  it("follows each area's download, then its upload, and wants the prefetch once they are in", async () => {
+  it("with the area alone (High on a touch screen), expects the one it will prefetch there, and fetches it while the ink waits", async () => {
+    const st = new ChunkStreamer(wide(), () => {}, STREAM_BUDGETS.lean);
+    const d = st.settleAt(100);
+    expect(d.chunks.map((c) => [c.id, c.expected === true])).toEqual([
+      ["a", false],
+      ["b", true],
+    ]);
+    st.update(100, null, true);
+    await settle(st);
+    // The ink waits for b now: it must start (holding it back kept the ink up for 30 s).
+    expect(st.settleAt(100).chunks.map((c) => [c.id, c.done])).toEqual([
+      ["a", 1],
+      ["b", 0],
+    ]);
+    st.update(100, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["b"]);
+  });
+
+  it("follows each area's download, then its upload, and then loads the rest of the window", async () => {
     const st = new ChunkStreamer(wide(), () => {});
     st.update(100, null, true);
-    expect(loads.map((l) => l.id)).toEqual(["a", "b"]);
+    expect(loads.map((l) => l.id)).toEqual(["a"]);
     // Half of the gate's files arrived: 40% (the download is 80% of the way).
     loads[0].onBytes?.("a.glb")(300, 600);
     loads[0].onBytes?.("a_trees.glb")(200, 400);
     expect(st.settleAt(100).chunks[0].done).toBeCloseTo(0.4);
+    st.update(100, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["a"]);
+    // All of them: 80%, and b starts.
+    loads[0].onBytes?.("a.glb")(600, 600);
+    loads[0].onBytes?.("a_trees.glb")(400, 400);
+    expect(st.settleAt(100).chunks[0].done).toBeCloseTo(0.8);
+    st.update(100, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["a", "b"]);
     for (const l of loads.splice(0)) l.resolve(null);
     await flush();
     // Loaded, still uploading.
-    expect(st.settleAt(100).chunks.slice(0, 2).map((c) => c.done)).toEqual([0.9, 0.9]);
+    expect(st.settleAt(100).chunks.map((c) => c.done)).toEqual([0.9, 0.9]);
     for (const s of st.list()) st.markReady(s.id);
     const d = st.settleAt(100);
-    expect(d.chunks.map((c) => [c.id, c.done, c.expected === true])).toEqual([
-      ["a", 1, false],
-      ["b", 1, false],
-      ["c", 0, false],
+    expect(d.chunks.map((c) => [c.id, c.done])).toEqual([
+      ["a", 1],
+      ["b", 1],
     ]);
-    // The prefetch it waits for is the one the streamer then starts.
+    // The window's third area (two away) waits while the ink still watches the stop...
     st.update(100, null, true);
+    expect(loads).toEqual([]);
+    // ...and comes once it has let go.
+    const now = performance.now();
+    const clock = vi.spyOn(performance, "now").mockReturnValue(now + 1000);
+    try {
+      st.update(100, null, true);
+      expect(loads.map((l) => l.id)).toEqual(["c"]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("while the ink waits, only the stop's own area and its neighbours load; the rest of the window after", async () => {
+    const st = new ChunkStreamer(wide(), () => {});
+    st.settleAt(500);
+    st.update(500, null, true);
     expect(loads.map((l) => l.id)).toEqual(["c"]);
+    arrive("c");
+    st.settleAt(500);
+    st.update(500, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["c", "b"]);
+    await settle(st);
+    st.settleAt(500);
+    st.update(500, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["d"]);
+    await settle(st);
+    st.settleAt(500);
+    st.update(500, null, true);
+    expect(loads).toEqual([]);
+    const now = performance.now();
+    const clock = vi.spyOn(performance, "now").mockReturnValue(now + 1000);
+    try {
+      st.update(500, null, true);
+      expect(loads.map((l) => l.id)).toEqual(["a"]);
+      arrive("a");
+      st.update(500, null, true);
+      expect(loads.map((l) => l.id)).toEqual(["a", "e"]);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("waits for no prefetch with the data saver on (the stand-in stays)", async () => {
     const st = new ChunkStreamer(wide(), () => {}, streamBudget("mid", false, {}, true));
-    st.update(100, null, true);
-    await settle(st);
+    await rest(st, 100);
     const d = st.settleAt(100);
     expect(d.chunks.map((c) => c.id)).toEqual(["a", "b"]);
     expect(d.chunks.every((c) => c.done === 1)).toBe(true);
@@ -507,15 +647,13 @@ describe("ChunkStreamer.settleAt (fast travel's settled wait)", () => {
 
   it("names a drawn area the stop does not keep as leaving, and counts a failed one as done", async () => {
     const st = new ChunkStreamer(wide(), () => {});
-    // At the stop c, then a jump back to a on the phone budget: there it keeps a and, in its spare
-    // slot, b (both drawn at a's frame), but not c, drawn there now.
-    st.update(500, null, true);
-    await settle(st);
-    expect(st.list().map((s) => s.id)).toEqual(["b", "c"]);
-    st.setBudget(STREAM_BUDGETS.low);
+    // At the last stop (f): its window d, e, f, and c prefetched (the only way on is back). Then
+    // fast travel to the first one: c is in its window and stays; d, e and f go.
+    await rest(st, 1100);
+    expect(ids(st)).toEqual(["c", "d", "e", "f"]);
     const d = st.settleAt(100);
     expect(d.chunks.map((c) => c.id)).toEqual(["a", "b"]);
-    expect(d.leaving).toEqual(["c"]);
+    expect(d.leaving).toEqual(["d", "e", "f"]);
     // a fails for good: nothing to wait for.
     st.update(100, null, true);
     const a = loads.find((l) => l.id === "a");
@@ -587,119 +725,5 @@ describe("texture memory", () => {
     expect(chunkTexBytes(chunk({ texBytes: 228_000_000 }), true)).toBe(estimateTexBytes(4_000_000));
     // No low files: the full set is what loads, so its figure counts.
     expect(chunkTexBytes(chunk({ filesLow: null, texBytes: 228_000_000 }), true)).toBe(228_000_000);
-  });
-});
-
-describe("ChunkStreamer retaining passed areas", () => {
-  // Four areas in a row with narrow need ranges: well into the arena, the gate is outside every window.
-  const row = () => {
-    const c = ctx() as unknown as {
-      data: { manifest: { chunks: unknown[] }; camera: { holds: { id: string; frame: number }[] } };
-    };
-    c.data.manifest.chunks = [
-      { id: "gate", files: ["gate.glb"], need: [1, 190], bytes: 10_000_000, tris: 1_000_000 },
-      { id: "mirror", files: ["mirror.glb"], need: [140, 320], bytes: 7_000_000, tris: 700_000 },
-      { id: "forge", files: ["forge.glb"], need: [270, 520], bytes: 8_000_000, tris: 900_000 },
-      { id: "arena", files: ["arena.glb"], need: [480, 630], bytes: 8_000_000, tris: 600_000 },
-    ];
-    c.data.camera.holds = [
-      { id: "gate", frame: 93 },
-      { id: "mirror", frame: 217 },
-      { id: "forge", frame: 352 },
-      { id: "arena", frame: 560 },
-    ];
-    return c as unknown as WorldContext;
-  };
-  const settle = async (st: ChunkStreamer) => {
-    for (const l of [...loads]) l.resolve(null);
-    for (let i = 0; i < 4; i++) await Promise.resolve();
-    // Uploaded (the render loop marks them ready): only then is the next area prefetched.
-    for (const s of st.list()) st.markReady(s.id);
-  };
-  /** Flies forward through every hold, resting at each (so the next area is prefetched). */
-  const fly = async (st: ChunkStreamer, frames: number[]) => {
-    for (const f of frames) {
-      st.update(f, null, false);
-      await settle(st);
-      st.update(f, null, true);
-      await settle(st);
-    }
-  };
-  const ids = (st: ChunkStreamer) => st.status().resident.map((r) => r.id);
-
-  it("the plain desktop budget drops the gate once passed; a roomy desktop keeps it, measured", async () => {
-    const plain = new ChunkStreamer(row(), () => {}, STREAM_BUDGETS.full);
-    plain.setGlobalTris(700_000);
-    await fly(plain, [93, 217, 352, 560]);
-    expect(ids(plain)).not.toContain("gate");
-
-    loads.length = 0;
-    const roomy = new ChunkStreamer(row(), () => {}, STREAM_BUDGETS.retain);
-    roomy.setGlobalTris(700_000);
-    await fly(roomy, [93, 217, 352, 560]);
-    // All four (3.2 M triangles, 4 x 89 MB of textures) fit the residency budget.
-    expect(ids(roomy)).toEqual(["gate", "mirror", "forge", "arena"]);
-    const gate = roomy.status().resident.find((r) => r.id === "gate")!;
-    expect(gate.retained).toBe(true);
-    expect(gate.texBytes).toBe(Math.round(4096 * 4096 * 4 * (4 / 3)));
-    expect(roomy.plan!.retain).toContain("gate");
-    // Scrolling back to the gate is instant: nothing loads.
-    const before = loads.length;
-    roomy.update(93, null, false);
-    expect(loads.length).toBe(before);
-    // Back at the first area the plan faces forward again (nothing lies behind it), as on opening.
-    expect(roomy.plan!.need).toEqual(["gate", "mirror"]);
-    expect(roomy.plan!.load).toEqual([]);
-    expect(roomy.plan!.drop).toEqual([]);
-  });
-
-  it("evicts the farthest passed area first when the budget is full", async () => {
-    // Room for three areas' textures (3 x 89 MB): at the arena, the arena and forge are the usual
-    // plan, the mirror (nearest passed) stays and the gate (farthest) goes.
-    const tight = new ChunkStreamer(row(), () => {}, { ...STREAM_BUDGETS.retain, retainTexBytes: 3 * 90_000_000 });
-    tight.setGlobalTris(700_000);
-    await fly(tight, [93, 217, 352, 560]);
-    expect(ids(tight)).toEqual(["mirror", "forge", "arena"]);
-    expect(tight.takeDisposals().map((s) => s.id)).toContain("gate");
-  });
-
-  it("a new budget applies in place (a live switch between Medium and High)", async () => {
-    const st = new ChunkStreamer(row(), () => {}, STREAM_BUDGETS.full);
-    st.setGlobalTris(700_000);
-    st.setBudget(STREAM_BUDGETS.retain);
-    await fly(st, [93, 217, 352, 560]);
-    expect(st.plan!.retain).toContain("gate");
-    expect(ids(st)).toContain("gate");
-    // Back to the plain budget: the passed areas go at the next update.
-    st.setBudget(STREAM_BUDGETS.full);
-    st.update(560, null, false);
-    expect(st.plan!.retain).toEqual([]);
-    expect(ids(st)).not.toContain("gate");
-  });
-
-  it("a new budget still counts the global set's triangles", () => {
-    // Three small areas wanted at once at frame 260: 1.5 M triangles.
-    const small = () => {
-      const c = ctx() as unknown as {
-        data: { manifest: { chunks: unknown[] }; camera: { holds: { id: string; frame: number }[] } };
-      };
-      c.data.manifest.chunks = [
-        { id: "gate", files: ["gate.glb"], need: [1, 300], tris: 500_000 },
-        { id: "mirror", files: ["mirror.glb"], need: [100, 500], tris: 500_000 },
-        { id: "forge", files: ["forge.glb"], need: [250, 700], tris: 500_000 },
-      ];
-      c.data.camera.holds = [
-        { id: "gate", frame: 93 },
-        { id: "mirror", frame: 217 },
-        { id: "forge", frame: 352 },
-      ];
-      return c as unknown as WorldContext;
-    };
-    // Without the global set all three fit 2.5 M; with its 1.2 M only two do.
-    expect(new ChunkStreamer(small(), () => {}, STREAM_BUDGETS.full).update(260, null, false)!.need).toHaveLength(3);
-    const st = new ChunkStreamer(small(), () => {}, STREAM_BUDGETS.low);
-    st.setGlobalTris(1_200_000);
-    st.setBudget(STREAM_BUDGETS.full);
-    expect(st.update(260, null, false)!.need).toHaveLength(2);
   });
 });

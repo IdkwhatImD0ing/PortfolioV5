@@ -1,11 +1,13 @@
 /**
  * Streams the manifest's chunks around the camera (lib/sect/chunks.ts decides what; this does it):
- * starts loads, prefetches the next chunk (desktops as soon as nothing else loads, phones while the
- * camera rests), cancels loads nobody wants any more, keeps the area on screen until the next one
- * can be drawn, retries failed loads a few times and hands dropped chunks back for disposal once
- * React has taken them out of the scene. On roomy desktops it measures what each loaded chunk holds,
- * so passed areas can stay within a residency budget (STREAM_BUDGETS.retain). For fast travel's
- * settled wait it says what a camera resting at a stop will draw and how far that has come (settleAt).
+ * keeps the area the camera is in and its neighbours in flight order at full detail (two each side
+ * on desktops, STREAM_BUDGETS), starts loads nearest first, prefetches the next area past that
+ * window (desktops as soon as nothing else loads, phones while the camera rests), cancels loads
+ * nobody wants any more, keeps the area on screen until the next one can be drawn, retries failed
+ * loads a few times and hands dropped chunks back for disposal once React has taken them out of the
+ * scene. It measures what each loaded chunk holds (triangles, texture memory: status()). For fast
+ * travel's settled wait it says what a camera resting at a stop will draw and how far that has come
+ * (settleAt).
  *
  * Not React: the page calls update() on a timer and on jumps, and re-renders on onChange.
  */
@@ -18,22 +20,35 @@ import {
   planChunks,
   travelAfterJump,
   travelDirection,
+  type AreaWindow,
   type ChunkCost,
   type ChunkPlan,
   type ChunkSpan,
   type JumpLeg,
   type PlanWindow,
   type Travel,
+  windowCentreAt,
 } from "@/lib/sect/chunks";
 import type { DeviceInfo, Tier } from "@/lib/sect/runtime";
-import { chunkDone, destinationChunks, type SettleSnapshot } from "@/lib/sect/settle";
+import { chunkDone, destinationChunks, SETTLE, type SettleSnapshot } from "@/lib/sect/settle";
 import type { ChunkInfo } from "@/lib/sect/types";
 import { chunkFiles, disposeSet, loadSet, retireSet, type LoadedSet, type SetLoadOptions, type WorldContext } from "./assets";
 
-/** Loads at once (needed chunks first; a prefetch only when nothing else is loading). */
+/**
+ * Loads at once (needed chunks first; a prefetch only when nothing else is loading). Only one of them
+ * downloads at a time, the nearest first: the next starts once its files are in, while the first is
+ * parsed and prepared. Downloading two areas side by side, the gate's mirror (the peak beside the
+ * stair, the first thing the opening view shows past the gate) stayed its stand-in about 1.7 s longer
+ * on a 40 Mbps line, sharing the line with the forge further back.
+ */
 const MAX_PARALLEL = 2;
 /** Tries a chunk gets (the first load and its retries) before the backdrop's proxy stands in for good. */
 const MAX_TRIES = 3;
+/**
+ * How long one settleAt call holds back the loads fast travel's wait does not cover (it is called
+ * every display frame while the ink is up, so they start about this long after the ink lets go).
+ */
+const SETTLE_FOCUS_MS = 400;
 /** Wait before the first retry; each later one waits RETRY_GROWTH times longer (2 s, then 8 s). */
 const RETRY_BASE_MS = 2000;
 const RETRY_GROWTH = 4;
@@ -57,80 +72,83 @@ export function retryDelayMs(failures: number): number | null {
 export type PrefetchMode = "moving" | "rest" | "off";
 
 /**
- * Triangles resident at once (global set included) and how many of the nearest areas are always
- * allowed past that budget (see lib/sect/chunks.ts). Desktops keep the area they are in and the
- * next; the low (phone) tier draws only the area it is in, with the backdrop's proxies standing in
- * for its neighbours, so a phone holds about 1.2-1.9 M triangles instead of 3.4 M (plus the spare).
+ * How many areas stay at full detail around the one the camera is in, by flight order (their own
+ * meshes and full-resolution textures, never the backdrop's stand-ins), and when the next area past
+ * them loads (see lib/sect/chunks.ts PlanWindow.around). The owner's rule: the place on screen, the
+ * two before it and the two after it. Clamped at the flight's ends (three areas at the gate and at
+ * the summit). Nothing in a loaded area is reduced: every area loads its own atlases at the size
+ * the tier's texture set has (4096 px, or 2048 px on the low tier and touch screens), with full
+ * mipmaps and the same filtering, whether the camera is in it or two areas away.
  *
- * `spare`: one area past the budget (the three-chunk cap still holds): the next one, prefetched so
- * it does not load mid-flight, or during a jump the one the camera waits in. Phones too: without it
- * a phone showed the backdrop's stand-ins for 4-7 s at every stop on a 12 Mbps network; with it the
- * area is there on arrival, for about 60 MB more of textures (150-165 MB) while two are resident.
+ * Measured at the stops from the gate to the library (production build, 1600x900 and 390x844):
+ * - `full` (High, and Medium with 8 GB or more, roomyMemory): two each side. Five or six areas
+ *   with the spare: 0.96-1.2 GB of textures, 0.25-0.32 GB of geometry, 8.3-10.2 M triangles
+ *   resident, against three areas, 0.55-0.65 GB, 0.14-0.2 GB and 5.4-6.2 M for the area and the
+ *   next it replaces. Frustum culling keeps what a frame draws close: 2.9-6.8 M triangles at the
+ *   stops against 2.7-5.7 M.
+ * - `narrow` (Medium on a smaller machine): one each side, about 0.8 GB of textures with the spare.
+ *   An integrated GPU shares the system's memory; six areas would take a third of 4 GB.
+ * - `low` (phones, tablets and the low tier, with the 2048 px set): one each side. Four areas with
+ *   the spare: 0.26-0.3 GB of textures, 0.17-0.22 GB of geometry and 0.16-0.29 GB of script
+ *   buffers, 0.6-0.8 GB in all against 0.4-0.5 GB before, about half of what iOS allows a tab (it
+ *   drops one at about 1.5 GB). Two each side measured 0.9-1.05 GB (0.4-0.43 GB of textures, up to
+ *   0.31 GB of geometry): too close to that limit once the browser's own share and a load's
+ *   decoding are added.
+ * - `lean` (a touch screen on High, which keeps the 4096 px set): the area alone and the spare, as
+ *   every phone had before: two 4096 px areas are 0.32-0.48 GB of textures already.
+ *
+ * `spare`: the next area past the window in the direction of travel, prefetched once the window is
+ * in and kept until the camera has passed it, so crossing into the next area finds its new far
+ * neighbour loaded. During a jump the camera's own window stays while the cap (the window and the
+ * spare) allows. Phones too: without it a phone showed the backdrop's stand-ins for 4-7 s at every
+ * stop on a 12 Mbps network.
  *
  * `prefetch`: when the next area may start loading (PrefetchMode). Desktops download it during the
  * flight (a visitor who never pauses saw five stops arrive as stand-ins); phones wait for a rest
  * (their data and CPU are scarcer).
  *
- * `lookBack`: while the visitor looks back at rest (free look turned past 90 degrees), desktops
- * may load one more area, the one behind, past the cap and the budget (four areas instead of
- * three). Phones keep the backdrop's proxy there.
- *
- * `retainTris` / `retainTexBytes` (`retain`, high-tier desktops with memory to spare only, see
- * streamBudget): areas already loaded stay after the camera has passed them, nearest first, while
- * all the areas resident fit 5 M triangles and 900 MB of texture memory; the farthest go first.
- * Scrolling back to them is then instant. Areas only: the global set (about 0.7 M triangles and
- * 8 MB, never dropped) comes on top. The full set's 11 areas hold about 11.7 M triangles and
- * 1.82 GB of RGBA8 textures with mips (115-228 MB an area), so this keeps four or five areas, never
- * all of them; triangles are what binds (a flight there and back peaks at about 4.9 M and 740 MB).
- * The usual desktop plan already peaks at about 3.9 M. Retained areas are drawn while their need
- * range holds the frame (World in scene.tsx), so the triangles drawn can rise by as much (about a
- * fifth over that peak). 0 turns it off: phones, tablets, the mid tier and the plain desktop budget.
+ * `lookBack`: while the visitor looks back at rest (free look turned past 90 degrees), one more area
+ * behind the view may load past the cap (lib/sect/chunks.ts PlanWindow.lookBack). 0 everywhere now:
+ * the window already holds the areas behind.
  */
 export const STREAM_BUDGETS = {
-  full: { triBudget: 2_500_000, minResident: 2, spare: 1, lookBack: 1, retainTris: 0, retainTexBytes: 0, prefetch: "moving" },
-  retain: { triBudget: 2_500_000, minResident: 2, spare: 1, lookBack: 1, retainTris: 5_000_000, retainTexBytes: 900_000_000, prefetch: "moving" },
-  low: { triBudget: 1_200_000, minResident: 1, spare: 1, lookBack: 0, retainTris: 0, retainTexBytes: 0, prefetch: "rest" },
+  full: { around: { behind: 2, ahead: 2 }, spare: 1, lookBack: 0, prefetch: "moving" },
+  narrow: { around: { behind: 1, ahead: 1 }, spare: 1, lookBack: 0, prefetch: "moving" },
+  low: { around: { behind: 1, ahead: 1 }, spare: 1, lookBack: 0, prefetch: "rest" },
+  lean: { around: { behind: 0, ahead: 0 }, spare: 1, lookBack: 0, prefetch: "rest" },
 } as const satisfies Record<string, StreamBudget>;
 
 export interface StreamBudget {
-  triBudget: number;
-  minResident: number;
-  /** Areas allowed past the triangle budget (lib/sect/chunks.ts PlanWindow.spare). */
+  /** Areas before and after the camera's own kept at full detail (lib/sect/chunks.ts PlanWindow.around). */
+  around: AreaWindow;
+  /** Areas past the window in the direction of travel, prefetched and kept (PlanWindow.spare). */
   spare: number;
   /** When the next area may start loading. */
   prefetch: PrefetchMode;
   /** Areas behind allowed past the cap while looking back (lib/sect/chunks.ts PlanWindow.lookBack). */
   lookBack: number;
-  /** Residency budget for keeping loaded areas the camera has passed (PlanWindow.retainTris); 0 = off. */
-  retainTris: number;
-  retainTexBytes: number;
 }
 
 /** What the browser tells about the machine's memory (lib/sect/runtime.ts DeviceInfo). */
 export type MemoryHints = Pick<DeviceInfo, "deviceMemory" | "hardwareConcurrency">;
 
 /** navigator.deviceMemory is in GB and capped at 8 (Chrome, Edge): 8 means 8 GB or more. */
-const RETAIN_MIN_MEMORY_GB = 8;
-/** Without deviceMemory (Firefox), logical cores stand in for it (see canRetain). */
-const RETAIN_MIN_CORES = 8;
+const ROOMY_MEMORY_GB = 8;
+/** Without deviceMemory (Firefox, Safari), logical cores stand in for it (see roomyMemory). */
+const ROOMY_CORES = 8;
 
 /**
- * True when a device may keep areas loaded past the usual plan (STREAM_BUDGETS.retain): the high
- * tier (a discrete or Apple-silicon GPU, lib/sect/runtime.ts chooseTier) with a mouse, and 8 GB or
- * more. Conservative on purpose:
- * - deviceMemory known (Chrome, Edge): at least 8, its cap. An 8 GB Apple-silicon Mac in Chrome
- *   qualifies; its GPU shares that memory, and the budget caps what retained areas add.
- * - deviceMemory unknown (Firefox): only with at least 8 logical cores. A desktop with that many
- *   and a GPU the tier ranks high is unlikely to have less than 8 GB; 4-core machines are where
- *   small memory is common. Firefox's fingerprinting guard reports 2 cores, which the tier already
- *   ranks mid. Safari hides both the memory and the GPU ("Apple GPU"), so it ranks mid and never
- *   gets here.
- * - Touch screens never (iOS drops a tab at about 1.5 GB), nor the mid and low tiers.
+ * True when a Medium desktop has the memory for the full window (STREAM_BUDGETS.full): 8 GB or more.
+ * - deviceMemory known (Chrome, Edge): at least 8, its cap. A typical laptop (8-16 GB) qualifies;
+ *   its integrated GPU shares that memory, and the full window peaks at about 1.5 GB of it
+ *   (textures and geometry).
+ * - deviceMemory unknown (Firefox, Safari): at least 8 logical cores. Machines with that many are
+ *   unlikely to have less than 8 GB; 4-core machines are where small memory is common. Firefox's
+ *   fingerprinting guard reports 2 cores: the narrow window then.
  */
-export function canRetain(tier: Tier, coarsePointer: boolean, memory: MemoryHints): boolean {
-  if (tier !== "high" || coarsePointer) return false;
-  if (memory.deviceMemory !== undefined) return memory.deviceMemory >= RETAIN_MIN_MEMORY_GB;
-  return (memory.hardwareConcurrency ?? 0) >= RETAIN_MIN_CORES;
+export function roomyMemory(memory: MemoryHints): boolean {
+  if (memory.deviceMemory !== undefined) return memory.deviceMemory >= ROOMY_MEMORY_GB;
+  return (memory.hardwareConcurrency ?? 0) >= ROOMY_CORES;
 }
 
 function navigatorMemory(): MemoryHints {
@@ -146,15 +164,23 @@ function navigatorSaveData(): boolean {
 }
 
 /**
- * The budget for a device: every touch screen (phones, and tablets the tier ranks mid: they share
- * the phone's memory limits, and iOS drops a tab at about 1.5 GB) and the low tier keep only the
- * area they are in (and a spare slot); desktops keep that area and the next, and high-tier desktops
- * with memory to spare also keep the areas they have passed (canRetain). With the data saver on,
- * nothing is fetched ahead (the next area loads when it is needed). `memory` and `saveData` default
- * to what the browser reports.
+ * The budget for a device (STREAM_BUDGETS): High desktops keep two areas each side, and so do
+ * Medium ones with the memory for it (roomyMemory), else one each side; every touch screen (phones,
+ * and tablets the tier ranks mid: they share the phone's memory limits, and iOS drops a tab at about
+ * 1.5 GB) and the low tier keep one each side with the 2048 px textures, and the area alone on High
+ * (its 4096 px textures). With the data saver on, nothing is fetched ahead (the next area loads when
+ * it is needed). `memory` and `saveData` default to what the browser reports.
  */
 export function streamBudget(tier: Tier, coarsePointer: boolean, memory: MemoryHints = navigatorMemory(), saveData = navigatorSaveData()): StreamBudget {
-  const base = tier === "low" || coarsePointer ? STREAM_BUDGETS.low : canRetain(tier, coarsePointer, memory) ? STREAM_BUDGETS.retain : STREAM_BUDGETS.full;
+  const base = coarsePointer
+    ? tier === "high"
+      ? STREAM_BUDGETS.lean
+      : STREAM_BUDGETS.low
+    : tier === "low"
+      ? STREAM_BUDGETS.low
+      : tier === "high" || roomyMemory(memory)
+        ? STREAM_BUDGETS.full
+        : STREAM_BUDGETS.narrow;
   return saveData ? { ...base, prefetch: "off" } : base;
 }
 
@@ -213,6 +239,8 @@ export interface StreamStatus {
   loading: string[];
   /** Chunks not loaded now because they failed (waiting for a retry, or given up). */
   failed: string[];
+  /** The global set's triangles (setGlobalTris). */
+  globalTris: number;
 }
 
 /** What a camera resting at a stop will draw, and how far it has come (ChunkStreamer.settleAt). */
@@ -237,6 +265,8 @@ export class ChunkStreamer {
   private readonly loading = new Map<string, AbortController>();
   /** Bytes each loading chunk has downloaded so far, per file (settleAt's progress). */
   private readonly received = new Map<string, Map<string, number>>();
+  /** Loading chunks whose files have all downloaded (parsing and preparing may still run). */
+  private readonly fetched = new Set<string>();
   /** Failed tries per chunk and when the last one failed (cleared by a load that works). */
   private readonly failures = new Map<string, { count: number; at: number }>();
   private readonly waiters = new Map<string, Waiter[]>();
@@ -266,8 +296,14 @@ export class ChunkStreamer {
   readonly spans: ChunkSpan[];
   private readonly window: Partial<PlanWindow>;
   private budget: StreamBudget;
-  /** The global set's triangles (setGlobalTris), kept so a new budget counts them too. */
+  /** The global set's triangles (setGlobalTris), for status(). */
   private globalTris = 0;
+  /**
+   * Fast travel's settled wait is watching this stop (settleAt, every display frame while the ink is
+   * up), until `until`: meanwhile only the loads it waits for start (SETTLE.around of the stop), so
+   * the window's further areas do not share the line with them. They start once it lets go.
+   */
+  private settling: { frame: number; until: number } | null = null;
 
   constructor(ctx: WorldContext, onChange: () => void, budget: StreamBudget = ctx.lowTextures ? STREAM_BUDGETS.low : STREAM_BUDGETS.full) {
     this.ctx = ctx;
@@ -278,7 +314,8 @@ export class ChunkStreamer {
     this.spans = this.chunks.map((c) => {
       const a = meta.areas.find((x) => x.id === c.id);
       const core: [number, number] | undefined = a && a.frameEnd > a.frameStart ? [a.frameStart, a.frameEnd] : cores.get(c.id);
-      return { id: c.id, need: c.need, core, tris: c.tris, texBytes: chunkTexBytes(c, ctx.lowTextures) };
+      const hold = camera.holds.find((h) => h.id === c.id)?.frame;
+      return { id: c.id, need: c.need, core, ...(hold !== undefined ? { hold } : {}), tris: c.tris, texBytes: chunkTexBytes(c, ctx.lowTextures) };
     });
     const areas = this.spans.flatMap((s) => (s.core ? [s.core] : []));
     const first = Math.min(...areas.map((c) => c[1]));
@@ -293,26 +330,21 @@ export class ChunkStreamer {
 
   private applyBudget(): void {
     const b = this.budget;
-    Object.assign(this.window, {
-      triBudget: Math.max(b.triBudget * 0.4, b.triBudget - this.globalTris),
-      minResident: b.minResident,
-      spare: b.spare,
-      lookBack: b.lookBack,
-      retainTris: b.retainTris,
-      retainTexBytes: b.retainTexBytes,
-    });
+    Object.assign(this.window, { around: b.around, spare: b.spare, lookBack: b.lookBack });
   }
 
-  /** The global set's triangles count against the budget too (not the residency budget: areas only). */
+  /**
+   * The global set's triangles (the backdrop and every area's stand-in, never dropped), for
+   * status(). The window counts areas, not triangles, so nothing is planned from them.
+   */
   setGlobalTris(tris: number): void {
     this.globalTris = tris;
-    this.applyBudget();
   }
 
   /**
    * Another budget from the next update on (the visitor picked another tier with the same texture
-   * set: High keeps passed areas, Medium does not). Areas the new budget has no room for are dropped
-   * then.
+   * set: desktop High and Medium, whose windows differ on a smaller machine). Areas the new window
+   * no longer holds are dropped then.
    */
   setBudget(budget: StreamBudget): void {
     this.budget = budget;
@@ -352,12 +384,17 @@ export class ChunkStreamer {
   /**
    * What a camera resting at `frame` will draw once streaming there has run its course (fast
    * travel's settled wait, lib/sect/settle.ts destinationChunks): the chunks the plan at rest keeps,
-   * needs or prefetches there, each with how far it has come (chunkDone) and its download size, and
-   * the drawn chunks that go once those are in. The prefetch counts only when this budget fetches
-   * ahead (not with the data saver: its stand-in stays). The area the plan will fetch next once these
-   * are in is listed too, `expected` (for the progress shown: it may not come after all).
+   * needs or prefetches there within SETTLE.around areas of the stop's own (its view and its direct
+   * neighbours: the window's areas further out come in after the ink), each with how far it has come
+   * (chunkDone) and its download size, and the drawn chunks that go once those are in. The prefetch
+   * counts only when this budget fetches ahead (not with the data saver: its stand-in stays). The
+   * area the plan will fetch next once these are in is listed too, `expected` (for the progress
+   * shown: it may not come after all). While it is called, update() starts only the loads it waits
+   * for (SETTLE_FOCUS_MS): the window's further areas would otherwise share the line with them and
+   * make the wait about a third longer.
    */
   settleAt(frame: number): DestinationStatus {
+    this.settling = { frame, until: performance.now() + SETTLE_FOCUS_MS };
     const failed = this.failedIds();
     const ready = new Set<string>(failed);
     for (const [id, s] of this.sets) if (s.ready) ready.add(id);
@@ -365,7 +402,7 @@ export class ChunkStreamer {
     const loading = new Set(this.loading.keys());
     const base = { chunks: this.spans, frame, direction: this.travel?.direction ?? 1, loaded: this.costs, window: this.window };
     const ahead = this.budget.prefetch !== "off";
-    const now = destinationChunks({ ...base, resident, loading, ready }, ahead);
+    const now = destinationChunks({ ...base, resident, loading, ready }, ahead, SETTLE.around);
     // As if those were all in: what the plan wants then (the prefetch it starts once they are).
     const assumed = new Set(now.want);
     const next = destinationChunks(
@@ -376,6 +413,7 @@ export class ChunkStreamer {
         ready: new Set([...ready, ...assumed]),
       },
       ahead,
+      SETTLE.around,
     );
     const status = (id: string, expected: boolean) => ({
       id,
@@ -430,6 +468,7 @@ export class ChunkStreamer {
       })),
       loading: [...this.loading.keys()],
       failed: this.failedIds(),
+      globalTris: this.globalTris,
     };
   }
 
@@ -438,8 +477,8 @@ export class ChunkStreamer {
    * `idle`: the camera is at rest: a phone's prefetch may start, and a prefetch that downloaded
    * during the flight may now be parsed and prepared (a load done then is ready before the flight
    * reaches the area, instead of costing frames during it).
-   * `lookingBack`: the view is turned round at rest, so the area behind may load too (desktops;
-   * the budget's `lookBack` is 0 on phones).
+   * `lookingBack`: the view is turned round at rest, so one more area behind may load too when the
+   * budget has a `lookBack` slot (none does now: the window holds the areas behind).
    */
   update(
     frame: number,
@@ -510,12 +549,20 @@ export class ChunkStreamer {
       this.resolve(id);
       changed = true;
     }
+    // While fast travel waits at a stop, only what it waits for starts (the stop's own area and its
+    // neighbours, a prefetch among them when the window is the area alone); the rest once it is done.
+    const focus = this.settling !== null && performance.now() < this.settling.until ? this.settling.frame : null;
+    const order = new Map(this.spans.map((s, i) => [s.id, i]));
+    const centre = focus === null ? -1 : windowCentreAt(this.spans, focus);
+    const waitedFor = (id: string) => focus === null || Math.abs((order.get(id) ?? Infinity) - centre) <= SETTLE.around;
+    // One download at a time, nearest first (MAX_PARALLEL).
+    const downloading = () => [...this.loading.keys()].some((id) => !this.fetched.has(id));
     for (const id of plan.load) {
-      if (this.loading.size >= MAX_PARALLEL) break;
-      this.start(id, opts);
+      if (this.loading.size >= MAX_PARALLEL || downloading()) break;
+      if (waitedFor(id)) this.start(id, opts);
     }
     const mode = this.budget.prefetch;
-    if (plan.prefetch && this.loading.size === 0 && (mode === "moving" || (mode === "rest" && idle))) this.start(plan.prefetch);
+    if (plan.prefetch && waitedFor(plan.prefetch) && this.loading.size === 0 && (mode === "moving" || (mode === "rest" && idle))) this.start(plan.prefetch);
     this.openGates();
     if (changed) this.onChange();
     return plan;
@@ -554,15 +601,22 @@ export class ChunkStreamer {
     this.loading.set(id, ac);
     const got = new Map<string, number>();
     this.received.set(id, got);
-    loadSet(this.ctx, id, [chunk.need[0], chunk.need[1]], chunkFiles(chunk, this.ctx.lowTextures), {
+    this.fetched.delete(id);
+    const files = chunkFiles(chunk, this.ctx.lowTextures);
+    // Files whose bytes are all in (or whose size the server does not say: no telling, so in).
+    const arrived = new Set<string>();
+    loadSet(this.ctx, id, [chunk.need[0], chunk.need[1]], files, {
       signal: ac.signal,
       calm: () => this.calm(id),
       ...opts,
-      // Bytes per file for settleAt, and on to the caller's tracker when it has one.
+      // Bytes per file for settleAt and for the next download (update), and on to the caller's
+      // tracker when it has one.
       onBytes: (url) => {
         const outer = opts?.onBytes?.(url);
         return (loaded, total) => {
           got.set(url, loaded);
+          if (total <= 0 || loaded >= total) arrived.add(url);
+          if (arrived.size >= files.length && this.loading.get(id) === ac) this.fetched.add(id);
           outer?.(loaded, total);
         };
       },
@@ -665,6 +719,7 @@ export class ChunkStreamer {
     for (const ac of this.loading.values()) ac.abort();
     this.loading.clear();
     this.received.clear();
+    this.fetched.clear();
     this.openGates();
     for (const s of this.sets.values()) disposeSet(this.ctx, s);
     this.sets.clear();

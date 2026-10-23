@@ -16,9 +16,14 @@
  *   still for SETTLE.stableFrames rendered frames and SETTLE.stableMs: an upload, a compile, a swap
  *   or a turn starts that count again.
  *
+ * "Every chunk the camera draws there" means the place's own area and its direct neighbours in
+ * flight order (SETTLE.around): the stream keeps two areas each side at full detail on desktops, and
+ * waiting for all five would double the wait after a far jump. The two further out stream in once
+ * the ink has cleared; their stand-ins sit far back in the view, where the swap hardly shows.
+ *
  * Pure: plain inputs, no timers, no three.js.
  */
-import { gapToRange, planChunks, type PlanInput } from "./chunks";
+import { gapToRange, planChunks, windowCentreAt, type PlanInput } from "./chunks";
 
 export const SETTLE = {
   /** Rendered frames, and milliseconds, the renderer's counts and the view must hold still. */
@@ -30,6 +35,11 @@ export const SETTLE = {
   uploading: 0.9,
   /** Shares of the shown progress: the chunks, the pieces filling in, and the frames holding still. */
   share: { chunks: 0.8, pieces: 0.1, still: 0.1 },
+  /**
+   * Areas each side of the place's own, in flight order, the wait covers (destinationChunks
+   * `around`): its view is mostly made of those. Areas further out the stream keeps come in after.
+   */
+  around: 1,
 } as const;
 
 /**
@@ -38,10 +48,17 @@ export const SETTLE = {
  * still loading and not cancelled: a prefetch under way) or loads whose need range holds the frame,
  * and its prefetch too when the budget fetches ahead at rest (`fetchAhead`: a prefetch whose need
  * range holds the frame is drawn there once it arrives). Handover chunks are not among them: they
- * stay only until the others are ready. `leaving`: the resident chunks ready and drawn at the frame
- * now that are not wanted (they go, and the backdrop's stand-ins show in their place).
+ * stay only until the others are ready. `around`: only areas at most that many places from the
+ * frame's own (lib/sect/chunks.ts windowCentreAt) in flight order are wanted (the others the plan
+ * keeps stream in after; absent: all).
+ * `leaving`: the resident chunks ready and drawn at the frame now that the plan does not keep (they
+ * go, and the backdrop's stand-ins show in their place).
  */
-export function destinationChunks(input: Omit<PlanInput, "target" | "lookingBack">, fetchAhead: boolean): { want: string[]; leaving: string[] } {
+export function destinationChunks(
+  input: Omit<PlanInput, "target" | "lookingBack">,
+  fetchAhead: boolean,
+  around = Infinity,
+): { want: string[]; leaving: string[] } {
   const plan = planChunks({ ...input, target: null, lookingBack: false });
   const margin = input.window?.drawMargin ?? 0;
   const byId = new Map(input.chunks.map((c) => [c.id, c]));
@@ -49,17 +66,21 @@ export function destinationChunks(input: Omit<PlanInput, "target" | "lookingBack
     const c = byId.get(id);
     return c !== undefined && gapToRange(input.frame, c.need) <= margin;
   };
+  const order = new Map(input.chunks.map((c, i) => [c.id, i]));
+  const here = windowCentreAt(input.chunks, input.frame);
+  const near = (id: string) => Math.abs((order.get(id) ?? Infinity) - here) <= around;
   const handover = new Set(plan.handover);
   const cancel = new Set(plan.cancel);
   const kept = [...input.loading].filter((id) => !cancel.has(id));
-  const want = new Set<string>();
+  // Everything drawn there once streaming has run its course, and of that what the wait covers.
+  const drawn = new Set<string>();
   for (const id of [...plan.need, ...plan.keep, ...kept, ...(fetchAhead && plan.prefetch ? [plan.prefetch] : [])]) {
-    if (!handover.has(id) && holds(id)) want.add(id);
+    if (!handover.has(id) && holds(id)) drawn.add(id);
   }
-  const order = new Map(input.chunks.map((c, i) => [c.id, i]));
+  const want = [...drawn].filter(near);
   const sorted = (ids: Iterable<string>) => [...ids].sort((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
   const ready = input.ready ?? input.resident;
-  const leaving = [...input.resident].filter((id) => ready.has(id) && holds(id) && !want.has(id));
+  const leaving = [...input.resident].filter((id) => ready.has(id) && holds(id) && !drawn.has(id));
   return { want: sorted(want), leaving: sorted(leaving) };
 }
 

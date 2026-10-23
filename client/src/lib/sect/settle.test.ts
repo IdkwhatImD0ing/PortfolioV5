@@ -70,6 +70,23 @@ describe("destinationChunks", () => {
     expect(handing.leaving).toEqual(["forge"]);
   });
 
+  it("with the window around the stop, waits for its own area and one each side; the ones further out come after", () => {
+    // Six areas seen from everywhere; the stop is the third one's (index 2), two each side kept.
+    const row: ChunkSpan[] = ["a", "b", "c", "d", "e", "f"].map((id, i) => ({ id, need: [1, 1200], core: [200 * i, 200 * i + 199] }));
+    const window: Partial<PlanWindow> = { around: { behind: 2, ahead: 2 }, spare: 1 };
+    const at = (resident: Set<string>, ready = resident) =>
+      destinationChunks({ chunks: row, frame: 500, direction: 1, resident, loading: none, ready, window }, true, SETTLE.around);
+    expect(at(none).want).toEqual(["b", "c", "d"]);
+    // All five in (and the spare): the same three; a and e, drawn there, are neither waited for nor leaving.
+    const all = set("a", "b", "c", "d", "e", "f");
+    expect(at(all)).toEqual({ want: ["b", "c", "d"], leaving: [] });
+    // Without the limit every area the stop draws is waited for.
+    expect(destinationChunks({ chunks: row, frame: 500, direction: 1, resident: all, loading: none, ready: all, window }, true).want).toEqual(["a", "b", "c", "d", "e", "f"]);
+    // An area the plan drops there is still leaving, however far out.
+    const far = destinationChunks({ chunks: [...row, { id: "g", need: [1, 1200], core: [1200, 1399] }], frame: 500, direction: 1, resident: set("c", "g"), loading: none, ready: set("c", "g"), window }, true, 1);
+    expect(far.leaving).toEqual(["g"]);
+  });
+
   it("never names an area that is not drawn at the stop, nor one still uploading, as leaving", () => {
     const d = destinationChunks(
       { chunks: CHUNKS, frame: 100, direction: 1, resident: set("gate", "mirror", "arena"), loading: none, ready: set("gate", "arena"), window: WINDOW },

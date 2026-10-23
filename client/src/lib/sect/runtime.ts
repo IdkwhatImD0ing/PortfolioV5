@@ -99,7 +99,8 @@ export type GpuClass = "software" | "mobile" | "integrated" | "discrete" | "unkn
 /**
  * Entry-level and old NVIDIA parts: GeForce MX and GT, the 9x0M laptop chips, Kepler Quadros and
  * the small Maxwell and Pascal ones, NVS. About as fast as an integrated GPU, with 2-4 GB, so they
- * get the integrated class (mid) rather than High's 900 MB of resident textures.
+ * get the integrated class (mid) rather than High, whose stream keeps five areas (and the next one)
+ * at full detail: about 1.2 GB of textures at the worst point of the flight.
  */
 const ENTRY_NVIDIA = /geforce (mx|gt )|geforce \d{3}mx?\b|quadro (fx|nvs|k\d)|quadro [mp]\d{3}\b|\bnvs \d/;
 

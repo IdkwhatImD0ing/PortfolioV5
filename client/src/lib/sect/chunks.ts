@@ -51,7 +51,24 @@
  * farther one. Scrolling back to an area kept that way needs no load. Retained chunks take no slot
  * and change nothing in the usual plan; they are drawn by the usual rule (their need range holds the
  * frame), in place of the backdrop's proxy. Only chunks in `loaded` are retained (never one still
- * loading, never one that failed). Off (0) by default and on phones and the mid tier.
+ * loading, never one that failed). Off (0) by default.
+ *
+ * The window around the camera's area (`around`, what the page uses): instead of the nearest areas
+ * by frames within a cap and a triangle budget, the plan needs the area the camera is at (the one
+ * whose stop is nearest, windowCentreAt) and a fixed number of areas before and after it in flight
+ * order (two each side on desktops: the owner's rule that the place on screen and its neighbours are
+ * always the full meshes and textures, never the backdrop's stand-ins), clamped at the flight's ends,
+ * nearest first. On top of it:
+ * - the spare slots: the next areas past the window in the direction of travel, prefetched once the
+ *   window is in and kept, so crossing into the next area finds its new far neighbour loaded;
+ * - hysteresis: a held area the window reached `stickiness` frames back or ahead stays, so scrolling
+ *   to and fro over the line between two areas (halfway between their stops, at least 51 frames from
+ *   either on the shipped flight, so a camera resting at a stop is clear of it) loads and drops
+ *   nothing;
+ * - a jump needs only the area it lands in (the rest of its window streams in once it is there),
+ *   and keeps what is held of the destination's window, then of the camera's, up to the window's
+ *   size plus the spare slots.
+ * Handing over, looking back and retaining apply as above.
  *
  * Pure: plain inputs, no timers, no three.js.
  */
@@ -61,6 +78,12 @@ export interface ChunkSpan {
   need: readonly [number, number];
   /** The area's own frame range (ranking); the need range when absent. */
   core?: readonly [number, number];
+  /**
+   * The frame of the area's stop (its hold), when it has one: the window around the camera's area
+   * (PlanWindow.around) is centred on the nearest stop, so the line between two areas falls halfway
+   * between their stops rather than at the edge of a stretch, which can lie a few frames from a stop.
+   */
+  hold?: number;
   /** Triangles (0 or absent: unknown, counts as nothing against the budget). */
   tris?: number;
   /**
@@ -129,6 +152,20 @@ export interface PlanWindow {
    */
   retainTris: number;
   retainTexBytes: number;
+  /**
+   * The window around the camera's area: how many areas before (`behind`) and after (`ahead`) the
+   * one the camera is at (windowCentreAt), in flight order, are needed (clamped at the ends). Null: the nearest areas
+   * by frames, within maxResident and triBudget. With it, maxResident, triBudget, minResident and
+   * the frame windows (behind, ahead, keepBehind, keepAhead) do not limit the plan; `spare` slots
+   * hold the next areas past it in the direction of travel.
+   */
+  around: AreaWindow | null;
+}
+
+/** Areas before and after the camera's own in flight order (PlanWindow.around). */
+export interface AreaWindow {
+  behind: number;
+  ahead: number;
 }
 
 export const DEFAULT_WINDOW: PlanWindow = {
@@ -147,6 +184,7 @@ export const DEFAULT_WINDOW: PlanWindow = {
   lookBack: 0,
   retainTris: 0,
   retainTexBytes: 0,
+  around: null,
 };
 
 export interface PlanInput {
@@ -277,6 +315,18 @@ export function areaIndexAt(cores: readonly (readonly [number, number])[], frame
 }
 
 /**
+ * The area the window around the camera is centred on (PlanWindow.around), as an index into `chunks`
+ * (in flight order): the one whose stop is nearest `frame`, or, for chunks without a stop, whose own
+ * stretch holds it or is nearest. -1 without chunks.
+ */
+export function windowCentreAt(chunks: readonly ChunkSpan[], frame: number): number {
+  return areaIndexAt(
+    chunks.map((c) => (c.hold !== undefined ? ([c.hold, c.hold] as const) : (c.core ?? c.need))),
+    frame,
+  );
+}
+
+/**
  * The direction of travel once a far jump has landed (the rail, Places, a deep link, voice): the
  * flight back left the planner facing backward, so a phone resting there prefetched the area behind
  * it, though a visitor reads on from where a jump lands. A jump back past more than the area just
@@ -328,52 +378,126 @@ export function planChunks(input: PlanInput): ChunkPlan {
     return held(c.id) ? Math.max(0, g - w.stickiness) : g;
   };
   const sortBy = (f: number) => (a: ChunkSpan, b: ChunkSpan) => rank(a, f) - rank(b, f) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0);
+  /** Nearest the frame `f` first (by the gap to the area's own stretch), then in flight order. */
+  const byGap = (f: number) => (a: ChunkSpan, b: ChunkSpan) => gap(a, f) - gap(b, f) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0);
   const tris = (id: string) => byId.get(id)?.tris ?? 0;
 
-  // Candidates: around the target for a jump (both ways, it is a stop), else around the camera.
-  const eligible = chunks.filter((c) =>
-    target !== null ? touches(c.need, target, 1, w.behind, w.behind) : touches(c.need, frame, dir, w.behind, w.ahead),
-  );
-  eligible.sort(sortBy(at));
-  // A jump's landing area (its core holds the target) goes first, even when a held neighbour whose
-  // core ends just before the stop ranks as near through stickiness: with a one-area budget the
-  // neighbour would otherwise take the only slot and the landing area would never load.
-  if (target !== null) eligible.sort((a, b) => Number(gap(a) > 0) - Number(gap(b) > 0));
+  // What must be resident (`need`, nearest first) and what the usual plan keeps (`keepSet`), the
+  // most chunks the usual plan holds (`cap`, a prefetch must fit under it) and the chunks a prefetch
+  // may take, nearest first (`ahead`, asked once the look-back slot below is settled).
+  const keepSet = new Set<string>();
+  let need: string[];
+  let cap: number;
+  let ahead: () => ChunkSpan[];
 
-  // What must be resident: the nearest areas, within the count cap and the triangle budget. A jump
-  // gathers only the area it lands in (its core holds the target).
-  const needList: string[] = [];
-  let needTris = 0;
-  for (const c of eligible) {
-    if (needList.length >= w.maxResident) break;
-    if (needList.length > 0 && target !== null && gap(c) > 0) continue;
-    if (needList.length >= w.minResident && needTris + tris(c.id) > w.triBudget) continue;
-    needList.push(c.id);
-    needTris += tris(c.id);
-  }
-  const needSet = new Set(needList);
-  const need = [...needList].sort((a, b) => gap(byId.get(a)!) - gap(byId.get(b)!) || (order.get(a) ?? 0) - (order.get(b) ?? 0));
-
-  // What may stay: needed chunks, then held chunks inside the keep window (around the camera or
-  // the target), nearest first, while the cap and the budget allow.
-  const keepSet = new Set<string>(needSet);
-  let keepTris = needTris;
-  // Spare slots past the budget (window.spare), for an area the camera has not passed: one
-  // prefetched ahead, or during a jump the one the camera waits in.
-  let spareLeft = w.spare;
-  const stay = chunks
-    .filter((c) => held(c.id) && !needSet.has(c.id))
-    .filter((c) => touches(c.need, frame, dir, w.keepBehind, w.keepAhead) || (target !== null && touches(c.need, target, 1, w.keepBehind, w.keepAhead)))
-    .sort(sortBy(frame));
-  for (const c of stay) {
-    if (keepSet.size >= w.maxResident) break;
-    if (keepSet.size >= w.minResident && keepTris + tris(c.id) > w.triBudget) {
-      // Over the budget: only a prefetched area the camera has not passed keeps a spare slot.
-      if (spareLeft <= 0 || passed(c, frame)) continue;
-      spareLeft--;
+  if (w.around) {
+    // The area the camera is in (or a jump lands in) and its neighbours in flight order.
+    const around = w.around;
+    const cores = chunks.map(core);
+    const windowAt = (f: number): [number, number] => {
+      const i = windowCentreAt(chunks, f);
+      return [Math.max(0, i - around.behind), Math.min(chunks.length - 1, i + around.ahead)];
+    };
+    const inside = (i: number, r: readonly [number, number]) => i >= r[0] && i <= r[1];
+    /** The spare slots past a window: the next areas in the direction of travel, nearest first. */
+    const beyond = (r: readonly [number, number]) => {
+      const out: ChunkSpan[] = [];
+      for (let k = 1; k <= w.spare; k++) {
+        const c = chunks[dir > 0 ? r[1] + k : r[0] - k];
+        if (c) out.push(c);
+      }
+      return out;
+    };
+    const span = windowAt(at);
+    const areas = chunks.filter((_, i) => inside(i, span));
+    cap = areas.length + w.spare;
+    if (target !== null) {
+      // A jump needs only the area it lands in; the rest of its window streams in once it is there.
+      const landing = chunks[areaIndexAt(cores, target)];
+      need = landing ? [landing.id] : [];
+      for (const id of need) keepSet.add(id);
+      // Held areas stay while the cap allows: the destination's window first (nearest the stop),
+      // then the camera's and its spare slots (it waits there, and draws them meanwhile).
+      const here = windowAt(frame);
+      const spare = new Set(beyond(here));
+      const stays = [
+        ...areas.filter((c) => held(c.id)).sort(byGap(target)),
+        ...chunks.filter((c, i) => held(c.id) && (inside(i, here) || spare.has(c))).sort(byGap(frame)),
+      ];
+      for (const c of stays) {
+        if (keepSet.size >= cap) break;
+        keepSet.add(c.id);
+      }
+      ahead = () => [];
+    } else {
+      need = [...areas].sort(byGap(frame)).map((c) => c.id);
+      for (const id of need) keepSet.add(id);
+      // Held areas the window reached `stickiness` frames back or ahead stay (no thrash at the line
+      // between two areas), and so do the spare slots past it in the direction of travel.
+      const sticky: [number, number] = [windowAt(frame - w.stickiness)[0], windowAt(frame + w.stickiness)[1]];
+      const spare = beyond(span);
+      chunks.forEach((c, i) => {
+        if (held(c.id) && (inside(i, sticky) || spare.includes(c))) keepSet.add(c.id);
+      });
+      ahead = () => spare.filter((c) => !held(c.id) && !keepSet.has(c.id));
     }
-    keepSet.add(c.id);
-    keepTris += tris(c.id);
+  } else {
+    // Candidates: around the target for a jump (both ways, it is a stop), else around the camera.
+    const eligible = chunks.filter((c) =>
+      target !== null ? touches(c.need, target, 1, w.behind, w.behind) : touches(c.need, frame, dir, w.behind, w.ahead),
+    );
+    eligible.sort(sortBy(at));
+    // A jump's landing area (its core holds the target) goes first, even when a held neighbour whose
+    // core ends just before the stop ranks as near through stickiness: with a one-area budget the
+    // neighbour would otherwise take the only slot and the landing area would never load.
+    if (target !== null) eligible.sort((a, b) => Number(gap(a) > 0) - Number(gap(b) > 0));
+
+    // What must be resident: the nearest areas, within the count cap and the triangle budget. A jump
+    // gathers only the area it lands in (its core holds the target).
+    const needList: string[] = [];
+    let needTris = 0;
+    for (const c of eligible) {
+      if (needList.length >= w.maxResident) break;
+      if (needList.length > 0 && target !== null && gap(c) > 0) continue;
+      if (needList.length >= w.minResident && needTris + tris(c.id) > w.triBudget) continue;
+      needList.push(c.id);
+      needTris += tris(c.id);
+    }
+    const needSet = new Set(needList);
+    need = [...needList].sort((a, b) => gap(byId.get(a)!) - gap(byId.get(b)!) || (order.get(a) ?? 0) - (order.get(b) ?? 0));
+
+    // What may stay: needed chunks, then held chunks inside the keep window (around the camera or
+    // the target), nearest first, while the cap and the budget allow.
+    for (const id of needSet) keepSet.add(id);
+    let keepTris = needTris;
+    // Spare slots past the budget (window.spare), for an area the camera has not passed: one
+    // prefetched ahead, or during a jump the one the camera waits in.
+    let spareLeft = w.spare;
+    const stay = chunks
+      .filter((c) => held(c.id) && !needSet.has(c.id))
+      .filter((c) => touches(c.need, frame, dir, w.keepBehind, w.keepAhead) || (target !== null && touches(c.need, target, 1, w.keepBehind, w.keepAhead)))
+      .sort(sortBy(frame));
+    for (const c of stay) {
+      if (keepSet.size >= w.maxResident) break;
+      if (keepSet.size >= w.minResident && keepTris + tris(c.id) > w.triBudget) {
+        // Over the budget: only a prefetched area the camera has not passed keeps a spare slot.
+        if (spareLeft <= 0 || passed(c, frame)) continue;
+        spareLeft--;
+      }
+      keepSet.add(c.id);
+      keepTris += tris(c.id);
+    }
+    cap = w.maxResident;
+    const size = keepSet.size;
+    // The nearest chunk ahead in the direction of travel that the keep window reaches, when it
+    // would fit, or a spare slot is left.
+    ahead = () =>
+      chunks
+        .filter((c) => !held(c.id) && !keepSet.has(c.id))
+        .filter((c) => touches(c.need, frame, dir, w.keepBehind, w.keepAhead))
+        .filter((c) => !passed(c, frame))
+        .filter((c) => size < w.minResident || keepTris + tris(c.id) <= w.triBudget || spareLeft > 0)
+        .sort(sortBy(frame));
   }
 
   // Looking back at rest (desktops): on top of the usual plan, the nearest areas behind the view
@@ -394,21 +518,12 @@ export function planChunks(input: PlanInput): ChunkPlan {
 
   const load = need.filter((id) => !held(id));
 
-  // Prefetch: the nearest chunk ahead in the direction of travel that the keep window reaches,
-  // when nothing needed is missing (nor, with `ready`, still uploading) and it would fit, or a spare
-  // slot is left (window.spare).
+  // Prefetch: the nearest chunk ahead in the direction of travel that may come (`ahead`), when
+  // nothing needed is missing (nor, with `ready`, still uploading) and the usual plan is under its cap.
   const ready = input.ready;
   let prefetch: string | null = null;
   const missing = need.some((id) => !resident.has(id) || (ready !== undefined && !ready.has(id)));
-  if (!missing && target === null && usualSize < w.maxResident) {
-    const ahead = chunks
-      .filter((c) => !held(c.id) && !keepSet.has(c.id))
-      .filter((c) => touches(c.need, frame, dir, w.keepBehind, w.keepAhead))
-      .filter((c) => !passed(c, frame))
-      .filter((c) => usualSize < w.minResident || keepTris + tris(c.id) <= w.triBudget || spareLeft > 0)
-      .sort(sortBy(frame));
-    prefetch = ahead[0]?.id ?? null;
-  }
+  if (!missing && target === null && usualSize < cap) prefetch = ahead()[0]?.id ?? null;
 
   // Retaining (desktops with memory to spare): loaded chunks the plan above would drop stay,
   // nearest first, while everything kept fits the residency budget. Chunks still to load and the

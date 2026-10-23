@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { areaIndexAt, gapToRange, holdCores, jumpLeg, planChunks, travelAfterJump, travelDirection, type ChunkCost, type ChunkSpan, type PlanWindow, type Travel } from "./chunks";
+import {
+  areaIndexAt,
+  gapToRange,
+  holdCores,
+  jumpLeg,
+  planChunks,
+  travelAfterJump,
+  travelDirection,
+  windowCentreAt,
+  type ChunkCost,
+  type ChunkSpan,
+  type PlanWindow,
+  type Travel,
+} from "./chunks";
 
 // Need ranges shaped like the full flight's: each area plus a lead-in, neighbours overlapping.
 const CHUNKS: ChunkSpan[] = [
@@ -621,6 +634,130 @@ describe("planChunks over a whole visit", () => {
     const counts = fetchCounts({ triBudget: 507_288, minResident: 1, spare: 1, lookBack: 0 }, holds);
     expect(Math.max(...counts.values())).toBe(1);
     expect(counts.size).toBe(FLIGHT.length);
+  });
+});
+
+describe("planChunks with the window around the camera's area", () => {
+  // Desktops: the area and two each side, and one spare slot ahead; phones one each side.
+  const desktop: Partial<PlanWindow> = { around: { behind: 2, ahead: 2 }, spare: 1 };
+  const phone: Partial<PlanWindow> = { around: { behind: 1, ahead: 1 }, spare: 1 };
+  const ids = (from: number, to: number) => FLIGHT.slice(from, to + 1).map((c) => c.id);
+  const plan = (frame: number, resident: Set<string>, over: Partial<Parameters<typeof planChunks>[0]> = {}) =>
+    planChunks({ chunks: FLIGHT, frame, direction: 1, resident, loading: none, ready: resident, window: desktop, ...over });
+
+  it("needs the area the camera is in and two each side in flight order, nearest first, clamped at the ends", () => {
+    // The mirror: the gate before it, the forge and the arena after (52, 70 and 280 frames away).
+    expect(plan(217, none).need).toEqual(["mirror", "gate", "forge", "arena"]);
+    // The library: all five, whatever their triangles (7.2 M together, far past the old budget).
+    expect(plan(772, none).need).toEqual(["library", "mission", "arena", "steles", "scroll"]);
+    expect(plan(772, none).load).toEqual(["library", "mission", "arena", "steles", "scroll"]);
+    expect(plan(93, none).need).toEqual(["gate", "mirror", "forge"]);
+    expect(plan(1647, none).need).toEqual(["summit", "abode", "formation"]);
+    // A phone's window: one each side.
+    expect(plan(772, none, { window: phone }).need).toEqual(["library", "mission", "steles"]);
+  });
+
+  it("draws every area of the window whose need range holds the frame, in place of its stand-in", () => {
+    const five = set(...ids(3, 7));
+    const p = plan(772, five);
+    expect(p.drop).toEqual([]);
+    expect(p.draw).toEqual(ids(3, 7));
+  });
+
+  it("prefetches the next area past the window in the direction of travel once all of it is ready, and keeps it", () => {
+    const five = set(...ids(3, 7));
+    expect(plan(772, five).prefetch).toBe("formation");
+    expect(plan(772, five, { direction: -1 }).prefetch).toBe("forge");
+    // Not before every area of the window is ready to draw.
+    expect(plan(772, five, { ready: set("library") }).prefetch).toBeNull();
+    // Once loaded it stays, and nothing more is prefetched.
+    const six = set(...ids(3, 8));
+    expect(plan(772, six).drop).toEqual([]);
+    expect(plan(772, six).prefetch).toBeNull();
+    // Without a spare slot nothing is fetched ahead, and it would go again.
+    expect(plan(772, five, { window: { ...desktop, spare: 0 } }).prefetch).toBeNull();
+    expect(plan(772, six, { window: { ...desktop, spare: 0 } }).drop).toEqual(["formation"]);
+  });
+
+  it("moves with the camera: the far area behind goes once the camera is clear of the line, never at it", () => {
+    // Resting at the library with its window and the spare (arena to formation).
+    const six = set(...ids(3, 8));
+    // Over the line into the steles (its stretch starts at 943), and back: nothing loads or drops.
+    for (const f of [935, 950, 940, 960]) {
+      const p = plan(f, six);
+      expect(p.drop).toEqual([]);
+      expect(p.load).toEqual([]);
+      // The arena is kept by the hysteresis: no slot for a prefetch meanwhile.
+      expect(p.prefetch).toBeNull();
+    }
+    // Well into the steles the arena goes and the next area ahead (the abode) is prefetched.
+    const on = plan(990, six);
+    expect(on.need).toEqual(["steles", "library", "scroll", "formation", "mission"]);
+    expect(on.drop).toEqual(["arena"]);
+    expect(on.prefetch).toBe("abode");
+  });
+
+  it("centres the window on the nearest stop, so a camera resting at one is clear of the line between two areas", () => {
+    // The library's stop is 33 frames into its stretch: with the stretches alone, the forge (three
+    // back) stayed through the hysteresis and took the spare slot from the formation.
+    const HOLDS = [93, 217, 352, 516, 619, 772, 974, 1103, 1208, 1380, 1647];
+    const stops = FLIGHT.map((c, i) => ({ ...c, hold: HOLDS[i] }));
+    const resident = set(...ids(2, 7));
+    const stretches = planChunks({ chunks: FLIGHT, frame: 772, direction: 1, resident, loading: none, ready: resident, window: desktop });
+    expect(stretches.drop).toEqual([]);
+    expect(stretches.prefetch).toBeNull();
+    const p = planChunks({ chunks: stops, frame: 772, direction: 1, resident, loading: none, ready: resident, window: desktop });
+    expect(p.drop).toEqual(["forge"]);
+    expect(p.prefetch).toBe("formation");
+    // The line between the library and the steles lies halfway between their stops (873).
+    expect(windowCentreAt(stops, 872)).toBe(5);
+    expect(windowCentreAt(stops, 874)).toBe(6);
+    expect(windowCentreAt(FLIGHT, 945)).toBe(6);
+    expect(windowCentreAt([], 10)).toBe(-1);
+  });
+
+  it("a jump needs only the area it lands in, and keeps what it holds of the destination's window, then of the camera's", () => {
+    // At the gate with its window and the arena prefetched; the library picked on the rail.
+    const p = plan(93, set("gate", "mirror", "forge", "arena"), { target: 772 });
+    expect(p.need).toEqual(["library"]);
+    expect(p.load).toEqual(["library"]);
+    expect(p.prefetch).toBeNull();
+    expect(p.keep).toEqual(["gate", "mirror", "forge", "arena"]);
+    expect(p.drop).toEqual([]);
+    // The arena's need range starts at 97: from the gate's stop it is its stand-in still.
+    expect(p.draw).toEqual(["gate", "mirror", "forge"]);
+    // Everything loaded, a jump to the summit: its window (3 areas) and the spare make the cap of
+    // four; after the summit's own window, the area nearest the camera stays.
+    const all = set(...ids(0, 10));
+    const q = plan(93, all, { target: 1647 });
+    expect(q.keep).toEqual(["gate", "formation", "abode", "summit"]);
+    expect(q.drop).toEqual(ids(1, 7));
+  });
+
+  it("hands over while the area the camera moves into is not ready yet", () => {
+    // The area alone (a touch screen on High): into the arena's stretch with the arena still
+    // loading, the forge stays drawn until it is ready, then goes.
+    const lean = { around: { behind: 0, ahead: 0 }, spare: 1 };
+    const at = (resident: Set<string>, loading: Set<string>, ready: Set<string>) =>
+      planChunks({ chunks: FLIGHT, frame: 560, direction: 1, resident, loading, ready, window: lean });
+    const p = at(set("forge"), set("arena"), set("forge"));
+    expect(p.need).toEqual(["arena"]);
+    expect(p.handover).toEqual(["forge"]);
+    expect(p.drop).toEqual([]);
+    expect(at(set("forge", "arena"), none, set("forge", "arena")).drop).toEqual(["forge"]);
+    // With neighbours in the window the area the camera leaves is in it: nothing to hand over.
+    const q = planChunks({ chunks: FLIGHT, frame: 560, direction: 1, resident: set("forge", "arena"), loading: set("mission"), ready: set("forge", "arena"), window: phone });
+    expect(q.handover).toEqual([]);
+    expect(q.keep).toEqual(["forge", "arena"]);
+  });
+
+  it("fetches each area once per pass along the rail, desktops and phones alike", () => {
+    const holds = [93, 217, 352, 516, 619, 772, 974, 1103, 1208, 1380, 1647];
+    for (const window of [desktop, phone, { around: { behind: 0, ahead: 0 }, spare: 1 }]) {
+      const counts = fetchCounts(window, holds);
+      expect(Math.max(...counts.values())).toBe(1);
+      expect(counts.size).toBe(FLIGHT.length);
+    }
   });
 });
 
