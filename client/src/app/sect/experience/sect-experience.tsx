@@ -46,14 +46,14 @@ import { AREAS, areaInfo, isAreaId, type AreaId } from "@/lib/sect/areas";
 import { sampleCamera } from "@/lib/sect/camera-path";
 import { areaItemHotspots, commandTarget, isThing, parseContentHash, SECTION_NAMES } from "@/lib/sect/content";
 import { POSTER_ATTR, posterStart, startYaw, type NetworkHint } from "@/lib/sect/content-start";
-import { framingAt } from "@/lib/sect/framing";
-import { composeLook, isDragging, isLookingBack, isTurned } from "@/lib/sect/free-look";
+import { framingAt, framingFrame } from "@/lib/sect/framing";
+import { composeLook, isDragging, isLookingBack, isTurned, type LookOffset } from "@/lib/sect/free-look";
 import { PageHistory } from "@/lib/sect/history";
 import { plainUrl, readHistoryState, readerUrl, resolveDeepLink } from "@/lib/sect/links";
 import { lookFogConstants } from "@/lib/sect/look";
 import { hoverNote, loreByArea } from "@/lib/sect/lore";
 import { flightSeconds, navKeyIntent, navKeyTarget, nearestHold, panelSide } from "@/lib/sect/nav";
-import { downloadFraction, flickStop, PORTRAIT_YAW_SECONDS, portraitYaw, posterMatches, type FileProgress } from "@/lib/sect/opening";
+import { downloadFraction, flickStop, PORTRAIT_TURN_SECONDS, portraitTurn, posterMatches, type FileProgress } from "@/lib/sect/opening";
 import { resolveAsset } from "@/lib/sect/parse";
 import {
   AUTO_FRAME_BUDGET_MS,
@@ -1247,16 +1247,17 @@ export default function SectExperience() {
     return () => cancelAnimationFrame(raf);
   }, [store, phase, pageHistory]);
 
-  // Portrait screens: at a stop whose items sit off the narrow view (lib/sect/opening.ts
-  // PORTRAIT_YAW_DEG), the view turns toward them once the camera has come to rest there, as a drag
-  // would turn it; the next scroll swings it back (free look). Once per arrival, never over a turn of
-  // the visitor's own, and given up the moment they touch the view or scroll on.
+  // Portrait screens: at a stop whose items sit off the narrow view or under its labels
+  // (lib/sect/opening.ts PORTRAIT_TURN_DEG), the view turns and tilts toward them once the camera has
+  // come to rest there, as a drag would turn it; the next scroll swings it back (free look). Once per
+  // arrival, never over a turn of the visitor's own, and given up the moment they touch the view or
+  // scroll on.
   useEffect(() => {
     if (!store || phase !== "ready") return;
     let raf = 0;
     /** The hold this arrival has turned at (or found nothing to do at). */
     let done: string | null = null;
-    let turn: { from: number; to: number; t0: number } | null = null;
+    let turn: { from: LookOffset; to: LookOffset; t0: number } | null = null;
     const tick = () => {
       raf = requestAnimationFrame(tick);
       const look = store.look;
@@ -1267,17 +1268,19 @@ export default function SectExperience() {
           turn = null;
           return;
         }
-        const k = store.reducedMotion ? 1 : Math.min(1, (performance.now() - turn.t0) / (PORTRAIT_YAW_SECONDS * 1000));
-        look.yaw = turn.from + (turn.to - turn.from) * easeInOut(k, 1);
+        const k = store.reducedMotion ? 1 : Math.min(1, (performance.now() - turn.t0) / (PORTRAIT_TURN_SECONDS * 1000));
+        const e = easeInOut(k, 1);
+        look.yaw = turn.from.yaw + (turn.to.yaw - turn.from.yaw) * e;
+        look.pitch = turn.from.pitch + (turn.to.pitch - turn.from.pitch) * e;
         wake(store, 150);
         if (k >= 1) turn = null;
         return;
       }
       if (!hold || hold.id === done || store.paused || store.modal || !cameraStill(store)) return;
       done = hold.id;
-      const to = portraitYaw(hold.id, window.innerHeight > window.innerWidth);
-      if (to === 0 || isTurned(look)) return;
-      turn = { from: look.yaw, to, t0: performance.now() };
+      const to = portraitTurn(hold.id, window.innerHeight > window.innerWidth);
+      if (!isTurned(to) || isTurned(look)) return;
+      turn = { from: { yaw: look.yaw, pitch: look.pitch }, to, t0: performance.now() };
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
@@ -1521,10 +1524,11 @@ export default function SectExperience() {
     const out: Record<string, "left" | "right" | null> = {};
     if (!data) return out;
     for (const h of data.camera.holds) {
-      const s = sampleCamera(data.camera.frames, h.frame);
+      // As the stop frames it (lib/sect/framing.ts): the path's view from where the camera stands at
+      // the hold, turned by the stop's framing.
+      const s = sampleCamera(data.camera.frames, framingFrame(data.camera.holds, h.frame));
       const landmark =
         data.meta.areas.find((a) => a.id === h.id)?.anchor ?? data.meta.hotspots.find((x) => x.id === h.id)?.center ?? null;
-      // As the stop frames it: the path's view turned by the stop's framing (lib/sect/framing.ts).
       const q = composeLook(s.q, framingAt(data.camera.holds, h.frame));
       out[h.id] = panelSide({ f: h.frame, ...s, q }, data.camera.refAspect, landmark);
     }

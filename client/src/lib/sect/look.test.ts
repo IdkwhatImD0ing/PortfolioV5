@@ -5,6 +5,7 @@ import {
   balancedExtinction,
   gradeGlsl,
   gradeLinear,
+  hotspotSurface,
   hotspotTint,
   lookFogConstants,
   puffDensityScale,
@@ -231,6 +232,45 @@ describe("hotspotTint", () => {
     expect(hotspotTint("resume", "baked.scroll_A0.glow.rune_gold")).toBeNull();
     expect(hotspotTint("skills:1", "baked.steles_A0")).toBeNull();
     expect(hotspotTint("gate", "baked.gate_A0.glow.other")).toBeNull();
+  });
+});
+
+describe("the Heavy Iron Sword's black iron (hotspotSurface, its seams' hotspotTint)", () => {
+  const iron = SECT_LOOK.surfaces.iron;
+
+  it("gives the arena sword's metal the iron class, and no other steel", () => {
+    expect(hotspotSurface("arena", "baked.arena_A0.surface.metal")).toBe("iron");
+    expect(hotspotSurface("arena", "baked.vc.surface.metal")).toBe("iron");
+    expect(hotspotSurface("arena", "baked.arena_A0")).toBeNull();
+    expect(hotspotSurface("arena", "baked.arena_A0.surface.glaze")).toBeNull();
+    // The gate's Dragon Saber (gate-swords) and the arena's banner finials (hackathon:<i>) stay steel.
+    expect(hotspotSurface("gate-swords", "baked.gate_A0.surface.metal")).toBeNull();
+    expect(hotspotSurface("hackathon:3", "baked.arena_A0.surface.metal")).toBeNull();
+  });
+
+  it("turns its seams a deep ember red that still counts as a glow; other molten keeps its colour", () => {
+    expect(hotspotTint("arena", "baked.arena_A0.glow.molten")).toEqual(iron.seams);
+    expect(hotspotTint("forge", "baked.forge_A0.glow.molten")).toBeNull();
+    expect(hotspotTint("gate-swords", "baked.gate_A0.glow.molten")).toBeNull();
+    // As prepare.ts sets it: white toward the colour by amount, times the class's strength (molten 2) and gain.
+    const c = hexToLinear(iron.seams.color).map((v) => (1 + (v - 1) * iron.seams.amount) * 2 * iron.seams.gain);
+    // Above 1: idle.ts breathes only glows, and the grade keeps a glow's colour.
+    expect(Math.max(...c)).toBeGreaterThan(1.001);
+    // Red: the class's own tint (#ff9a50 at 75 %) keeps green at half of red, bright orange.
+    expect(c[1] / c[0]).toBeLessThan(0.15);
+    expect(c[2]).toBeLessThan(c[1]);
+  });
+
+  it("is near-black with a dark red undertone, rough and dull beside the polished metal", () => {
+    const t = unitTint(iron.color);
+    expect(t[0]).toBeGreaterThan(3 * t[1]);
+    expect(unitTint(iron.glint.color)[0]).toBeGreaterThan(3 * unitTint(iron.glint.color)[1]);
+    expect(iron.diffuse).toBeLessThan(SECT_LOOK.surfaces.metal.diffuse);
+    // A mid-grey baked texel (graded luminance 0.2) ends near-black.
+    expect(0.2 * iron.diffuse).toBeLessThan(0.05);
+    expect(iron.f0).toBeLessThan(SECT_LOOK.surfaces.metal.f0 / 10);
+    expect(iron.grazing).toBeLessThan(0.5);
+    expect(iron.rough).toBeGreaterThan(2 * SECT_LOOK.surfaces.metal.rough);
   });
 });
 

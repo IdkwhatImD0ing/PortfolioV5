@@ -38,7 +38,7 @@ import {
 } from "three";
 import { BVH_MS_PER_KTRI, bvhCostMs, bvhWanted, deferUpload, mayBuildBvh, mayPostBvh, updateBvhRate, uploadWaitedMs } from "@/lib/sect/background-work";
 import { fovForAspect, samplePath, sampleCamera } from "@/lib/sect/camera-path";
-import { framingAt } from "@/lib/sect/framing";
+import { framingAt, framingFrame } from "@/lib/sect/framing";
 import {
   clampLook,
   composeLook,
@@ -90,6 +90,7 @@ import { IDLE_ON, IDLE_TIME, updateIdle } from "./idle";
 import { Life } from "./life";
 import { breathe } from "@/lib/sect/idle";
 import {
+  aimPondMirror,
   createCloudPuffMaterial,
   createCloudSeaMaterial,
   createGlowMaterial,
@@ -204,7 +205,9 @@ function CameraRig({ store }: { store: SectStore }) {
     }
     if (store.frameOverride !== null) frame = store.frameOverride;
     store.frame = frame;
-    const s = sampleCamera(store.camera.frames, frame);
+    // A few stops frame their subject (lib/sect/framing.ts): near the hold the camera takes the
+    // film's pose of a few frames earlier (it stands back along the path), easing in and out.
+    const s = sampleCamera(store.camera.frames, framingFrame(store.camera.holds, frame));
     camera.position.set(s.p[0], s.p[1], s.p[2]);
     // Free look turns the rendered camera on top of the path's orientation; a new path position
     // (scroll, jump, voice) swings it back. The path sample stays the flight's own camera.
@@ -213,8 +216,8 @@ function CameraRig({ store }: { store: SectStore }) {
     if (!store.paused && turnByKeys(look, delta)) wake(store, 250);
     const at = { targetU: store.targetU, flight: store.flight ? store.flight.t0 : null, override: store.frameOverride };
     if (followPath(look, at, performance.now() / 1000, store.reducedMotion)) wakeForRecenter(store);
-    // A few stops turn the view a little to centre their subject (lib/sect/framing.ts), easing in
-    // over the frames before the hold and out after it; the free look turns on top of that.
+    // And turn the view a little to centre their subject, easing in over the frames before the
+    // hold and out after it; the free look turns on top of that.
     const framed = composeLook(s.q, framingAt(store.camera.holds, frame));
     // The tilt that keeps the view short of straight up or down depends on the view's own pitch.
     look.limits = lookLimits(framed);
@@ -1441,7 +1444,8 @@ function Flyer({ store, object, path }: { store: SectStore; object: Object3D; pa
   useFrame(() => {
     const g = ref.current;
     if (!g) return;
-    const s = samplePath(path.frames, store.frame);
+    // Keyed to the frame the camera stands at (a framed stop's camera stands back, framing.ts).
+    const s = samplePath(path.frames, framingFrame(store.camera.holds, store.frame));
     g.position.set(s.p[0], s.p[1], s.p[2]);
     g.quaternion.set(s.q[0], s.q[1], s.q[2], s.q[3]);
     g.updateMatrix();
@@ -2227,6 +2231,10 @@ function SectCanvas(props: SectCanvasProps) {
   const sets = useMemo(() => (global ? [global, ...chunks] : chunks), [global, chunks]);
   const forgeSet = useMemo(() => chunks.find((s) => s.id === "forge") ?? null, [chunks]);
   const mirrorSet = useMemo(() => chunks.find((s) => s.id === "mirror") ?? null, [chunks]);
+  // The pond's analytic Heart-Mirror on the face's own plane (each time the area loads afresh).
+  useEffect(() => {
+    if (mirrorSet?.pond) aimPondMirror(mirrorSet.pond.uniforms, mirrorSet.pond.mirror);
+  }, [mirrorSet]);
   const formationSet = useMemo(() => chunks.find((s) => s.id === "formation") ?? null, [chunks]);
   const decorTier = fxTier(quality);
   const needsLights = flyerLit || sets.some((s) => s.litMaterials > 0);

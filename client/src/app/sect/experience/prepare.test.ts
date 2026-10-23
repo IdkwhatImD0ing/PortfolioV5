@@ -64,6 +64,37 @@ describe("prepareSceneSliced", () => {
   });
 });
 
+describe("hotspot material copies", () => {
+  it("make the arena's Heavy Iron Sword black iron with ember seams, and leave other steel and molten as exported", () => {
+    const root = new Group();
+    const metal = new MeshBasicMaterial({ name: "baked.arena_A0.surface.metal", map: new Texture() });
+    metal.userData = { baked: true, sectSurface: "metal" };
+    const molten = new MeshBasicMaterial({ name: "baked.arena_A0.glow.molten", map: new Texture() });
+    molten.userData = { baked: true, glow: 2, glowTint: "#ff9a50" };
+    const node = (hotspot: string) => {
+      const g = new Group();
+      g.userData = { hotspot };
+      g.add(new Mesh(new BoxGeometry(1, 1, 1), metal), new Mesh(new BoxGeometry(1, 1, 1), molten));
+      root.add(g);
+      return g;
+    };
+    const sword = node("arena");
+    const saber = node("gate-swords");
+    prepareScene(root, options());
+    const mats = (g: Group) => g.children.map((m) => (m as Mesh).material as MeshBasicMaterial);
+    const [iron, seams] = mats(sword);
+    const [steel, glow] = mats(saber);
+    expect(iron.userData.sectSurface).toBe("iron");
+    expect(steel.userData.sectSurface).toBe("metal");
+    // The shared material the copies came from keeps the exporter's tag.
+    expect(metal.userData.sectSurface).toBe("metal");
+    // Deep red, still a glow (above 1); the saber's keeps the class's orange.
+    expect(seams.color.r).toBeGreaterThan(1.001);
+    expect(seams.color.g / seams.color.r).toBeLessThan(0.15);
+    expect(glow.color.g / glow.color.r).toBeGreaterThan(0.4);
+  });
+});
+
 /** Drains a sliced step to its result, counting the stops on the way. */
 function drain<T>(g: Generator<void, T, void>): { value: T; stops: number } {
   let stops = 0;

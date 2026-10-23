@@ -127,9 +127,16 @@ export interface SectLook {
     /** The Heart-Mirror's glowing face as seen in the pond (linear colour x gain, HDR). */
     mirrorGlow: string;
     mirrorGlowGain: number;
-    /** Gold frame of the mirror in the reflection, and its thin lacquer-red outer edge. */
+    /**
+     * The mirror's parts as the pond's analytic reflection draws them (lib/sect/heart-mirror.ts):
+     * the gilt (rim, crest, pearls, cradle), the red lacquer cloud arms, the cyan trigram ring's
+     * glow (linear colour x gain) and the dark bronze of its back.
+     */
     mirrorRim: string;
     mirrorRimOuter: string;
+    mirrorRune: string;
+    mirrorRuneGain: number;
+    mirrorBronze: string;
     /** Sky reflected near the horizon and overhead. */
     skyLow: string;
     skyHigh: string;
@@ -194,7 +201,9 @@ export interface SectLook {
    * - metal: materials the exporter tags extras.sectSurface = "metal" (steel blades, gold trim): the
    *   texel's hue tints the reflection, the bake keeps a share as diffuse;
    * - glaze: extras.sectSurface = "glaze" (glazed roof tiles, porcelain): a clear-coat Fresnel
-   *   sheen over the bake.
+   *   sheen over the bake;
+   * - iron: the metal of the hotspots `iron.hotspots` lists, given on their material copies
+   *   (hotspotSurface): black iron, dull, near-black and rough.
    */
   surfaces: {
     /**
@@ -206,6 +215,30 @@ export interface SectLook {
     metal: { f0: number; diffuse: number; rough: number };
     /** Reflectance at normal incidence (dielectric), roughness, and a cap on the sheen. */
     glaze: { f0: number; rough: number; max: number };
+    /**
+     * Black meteoric iron (玄鐵): the Heavy Iron Sword 玄鐵重劍 in the arena (hotspot "arena" holds
+     * arena.sword alone), blunt and dull (重劍無鋒，大巧不工), black with a faint red light deep in it
+     * (黑中隱隱透出紅光). Its iron bakes mid grey, which the grade turns slate; as "metal" it also
+     * mirrored the sky at 0.7 and read as light blue-grey steel. Here the bake's luminance is kept
+     * as the shape only: times `diffuse` (near-black), leaned `warmth` of the way toward the hue of
+     * `color` (sRGB hex). A rough oxide (`f0` facing, `grazing` at the silhouette, `rough`) shows
+     * a faint sheen of the sky and the sun, which turns toward `glint`'s hue as the faces turn away
+     * (by up to `amount`): a dark red rim along the rounded edges. `seams`: the hotspotTint of its
+     * ember hairlines (".glow.molten", glow class strength 2): the bake's seams are orange, so a
+     * red-orange multiplier at 0.6 of the class's strength leaves them a deep ember red that still
+     * counts as a glow (its largest channel stays above 1) and breathes with the arena's rhythm.
+     */
+    iron: {
+      hotspots: readonly string[];
+      color: string;
+      warmth: number;
+      diffuse: number;
+      f0: number;
+      grazing: number;
+      rough: number;
+      glint: { color: string; amount: number };
+      seams: { color: string; amount: number; gain: number };
+    };
     /** What a reflection sees below the horizon (sRGB hex), and the far mountains' haze tint. */
     ground: string;
     mountains: string;
@@ -371,7 +404,10 @@ export const SECT_LOOK: SectLook = {
     mirrorGlow: "#ffc27a",
     mirrorGlowGain: 2.2,
     mirrorRim: "#d9a24a",
-    mirrorRimOuter: "#8a2418",
+    mirrorRimOuter: "#a82a20",
+    mirrorRune: "#8ff2e2",
+    mirrorRuneGain: 2.4,
+    mirrorBronze: "#4f5a46",
     skyLow: "#c9b2a8",
     skyHigh: "#8f9bcc",
   },
@@ -390,6 +426,17 @@ export const SECT_LOOK: SectLook = {
     mirror: { f0: "#f2cf98", glow: 0.12, rough: 0.12, convex: 0.32 },
     metal: { f0: 0.7, diffuse: 0.35, rough: 0.18 },
     glaze: { f0: 0.045, rough: 0.12, max: 0.4 },
+    iron: {
+      hotspots: ["arena"],
+      color: "#3a1a1c",
+      warmth: 0.42,
+      diffuse: 0.21,
+      f0: 0.055,
+      grazing: 0.3,
+      rough: 0.58,
+      glint: { color: "#a8584e", amount: 0.8 },
+      seams: { color: "#f25236", amount: 1, gain: 0.6 },
+    },
     ground: "#56514a",
     mountains: "#7d7a96",
   },
@@ -441,9 +488,9 @@ export const SECT_LOOK: SectLook = {
 };
 
 /**
- * A colour the bake cannot carry for a hotspot's material copy: the stele rows' glyphs and the
- * jade slip's sheet. `amount` is how far toward `color` from white; the glow strength is kept and
- * scaled by `gain`. Null for everything else.
+ * A colour the bake cannot carry for a hotspot's material copy: the stele rows' glyphs, the jade
+ * slip's sheet and the Heavy Iron Sword's ember seams. `amount` is how far toward `color` from
+ * white; the glow strength is kept and scaled by `gain`. Null for everything else.
  */
 export function hotspotTint(
   hotspotId: string,
@@ -456,7 +503,17 @@ export function hotspotTint(
     return color ? { color, amount: 0.85, gain: 1 } : null;
   }
   if (hotspotId === "resume" && /\.glow\.other$/.test(materialName)) return look.jade;
+  if (look.surfaces.iron.hotspots.includes(hotspotId) && /\.glow\.molten$/.test(materialName)) return look.surfaces.iron.seams;
   return null;
+}
+
+/**
+ * The reflective class a hotspot's material copy takes in place of the exporter's: "iron" for the
+ * metal (".surface.metal") of the hotspots SECT_LOOK.surfaces.iron lists (the arena's Heavy Iron
+ * Sword), so the gate's saber and every other steel keep the "metal" class. Null otherwise.
+ */
+export function hotspotSurface(hotspotId: string, materialName: string, look: SectLook = SECT_LOOK): "iron" | null {
+  return look.surfaces.iron.hotspots.includes(hotspotId) && /\.surface\.metal$/.test(materialName) ? "iron" : null;
 }
 
 /** 0 before the twilight's first hold, 1 from its second, smooth between. */

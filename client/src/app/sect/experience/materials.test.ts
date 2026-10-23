@@ -4,10 +4,14 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { DETAIL_NOISE, detailProgramKey } from "@/lib/sect/detail";
-import { fogConstantsFromMeta } from "@/lib/sect/glsl";
+import { fogConstantsFromMeta, glslFloat } from "@/lib/sect/glsl";
+import { heartMirrorGlsl } from "@/lib/sect/heart-mirror";
+import { SECT_LOOK } from "@/lib/sect/look";
 import { parseMeta } from "@/lib/sect/parse";
 import { wetFalls } from "@/lib/sect/waterfall";
+import { REFLECT } from "./reflect/plan";
 import {
+  aimPondMirror,
   createBeamMaterial,
   createCloudSeaMaterial,
   createDetailUniforms,
@@ -427,6 +431,26 @@ describe("reflective surfaces (sky reflection, Fresnel, sun glint)", () => {
     expect(sectSurfaceOf(baked("baked.mirror_A0.glow.mirror_face", { glow: 1.3 }))).toBe("mirror");
     expect(sectSurfaceOf(baked("baked.mirror_A0.glow.rune_cyan", { glow: 2 }))).toBeNull();
     expect(sectSurfaceOf(baked("baked.gate_A0", { sectSurface: "chrome" }))).toBeNull();
+    // Given by prepare.ts on a hotspot's copy (look.ts hotspotSurface), never by the exporter.
+    expect(sectSurfaceOf(baked("baked.arena_A0.surface.metal", { sectSurface: "iron" }))).toBe("iron");
+  });
+
+  it("shades black iron dull and near-black: the bake's light as shape, a faint rough sheen, no steel mirror", () => {
+    const mat = baked("baked.arena_A0.surface.metal", { sectSurface: "iron" });
+    const sh = compile(mat);
+    const fs = sh.fragmentShader;
+    const iron = SECT_LOOK.surfaces.iron;
+    expect(fs).toContain(`float iL = dot( outgoingLight, vec3( 0.2126, 0.7152, 0.0722 ) ) * ${glslFloat(iron.diffuse)};`);
+    expect(fs).toContain(`sectEnvSky( sR, ${glslFloat(iron.rough)} )`);
+    // Not the metal class: no reflectance from the texel's hue at f0 0.7.
+    expect(fs).not.toContain("sectTexel / max( sLum, 1e-4 )");
+    const at = ["sectGrade( sectTexel )", "float iL = ", "#include <opaque_fragment>"].map((x) => fs.indexOf(x));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(sh.uniforms.tSectSky).toBe(SECT_ENV.tSectSky);
+    expect(mat.customProgramCacheKey()).toContain("|surface-iron");
+    expect(fs).not.toMatch(/NaN|undefined/);
+    chunksReal(sh);
   });
 
   it("changes nothing on an untagged material", () => {
@@ -518,6 +542,72 @@ describe("reflective surfaces (sky reflection, Fresnel, sun glint)", () => {
     expect(analyticCode).toContain("1.0 - smoothstep( 0.05, 0.14, dot( outgoingLight");
     expect(analyticCode).toContain("uDiscR > 0.0");
     chunksReal(sh);
+  });
+
+  it("draws the Heart-Mirror's own layout in the analytic path, laid on the water as the planar path lays a reflection", () => {
+    const u = createWaterUniforms({ level: 0, disc: { center: [1, 2, 3], normal: [0, 0, 1], radius: 3.38 } });
+    for (const name of ["uDiscRim", "uDiscRimOuter", "uDiscRune", "uDiscBronze", "uDiscGlow"]) expect(u[name], name).toBeDefined();
+    // The runes glow (HDR), the lacquer is red.
+    expect(Math.max(...(u.uDiscRune.value as Vector3).toArray())).toBeGreaterThan(1);
+    const red = (u.uDiscRimOuter.value as Vector3).toArray();
+    expect(red[0]).toBeGreaterThan(red[1] * 3);
+    const mat = new MeshBasicMaterial({ map: new Texture() });
+    mat.name = "baked.mirror_A0";
+    patchMaterial(mat, { lit: true, exposure: 1, water: u });
+    const sh = compile(mat);
+    const fs = sh.fragmentShader;
+    for (const name of ["uDiscRune", "uDiscBronze"]) expect(sh.uniforms[name], name).toBe(u[name]);
+    // The layout and its shading follow the sky they call, and come before main.
+    const env = fs.indexOf("vec3 sectEnvSky( vec3 d, float blur )");
+    expect(env).toBeGreaterThan(0);
+    expect(fs.indexOf(heartMirrorGlsl().trim().split("\n")[0])).toBeGreaterThan(env);
+    expect(fs.indexOf("vec3 sectMirrorShade( int part, vec2 q, vec2 lean, SectMirrorView m ) {")).toBeGreaterThan(env);
+    expect(fs.indexOf("vec3 sectMirrorShade( int part, vec2 q, vec2 lean, SectMirrorView m ) {")).toBeLessThan(fs.indexOf("void main()"));
+    const planar = fs.indexOf("if ( uHasReflect > 0.5 )");
+    const analytic = fs.indexOf("} else {", planar);
+    const analyticCode = fs.slice(analytic, fs.indexOf("#include <opaque_fragment>"));
+    expect(analyticCode).toContain("sectHeartMirror( q, w, dot( r, m.y ) / abs( dn ), m )");
+    // From behind too (the back plate), and no flat disc any more.
+    expect(analyticCode).toContain("abs( dn ) > 1e-4");
+    expect(analyticCode).not.toContain("hit = face");
+    // The planar path's Fresnel and gain, so Low's mirror is as bright in the water as High's.
+    const look = REFLECT.pond.look;
+    expect(analyticCode).toContain(`float Fm = ${glslFloat(look.f0)} + ${glslFloat(1 - look.f0)} * pow(`);
+    expect(analyticCode).toContain(`mc.rgb * ( Fm * ${glslFloat(look.gain)} )`);
+    // The face shades as the mirror's own sky-only path does, but leans and darkens toward the rim as
+    // gently as High's cube path (more lean showed the ground on its lower half, seen from the water).
+    expect(fs).toContain(`* ${glslFloat(REFLECT.mirror.look.convex)} / SECT_HEART_FACE`);
+    expect(fs).toContain(`smoothstep( ${glslFloat(REFLECT.mirror.look.patina[0])}, ${glslFloat(REFLECT.mirror.look.patina[1])}, length( q ) / SECT_HEART_FACE )`);
+    expect(fs).toContain(`sectEnvSky( fr, ${glslFloat(SECT_LOOK.surfaces.mirror.rough)} )`);
+    expect(fs).not.toMatch(/NaN|undefined/);
+    chunksReal(sh);
+  });
+
+  it("ripples both paths' water alike (the planar path's waves, still on Low)", () => {
+    const mat = new MeshBasicMaterial({ map: new Texture() });
+    mat.name = "baked.mirror_A0";
+    patchMaterial(mat, { lit: true, exposure: 1, water: createWaterUniforms({ level: 0, disc: null }) });
+    const fs = compile(mat).fragmentShader;
+    expect(fs.split("vec3 sectPondNormal( vec2 wp, float wt, float dist ) {").length).toBe(2);
+    expect(fs).toContain(`g *= ${glslFloat(REFLECT.pond.look.slope)} * ( 1.0 - smoothstep(`);
+    const planar = fs.indexOf("if ( uHasReflect > 0.5 )");
+    const analytic = fs.indexOf("} else {", planar);
+    expect(fs.slice(planar, analytic)).toContain("vec3 n = sectPondNormal( vSectWorld.xz, uWaterTime, length( vSectWorld - cameraPosition ) );");
+    expect(fs.slice(analytic)).toContain("vec3 r = reflect( v, sectPondNormal( vSectWorld.xz, uWaterTime, dist ) );");
+  });
+
+  it("aims the pond's mirror at the face fitted to its triangles, and leaves it without one", () => {
+    const u = createWaterUniforms({ level: 0, disc: { center: [1, 2, 3], normal: [0, 0, 1], radius: 3.3 } });
+    aimPondMirror([u], null);
+    expect((u.uDiscN.value as Vector3).toArray()).toEqual([0, 0, 1]);
+    aimPondMirror([u], { center: [4, 5, 6], normal: [0, 0.6, 0.8 * 2], radius: 3.38 });
+    expect((u.uDiscC.value as Vector3).toArray()).toEqual([4, 5, 6]);
+    const n = (u.uDiscN.value as Vector3).toArray();
+    expect(Math.hypot(...n)).toBeCloseTo(1, 9);
+    expect(n[1] / n[2]).toBeCloseTo(0.6 / 1.6, 9);
+    expect(u.uDiscR.value).toBe(3.38);
+    // The mirror's own shading keeps the glow box's disc.
+    expect(SECT_MIRROR.uSectMirrorC.value.toArray()).toEqual([1, 2, 3]);
   });
 
   it("gives the Heart-Mirror's face the captured surroundings, faded in over the sky-only shading", () => {

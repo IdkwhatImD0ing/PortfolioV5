@@ -2,6 +2,7 @@
  * The opening of /sect, before the first picture: the poster still behind the loading screen, the
  * download progress of the opening files, and the size of that download for the page view's note.
  */
+import type { LookOffset } from "./free-look";
 
 /**
  * The poster stills: the scene at the default start (the top of the path, frame 27, no free look),
@@ -149,31 +150,59 @@ export function openingMegabytes(raw: unknown, low: boolean): number | null {
 // --- portrait framing ------------------------------------------------------------------------------
 
 /**
- * Portrait screens see about 36 degrees of the 58 a 16:9 screen sees at a stop, and at some stops
- * the things the panel talks about sit off that narrower view. Once the camera has come to rest at
- * such a stop on a portrait screen, the view turns this far (degrees, positive turns left) toward
- * them, as a drag would turn it; the next scroll swings it back. Measured on a 390 x 844 phone with
- * the panel up (share of each item hotspot clear of the panel and the top bar), as turns from the
- * path's own view:
- * - mirror: the Heart Mirror 26% and the censer 0% at 0; both 100% from 10.
+ * Portrait screens see about 36 degrees of the 58 a 16:9 screen sees at a stop, the picture shifted
+ * up (scene.tsx PORTRAIT_SHIFT) between the stop's label and look hint at the top (down to 156 px on
+ * a 390 x 844 phone) and the panel at the bottom (from 579 px up, 603 at most stops). At some stops
+ * the things the panel talks about sit off that narrower view, or under the labels. Once the camera
+ * has come to rest at such a stop on a portrait screen, the view turns (yaw, degrees, positive left)
+ * and tilts (pitch, positive up, which lowers the picture) this far, as a drag would turn it; the
+ * next scroll swings it back. Measured on a 390 x 844 phone with the panel up, as turns from the
+ * stop's framing (framing.ts STOP_FRAMING, every screen):
+ * - gate: the roof's ridge and the sun on it sat under the label and the hint. 7 up puts the whole
+ *   gate between them and the panel, the sun's top 12 px under the hint.
+ * - mirror: the framing stands the camera back along the path and turns it 4 degrees left and 3
+ *   down, which centres the Still Pond on a 16:9 screen; on a phone that leaves the pond's west rim
+ *   and the pavilion cut by the left edge. 6 more (10 in all) put the pond in the middle, both rims
+ *   in with a margin, and the pavilion, the Heart Mirror and the censer whole above the panel.
+ * - arena: the Heavy Iron Sword's hilt sat under the label and the hint, its pommel 98 px down. 7
+ *   up puts the pommel 175 px down and the whole sword clear, the yin-yang still above the panel.
+ *   (Its banners sit off both edges, so no turn helps there.)
  * - mission: the first two experience entries 0% and the third 38% at 0; all seven 100% at 10, the
- *   hall 81% and its bell 72%.
- * Both stops' framing (framing.ts STOP_FRAMING, every screen) now turns them 8 degrees left (and the
- * mission hall 2 up), so the portrait turn adds the rest: 2 at the mirror (10 in all); 5 at the
- * mission hall, where 10 in all left the first post (Pinterest) cut by the left edge and 13 puts the
- * whole board in with a margin either side.
- * The arena's banners sit off both edges, so no turn helps there.
+ *   hall 81% and its bell 72%. The framing turns 8 left and 2 up; 5 more, as 10 in all left the
+ *   first post (Pinterest) cut by the left edge and 13 puts the whole board in with a margin either
+ *   side. The hall's roof and name board sat under the label and the hint; 7 up clears them, the
+ *   board of posts still 180 px above the panel.
+ * - library: the pagoda's spire reached under the hint. 5 up puts its tip 8 px below; more would
+ *   take the feet of the gate below it under the panel.
+ * - steles: the end pavilion's finial touched the hint. 3 up puts it 15 px below.
+ * - scroll: the framing shows the jade slip whole on a 16:9 screen; on a phone only its right third
+ *   was in, cut by the left edge. 11 more left (17 in all) put the whole slip in, 40 px from the
+ *   left edge, and the pavilion's near side on the right.
+ * - abode: the cliff's 洞天福地 ran down under the label and the hint. 3 right moves it left of
+ *   them, 30 px from the edge, the moon gate and the waterfall still in.
+ * The poster's view is the start of the flight (frame 27, scroll 0), in no hold, so it never turns.
+ * Portrait tablets (820 x 1180) turn the same way; their panel sits beside the view, and the tilts
+ * hide nothing there the film's view did not (the arena's hilt is behind the panel either way).
  */
-export const PORTRAIT_YAW_DEG: Readonly<Record<string, number>> = { mirror: 2, mission: 5 };
+export const PORTRAIT_TURN_DEG: Readonly<Record<string, { yaw?: number; pitch?: number }>> = {
+  gate: { pitch: 7 },
+  mirror: { yaw: 6 },
+  arena: { pitch: 7 },
+  mission: { yaw: 5, pitch: 7 },
+  library: { pitch: 5 },
+  steles: { pitch: 3 },
+  scroll: { yaw: 11 },
+  abode: { yaw: -3 },
+};
 
-/** The turn (radians, positive left) for a stop on a portrait screen; 0 when it needs none. */
-export function portraitYaw(holdId: string | null, portrait: boolean): number {
-  if (!portrait || !holdId) return 0;
-  return ((PORTRAIT_YAW_DEG[holdId] ?? 0) * Math.PI) / 180;
+/** The turn (radians, as a free-look offset) for a stop on a portrait screen; none when it needs none. */
+export function portraitTurn(holdId: string | null, portrait: boolean): LookOffset {
+  const t = portrait && holdId ? PORTRAIT_TURN_DEG[holdId] : undefined;
+  return { yaw: ((t?.yaw ?? 0) * Math.PI) / 180, pitch: ((t?.pitch ?? 0) * Math.PI) / 180 };
 }
 
 /** Seconds the portrait turn takes (eased), about as long as the free look's swing back. */
-export const PORTRAIT_YAW_SECONDS = 0.9;
+export const PORTRAIT_TURN_SECONDS = 0.9;
 
 // --- flicks ----------------------------------------------------------------------------------------
 

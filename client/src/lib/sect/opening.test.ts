@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { fovForAspect } from "./camera-path";
 import { STOP_FRAMING } from "./framing";
-import { downloadFraction, flickStop, openingMegabytes, PORTRAIT_YAW_DEG, portraitYaw, POSTER, posterBox, posterMatches, type DownloadGroup } from "./opening";
+import { downloadFraction, flickStop, openingMegabytes, PORTRAIT_TURN_DEG, portraitTurn, POSTER, posterBox, posterMatches, type DownloadGroup } from "./opening";
 import { buildScrollMap, FLIGHT_SCROLL } from "./scroll-map";
 
 const DEG = Math.PI / 180;
@@ -142,17 +142,44 @@ describe("openingMegabytes", () => {
   });
 });
 
-describe("portraitYaw", () => {
+describe("portraitTurn", () => {
   it("turns toward the items at the stops that need it, on portrait screens only", () => {
-    // 10 and 13 degrees from the path's own view in all, 8 of them the stops' framing on every screen.
-    expect(portraitYaw("mirror", true) + STOP_FRAMING.mirror.yaw * DEG).toBeCloseTo(10 * DEG, 9);
-    expect(portraitYaw("mission", true) + STOP_FRAMING.mission.yaw * DEG).toBeCloseTo(13 * DEG, 9);
-    expect(portraitYaw("mirror", true)).toBeGreaterThan(0);
-    expect(portraitYaw("mirror", false)).toBe(0);
-    expect(portraitYaw("gate", true)).toBe(0);
-    expect(portraitYaw(null, true)).toBe(0);
-    // The opening view is the poster's: the gate never turns.
-    expect(PORTRAIT_YAW_DEG.gate ?? 0).toBe(0);
+    // 10, 13 and 17 degrees left of the path's own view in all, 4, 8 and 6 of them the stops'
+    // framing on every screen.
+    expect(portraitTurn("mirror", true).yaw + STOP_FRAMING.mirror.yaw * DEG).toBeCloseTo(10 * DEG, 9);
+    expect(portraitTurn("mission", true).yaw + STOP_FRAMING.mission.yaw * DEG).toBeCloseTo(13 * DEG, 9);
+    expect(portraitTurn("scroll", true).yaw + STOP_FRAMING.scroll.yaw * DEG).toBeCloseTo(17 * DEG, 9);
+    // The cave abode turns right, the cliff's inscription out from under the labels.
+    expect(portraitTurn("abode", true).yaw).toBeCloseTo(-3 * DEG, 9);
+    expect(portraitTurn("mirror", true).pitch).toBe(0);
+    expect(portraitTurn("mirror", false)).toEqual({ yaw: 0, pitch: 0 });
+    expect(portraitTurn("forge", true)).toEqual({ yaw: 0, pitch: 0 });
+    expect(portraitTurn(null, true)).toEqual({ yaw: 0, pitch: 0 });
+  });
+
+  it("tilts up at the stops whose landmark reached under the labels, a few degrees", () => {
+    // Up lowers the picture: the gate's ridge, the sword's hilt, the hall's roof, the pagoda's spire
+    // and the end pavilion's finial come out from under the stop's label and look hint.
+    expect(portraitTurn("arena", true).yaw).toBe(0);
+    expect(portraitTurn("arena", true).pitch).toBeCloseTo(7 * DEG, 9);
+    expect(portraitTurn("gate", true).pitch).toBeCloseTo(7 * DEG, 9);
+    expect(portraitTurn("mission", true).pitch).toBeCloseTo(7 * DEG, 9);
+    for (const id of ["library", "steles"]) expect(portraitTurn(id, true).pitch).toBeGreaterThan(0);
+    for (const t of Object.values(PORTRAIT_TURN_DEG)) {
+      expect(Math.abs(t.pitch ?? 0)).toBeLessThanOrEqual(8);
+      expect(Math.abs(t.yaw ?? 0)).toBeLessThanOrEqual(12);
+    }
+  });
+
+  it("never turns the opening view, the poster's: the start of the flight is in no stop's hold", () => {
+    const camera = JSON.parse(readFileSync(path.resolve(__dirname, "../../../public/sect/full/camera.json"), "utf8")) as {
+      startFrame: number;
+      frameEnd: number;
+      holds: { id: string; label: string; frame: number }[];
+    };
+    const map = buildScrollMap(camera.startFrame, camera.frameEnd, camera.holds, FLIGHT_SCROLL);
+    expect(camera.startFrame).toBe(POSTER.startFrame);
+    expect(map.holds.some((h) => 0 >= h.u0 && 0 <= h.u1)).toBe(false);
   });
 });
 

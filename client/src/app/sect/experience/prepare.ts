@@ -15,7 +15,8 @@
  *   arrays nothing reads again (releaseAfterGpuUpload, called by assets.ts once a set is prepared).
  * - repairs: vertex colours the bake left unset (pure black) are filled from their neighbours
  *   (lib/sect/vertex-colors.ts); colours the bake cannot carry (the stele rows' glyphs, the jade
- *   slip's sheet) are set on the hotspot's material copy (lib/sect/look.ts hotspotTint).
+ *   slip's sheet, the Heavy Iron Sword's ember seams) are set on the hotspot's material copy
+ *   (lib/sect/look.ts hotspotTint), and so is the sword's black iron class (hotspotSurface).
  */
 import {
   Box3,
@@ -39,7 +40,7 @@ import {
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { acceleratedRaycast, MeshBVH } from "three-mesh-bvh";
-import { hotspotTint } from "@/lib/sect/look";
+import { hotspotSurface, hotspotTint } from "@/lib/sect/look";
 import type { HotspotInfo } from "@/lib/sect/types";
 import { anyMissingColor, repairColors } from "@/lib/sect/vertex-colors";
 import { bakedDetail, patchCardMaterial, patchMaterial, prepareBakedMaterial, prepareNeedleCard, type DetailUniforms } from "./materials";
@@ -723,6 +724,10 @@ function* prepareSteps(root: Object3D, opts: PrepareOptions): Generator<void, Pr
           const strength = Math.max(c.r, c.g, c.b);
           c.setRGB(1, 1, 1).lerp(new Color(tint.color), tint.amount).multiplyScalar(strength * tint.gain);
         }
+        // A reflective class of the hotspot's own (the arena's Heavy Iron Sword is black iron, not
+        // steel); the exporter's tag stays on the shared material, so other steel keeps it.
+        const surface = hotspotSurface(hs.id, mat.name);
+        if (surface) copy.userData.sectSurface = surface;
         // patchMaterial only applies the tone curve to lit (standard) materials. The copy keeps
         // its rock / ground detail (userData is copied with it).
         patchMaterial(copy, { lit: true, exposure: opts.exposure, highlight: entry.uniform, detail: bakedDetail(copy, opts.detail) });
