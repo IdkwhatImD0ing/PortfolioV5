@@ -1,9 +1,9 @@
 /**
  * Living things in the air over /sect, as pure data and maths (no three.js): distant bird flocks
  * crossing the valleys, glowing qi motes and fireflies at the holds, rising off the near waterfalls
- * and hanging over the flowering trees and ponds, and a few spirit butterflies around the peach
- * trees. experience/life.tsx draws each kind as one instanced draw; its shaders mirror flockPoint,
- * birdPoint, motePoint and butterflyPoint, so the motion is testable here.
+ * and the jade slip and hanging over the flowering trees and ponds, and a few spirit butterflies
+ * around the peach trees. experience/life.tsx draws each kind as one instanced draw; its shaders
+ * mirror flockPoint, birdPoint, motePoint and butterflyPoint, so the motion is testable here.
  *
  * Everything is placed from the camera path's holds (and meta.json's waterfalls and hotspots) with
  * fixed hashes: the same scroll position always shows the same flocks. Motion is a function of the
@@ -78,6 +78,34 @@ export const LIFE = {
     qiTwilight: { color: "#b4d6f5", gain: 1.3 },
     blossom: { color: "#ffc4d8", gain: 1.3 },
     water: { color: "#d4f2ff", gain: 1.3 },
+    /**
+     * Qi rising off a glowing relic (the jade slip): a few large soft glows homed along its face, just
+     * in front of it, that drift up and fade out by its top edge. They stand in for the bake's spirit
+     * motes (isBakedMote), which drew as hundreds of still white specks across the sky; any glow over
+     * the top edge sits against open sky and reads as a dot again (most of all on the Low tier, where
+     * it adds to near white), so none rises past it.
+     */
+    relic: {
+      count: 30,
+      /** Sprite half-size (m), drawn soft: a 10-14 px glow at the jade slip's hold (50 m), not a speck. */
+      radius: [0.32, 0.46] as const,
+      /** Share of the relic's width they start across (centred), and its height (0 bottom, 1 top). */
+      across: 0.9,
+      from: 0.1,
+      to: 0.6,
+      /** Metres in front of the relic's centre line, toward its hold camera. */
+      front: [0.4, 1.8] as const,
+      rise: [2.2, 4.2] as const,
+      /** The top of every rise (wobble included) stays this far over the relic's top (m): 0, at its edge. */
+      over: 0,
+      /** Seconds per life. */
+      life: [9, 14] as const,
+      wander: [0.12, 0.3] as const,
+      /** Share of gold among the jade. */
+      goldShare: 0.3,
+      jade: { color: "#7ff2cc", gain: 1.4 },
+      gold: { color: "#ffd98c", gain: 1.3 },
+    },
   },
   butterflies: {
     perTree: 8,
@@ -89,7 +117,19 @@ export const LIFE = {
   /** Hotspots that are flowering trees (motes and butterflies) and ponds (fireflies over the water). */
   blossomIds: ["mirror-blossom", "fact:1"] as const,
   pondIds: ["mirror-pond", "library-pond", "fact:6"] as const,
+  /** Hotspots that are glowing relics (qi rising off them): the jade slip scroll. */
+  relicIds: ["resume"] as const,
 };
+
+/**
+ * True for the bake's spirit motes (glow class "mote": Blender's props.spirit_motes around the jade
+ * slip and the library's pagoda, with a few strays in the chunks next to them). Baked still, 3-9 cm
+ * across, they drew as sharp white specks spread far over the sky; prepare.ts drops them and the
+ * relic clusters of moteField rise off the jade slip instead.
+ */
+export function isBakedMote(materialName: string): boolean {
+  return /\.glow\.mote$/i.test(materialName);
+}
 
 // ---------------------------------------------------------------------------------------------
 // Small maths
@@ -454,13 +494,15 @@ export interface Mote {
   rate: number;
   /** Fades out from this far from the camera (m). */
   far: number;
+  /** 0: a hot core in a faint halo; 1: a soft glow (a wide halo round a smaller core), a relic's qi. */
+  soft?: number;
   window: [number, number];
   rank: number;
 }
 
 export interface MoteCluster extends LifeGroup {
   id: string;
-  kind: "hold" | "water" | "blossom" | "pond";
+  kind: "hold" | "water" | "blossom" | "pond" | "relic";
   count: number;
 }
 
@@ -493,7 +535,7 @@ function groundY(meta: SectMeta, v: HoldView): number {
   return a ? a[1] : v.p[1] - 15;
 }
 
-/** Every mote cluster: in front of each hold camera, rising off near waterfalls, over flowering trees and ponds. */
+/** Every mote cluster: in front of each hold camera, rising off near waterfalls and the jade slip, over flowering trees and ponds. */
 export function moteField(meta: SectMeta, views: readonly HoldView[], opts: MoteOptions = {}): { motes: Mote[]; clusters: MoteCluster[] } {
   const M = LIFE.motes;
   const motes: Mote[] = [];
@@ -634,6 +676,47 @@ export function moteField(meta: SectMeta, views: readonly HoldView[], opts: Mote
     }
     add(`${isTree ? "blossom" : "pond"}:${hs.id}`, isTree ? "blossom" : "pond", v.window, list);
   }
+
+  // Rising off the glowing relics: along the face (the box's horizontal diagonal that is more square
+  // to the hold's view, as the slip faces its hold), just in front of it, up to a little over its top.
+  const R = M.relic;
+  const relicJade = tint(R.jade);
+  const relicGold = tint(R.gold);
+  for (const hs of meta.hotspots) {
+    if (!(LIFE.relicIds as readonly string[]).includes(hs.id)) continue;
+    const v = viewOf(hs.area ?? hs.chunk);
+    if (!v) continue;
+    salt++;
+    const diagA: Vec3 = [hs.size[0], 0, hs.size[2]];
+    const diagB: Vec3 = [hs.size[0], 0, -hs.size[2]];
+    const squareness = (d: Vec3) => Math.abs(d[0] * v.fwdH[0] + d[2] * v.fwdH[2]) / Math.max(Math.hypot(d[0], d[2]), 1e-9);
+    const face = squareness(diagA) <= squareness(diagB) ? diagA : diagB;
+    const top = hs.center[1] + hs.size[1] / 2;
+    const list: Mote[] = [];
+    for (let i = 0; i < R.count; i++) {
+      const h = (m: number) => hash01(salt * 997 + i, 1100 + m);
+      const u = (h(0) - 0.5) * R.across;
+      const front = lerp(R.front[0], R.front[1], h(1));
+      const y = hs.center[1] + (lerp(R.from, R.to, Math.pow(h(2), 0.8)) - 0.5) * hs.size[1];
+      const wander = lerp(R.wander[0], R.wander[1], h(3));
+      const rise = Math.max(0.5, Math.min(lerp(R.rise[0], R.rise[1], h(4)), top + R.over - y - wander * 0.6));
+      list.push({
+        home: [hs.center[0] + face[0] * u - v.fwdH[0] * front, Math.min(y, top + R.over - rise - wander * 0.6), hs.center[2] + face[2] * u - v.fwdH[2] * front],
+        seed: h(5),
+        radius: lerp(R.radius[0], R.radius[1], h(6)),
+        kind: 1,
+        wander,
+        rise,
+        color: h(7) < R.goldShare ? relicGold : relicJade,
+        rate: 1 / lerp(R.life[0], R.life[1], h(8)),
+        far: 240,
+        soft: 1,
+        window: v.window,
+        rank: h(9),
+      });
+    }
+    add(`relic:${hs.id}`, "relic", v.window, list);
+  }
   return { motes, clusters };
 }
 
@@ -657,7 +740,7 @@ export function motePoint(m: Pick<Mote, "home" | "seed" | "kind" | "wander" | "r
   return { p: [m.home[0] + Math.sin(t * 0.21 + s * 41) * w, y, m.home[2] + Math.cos(t * 0.19 + s * 31) * w], glow };
 }
 
-/** Floats per mote: (home, seed), (radius, kind, wander, rise), (colour, rate), (lo, hi, far, 0). */
+/** Floats per mote: (home, seed), (radius, kind, wander, rise), (colour, rate), (lo, hi, far, soft). */
 export const MOTE_STRIDE = 16;
 
 /** All motes in rank order (the first N are an even thinning of every cluster). */
@@ -671,7 +754,7 @@ export function packMotes(field: { motes: readonly Mote[]; clusters: readonly Mo
         m.home[0], m.home[1], m.home[2], m.seed,
         m.radius, m.kind, m.wander, m.rise,
         m.color[0], m.color[1], m.color[2], m.rate,
-        m.window[0], m.window[1], m.far, 0,
+        m.window[0], m.window[1], m.far, m.soft ?? 0,
       ],
       k * MOTE_STRIDE,
     );

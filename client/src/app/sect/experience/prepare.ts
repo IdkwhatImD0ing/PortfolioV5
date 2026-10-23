@@ -11,6 +11,8 @@
  *   (extras.chunk) stay separate so the GPU can skip the ones off screen. Backdrop nodes that stand
  *   in for an area (extras.proxyOf) only merge with the same area's proxies, so the page can hide
  *   them while that area's own chunk is drawn.
+ * - dropped: the bake's still spirit motes (lib/sect/life.ts isBakedMote), which drew as white
+ *   specks across the sky; life.tsx draws moving qi in their place.
  * - memory: decoded texture bitmaps are released once they are on the GPU, and so are the vertex
  *   arrays nothing reads again (releaseAfterGpuUpload, called by assets.ts once a set is prepared).
  * - repairs: vertex colours the bake left unset (pure black) are filled from their neighbours
@@ -40,6 +42,7 @@ import {
 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { acceleratedRaycast, MeshBVH } from "three-mesh-bvh";
+import { isBakedMote } from "@/lib/sect/life";
 import { hotspotSurface, hotspotTint } from "@/lib/sect/look";
 import type { HotspotInfo } from "@/lib/sect/types";
 import { anyMissingColor, repairColors } from "@/lib/sect/vertex-colors";
@@ -603,9 +606,19 @@ function* prepareSteps(root: Object3D, opts: PrepareOptions): Generator<void, Pr
   };
 
   const meshes: Mesh[] = [];
+  const dropped: Mesh[] = [];
   root.traverse((o) => {
-    if (isMesh(o)) meshes.push(o);
+    if (!isMesh(o)) return;
+    // The bake's still spirit motes (sharp white specks over the sky): never drawn, and gone before
+    // anything else (the idle carve, the merge, the reflections) sees them. life.tsx draws the qi.
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    if (mats.length > 0 && mats.every((m) => isBakedMote(m.name))) dropped.push(o);
+    else meshes.push(o);
   });
+  for (const m of dropped) {
+    m.removeFromParent();
+    m.geometry.dispose();
+  }
 
   const prepMaterial = (m: Material): Material => {
     const b = m as MeshBasicMaterial;

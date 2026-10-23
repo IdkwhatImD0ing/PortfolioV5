@@ -95,6 +95,28 @@ describe("hotspot material copies", () => {
   });
 });
 
+describe("the bake's spirit motes", () => {
+  it("are dropped (the still white specks over the jade slip), and the rest of the chunk stays", () => {
+    const root = new Group();
+    root.userData = { chunk: 1 };
+    const mote = new MeshBasicMaterial({ name: "baked.scroll_A0.glow.mote", map: new Texture() });
+    mote.userData = { baked: true, glow: 1.6 };
+    const lantern = new MeshBasicMaterial({ name: "baked.scroll_A0.glow.lantern", map: new Texture() });
+    lantern.userData = { baked: true, glow: 1.8 };
+    const specks = new Mesh(new BoxGeometry(1, 1, 1), mote);
+    specks.name = "scrollbakedA0glowmote";
+    const lamp = new Mesh(new BoxGeometry(1, 1, 1), lantern);
+    root.add(specks, lamp);
+    prepareScene(root, options());
+    const names: string[] = [];
+    root.traverse((o) => {
+      if ((o as Mesh).isMesh) names.push(((o as Mesh).material as MeshBasicMaterial).name);
+    });
+    expect(names).toEqual(["baked.scroll_A0.glow.lantern"]);
+    expect(specks.parent).toBeNull();
+  });
+});
+
 /** Drains a sliced step to its result, counting the stops on the way. */
 function drain<T>(g: Generator<void, T, void>): { value: T; stops: number } {
   let stops = 0;

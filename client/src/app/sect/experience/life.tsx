@@ -205,6 +205,7 @@ varying vec2 vUv;
 varying vec3 vColor;
 varying vec3 vDir;
 varying float vDist;
+varying float vSoft;
 void main() {
   float t = uTime;
   float s = iHome.w;
@@ -235,6 +236,7 @@ void main() {
   vColor = iColor.rgb * a;
   vDir = toC / max( dist, 1e-3 );
   vDist = dist;
+  vSoft = iWindow.w;
   gl_Position = projectionMatrix * mv;
 }
 `,
@@ -243,12 +245,16 @@ varying vec2 vUv;
 varying vec3 vColor;
 varying vec3 vDir;
 varying float vDist;
+varying float vSoft;
 ${fogLibrary(fog)}
 void main() {
   float q2 = dot( vUv, vUv );
   if ( q2 >= 1.0 ) discard;
-  // A hot core (the bloom catches it on the high and mid tiers) in a faint halo.
-  float g = ( exp( - q2 * 14.0 ) + 0.18 * exp( - q2 * 4.0 ) ) * ( 1.0 - q2 );
+  // A hot core (the bloom catches it on the high and mid tiers) in a faint halo; a relic's qi is a
+  // soft glow instead: a smaller core in a wide halo (life.ts Mote.soft).
+  float hard = exp( - q2 * 14.0 ) + 0.18 * exp( - q2 * 4.0 );
+  float soft = 0.6 * exp( - q2 * 24.0 ) + 0.4 * exp( - q2 * 4.5 );
+  float g = mix( hard, soft, vSoft ) * ( 1.0 - q2 );
   // Light through the air in between: what the haze and the cloud layer absorb.
   float od = sectHazeDepth( cameraPosition.y, vDir.y, vDist );
   float cd = sectCloudDepth( cameraPosition.y, vDir.y, vDist );

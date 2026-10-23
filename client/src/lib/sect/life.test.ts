@@ -13,6 +13,7 @@ import {
   flockPoint,
   GROUP_STRIDE,
   holdViews,
+  isBakedMote,
   LIFE,
   lifeCounts,
   lifeHash,
@@ -222,6 +223,8 @@ describe("motes", () => {
     hotspots: [
       { id: "mirror-blossom", label: "Peach", center: [10, 90, -160], size: [16, 8, 16], area: "a", chunk: "a" },
       { id: "mirror-pond", label: "Pond", center: [-10, 85, -150], size: [30, 2, 30], area: "a", chunk: "a" },
+      // A jade slip square to hold b's view (the camera looks along -z from (0, 100, -300)).
+      { id: "resume", label: "Jade Slip", center: [0, 92, -340], size: [20, 6, 2], area: "b", chunk: "b" },
     ],
   });
   const field = moteField(m, views, { twilight: twilightOf(views, "b", "c") });
@@ -275,6 +278,46 @@ describe("motes", () => {
     expect(field.clusters.find((c) => c.id === "pond:mirror-pond")?.count).toBe(LIFE.motes.perPond);
   });
 
+  it("rise off the jade slip: a few soft glows along its face, in front of it, gone by its top edge", () => {
+    const R = LIFE.motes.relic;
+    const c = field.clusters.find((x) => x.id === "relic:resume");
+    expect(c?.kind).toBe("relic");
+    expect(c?.count).toBe(R.count);
+    expect(c?.window).toEqual(views[1].window);
+    const own = field.motes.filter((x) => x.far === 240);
+    expect(own.length).toBe(R.count);
+    let gold = 0;
+    for (const x of own) {
+      expect(x.kind).toBe(1);
+      expect(x.soft).toBe(1);
+      expect(x.radius).toBeGreaterThanOrEqual(R.radius[0]);
+      expect(x.radius).toBeLessThanOrEqual(R.radius[1]);
+      // Across the face (20 m wide) and just in front of it (toward the camera at z -300).
+      expect(Math.abs(x.home[0])).toBeLessThanOrEqual(10 * R.across + 1e-9);
+      expect(x.home[2] + 340).toBeGreaterThanOrEqual(R.front[0] - 1 * R.across - 1e-9);
+      expect(x.home[2] + 340).toBeLessThanOrEqual(R.front[1] + 1 * R.across + 1e-9);
+      // Pale gold is redder than green; jade is greener than red.
+      if (x.color[0] > x.color[1]) gold++;
+      for (let t = 0; t < 60; t += 0.53) {
+        const p = motePoint(x, t).p;
+        // Never over the top edge (95), where open sky is behind it (the owner's "white dots").
+        expect(p[1]).toBeLessThanOrEqual(95 + 1e-9);
+        expect(p[1]).toBeGreaterThanOrEqual(89 + R.from * 6 - x.wander * 0.6 - 1e-9);
+      }
+    }
+    // Mostly jade, some pale gold.
+    expect(gold).toBeGreaterThan(0);
+    expect(gold).toBeLessThan(R.count / 2);
+  });
+
+  it("know the bake's still spirit motes by their glow class", () => {
+    expect(isBakedMote("baked.scroll_A0.glow.mote")).toBe(true);
+    expect(isBakedMote("baked.library_A0.glow.mote")).toBe(true);
+    expect(isBakedMote("baked.scroll_A0.glow.molten")).toBe(false);
+    expect(isBakedMote("baked.scroll_A0.glow.other")).toBe(false);
+    expect(isBakedMote("sect.life.motes")).toBe(false);
+  });
+
   it("wander, blink and rise within their bounds", () => {
     for (const x of field.motes.slice(0, 200)) {
       for (const t of [0, 1.3, 7.9, 55.5, 400]) {
@@ -298,6 +341,8 @@ describe("motes", () => {
     for (let i = 0; i < Math.round(packed.count / 3); i++) firstThird.add(packed.data[i * MOTE_STRIDE + 14]);
     expect(firstThird.has(260)).toBe(true);
     expect(firstThird.has(fall.nearestM + 250)).toBe(true);
+    // Only the relic's qi is drawn soft (the last float of each mote).
+    for (let i = 0; i < packed.count; i++) expect(packed.data[i * MOTE_STRIDE + 15]).toBe(packed.data[i * MOTE_STRIDE + 14] === 240 ? 1 : 0);
     // Every mote stays inside its cluster's bounds as it moves (the per-frame view test culls by them).
     let o = 0;
     for (const c of field.clusters) {
@@ -355,5 +400,17 @@ describe.skipIf(!haveFull)("life over the real flight", () => {
     const count = (id: string) => field.clusters.find((c) => c.id === `hold:${id}`)?.count ?? 0;
     expect(count("summit")).toBeGreaterThan(count("gate"));
     expect(count("abode")).toBeGreaterThan(count("gate"));
+    // The jade slip's qi stays on the slip: within its box (and a little in front), never over its top edge.
+    const slip = mt.hotspots.find((h) => h.id === "resume");
+    const relic = field.clusters.find((c) => c.id === "relic:resume");
+    expect(slip && relic).toBeTruthy();
+    if (!slip || !relic) return;
+    const own = field.motes.filter((x) => x.far === 240);
+    expect(own.length).toBe(LIFE.motes.relic.count);
+    for (const x of own) {
+      expect(Math.abs(x.home[0] - slip.center[0])).toBeLessThanOrEqual(slip.size[0] / 2 + LIFE.motes.relic.front[1]);
+      expect(Math.abs(x.home[2] - slip.center[2])).toBeLessThanOrEqual(slip.size[2] / 2 + LIFE.motes.relic.front[1]);
+      for (let t = 0; t < 30; t += 0.7) expect(motePoint(x, t).p[1]).toBeLessThanOrEqual(slip.center[1] + slip.size[1] / 2 + 1e-6);
+    }
   });
 });
