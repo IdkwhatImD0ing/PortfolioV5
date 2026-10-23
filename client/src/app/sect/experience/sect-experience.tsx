@@ -9,8 +9,10 @@
  * The world streams: the global set (backdrop with a reduced proxy of every area) loads first, then
  * each area's chunk around the camera (streaming.ts).
  *
- * Navigation: scroll; the rail (desktop) or its compact row (phones); Places; PageDown/PageUp,
- * the up and down arrows and J/K between holds, Home to the start and End to the last place;
+ * Navigation: scroll; the rail (desktop) or its compact row (phones); the map (the Map button or
+ * M: a painted map of the sect with every stop's seal, fast travel to any of them under an ink wash,
+ * and the list of every place and item); PageDown/PageUp, the up and down arrows and J/K between
+ * holds, Home to the start and End to the last place;
  * #<section> deep links (also on hashchange, and the hash follows the current hold);
  * ?open=<hotspot id>; the voice agent (VoiceBus). Free look turns the view all the way round: drag
  * the view, swipe sideways, or hold the left and right arrows; Escape or the Recentre button turns
@@ -40,7 +42,7 @@
  * the same view drawn live. The progress bar counts bytes and never goes back. "Read as page" while
  * loading stops the download until the flight comes back.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import type { Object3D } from "three";
 import { AREAS, areaInfo, isAreaId, type AreaId } from "@/lib/sect/areas";
 import { sampleCamera } from "@/lib/sect/camera-path";
@@ -88,9 +90,11 @@ import {
   uToScroll,
   type TrackViewport,
 } from "@/lib/sect/scroll-map";
+import { travelTiming } from "@/lib/sect/travel";
 import type { Vec3 } from "@/lib/sect/types";
 import type { VoiceCommand } from "@/lib/voice-bus";
 import { AreaPanel, AreaReader, ContentFallback, hotspotLabel, hotspotTarget, type ContentTarget } from "../content";
+import { flightFocusFallback, keepsFocus } from "../content/modal";
 import { LoadingScreen } from "../loading-screen";
 import {
   chunkFiles,
@@ -108,7 +112,9 @@ import {
   type SectData,
   type WorldContext,
 } from "./assets";
+import { InkTravel, type TravelRequest } from "./ink-travel";
 import { LoreCard, useLoreCard } from "./lore-card";
+import type { MapViewProps } from "./map-view";
 import { installFog } from "./materials";
 import { SectMusic } from "./music";
 import {
@@ -119,10 +125,10 @@ import {
   IntroTitle,
   LookHint,
   lookHintSeen,
+  MapButton,
   markLookHintSeen,
   Notice,
   placeHoverLabel,
-  PlacesList,
   QualityButton,
   RecentreButton,
   SectionRail,
@@ -137,6 +143,29 @@ import { ChunkStreamer, streamBudget } from "./streaming";
 import { SectVoice, startTalk, useVoiceRouting } from "./voice";
 
 type Phase = "data" | "assets" | "ready" | "error" | "nowebgl";
+
+/**
+ * The map (map-view.tsx): its code, and its files, load only when it first opens (or when idle).
+ * When the code cannot be fetched (the connection dropped just then), `onFail` runs and the map
+ * draws nothing, instead of the error taking the whole page down.
+ */
+function mapLoader(onFail: () => void) {
+  return lazy<ComponentType<MapViewProps>>(() =>
+    import("./map-view").catch((e: unknown) => {
+      console.warn("[sect] the map's code could not load", e);
+      onFail();
+      return { default: () => null };
+    }),
+  );
+}
+
+/** Resolves after `n` animation frames. */
+function nextFrames(n: number): Promise<void> {
+  return new Promise((resolve) => {
+    const step = (left: number) => (left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1)));
+    step(n);
+  });
+}
 
 interface Probe {
   webgl2: boolean;
@@ -300,7 +329,9 @@ export default function SectExperience() {
   const [track, setTrack] = useState<TrackViewport>(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const [veil, setVeil] = useState(true);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [placesOpen, setPlacesOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  /** Fast travel from the map under way (ink-travel.tsx), or null. */
+  const [travel, setTravel] = useState<TravelRequest | null>(null);
   const [activeArea, setActiveArea] = useState<string | null>(null);
   const [atHold, setAtHold] = useState(false);
   const [reader, setReader] = useState<ContentTarget | null>(null);
@@ -330,9 +361,9 @@ export default function SectExperience() {
   const pendingVoice = useRef<VoiceCommand | null>(null);
   /** The load under way (the error screen stops its downloads). */
   const loadAbort = useRef<AbortController | null>(null);
-  /** A reader or the page view covers the flight: page scrolls must not move the camera. */
+  /** A reader, the page view or the map covers the flight: page scrolls must not move the camera. */
   const modalRef = useRef(false);
-  modalRef.current = reader !== null || fallback !== null;
+  modalRef.current = reader !== null || fallback !== null || mapOpen;
   const readerRef = useRef<ContentTarget | null>(null);
   readerRef.current = reader;
   const fallbackRef = useRef<FallbackState | null>(null);
@@ -682,7 +713,8 @@ export default function SectExperience() {
     setPhase("data");
     setProgress({ value: 0.02, label });
     setVeil(true);
-    setPlacesOpen(false);
+    setMapOpen(false);
+    setTravel(null);
     setGathering(null);
     setHovered(null);
     jumpToken.current++;
@@ -781,15 +813,18 @@ export default function SectExperience() {
 
   // --- flights -----------------------------------------------------------------------------------
 
-  /** Eases the camera to scroll position `toU` and puts the page scroll there at once. */
+  /**
+   * Eases the camera to scroll position `toU` and puts the page scroll there at once. `instant`: it
+   * is there at once (fast travel, under the ink).
+   */
   const startFlight = useCallback(
-    (toU: number, onArrive?: () => void) => {
+    (toU: number, onArrive?: () => void, instant = false) => {
       if (!store) return;
       store.frameOverride = null;
       store.gatherFrame = null;
       setGathering(null);
       const fromU = store.u;
-      const duration = store.reducedMotion ? 0 : flightSeconds(toU - fromU);
+      const duration = store.reducedMotion || instant ? 0 : flightSeconds(toU - fromU);
       const toFrame = uToFrame(store.map, toU);
       store.targetU = toU;
       if (duration > 0) store.flight = { fromU, toU, t0: performance.now(), duration, toFrame, onArrive };
@@ -805,20 +840,22 @@ export default function SectExperience() {
   );
 
   /**
-   * Flies to scroll position `toU`. Chunks the destination needs that are not on the GPU yet are
-   * gathered first (the indicator shows; the backdrop proxies stand in meanwhile), so the camera
-   * never arrives at nothing. A newer jump or the visitor's own scrolling cancels a waiting one.
+   * Flies to scroll position `toU` (or is there at once, `instant`: fast travel). Chunks the
+   * destination needs that are not on the GPU yet are gathered first (the indicator shows; the
+   * backdrop proxies stand in meanwhile), so the camera never arrives at nothing; after `patienceMs`
+   * it goes anyway and the proxies stand in until they come. A newer jump or the visitor's own
+   * scrolling cancels a waiting one. Resolves false when cancelled so.
    */
   const jumpTo = useCallback(
-    async (toU: number, onArrive?: () => void) => {
-      if (!store) return;
+    async (toU: number, onArrive?: () => void, instant = false, patienceMs = 12000): Promise<boolean> => {
+      if (!store) return false;
       const token = ++jumpToken.current;
       if (Math.abs(store.u - toU) < 1 && !store.flight) {
         store.targetU = toU;
         store.gatherFrame = null;
         setGathering(null);
         onArrive?.();
-        return;
+        return true;
       }
       const frame = uToFrame(store.map, toU);
       const missing = streamer?.missingAt(frame) ?? [];
@@ -829,13 +866,14 @@ export default function SectExperience() {
         setGathering(area && isAreaId(area) ? area : null);
         streamer.update(store.frame, frame, false);
         // Wanted while this is still the latest jump: a cancelled one lets go of its loads.
-        await Promise.all(missing.map((id) => streamer.whenReady(id, 12000, () => token === jumpToken.current)));
+        await Promise.all(missing.map((id) => streamer.whenReady(id, patienceMs, () => token === jumpToken.current)));
         // A newer jump, the visitor's own scrolling, or the page went away meanwhile.
-        if (token !== jumpToken.current || !alive.current || streamer.isDisposed) return;
+        if (token !== jumpToken.current || !alive.current || streamer.isDisposed) return false;
         store.gatherFrame = null;
         setGathering(null);
       }
-      startFlight(toU, onArrive);
+      startFlight(toU, onArrive, instant);
+      return true;
     },
     [store, streamer, startFlight],
   );
@@ -873,7 +911,7 @@ export default function SectExperience() {
 
   const openReader = useCallback(
     (t: ContentTarget, mode: HistoryMode = "push") => {
-      setPlacesOpen(false);
+      setMapOpen(false);
       setReader({ ...t });
       readerRef.current = t;
       shownItem.current = t.item;
@@ -1060,20 +1098,23 @@ export default function SectExperience() {
   // While a reader or the page view is open the orb keeps only its button (its "tap to talk" pill
   // would cover the reader's footer), and the scene stops redrawing behind it (scene.tsx Driver).
   const modalOpen = reader !== null || fallback !== null;
-  // The Jin Yong references' card (lore-card.tsx): nothing of it while a reader, the page view or the
-  // Places list is open.
-  const lore = useLoreCard(modalOpen || placesOpen);
+  // The Jin Yong references' card (lore-card.tsx): nothing of it while a reader, the page view, the
+  // map or fast travel's ink is up.
+  const lore = useLoreCard(modalOpen || mapOpen || travel !== null);
+  // The map counts as a modal here too: the scene stops redrawing under it, and on a phone the orb
+  // moves to the bottom centre (sect.css), where the map's tabs leave it room.
+  const covered = modalOpen || mapOpen;
   useEffect(() => {
     if (store) {
-      store.modal = modalOpen;
+      store.modal = covered;
       wake(store);
     }
-    if (modalOpen) document.body.dataset.sectModal = "1";
+    if (covered) document.body.dataset.sectModal = "1";
     else delete document.body.dataset.sectModal;
     return () => {
       delete document.body.dataset.sectModal;
     };
-  }, [modalOpen, store]);
+  }, [covered, store]);
 
   // The page view pauses the 3D view; leaving it (or a reader) re-syncs the scroll.
   useEffect(() => {
@@ -1412,7 +1453,7 @@ export default function SectExperience() {
 
   const selectPlace = useCallback(
     (id: string) => {
-      setPlacesOpen(false);
+      setMapOpen(false);
       const t = hotspotTarget(id);
       if (t) navigate(t, true);
     },
@@ -1431,7 +1472,7 @@ export default function SectExperience() {
   const onReaderNavigate = useCallback((t: ContentTarget) => navigate(t, true), [navigate]);
 
   const readAsPage = useCallback(() => {
-    setPlacesOpen(false);
+    setMapOpen(false);
     const r = readerRef.current;
     const initial = r ?? (activeArea && isAreaId(activeArea) ? { area: activeArea, item: null } : null);
     setFallback((f) => ({ initial, key: (f?.key ?? 0) + 1 }));
@@ -1464,6 +1505,106 @@ export default function SectExperience() {
     [store, flyTo, openReader],
   );
 
+  // --- the map and fast travel ----------------------------------------------------------------------
+
+  /** Where the map's files live (beside the asset sets: NEXT_PUBLIC_SECT_ASSET_BASE moves both). */
+  const mapBase = sectAssetBase("map", process.env.NEXT_PUBLIC_SECT_ASSET_BASE);
+  const openMap = useCallback(() => setMapOpen(true), []);
+  const closeMap = useCallback(() => setMapOpen(false), []);
+  /** The map's code: a new loader after a failed download, so the next opening tries again. */
+  const mapFailed = useRef(() => {});
+  const [MapView, setMapView] = useState(() => mapLoader(() => mapFailed.current()));
+  mapFailed.current = () => {
+    setMapOpen(false);
+    setNotice("The map could not load. Check the connection and try again.");
+    setMapView(() => mapLoader(() => mapFailed.current()));
+  };
+  /** The map's code, map.json and the picture this screen shows start loading (it opens drawn). */
+  const prefetchMap = useCallback(() => {
+    import("./map-view").then(
+      (m) => m.prefetchMap(mapBase),
+      () => {
+        // The map's own load says so when it opens.
+      },
+    );
+  }, [mapBase]);
+
+  // M opens the map (inside it, M and Escape close it: map-view.tsx). Not over a reader, the page
+  // view or fast travel, nor while typing.
+  useEffect(() => {
+    if (phase !== "ready" || !params.ui) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.key !== "m" && e.key !== "M") || e.ctrlKey || e.metaKey || e.altKey || e.repeat || e.defaultPrevented) return;
+      if (readerRef.current || fallbackRef.current || document.querySelector(".sect-map, .sect-travel")) return;
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"]')) return;
+      e.preventDefault();
+      setMapOpen(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [phase, params]);
+
+  // Once the scene has settled, an idle moment fetches the map too, when nothing of the scene is
+  // still streaming (a few tries; the Map button's hover and focus fetch it anyway).
+  useEffect(() => {
+    if (phase !== "ready" || !params.ui || !streamer) return;
+    let timer = 0;
+    let idle = 0;
+    let tries = 0;
+    const attempt = () => {
+      if (streamer.status().loading.length > 0 && ++tries < 6) {
+        timer = window.setTimeout(attempt, 5000);
+        return;
+      }
+      if (typeof window.requestIdleCallback === "function") idle = window.requestIdleCallback(prefetchMap, { timeout: 4000 });
+      else prefetchMap();
+    };
+    timer = window.setTimeout(attempt, 8000);
+    return () => {
+      window.clearTimeout(timer);
+      if (idle && typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);
+    };
+  }, [phase, params, streamer, prefetchMap]);
+
+  /** A seal on the map was picked: the ink spreads from it (ink-travel.tsx), then arriveAt runs. */
+  const startTravel = useCallback((area: AreaId, at: readonly [number, number]) => {
+    setTravel({ key: performance.now(), area, at });
+  }, []);
+
+  /**
+   * Under the ink: the map closes, the camera is at the stop's hold at once (its area gathered
+   * first when it is not in yet, the backdrop's stand-ins after travelTiming's patience), and the
+   * scene draws it.
+   */
+  const arriveAt = useCallback(
+    async (area: AreaId) => {
+      setMapOpen(false);
+      const hold = store?.map.holds.find((h) => h.id === area);
+      if (!store || !hold) return;
+      await jumpTo(hold.uMid, undefined, true, travelTiming(store.reducedMotion).patience);
+      // A few frames for the scene to draw the place (textures are up; any first-use shaders compile).
+      wake(store, 800);
+      await nextFrames(4);
+    },
+    [store, jumpTo],
+  );
+  const travelArrive = useCallback(() => (travel ? arriveAt(travel.area) : Promise.resolve()), [travel, arriveAt]);
+  const endTravel = useCallback(() => {
+    setTravel(null);
+    // The focus was in the map (gone now, so back on the Map button that opened it, or on the panel or
+    // the rail's place left behind): the panel of the place arrived at takes it (else the rail's place,
+    // else the Map button). Not out of the orb's chat, nor out of a reader that opened meanwhile.
+    window.setTimeout(() => {
+      const a = document.activeElement;
+      if (keepsFocus(a) || a?.closest('[role="dialog"]')) return;
+      flightFocusFallback()?.focus({ preventScroll: true });
+    }, 0);
+  }, []);
+
+  /** The seal of the stop the camera holds at: its reader, as the rail does. */
+  const openHere = useCallback((area: AreaId) => openReader({ area, item: null }), [openReader]);
+
   // The voice agent and the orb's chips: fly the camera, and open the forge reader for projects. A
   // command given while the scene loads waits for it (the last one wins).
   const routeVoice = (cmd: VoiceCommand) => {
@@ -1477,6 +1618,7 @@ export default function SectExperience() {
       pendingVoice.current = cmd;
       return;
     }
+    setMapOpen(false);
     // The named item glows once the camera is there (not when the visitor scrolls the flight
     // away), and for a few seconds when no reader opens over it.
     const item = t.item;
@@ -1588,8 +1730,6 @@ export default function SectExperience() {
   };
 
   const trackHeight = store ? Math.round(store.map.totalUnits * pxPerUnit(track.height) + track.height) : track.height;
-  const togglePlaces = useCallback(() => setPlacesOpen((o) => !o), []);
-  const closePlaces = useCallback(() => setPlacesOpen(false), []);
 
   // The hover label: the name, its Chinese name and a line about it (lib/sect/content.ts), plus the
   // Jin Yong reference the hotspot holds under the pointer, or its fixed note (lib/sect/lore.ts).
@@ -1674,23 +1814,39 @@ export default function SectExperience() {
           <SectionRail stops={railStops} active={activeArea} atHold={atHold} onJump={onRail} />
           <CompactRail stops={railStops} active={activeArea} atHold={atHold} labelHidden={introUp || (shortScreen && atHold)} onJump={onRail} />
           <div className="fixed right-[4.6rem] top-3 z-30 md:right-6 md:top-4">
-            <PlacesList
-              groups={placeGroups}
-              open={placesOpen}
-              onToggle={togglePlaces}
-              onClose={closePlaces}
-              onFocusPlace={focusPlace}
-              onSelect={selectPlace}
-            />
+            <MapButton open={mapOpen} onOpen={openMap} onPrefetch={prefetchMap} />
           </div>
-          {gatherInfo && <Gathering label={gatherInfo.label} />}
+          {mapOpen && data && store && (
+            <Suspense fallback={<div aria-hidden className="sect-map" />}>
+              <MapView
+                base={mapBase}
+                stops={railStops}
+                groups={placeGroups}
+                meta={data.meta}
+                camera={data.camera}
+                frame={store.frame}
+                active={activeArea}
+                atHold={atHold}
+                onClose={closeMap}
+                onTravel={startTravel}
+                onOpenHere={openHere}
+                onFocusPlace={focusPlace}
+                onSelectPlace={selectPlace}
+              />
+            </Suspense>
+          )}
+          {travel && (
+            <InkTravel request={travel} reducedMotion={reducedMotion} gathering={gathering !== null} arrive={travelArrive} onDone={endTravel} />
+          )}
+          {/* Fast travel's ink says it is gathering itself. */}
+          {gatherInfo && !travel && <Gathering label={gatherInfo.label} />}
           {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
           {/* Not on a phone on its side: the place row fills its spot, and the wide view needs it least. */}
           {lookHintOn && !shortScreen && (
             <LookHint visible={lookHintUp && !modalOpen && !gatherInfo && !notice && !lookedBack} touch={probe.coarse} />
           )}
           {/* Not over the intro, the Gathering status or a notice: they share its place on phones. */}
-          <RecentreButton visible={lookedBack && !introUp && !gatherInfo && !notice && !modalOpen && !placesOpen} onRecentre={recentre} />
+          <RecentreButton visible={lookedBack && !introUp && !gatherInfo && !notice && !modalOpen && !mapOpen && !travel} onRecentre={recentre} />
           <HoverLabel ref={hoverRef} label={hoverLabel} note={hoverLabelNote} />
           <LoreCard ref={lore.ref} id={lore.view.content} visible={lore.view.shown !== null} reducedMotion={reducedMotion} />
           <AreaReader

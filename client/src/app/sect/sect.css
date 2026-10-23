@@ -8,6 +8,8 @@
   --sect-paper: #f5ecdc;
   --sect-paper-soft: rgba(245, 236, 220, 0.74);
   --sect-jade: #8fe3c8;
+  /* Seal-paste red: the visitor's own mark on the map. */
+  --sect-cinnabar: #b8412d;
   --sect-zh: "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, serif;
   cursor: auto;
   color: var(--sect-paper);
@@ -339,4 +341,647 @@
 body[data-sect-modal] .sect-orb > div:not([role="dialog"]) > div:first-child,
 body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   display: none;
+}
+
+/* ---- the map (experience/map-view.tsx) ------------------------------------------------------------ */
+
+/*
+ * A full-screen sheet over the dimmed scene, laid out by a grid. Phones (the default here): the title
+ * and the close button, then the map or the list (one tab at a time), then the tabs. Medium screens:
+ * the title over the map, the list beside it. Wide screens: the title and the chosen place's card on
+ * the left, the map at full height in the middle, the list on the right (map-view.tsx reads which).
+ */
+.sect-map {
+  --side: clamp(16rem, 21vw, 21rem);
+  /* How far the scroll's rods reach past the painting's sides. */
+  --rod-out: 5px;
+  position: fixed;
+  inset: 0;
+  z-index: 46;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head close"
+    "main main"
+    "tabs tabs";
+  background:
+    radial-gradient(70% 60% at 50% 45%, rgba(233, 199, 126, 0.07), transparent 70%),
+    radial-gradient(120% 90% at 50% 50%, transparent 55%, rgba(4, 3, 7, 0.5)),
+    rgba(8, 6, 12, 0.78);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  outline: none;
+  animation: sect-map-in 0.22s ease-out both;
+}
+
+@keyframes sect-map-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.sect-map-head {
+  grid-area: head;
+  min-width: 0;
+  padding: 0.75rem 0 0.5rem 1rem;
+}
+
+.sect-map-eyebrow {
+  font-size: 0.62rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--sect-gold);
+}
+
+.sect-map-zh {
+  margin-left: 0.25rem;
+  letter-spacing: 0.16em;
+}
+
+.sect-map-title {
+  font-size: 1.55rem;
+  line-height: 1.15;
+}
+
+.sect-map-close {
+  grid-area: close;
+  align-self: start;
+  margin: 0.75rem 0.75rem 0 0;
+}
+
+/* The wide layout's left column: the chosen place's card, then the legend and the keys under it. */
+.sect-map-side {
+  grid-area: side;
+  display: none;
+}
+
+.sect-map-stage {
+  grid-area: main;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  margin: 0 0.5rem;
+  padding-bottom: 2.6rem;
+}
+
+/*
+ * The painting, mounted like a hanging scroll: a brocade margin with a gold rule round it, a thin
+ * stick at the top and the roller at the foot, both capped in gold. It unrolls from the stick as the
+ * map opens. The seals, the route and the visitor's mark sit on it (map-view.tsx).
+ */
+.sect-map-sheet {
+  position: absolute;
+  background: #e2d3b2;
+  box-shadow:
+    0 0 0 1px rgba(40, 28, 18, 0.6),
+    0 0 0 6px #2a1f18,
+    0 0 0 7px rgba(233, 199, 126, 0.55),
+    0 26px 70px rgba(0, 0, 0, 0.6);
+  animation: sect-map-unroll 0.62s cubic-bezier(0.25, 0.7, 0.25, 1) 0.05s backwards;
+}
+
+@keyframes sect-map-unroll {
+  from {
+    clip-path: inset(-12rem -12rem calc(100% - 20px) -12rem);
+  }
+  to {
+    clip-path: inset(-12rem -12rem -20px -12rem);
+  }
+}
+
+.sect-map-rod {
+  position: absolute;
+  left: calc(-1 * var(--rod-out) - 7px);
+  right: calc(-1 * var(--rod-out) - 7px);
+  border-radius: 5px;
+  background: linear-gradient(180deg, #6a4c36 0%, #2c1d14 55%, #43301f 100%);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+/* Gold caps on the rods' ends. */
+.sect-map-rod::before,
+.sect-map-rod::after {
+  content: "";
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 8px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #f3dca2 0%, #b98a42 55%, #e9c77e 100%);
+}
+.sect-map-rod::before {
+  left: -4px;
+}
+.sect-map-rod::after {
+  right: -4px;
+}
+
+.sect-map-rod-top {
+  top: -16px;
+  height: 7px;
+}
+
+.sect-map-rod-bottom {
+  bottom: -19px;
+  height: 11px;
+  animation: sect-map-roll 0.62s cubic-bezier(0.25, 0.7, 0.25, 1) 0.05s backwards;
+}
+
+@keyframes sect-map-roll {
+  from {
+    transform: translateY(calc(-1 * var(--sheet-h, 0px)));
+  }
+}
+
+.sect-map-picture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  transition: opacity 0.35s ease-out;
+}
+
+/* A stop: a round medallion, gold on ink with a gold rim, inside a 44 px button. */
+.sect-map-seal {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.sect-map-seal-face {
+  display: grid;
+  place-items: center;
+  width: var(--seal);
+  height: var(--seal);
+  border-radius: 50%;
+  border: 1.5px solid var(--sect-gold);
+  background: radial-gradient(circle at 50% 32%, #2c2233 0%, #15101b 62%, #0d0a11 100%);
+  color: var(--sect-gold);
+  box-shadow:
+    0 0 0 2px rgba(14, 10, 18, 0.88),
+    0 0 0 3.25px rgba(233, 199, 126, 0.6),
+    0 4px 10px rgba(20, 12, 6, 0.55);
+  transition:
+    transform 0.16s ease-out,
+    color 0.16s,
+    box-shadow 0.16s;
+}
+
+.sect-map-emblem {
+  width: 82%;
+  height: 82%;
+}
+
+.sect-map-seal:hover .sect-map-seal-face,
+.sect-map-seal[data-shown] .sect-map-seal-face,
+.sect-map-seal[data-lit] .sect-map-seal-face {
+  transform: scale(1.14);
+  box-shadow:
+    0 0 0 2px rgba(14, 10, 18, 0.88),
+    0 0 0 3.25px var(--sect-gold),
+    0 0 14px 4px rgba(233, 199, 126, 0.45),
+    0 4px 10px rgba(20, 12, 6, 0.55);
+}
+
+.sect-map-seal[data-lit]:not([data-current]) .sect-map-seal-face {
+  background: radial-gradient(circle at 50% 32%, #4a3a22 0%, #2e2214 70%);
+}
+
+/* The stop the camera is at: a gold seal, ink emblem, a slow ring. */
+.sect-map-seal[data-current] .sect-map-seal-face {
+  background: radial-gradient(circle at 50% 32%, #f6dfa6 0%, var(--sect-gold) 55%, #c99b52 100%);
+  color: #1a1306;
+}
+
+.sect-map-seal[data-current]::after {
+  content: "";
+  position: absolute;
+  inset: calc((2.75rem - var(--seal)) / 2 - 4px);
+  border-radius: 50%;
+  border: 1.5px solid rgba(233, 199, 126, 0.85);
+  animation: sect-map-ring 2.4s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes sect-map-ring {
+  from {
+    transform: scale(0.95);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+/* The visitor's mark: 明 on a cinnabar seal (the way the camera looks is a wedge in the route's layer). */
+.sect-map-here {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Sized by their own classes, not by the zero-size anchor around them. */
+.sect-map-here > * {
+  max-width: none;
+}
+
+.sect-map-here-glyph {
+  position: absolute;
+  left: -0.8rem;
+  top: -0.8rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  filter: drop-shadow(0 2px 3px rgba(30, 20, 10, 0.6));
+}
+
+.sect-map-here-ring {
+  position: absolute;
+  left: -0.8rem;
+  top: -0.8rem;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  border: 2px solid var(--sect-cinnabar);
+  animation: sect-map-ring 1.8s ease-out infinite;
+}
+
+.sect-map-dot {
+  animation: sect-fade-in 0.2s ease-out both;
+}
+
+/* A seal's name: beside it on the wider screens; on a phone docked under the map, with Travel. */
+.sect-map-plate {
+  position: absolute;
+  z-index: 10;
+  width: max-content;
+  max-width: min(17rem, calc(100% - 1rem));
+  padding: 0.625rem 0.875rem;
+}
+
+.sect-map-dock {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: none;
+  padding: 0.6rem 0.6rem 0.6rem 0.75rem;
+  animation: sect-fade-in 0.18s ease-out both;
+}
+
+.sect-map-dock-emblem {
+  flex: none;
+  width: 2.4rem;
+  height: 2.4rem;
+  color: var(--sect-gold);
+}
+
+/* The Travel buttons: a gold fill with dark ink, like the panels' Open. */
+.sect-map-go {
+  background: var(--sect-gold);
+  color: #1a1306;
+}
+.sect-map-go:hover {
+  background: #f1d697;
+}
+
+.sect-map-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: calc(100% - 1rem);
+  transform: translateX(-50%);
+  border-radius: 3px;
+  padding: 0.35rem 0.75rem 0.35rem 0.45rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  color: var(--sect-paper-soft);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* A phone's docked plate takes the hint's place. */
+.sect-map-hint[data-covered] {
+  visibility: hidden;
+}
+
+.sect-map-aside.sect-panel {
+  grid-area: main;
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0 0.5rem;
+  border-radius: 3px;
+  padding: 0.6rem 0.6rem 1rem;
+  background: var(--sect-panel-strong);
+}
+
+.sect-map[data-pane="map"] .sect-map-aside,
+.sect-map[data-pane="list"] .sect-map-stage {
+  display: none;
+}
+
+/* Phones: the map and the list share the screen, one at a time. The tabs leave the middle to the orb. */
+.sect-map-tabs {
+  grid-area: tabs;
+  display: flex;
+  justify-content: space-between;
+  gap: 4.5rem;
+  padding: 0.5rem 0.75rem calc(0.6rem + env(safe-area-inset-bottom));
+}
+.sect-map-tab {
+  flex: 1;
+  min-height: 2.75rem;
+  border: 1px solid var(--sect-gold-soft);
+  border-radius: 3px;
+  background: var(--sect-panel-strong);
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--sect-paper-soft);
+}
+.sect-map-tab[aria-pressed="true"] {
+  border-color: var(--sect-gold);
+  color: var(--sect-gold);
+  background: rgba(233, 199, 126, 0.12);
+}
+
+/* Medium screens: the title over the map, the list beside it, room for the hint under the picture. */
+@media (min-width: 768px) {
+  .sect-map {
+    --rod-out: 10px;
+    grid-template-columns: minmax(0, 1fr) min(21rem, 34vw);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "head close"
+      "stage list";
+    column-gap: 1.25rem;
+    padding: 0 1.5rem 1.25rem 1.75rem;
+  }
+  .sect-map-head {
+    padding: 1rem 0 0.75rem;
+  }
+  .sect-map-eyebrow {
+    font-size: 0.68rem;
+  }
+  .sect-map-title {
+    font-size: 2rem;
+  }
+  .sect-map-close {
+    justify-self: end;
+    margin: 1rem 0 0;
+  }
+  .sect-map-stage {
+    grid-area: stage;
+    margin: 0;
+    padding-bottom: 2.6rem;
+  }
+  .sect-map-hint {
+    bottom: 0;
+  }
+  .sect-map-aside.sect-panel {
+    grid-area: list;
+    margin: 0;
+    /* The list's end clear of the voice orb. */
+    padding-bottom: 6rem;
+  }
+  .sect-map[data-pane] .sect-map-aside,
+  .sect-map[data-pane] .sect-map-stage {
+    display: block;
+  }
+  .sect-map-tabs {
+    display: none;
+  }
+}
+
+/*
+ * Short wide screens (a phone on its side, a low window): the title beside the map, the painting at
+ * full height in the middle, the list on the right.
+ */
+@media (min-width: 768px) and (max-height: 559px) {
+  .sect-map {
+    grid-template-columns: minmax(8rem, 13rem) minmax(0, 1fr) min(19rem, 32vw);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "head stage close"
+      "side stage list";
+    padding: 0 1rem 0.75rem 1.25rem;
+  }
+  .sect-map-title {
+    font-size: 1.5rem;
+  }
+  .sect-map-stage {
+    padding-bottom: 0;
+    margin-top: 0.25rem;
+  }
+  .sect-map-close {
+    margin-top: 0.75rem;
+  }
+}
+
+/*
+ * Where the map has no room under it (short screens) or the side column explains it (wide ones), the
+ * hint stays only for screen readers (it is the dialog's description).
+ */
+@media (min-width: 768px) and (max-height: 559px), (min-width: 1100px) and (min-height: 560px) {
+  .sect-map-hint {
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    padding: 0;
+    border: 0;
+  }
+}
+
+/*
+ * Wide screens: a game's map screen. The title and the chosen place on the left, the painting at
+ * full height in the middle (centred on the screen: the side columns match), the list on the right.
+ */
+@media (min-width: 1100px) and (min-height: 560px) {
+  .sect-map {
+    --rod-out: 12px;
+    grid-template-columns: var(--side) minmax(0, 1fr) var(--side);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "head stage close"
+      "side stage list";
+    column-gap: 1.5rem;
+    padding: 0 1.75rem 1.25rem;
+  }
+  .sect-map-head {
+    padding: 1.5rem 0 1.25rem;
+  }
+  .sect-map-zh {
+    display: block;
+    margin: 0.7rem 0 0.15rem;
+    font-size: 2.6rem;
+    line-height: 1;
+    letter-spacing: 0.22em;
+    color: var(--sect-paper);
+  }
+  .sect-map-title {
+    font-size: 1.6rem;
+    color: var(--sect-paper-soft);
+  }
+  .sect-map-side {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    min-height: 0;
+  }
+  /* The keys at the column's foot, level with the list's end, as a game's map screen keeps them. */
+  .sect-map-legend {
+    flex: 1;
+    justify-content: space-between;
+  }
+  .sect-map-stage {
+    padding-bottom: 0;
+    margin-top: 0.5rem;
+  }
+  .sect-map-close {
+    margin-top: 1.5rem;
+  }
+  /* The plate beside a seal names it; the card has the rest. */
+  .sect-map-plate-section {
+    display: none;
+  }
+}
+
+.sect-map-card {
+  position: relative;
+  border-radius: 3px;
+  padding: 1.1rem 1.15rem 1.15rem;
+}
+
+/* The card's seal: the map's medallion, larger (gold when the visitor is there). */
+.sect-map-card-seal {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 3.4rem;
+  height: 3.4rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--sect-gold);
+  background: radial-gradient(circle at 50% 32%, #2c2233 0%, #15101b 62%, #0d0a11 100%);
+  color: var(--sect-gold);
+  box-shadow:
+    0 0 0 2px rgba(14, 10, 18, 0.88),
+    0 0 0 3.25px rgba(233, 199, 126, 0.6);
+}
+.sect-map-card-seal[data-here] {
+  background: radial-gradient(circle at 50% 32%, #f6dfa6 0%, var(--sect-gold) 55%, #c99b52 100%);
+  color: #1a1306;
+}
+
+.sect-map-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  margin-top: 0.5rem;
+  padding: 0 0.25rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--sect-paper-soft);
+}
+
+.sect-map-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.1rem;
+}
+.sect-map-keys > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.sect-map-keys kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.55rem;
+  height: 1.5rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--sect-gold-soft);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: rgba(233, 199, 126, 0.07);
+  font: inherit;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  color: var(--sect-paper);
+}
+
+/* ---- fast travel (experience/ink-travel.tsx) -------------------------------------------------------- */
+
+.sect-travel {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  touch-action: none;
+}
+
+.sect-travel-card {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.5rem;
+  text-align: center;
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 0.35s ease-out,
+    transform 0.6s ease-out;
+  pointer-events: none;
+}
+
+.sect-travel[data-phase="hold"] .sect-travel-card {
+  opacity: 1;
+  transform: none;
+}
+
+.sect-travel[data-phase="reveal"] .sect-travel-card {
+  opacity: 0;
+  transition-duration: 0.18s;
+}
+
+/* The orb's button steps aside while the ink is up (its panel, mid-call, stays). */
+body[data-sect-travel] .sect-orb > div:not([role="dialog"]) {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sect-map,
+  .sect-map-dot,
+  .sect-map-sheet,
+  .sect-map-rod-bottom,
+  .sect-map-dock {
+    animation: none;
+  }
+  .sect-map-seal[data-current]::after,
+  .sect-map-here-ring {
+    animation: none;
+    opacity: 0;
+  }
+  .sect-map-seal-face,
+  .sect-travel-card {
+    transition: none;
+  }
 }

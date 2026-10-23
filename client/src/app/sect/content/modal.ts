@@ -82,9 +82,9 @@ function usable(el: HTMLElement | null): el is HTMLElement {
 
 /**
  * While mounted: lock the document scroll and, on unmount, return focus to the element that had it
- * when the modal opened. When that element is gone or hidden by then (a Places item, the panel of
- * the area the camera left), `fallbackFocus` names somewhere sensible instead. Focus that escapes
- * the modal (a click on the scene behind) is pulled back, except into the orb.
+ * when the modal opened. When that element is gone or hidden by then (an item in the map, the
+ * panel of the area the camera left), `fallbackFocus` names somewhere sensible instead. Focus that
+ * escapes the modal (a click on the scene behind) is pulled back, except into the orb.
  */
 export function useModalLifecycle(
   rootRef: RefObject<HTMLElement | null>,
@@ -130,7 +130,7 @@ export function useModalLifecycle(
 
 /**
  * Where focus goes when a modal over the flight closes and its opener is gone: the open button of
- * the area panel on screen, else the rail's current place, else the Places toggle.
+ * the area panel on screen, else the rail's current place, else the Map button.
  */
 export function flightFocusFallback(): HTMLElement | null {
   const visible = (el: HTMLElement) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
@@ -138,7 +138,7 @@ export function flightFocusFallback(): HTMLElement | null {
   if (panelBtn) return panelBtn;
   const rail = Array.from(document.querySelectorAll<HTMLElement>('nav [aria-current="location"]')).find(visible);
   if (rail) return rail;
-  return document.querySelector<HTMLElement>('[aria-controls="sect-places"]');
+  return document.querySelector<HTMLElement>("[data-sect-places]");
 }
 
 /** True when the visitor asked for less motion. */

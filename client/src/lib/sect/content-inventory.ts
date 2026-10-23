@@ -349,7 +349,7 @@ export function contentInventory(): InventoryEntry[] {
     area: "forge",
     project: "dispatchai",
     texts: [PROJECTS_HEAD.story, PROJECTS_HEAD.role, PROJECTS_HEAD.stack, PROJECTS_HEAD.year, PROJECTS_HEAD.id, PROJECTS_HEAD.tags, PROJECTS_HEAD.source, PROJECTS_HEAD.liveProject],
-    where: "Inside the forge reader: press a project's name or card, click its artifact in the scene (hotspot project:<id>), or use Places. Esc or \"Back\" goes back to the list; arrows step to the previous/next project.",
+    where: "Inside the forge reader: press a project's name or card, click its artifact in the scene (hotspot project:<id>), or pick it in the map's list of places. Esc or \"Back\" goes back to the list; arrows step to the previous/next project.",
     note: "Shown in the reader sheet instead of a second modal. YouTube demos load when you press Play (the 3D scene already uses the GPU), and a \"Watch on YouTube\" link is always there. The voice tip is left out, and the eyebrow shows only an award (the Year row has the year).",
   });
   add({
@@ -399,7 +399,7 @@ export function contentInventory(): InventoryEntry[] {
         `/${p.id}`,
       ],
       urls: [p.github, demoLink, p.projectUrl, p.poster].filter((u): u is string => Boolean(u)),
-      where: `Forge reader, ${p.name} detail: click its artifact (hotspot project:${p.id}), its card in the forge reader, or Places. Deep link #project/${p.id} in the one-page view.`,
+      where: `Forge reader, ${p.name} detail: click its artifact (hotspot project:${p.id}), its card in the forge reader, or the map's list of places. Deep link #project/${p.id} in the one-page view.`,
     });
   }
 
@@ -717,7 +717,7 @@ export function contentInventory(): InventoryEntry[] {
       what: `Index: ${l.label} (jumps to #${l.section})`,
       status: "dropped",
       where: "Not on /sect.",
-      note: "The reader's Previous / Next and the Places list already move between areas.",
+      note: "The reader's Previous / Next and the map (its seals and its list of places) already move between areas.",
     });
   }
   add({
@@ -803,7 +803,7 @@ export function inventoryMarkdown(): string {
   lines.push(
     "1. Fly: scroll (or use the area rail) through the eleven areas. The camera holds at each one and its summary panel appears. The panel's button opens the reader for that area.",
   );
-  lines.push("2. Click a thing in the scene (an artifact, a banner, a tablet...). The reader opens at that item. The Places list does the same from a menu.");
+  lines.push("2. Click a thing in the scene (an artifact, a banner, a tablet...). The reader opens at that item. The map's list of places (the Map button, or M) does the same.");
   lines.push("3. Inside a reader, Previous / Next go to the neighbouring areas, and links inside the content (hero chips, a win's \"Open project\") jump across areas.");
   lines.push("4. Read as one page: every reader's content on one scrolling page with a menu of the eleven areas. It is also what a browser without WebGL gets. It opens at `#<section id>` or `#project/<id>`.");
   lines.push("");

@@ -2,11 +2,11 @@
 
 /**
  * DOM overlays for /sect: intro title, section rail (desktop) and its compact phone version, the
- * Places list, the "gathering" indicator for far jumps, the hover label, the Recentre button for a
+ * Map button (the map itself is map-view.tsx), the "gathering" indicator for far jumps, the hover label, the Recentre button for a
  * view turned round, the graphics button, the page-view control, the home link and the debug HUD.
  * The content itself (panels, reader, page view) comes from ../content.
  *
- * The rails and the Places list are memoised: the page re-renders on every hold it passes, and they
+ * The rails and the Map button are memoised: the page re-renders on every hold it passes, and they
  * only change with their own props.
  *
  * Everything here floats over the 3D scene, whose sky runs from dusk violet to near white: text
@@ -40,7 +40,7 @@ export const IntroTitle = forwardRef<HTMLDivElement>(function IntroTitle(_, ref)
         <div className="sect-plate flex max-w-[34rem] flex-col items-center rounded-[3px] px-4 py-2.5 text-center">
           <span className="text-[0.75rem] uppercase tracking-[0.3em] text-[var(--sect-paper)]">Scroll to ascend</span>
           <span className="mt-1 hidden text-[0.8125rem] text-[var(--sect-paper-soft)] md:inline">
-            or press J / K to fly between places
+            or press J / K to fly between places, M for the map
           </span>
           <span className="mt-1 text-[0.8125rem] leading-snug text-[var(--sect-paper-soft)]">
             <span className="md:hidden">Tap anything that glows</span>
@@ -219,94 +219,30 @@ export interface PlaceGroup {
   items: PlaceItem[];
 }
 
-/** Every place and item along the flight, grouped by area; a scrolling popover from the top bar. */
-export const PlacesList = memo(function PlacesList({
-  groups,
-  open,
-  onToggle,
-  onClose,
-  onFocusPlace,
-  onSelect,
-}: {
-  groups: PlaceGroup[];
-  open: boolean;
-  onToggle: () => void;
-  onClose: () => void;
-  onFocusPlace: (id: string | null) => void;
-  onSelect: (id: string) => void;
-}) {
-  const rootRef = useRef<HTMLElement>(null);
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  // Escape closes the list and returns focus to its toggle; a click outside closes it too.
-  useEffect(() => {
-    if (!open) return;
-    const key = (e: KeyboardEvent) => {
-      // An open reader takes the first Escape.
-      if (e.key !== "Escape" || document.querySelector(".sc-scrim, .sc-page")) return;
-      onClose();
-      toggleRef.current?.focus();
-    };
-    const down = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) onClose();
-    };
-    window.addEventListener("keydown", key);
-    window.addEventListener("pointerdown", down);
-    return () => {
-      window.removeEventListener("keydown", key);
-      window.removeEventListener("pointerdown", down);
-    };
-  }, [open, onClose]);
+/**
+ * The top bar's Map button (in the old Places button's place): opens the map of the sect
+ * (map-view.tsx), which holds every place and item too. `onPrefetch`: the pointer or the focus came
+ * to it, so the map's files can start loading before the click.
+ */
+export const MapButton = memo(function MapButton({ open, onOpen, onPrefetch }: { open: boolean; onOpen: () => void; onPrefetch?: () => void }) {
   return (
-    <nav ref={rootRef} aria-label="Every place" className="relative">
-      <button
-        ref={toggleRef}
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        aria-controls="sect-places"
-        className="sect-panel sect-plate sect-ctl relative min-h-10 rounded-[3px] px-3 text-[0.62rem] uppercase tracking-[0.2em] text-[var(--sect-paper)] md:min-h-10 md:px-4 md:text-[0.72rem] md:tracking-[0.26em] [@media(max-width:340px)]:px-2 [@media(max-width:340px)]:tracking-[0.12em]"
-      >
-        Places
-      </button>
-      {/* Always in the document (hidden when closed), so aria-controls points at something. */}
-      <div
-        id="sect-places"
-        hidden={!open}
-        className="sect-panel sect-scroll absolute right-0 top-12 max-h-[min(72vh,40rem)] w-[min(19rem,calc(100vw-1.5rem))] overflow-y-auto overflow-x-hidden overscroll-contain rounded-[3px] px-3 py-3"
-        style={{ background: "var(--sect-panel-strong)" }}
-      >
-        {groups.map((g, i) => (
-          <section key={g.id} aria-labelledby={`sect-places-${g.id}`} className="py-1.5">
-            <h3 id={`sect-places-${g.id}`} className="flex flex-wrap items-baseline gap-x-2 px-2 text-[0.62rem] uppercase tracking-[0.26em] text-[var(--sect-gold)]">
-              <span className="text-[var(--sect-paper-soft)]">{String(i + 1).padStart(2, "0")}</span>
-              {g.section}
-            </h3>
-            <ul className="mt-1">
-              {g.items.map((p) => (
-                <li key={p.id}>
-                  <button
-                    type="button"
-                    className="w-full rounded-[2px] px-2 py-1.5 text-left text-[0.86rem] leading-snug text-[var(--sect-paper-soft)] hover:bg-[var(--sect-gold-soft)] hover:text-[var(--sect-paper)] focus-visible:bg-[var(--sect-gold-soft)] focus-visible:text-[var(--sect-paper)] pointer-coarse:min-h-11"
-                    onMouseEnter={() => onFocusPlace(p.id)}
-                    onMouseLeave={() => onFocusPlace(null)}
-                    onFocus={() => onFocusPlace(p.id)}
-                    onBlur={() => onFocusPlace(null)}
-                    onClick={() => {
-                      // The list hides as the reader opens: hand focus to the toggle first, so
-                      // closing the reader brings it back there and not to the page body.
-                      toggleRef.current?.focus({ preventScroll: true });
-                      onSelect(p.id);
-                    }}
-                  >
-                    {p.label}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-      </div>
-    </nav>
+    <button
+      type="button"
+      data-sect-places
+      onClick={onOpen}
+      onPointerEnter={onPrefetch}
+      onFocus={onPrefetch}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-keyshortcuts="M"
+      className="sect-panel sect-plate sect-ctl relative flex min-h-11 items-center gap-2 rounded-[3px] px-3 text-[0.62rem] uppercase tracking-[0.2em] text-[var(--sect-paper)] hover:text-[var(--sect-gold)] md:min-h-10 md:px-4 md:text-[0.72rem] md:tracking-[0.26em] [@media(max-width:340px)]:px-2 [@media(max-width:340px)]:tracking-[0.12em]"
+    >
+      <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden className="shrink-0 text-[var(--sect-gold)]">
+        <path d="M1.5 4.2L6 2.5L12 4.6L16.5 2.9V13.8L12 15.5L6 13.4L1.5 15.1Z" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinejoin="round" />
+        <path d="M6 2.5V13.4M12 4.6V15.5" stroke="currentColor" strokeWidth="1.1" />
+      </svg>
+      Map
+    </button>
   );
 });
 

@@ -6,13 +6,13 @@
  * visitor's first click: browsers let sound start only after one).
  *
  * Phones: under the voice orb in the top-right corner (the area panel spans the bottom). Desktops:
- * under the Places button, above the section rail; on short wide screens (a phone on its side, a
- * small laptop window) beside Places instead (see BESIDE_PLACES). While the loading screen is up it
+ * under the Map button, above the section rail; on short wide screens (a phone on its side, a
+ * small laptop window) beside it instead (see BESIDE_PLACES). While the loading screen is up it
  * floats over it, so the visitor can turn the loading music on there; afterwards it sits under the
- * Places list and the readers, like the other controls.
+ * map and the readers, like the other controls.
  *
  * `extra` (the graphics button) shares its place once the loading screen is gone: under the toggle,
- * or left of it in the top row beside Places. It shows without Web Audio too.
+ * or left of it in the top row beside the Map button. It shows without Web Audio too.
  */
 import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import type { MusicEngine, MusicUi } from "./music-engine";
@@ -21,9 +21,9 @@ const OFF: MusicUi = { available: false, on: false, muted: false };
 const serverSnapshot = () => OFF;
 
 /**
- * Wide but short screens: the place rail is centred on the right edge and reaches up under Places
+ * Wide but short screens: the place rail is centred on the right edge and reaches up under the Map
  * below about 580 px, and the voice panel's top corner below about 740 px. There the toggle sits in
- * the top row, left of the Places button (measured, so its label can change).
+ * the top row, left of the Map button (measured, so its label can change).
  */
 const BESIDE_PLACES = "(min-width: 768px) and (max-height: 740px)";
 const GAP_PX = 8;
@@ -33,7 +33,7 @@ function useBesidePlaces(): { right: number; top: number } | null {
   useEffect(() => {
     const mq = window.matchMedia(BESIDE_PLACES);
     const measure = () => {
-      const b = mq.matches ? document.querySelector('[aria-controls="sect-places"]')?.getBoundingClientRect() : undefined;
+      const b = mq.matches ? document.querySelector("[data-sect-places]")?.getBoundingClientRect() : undefined;
       const next = b && b.width > 0 ? { right: Math.round(window.innerWidth - b.left + GAP_PX), top: Math.round(b.top) } : null;
       setPos((cur) => (cur?.right === next?.right && cur?.top === next?.top ? cur : next));
     };

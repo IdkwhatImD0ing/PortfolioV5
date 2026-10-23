@@ -252,7 +252,7 @@ function CameraRig({ store }: { store: SectStore }) {
  * page and arrives here as pointercancel. A finger turns faster than a mouse (FREE_LOOK.touchGain).
  * The left and right arrow keys turn the view while held (up and down still fly between stops).
  * Escape swings the view back to the path the short way round. Neither works while something open
- * over the flight (an input, the Places list, a reader, the page view) has the keys.
+ * over the flight (an input, the map, a reader, the page view, fast travel) has the keys.
  */
 function FreeLookInput({ store, onLookDrag }: { store: SectStore; onLookDrag?: () => void }) {
   const gl = useThree((s) => s.gl);
@@ -333,14 +333,14 @@ function FreeLookInput({ store, onLookDrag }: { store: SectStore; onLookDrag?: (
       releaseTurnKeys(look);
     };
     /**
-     * Something else has the keys: an input, a dialog, the Places list or the graphics popover, a
-     * reader or the page view (fallback.tsx marks its Escape handled).
+     * Something else has the keys: an input, a dialog, the map or the graphics popover, a reader,
+     * the page view (fallback.tsx marks its Escape handled), or fast travel's ink.
      */
     const keysTaken = (e: KeyboardEvent) => {
       if (e.defaultPrevented || store.paused) return true;
       const t = e.target as HTMLElement | null;
-      if (t?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"], #sect-places, #sect-quality')) return true;
-      return document.querySelector("#sect-places:not([hidden]), #sect-quality:not([hidden]), .sc-scrim, .sc-page") !== null;
+      if (t?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"], #sect-quality')) return true;
+      return document.querySelector(".sect-map, .sect-travel, #sect-quality:not([hidden]), .sc-scrim, .sc-page") !== null;
     };
     const key = (e: KeyboardEvent) => {
       const turn = turnKeyIntent(e);
