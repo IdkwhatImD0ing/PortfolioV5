@@ -5,12 +5,15 @@
  * track as the camera reaches it, crossfading (lib/sect/music.ts has the choices, ./music-engine.ts
  * the Web Audio). Mounted once by the experience, with the sound toggle (./sound-toggle.tsx).
  *
- * - Starts muted (music/sect-themes/README.md): the sound toggle turns it on, and the choice is
- *   remembered (localStorage "sect.music.muted"). A visitor who turned it on before hears it again
- *   from their first click, tap or key (browsers allow sound only after one; a wheel does not count).
+ * - Starts muted (music/sect-themes/README.md): the loading screen's "Turn on sound" (SoundPrompt)
+ *   or the sound toggle turns it on, and the choice is remembered (localStorage "sect.music.muted").
+ *   A visitor who turned it on before hears it again from their first click, tap or key (browsers
+ *   allow sound only after one; a wheel does not count).
  * - A fast scroll through several areas plays none of the ones in between (the hysteresis); a jump
  *   plays its destination's track.
- * - Quiet under a voice call, resting in the page view, suspended while the tab is hidden.
+ * - Lower under a voice call (lower still while the agent speaks: the talisman's state), silent
+ *   while a YouTube demo plays (content/video-watch.ts), resting in the page view, suspended while
+ *   the tab is hidden.
  * - Downloads only the current track and the next one along the flight; frees decoded tracks far
  *   from the camera (fewer on phones).
  * - No music.json (or no Web Audio): no music and no toggle, and nothing logged.
@@ -33,13 +36,14 @@ import {
   readMuted,
   stepSwitcher,
   travelDirection,
-  voiceCallActive,
+  voiceDuck,
   wantedTrack,
   writeMuted,
   type AreaSpan,
   type Direction,
   type Switcher,
 } from "@/lib/sect/music";
+import { onVideoPlaying, videoPlaying } from "../content/video-watch";
 import { MusicEngine } from "./music-engine";
 import { SoundToggle } from "./sound-toggle";
 import { isMoving, type SectStore } from "./store";
@@ -82,6 +86,7 @@ export function SectMusic({
   away,
   debug,
   extra,
+  onEngine,
 }: {
   store: SectStore | null;
   /** meta.json's areas (their frame ranges), once loaded. */
@@ -93,8 +98,12 @@ export function SectMusic({
   debug: boolean;
   /** Another control for the sound toggle's place (the graphics button; sound-toggle.tsx). */
   extra?: ReactNode;
+  /** Hands the engine out (the loading screen's SoundPrompt), and null when it goes. */
+  onEngine?: (engine: MusicEngine | null) => void;
 }) {
   const [engine, setEngine] = useState<MusicEngine | null>(null);
+  const onEngineRef = useRef(onEngine);
+  onEngineRef.current = onEngine;
   const live = useRef({ store, areas, loading });
   live.current = { store, areas, loading };
   const switcher = useRef<Switcher>(createSwitcher());
@@ -116,6 +125,7 @@ export function SectMusic({
       { supported: Ctor !== null, muted: readMuted(localStore()) },
     );
     setEngine(e);
+    onEngineRef.current?.(e);
     const ac = new AbortController();
     if (Ctor) {
       fetch(MUSIC_MANIFEST_URL, { signal: ac.signal, cache: "no-cache" })
@@ -129,6 +139,7 @@ export function SectMusic({
       ac.abort();
       e.dispose();
       setEngine((cur) => (cur === e ? null : cur));
+      onEngineRef.current?.(null);
     };
   }, []);
 
@@ -162,20 +173,17 @@ export function SectMusic({
     engine?.setAway(away);
   }, [engine, away]);
 
-  // A voice call ducks the music (read from the orb's panel: see voiceCallActive).
+  // A voice call ducks the music: the talisman's state, which voice.tsx sets on its wrapper as
+  // data-talisman (connecting and listening: down to a third; the agent speaking: lower still).
   useEffect(() => {
     if (!engine) return;
     let obs: MutationObserver | null = null;
-    const check = () => {
-      const panel = document.querySelector('.sect-orb [role="dialog"]');
-      const texts = panel ? Array.from(panel.querySelectorAll("button"), (b) => b.textContent ?? "") : [];
-      engine.setDucked(voiceCallActive(texts));
-    };
     const attach = () => {
-      const root = document.querySelector(".sect-orb");
+      const root = document.querySelector<HTMLElement>(".sect-orb");
       if (!root) return false;
+      const check = () => engine.setVoice(voiceDuck(root.dataset.talisman));
       obs = new MutationObserver(check);
-      obs.observe(root, { childList: true, subtree: true, characterData: true });
+      obs.observe(root, { attributes: true, attributeFilter: ["data-talisman"] });
       check();
       return true;
     };
@@ -189,6 +197,14 @@ export function SectMusic({
       obs?.disconnect();
       window.clearInterval(timer);
     };
+  }, [engine]);
+
+  // A YouTube demo playing in a reader silences the music until it pauses, ends or closes.
+  useEffect(() => {
+    if (!engine) return;
+    const on = () => engine.setVideo(videoPlaying());
+    on();
+    return onVideoPlaying(on);
   }, [engine]);
 
   // Which track: the camera's area (or the loading screen), held a moment against fast scrolling.
@@ -238,5 +254,6 @@ export function SectMusic({
     };
   }, [engine, debug]);
 
-  return engine ? <SoundToggle engine={engine} raised={loading} extra={extra} /> : null;
+  // While the loading screen is up its own SoundPrompt stands in for the toggle (sound-toggle.tsx).
+  return engine ? <SoundToggle engine={engine} loading={loading} extra={extra} /> : null;
 }

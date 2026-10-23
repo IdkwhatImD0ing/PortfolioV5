@@ -2,7 +2,8 @@
  * The Web Audio side of /sect's music (the choices are lib/sect/music.ts; the page wiring
  * ./music.tsx). One AudioContext, made on the visitor's first gesture; per track a fetched and
  * decoded AudioBuffer played by a looping AudioBufferSourceNode through its own gain (the
- * crossfade), all into one master gain (volume, mute, ducking under a voice call).
+ * crossfade), all into one master gain (volume, mute, ducking under a voice call, silence under a
+ * YouTube demo).
  *
  * Nothing here throws: without Web Audio, without music.json, or when a file fails, the page simply
  * has no music. Nothing is downloaded until the visitor's first gesture with sound on, and then only
@@ -20,6 +21,7 @@ import {
   type Fade,
   type MusicKey,
   type MusicManifest,
+  type VoiceDuck,
 } from "@/lib/sect/music";
 
 /** What the sound toggle shows. */
@@ -72,7 +74,8 @@ export class MusicEngine {
   private supported: boolean;
   private gestured = false;
   private muted: boolean;
-  private ducked = false;
+  private voice: VoiceDuck = "none";
+  private video = false;
   private away = false;
   private hidden = false;
   private wanted: MusicKey | null = null;
@@ -159,9 +162,20 @@ export class MusicEngine {
     this.emit();
   }
 
-  setDucked(v: boolean): void {
-    if (v === this.ducked) return;
-    this.ducked = v;
+  /** A voice call's hold on the music (the talisman's state: see voiceDuck). */
+  setVoice(v: VoiceDuck): void {
+    if (v === this.voice) return;
+    this.voice = v;
+    this.apply();
+  }
+
+  /**
+   * A YouTube demo plays: the music fades out and rests, as for the page view (the tracks stop where
+   * they are after the fade), and comes back when the video pauses or ends.
+   */
+  setVideo(v: boolean): void {
+    if (v === this.video) return;
+    this.video = v;
     this.apply();
   }
 
@@ -226,7 +240,7 @@ export class MusicEngine {
 
   /** Sound should be coming out now. */
   private live(): boolean {
-    return this.ctx !== null && this.gestured && !this.muted && !this.away && !this.hidden && this.manifest !== null;
+    return this.ctx !== null && this.gestured && !this.muted && !this.away && !this.video && !this.hidden && this.manifest !== null;
   }
 
   private apply(): void {
@@ -261,7 +275,7 @@ export class MusicEngine {
     }
 
     // The master level (a hidden tab dips to silence fast, then suspends; it comes back gently).
-    const aim = live ? masterTarget({ muted: this.muted, ducked: this.ducked, away: this.away }) : 0;
+    const aim = live ? masterTarget({ muted: this.muted, voice: this.voice, video: this.video, away: this.away }) : 0;
     if (aim !== this.masterAim) {
       const p = this.master.gain;
       const from = this.masterAim < 0 ? 0 : this.masterAim;
@@ -462,7 +476,8 @@ export class MusicEngine {
       time: now,
       gestured: this.gestured,
       muted: this.muted,
-      ducked: this.ducked,
+      voice: this.voice,
+      video: this.video,
       away: this.away,
       hidden: this.hidden,
       wanted: this.wanted,

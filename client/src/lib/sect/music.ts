@@ -262,25 +262,51 @@ export function fadePoints(f: Fade, steps = 16): { t: number; v: number }[] {
 
 /** Music under the scene: about half of full scale (the files themselves sit at -17 LUFS). */
 export const MASTER_GAIN = 0.5;
-/** While a voice call is on: low enough to hear the agent over it. */
-export const DUCKED_GAIN = 0.15;
+
+/**
+ * What a voice call does to the music (the talisman's state, lib/sect/talisman.ts): nothing; "call"
+ * while one connects or the agent listens; "speaking" while the agent talks. Text chat leaves it.
+ */
+export type VoiceDuck = "none" | "call" | "speaking";
+
+/** The music's share of its level under a call: low enough to talk over, lower under the agent's voice. */
+export const VOICE_DUCK: Record<VoiceDuck, number> = { none: 1, call: 0.35, speaking: 0.15 };
+
+export function voiceDuck(talisman: string | null | undefined): VoiceDuck {
+  switch (talisman) {
+    case "connecting":
+    case "listening":
+      return "call";
+    case "speaking":
+      return "speaking";
+    default:
+      return "none";
+  }
+}
 
 export interface MixState {
   muted: boolean;
-  /** A voice call is on. */
-  ducked: boolean;
+  /** A voice call's hold on the music. */
+  voice: VoiceDuck;
+  /** A YouTube demo plays: the music steps aside until it pauses or ends. */
+  video: boolean;
   /** The page view covers the flight (or the scene failed): the music rests. */
   away: boolean;
 }
 
 export function masterTarget(m: MixState): number {
-  if (m.muted || m.away) return 0;
-  return m.ducked ? DUCKED_GAIN : MASTER_GAIN;
+  if (m.muted || m.away || m.video) return 0;
+  return MASTER_GAIN * VOICE_DUCK[m.voice];
 }
 
-/** setTargetAtTime's time constant: quick going down (a call, mute), gentle coming back. */
+/**
+ * setTargetAtTime's time constant (about 95% of the way after three): down in about 0.35 s (a call,
+ * the agent speaking, a video, mute); up from a duck in about 0.5 s (the agent stops, the call ends);
+ * up out of silence gently, in about 1.5 s (sound on, a video paused, back from the page view).
+ */
 export function masterTimeConstant(from: number, to: number): number {
-  return to < from ? 0.12 : 0.5;
+  if (to < from) return 0.12;
+  return from > 0 ? 0.17 : 0.5;
 }
 
 // --- what to load and keep -------------------------------------------------------------------------
@@ -361,15 +387,6 @@ export function writeMuted(storage: Pick<Storage, "setItem"> | null | undefined,
   } catch {
     // Storage blocked (a private window): the choice lasts for this visit only.
   }
-}
-
-/**
- * The voice orb is in a call (or connecting one), read from its panel's buttons: the orb is the main
- * page's component and tells nothing else. Its voice panel shows "End call" during a call and
- * "Connecting…" while one starts.
- */
-export function voiceCallActive(buttonTexts: readonly string[]): boolean {
-  return buttonTexts.some((t) => /\bend call\b/i.test(t) || /^\s*connecting/i.test(t));
 }
 
 /**

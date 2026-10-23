@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { AREA_IDS } from "./areas";
 import {
   CROSSFADE_SECONDS,
-  DUCKED_GAIN,
   MASTER_GAIN,
   MUSIC_KEYS,
   MUTE_KEY,
   SWITCH_HOLD_SECONDS,
+  VOICE_DUCK,
   activatesAudio,
   areaAtFrame,
   createSwitcher,
@@ -27,13 +27,14 @@ import {
   stepKey,
   stepSwitcher,
   travelDirection,
-  voiceCallActive,
+  voiceDuck,
   wantedTrack,
   writeMuted,
   type AreaSpan,
   type MusicKey,
   type Switcher,
 } from "./music";
+import type { TalismanState } from "./talisman";
 
 /** meta.json's area ranges (public/sect/full/meta.json, October 2026). */
 const SPANS: AreaSpan[] = [
@@ -319,17 +320,45 @@ describe("equal-power crossfade", () => {
 });
 
 describe("master gain", () => {
-  it("is about half, low under a call, silent when muted or away", () => {
+  const mix = { muted: false, voice: "none", video: false, away: false } as const;
+
+  it("is about half, lower under a call, lower still while the agent speaks", () => {
     expect(MASTER_GAIN).toBeCloseTo(0.5);
-    expect(DUCKED_GAIN).toBeCloseTo(0.15);
-    expect(masterTarget({ muted: false, ducked: false, away: false })).toBe(MASTER_GAIN);
-    expect(masterTarget({ muted: false, ducked: true, away: false })).toBe(DUCKED_GAIN);
-    expect(masterTarget({ muted: true, ducked: false, away: false })).toBe(0);
-    expect(masterTarget({ muted: false, ducked: true, away: true })).toBe(0);
+    expect(masterTarget(mix)).toBe(MASTER_GAIN);
+    expect(masterTarget({ ...mix, voice: "call" })).toBeCloseTo(MASTER_GAIN * 0.35);
+    expect(masterTarget({ ...mix, voice: "speaking" })).toBeCloseTo(MASTER_GAIN * 0.15);
+    expect(VOICE_DUCK.speaking).toBeLessThan(VOICE_DUCK.call);
   });
 
-  it("goes down fast and comes back gently", () => {
-    expect(masterTimeConstant(0.5, 0.15)).toBeLessThan(masterTimeConstant(0.15, 0.5));
+  it("is silent when muted, away, or under a playing video, whatever the call", () => {
+    expect(masterTarget({ ...mix, muted: true })).toBe(0);
+    expect(masterTarget({ ...mix, voice: "call", away: true })).toBe(0);
+    expect(masterTarget({ ...mix, video: true })).toBe(0);
+    expect(masterTarget({ ...mix, voice: "speaking", video: true })).toBe(0);
+  });
+
+  it("goes down in about 0.35 s, lifts a duck in about 0.5 s, comes out of silence gently", () => {
+    // setTargetAtTime is ~95% of the way after three time constants.
+    const t95 = (from: number, to: number) => 3 * masterTimeConstant(from, to);
+    for (const [from, to] of [[0.5, 0.175], [0.175, 0.075], [0.5, 0], [0.075, 0.175], [0.175, 0.5]]) {
+      expect(t95(from, to)).toBeGreaterThanOrEqual(0.3);
+      expect(t95(from, to)).toBeLessThanOrEqual(0.6);
+    }
+    expect(t95(0, 0.5)).toBeGreaterThan(1);
+  });
+});
+
+describe("voiceDuck", () => {
+  it("reads the talisman: a call (connecting, listening) or the agent speaking; text chat leaves the music", () => {
+    expect(voiceDuck("connecting")).toBe("call");
+    expect(voiceDuck("listening")).toBe("call");
+    expect(voiceDuck("speaking")).toBe("speaking");
+    for (const s of ["idle", "thinking", "text", "ended", "error", "", undefined, null, "Speaking"]) expect(voiceDuck(s)).toBe("none");
+  });
+
+  it("knows every talisman state (lib/sect/talisman.ts)", () => {
+    const all: TalismanState[] = ["idle", "connecting", "listening", "speaking", "thinking", "text", "ended", "error"];
+    expect(all.filter((s) => voiceDuck(s) !== "none")).toEqual(["connecting", "listening", "speaking"]);
   });
 });
 
@@ -401,16 +430,6 @@ describe("the mute choice", () => {
     expect(readMuted(blocked)).toBe(true);
     expect(() => writeMuted(blocked, true)).not.toThrow();
     expect(readMuted(null)).toBe(true);
-  });
-});
-
-describe("voiceCallActive", () => {
-  it("reads the orb panel's buttons", () => {
-    expect(voiceCallActive([])).toBe(false);
-    expect(voiceCallActive(["✕", "▶  Start voice call", "Prefer to chat?"])).toBe(false);
-    expect(voiceCallActive(["✕", "Connecting…", "Prefer to chat?"])).toBe(true);
-    expect(voiceCallActive(["✕", "End call", "Prefer to chat?"])).toBe(true);
-    expect(voiceCallActive(["Prefer talking? Switch back to voice →", "Send"])).toBe(false);
   });
 });
 

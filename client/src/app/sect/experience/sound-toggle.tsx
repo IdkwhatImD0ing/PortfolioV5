@@ -7,14 +7,16 @@
  *
  * Phones: under the voice orb in the top-right corner (the area panel spans the bottom). Desktops:
  * under the Map button, above the section rail; on short wide screens (a phone on its side, a
- * small laptop window) beside it instead (see BESIDE_PLACES). While the loading screen is up it
- * floats over it, so the visitor can turn the loading music on there; afterwards it sits under the
- * map and the readers, like the other controls.
+ * small laptop window) beside it instead (see BESIDE_PLACES). It sits under the map and the
+ * readers, like the other controls. While the loading screen is up, that screen's own "Turn on
+ * sound" (SoundPrompt, below, in its column under the graphics picker) stands in for it; the toggle
+ * floats over the screen only where that column runs past the bottom edge and hides the prompt (a
+ * phone on its side, a short window).
  *
  * `extra` (the graphics button) shares its place once the loading screen is gone: under the toggle,
  * or left of it in the top row beside the Map button. It shows without Web Audio too.
  */
-import { type ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import type { MusicEngine, MusicUi } from "./music-engine";
 
 const OFF: MusicUi = { available: false, on: false, muted: false };
@@ -27,6 +29,35 @@ const serverSnapshot = () => OFF;
  */
 const BESIDE_PLACES = "(min-width: 768px) and (max-height: 740px)";
 const GAP_PX = 8;
+
+/**
+ * The loading screen's sound prompt is in full view (its kept place, loading-screen.tsx). True until
+ * measured, so a tall screen never flashes the toggle.
+ */
+function usePromptInView(loading: boolean): boolean {
+  const [inView, setInView] = useState(true);
+  useEffect(() => {
+    if (!loading) return;
+    let obs: IntersectionObserver | null = null;
+    let tries = 0;
+    let timer = 0;
+    const attach = () => {
+      const place = document.querySelector("[data-sect-sound-place]");
+      if (!place) {
+        if (++tries < 40) timer = window.setTimeout(attach, 250);
+        return;
+      }
+      obs = new IntersectionObserver(([e]) => setInView(e.intersectionRatio > 0.99), { threshold: [0, 0.99, 1] });
+      obs.observe(place);
+    };
+    attach();
+    return () => {
+      window.clearTimeout(timer);
+      obs?.disconnect();
+    };
+  }, [loading]);
+  return inView;
+}
 
 function useBesidePlaces(): { right: number; top: number } | null {
   const [pos, setPos] = useState<{ right: number; top: number } | null>(null);
@@ -49,16 +80,17 @@ function useBesidePlaces(): { right: number; top: number } | null {
   return pos;
 }
 
-export function SoundToggle({ engine, raised, extra }: { engine: MusicEngine; raised: boolean; extra?: ReactNode }) {
+export function SoundToggle({ engine, loading, extra }: { engine: MusicEngine; loading: boolean; extra?: ReactNode }) {
   const ui = useSyncExternalStore(engine.subscribe, engine.snapshot, serverSnapshot);
   const beside = useBesidePlaces();
-  // The loading screen has its own graphics picker.
-  const more = raised ? null : (extra ?? null);
-  if (!ui.available && !more) return null;
-  const inRow = beside !== null && !raised;
+  const promptInView = usePromptInView(loading);
+  // The loading screen has its own graphics picker, and its sound prompt when that is in view.
+  const more = loading ? null : (extra ?? null);
+  if ((loading && promptInView) || (!ui.available && !more)) return null;
+  const inRow = beside !== null && !loading;
   return (
     <div
-      className={`pointer-events-none fixed right-[0.625rem] top-[7.25rem] flex gap-2 md:right-6 md:top-[4.25rem] ${inRow ? "flex-row-reverse items-start" : "flex-col items-end"} ${raised ? "z-[51]" : "z-[25]"}`}
+      className={`pointer-events-none fixed right-[0.625rem] top-[7.25rem] flex gap-2 md:right-6 md:top-[4.25rem] ${inRow ? "flex-row-reverse items-start" : "flex-col items-end"} ${loading ? "z-[51]" : "z-[25]"}`}
       style={inRow ? { right: beside.right, top: beside.top } : undefined}
     >
       {ui.available && (
@@ -74,6 +106,60 @@ export function SoundToggle({ engine, raised, extra }: { engine: MusicEngine; ra
       )}
       {more}
     </div>
+  );
+}
+
+/**
+ * The loading screen's invitation (loading-screen.tsx keeps its place): a round gold seal with the
+ * speaker, "Turn on sound" and "for the best experience" beside it, all one button. Its press is the
+ * gesture browsers need before any sound, so the loading music can start at once; the choice is
+ * remembered like the toggle's. Once on it says so, and a second press mutes. Nothing without Web
+ * Audio or a track list (the place stays empty).
+ */
+export function SoundPrompt({ engine }: { engine: MusicEngine }) {
+  const ui = useSyncExternalStore(engine.subscribe, engine.snapshot, serverSnapshot);
+  // Gone with the loading screen while it had the keyboard's focus: the corner toggle (the same
+  // switch) takes it, not <body>. A layout effect's cleanup runs while the button is still on the page.
+  // Keyboard focus only: after a click, Space must stay with the flight, not mute the music.
+  useLayoutEffect(
+    () => () => {
+      if (!document.activeElement?.closest(".sect-soundcall")?.matches(":focus-visible")) return;
+      window.setTimeout(() => {
+        const a = document.activeElement;
+        // Not while a screen still covers the toggle (the error screen), nor when something took the focus.
+        if ((a && a !== document.body) || document.querySelector(".sect-veil")) return;
+        document.querySelector<HTMLElement>("button[data-sect-sound]")?.focus({ preventScroll: true });
+      }, 0);
+    },
+    [],
+  );
+  return ui.available ? <SoundCall on={ui.on} onToggle={() => engine.toggle()} /> : null;
+}
+
+/**
+ * SoundPrompt's button. Named in full for screen readers ("Turn on sound, for the best experience").
+ * Its width holds when the words change (min-w: the longer wording's, in rem so it grows with the
+ * text), so the centred button does not shift and the seal stays under the finger for a second tap.
+ */
+export function SoundCall({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  const [line, note] = on ? ["Sound on", "Tap again to mute"] : ["Turn on sound", "For the best experience"];
+  return (
+    <button
+      type="button"
+      data-sect-sound
+      data-on={on || undefined}
+      onClick={onToggle}
+      aria-label={`${line}, ${note.toLowerCase()}`}
+      className="sect-soundcall sect-fade-in group inline-flex min-h-11 min-w-[15rem] items-center gap-3 rounded-[2px] py-1 pl-1 pr-3 text-left"
+    >
+      <span aria-hidden className="sect-soundcall-seal">
+        <SpeakerIcon on={on} />
+      </span>
+      <span className="flex flex-col leading-tight">
+        <span className="text-[0.9375rem] text-[var(--sect-paper)] transition-colors group-hover:text-[var(--sect-gold)]">{line}</span>
+        <span className="mt-1 text-[0.625rem] uppercase tracking-[0.24em] text-[var(--sect-gold)]">{note}</span>
+      </span>
+    </button>
   );
 }
 

@@ -238,7 +238,7 @@ export function contentInventory(): InventoryEntry[] {
     section: orb,
     what: `Orb button "${VOICE_ORB.button}" and pill "${VOICE_ORB.pill}"`,
     status: "engine",
-    where: 'The 3D page passes onTalk; the content shows "Talk to the AI" on the gate and summit panels, "Talk to the portfolio" in the gate reader, "Tap voice orb" in the contact reader, and the moon hotspot. Without onTalk these link to art3m1s.me, where the orb lives. The orb is the main page\'s, recoloured gold (sect.css); its pill shows on the intro screen only, because at the stops it covered the scene\'s own objects.',
+    where: 'The 3D page passes onTalk; the content shows "Talk to the AI" on the gate and summit panels, "Talk to the portfolio" in the gate reader, "Tap voice orb" in the contact reader, and the moon hotspot. Without onTalk these link to art3m1s.me, where the orb lives. The orb is the main page\'s, dressed by sect.css as a 传音符 (a sound-transmission talisman): a jade seal stamped 音, "Talk to the AI" on hover and keyboard focus, glowing while it listens and speaks; its pill shows on the intro screen only, because at the stops it covered the scene\'s own objects.',
   });
   add({
     section: orb,

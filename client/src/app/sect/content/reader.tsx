@@ -1,13 +1,16 @@
 "use client";
 
-/** The reader: a large themed sheet over the scene with the complete content of one area. */
+/**
+ * The reader: a large themed sheet over the scene with the complete content of one area, on faint
+ * rice paper inside cloud corners, the place's name in the brush hand with the sect's seal.
+ */
 import { useCallback, useEffect, useRef } from "react";
 import { PORTFOLIO } from "@/lib/portfolio-data";
 import { areaInfo } from "@/lib/sect/areas";
 import { SECTION_NAMES, areaSummary, itemDomId, neighborAreas, type ContentTarget } from "@/lib/sect/content";
+import { SealedName } from "../ornaments";
 import { flightFocusFallback, focusIsKept, trapTab, useModalLifecycle } from "./modal";
 import { AreaBody } from "./sections";
-import { Zh } from "./ui";
 
 export interface AreaReaderProps {
   /** What to show; null renders nothing. */
@@ -116,13 +119,13 @@ function ReaderSheet({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="sect-panel sc-sheet"
+        className="sect-panel sect-panel-lg sc-sheet"
       >
         {/* A div, not <header>: inside a dialog a header would count as a second page banner. */}
         <div className="sc-sheet-head">
           <div className="sc-sheet-titles">
             <p className="sc-place">
-              <span>{info.label}</span> <Zh>{info.zh}</Zh>
+              <span>{info.label}</span> <SealedName text={info.zh} />
             </p>
             <h2 id={titleId} ref={titleRef} tabIndex={-1} className="sc-h2">
               {summary.section}

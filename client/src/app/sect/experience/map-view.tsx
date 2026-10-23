@@ -25,6 +25,9 @@
  *
  * Keyboard: Tab or the arrow keys move between the seals in route order (Up toward the summit when
  * the route climbs the picture), Enter travels, Escape or M closes and gives the focus back.
+ *
+ * It wears the dress of the rest of the UI (ornaments.tsx): the title and the places' names in the
+ * brush hand, the red seal by the chosen place, the card and the list on rice paper in cloud corners.
  */
 import {
   memo,
@@ -60,6 +63,7 @@ import {
 import { resolveAsset } from "@/lib/sect/parse";
 import type { CameraData, SectMeta } from "@/lib/sect/types";
 import { flightFocusFallback, trapTab, useModalLifecycle } from "../content/modal";
+import { BrushName, SealStamp } from "../ornaments";
 import { Emblem, HereGlyph } from "./map-emblems";
 import type { PlaceGroup, RailStop } from "./overlay";
 
@@ -427,9 +431,7 @@ export default function MapView({
       <div className="sect-map-head">
         <p className="sect-map-eyebrow">
           The Ming Sect{" "}
-          <span lang="zh" className="sect-zh sect-map-zh">
-            明教全图
-          </span>
+          <BrushName text="明教全图" className="sect-map-zh" />
         </p>
         <h2 id={HEAD_ID} ref={titleRef} tabIndex={-1} className="sect-map-title font-serif text-[var(--sect-paper)] outline-none">
           Map of the sect
@@ -598,9 +600,7 @@ export default function MapView({
             {docked && <Emblem id={shownStop.id as AreaId} className="sect-map-dock-emblem" />}
             <div className="min-w-0 flex-1">
               <p className="flex items-baseline gap-2.5">
-                <span lang="zh" className="sect-zh text-[1.15rem] leading-tight tracking-[0.16em] text-[var(--sect-gold)]">
-                  {shownStop.zh}
-                </span>
+                <BrushName text={shownStop.zh} className="text-[1.3rem] leading-tight text-[var(--sect-gold)]" />
                 <span className="text-[0.6rem] uppercase tracking-[0.24em] text-[var(--sect-paper-soft)]">{String(shownStop.n).padStart(2, "0")}</span>
               </p>
               <p className="mt-0.5 text-[0.86rem] leading-snug text-[var(--sect-paper)]">{shownStop.label}</p>
@@ -695,7 +695,7 @@ function PlaceCard({
   const line = isAreaId(stop.id) ? (areaSummary(id).lines[0] ?? "") : "";
   const open = here && atHold;
   return (
-    <section aria-label={`${stop.label}, ${stop.section}`} className="sect-map-card sect-panel sect-plate">
+    <section aria-label={`${stop.label}, ${stop.section}`} className="sect-map-card sect-panel sect-panel-lg sect-plate">
       <p className="text-[0.62rem] uppercase tracking-[0.28em] text-[var(--sect-paper-soft)]">
         Stop {String(stop.n).padStart(2, "0")} <span className="opacity-60">/ {String(total).padStart(2, "0")}</span>
         {here && <span className="ml-2 text-[var(--sect-gold)]">· {atHold ? "You are here" : "You are near"}</span>}
@@ -704,8 +704,9 @@ function PlaceCard({
         <span className="sect-map-card-seal" data-here={here || undefined}>
           <Emblem id={id} className="h-[78%] w-[78%]" />
         </span>
-        <p lang="zh" className="sect-zh text-[2.1rem] leading-none tracking-[0.18em] text-[var(--sect-paper)]">
-          {stop.zh}
+        <p className="flex items-end gap-2 text-[2.35rem] leading-none text-[var(--sect-paper)]">
+          <BrushName text={stop.zh} />
+          <SealStamp className="mb-0.5 text-[1.15rem]" />
         </p>
       </div>
       <p className="mt-3.5 font-serif text-[1.3rem] leading-tight text-[var(--sect-paper)]">{stop.label}</p>
@@ -737,7 +738,7 @@ const PlacesIndex = memo(function PlacesIndex({
   onSelect: (id: string) => void;
 }) {
   return (
-    <nav aria-label="Every place" className="sect-map-aside sect-panel sect-scroll">
+    <nav aria-label="Every place" className="sect-map-aside sect-panel sect-panel-lg sect-scroll">
       {groups.map((g, i) => (
         <section key={g.id} aria-labelledby={`sect-places-${g.id}`} className="py-1.5">
           <h3

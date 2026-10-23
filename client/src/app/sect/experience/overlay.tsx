@@ -12,11 +12,16 @@
  * Everything here floats over the 3D scene, whose sky runs from dusk violet to near white: text
  * always sits on an ink plate (.sect-plate) and controls carry .sect-ctl for a focus ring that shows
  * on any background (sect.css).
+ *
+ * The Chinese dress stays out of the way here, as in Black Myth: Wukong's HUD: cloud curls on the
+ * plates' corners, the places' names in the brush hand, the seal by the owner's name, and the rail's
+ * stops hung on a thread of brush ink (ornaments.tsx, sect.css). The intro's title is the loud one.
  */
 import { forwardRef, memo, useEffect, useRef, useState } from "react";
 import type { HotspotLabel } from "@/lib/sect/content";
 import type { HoverNote } from "@/lib/sect/lore";
 import { TIER_LABELS, type Tier } from "@/lib/sect/runtime";
+import { BrushName, InkRing, SealStamp } from "../ornaments";
 import { QualityPicker } from "../quality-picker";
 
 export const IntroTitle = forwardRef<HTMLDivElement>(function IntroTitle(_, ref) {
@@ -25,12 +30,11 @@ export const IntroTitle = forwardRef<HTMLDivElement>(function IntroTitle(_, ref)
       ref={ref}
       className="sect-intro pointer-events-none fixed inset-x-0 top-[13vh] z-10 flex flex-col items-center px-6 text-center md:top-[9vh]"
     >
-      <div className="sect-intro-seal flex flex-col items-center">
-        <p
-          className="sect-text-shadow sect-zh pl-[0.2em] text-[clamp(2.8rem,8vw,5.25rem)] leading-none tracking-[0.2em] text-[var(--sect-paper)]"
-          lang="zh"
-        >
-          明教
+      {/* 明教 in the brush hand on a pool of ink wash, the sect's seal pressed beside it. */}
+      <div className="sect-intro-seal sect-ink flex flex-col items-center">
+        <p className="sect-sealed sect-text-shadow text-[clamp(3.1rem,8.6vw,5.6rem)] leading-none text-[var(--sect-paper)]">
+          <BrushName text="明教" />
+          <SealStamp />
         </p>
         <p className="sect-plate mt-4 rounded-[2px] px-3 py-1.5 text-[0.75rem] uppercase tracking-[0.34em] text-[var(--sect-gold)]">
           The Ming Sect
@@ -108,7 +112,7 @@ export const SectionRail = memo(function SectionRail({
       className="pointer-events-none fixed right-4 top-1/2 z-20 hidden -translate-y-1/2 [@media(min-width:48rem)_and_(min-height:31.25rem)]:block"
     >
       <Arrival stops={stops} active={active} atHold={atHold} />
-      <ol className="flex flex-col items-end gap-[0.3rem]">
+      <ol className="sect-rail-thread flex flex-col items-end gap-[0.3rem]">
         {stops.map((s, i) => {
           const on = s.id === active;
           const shown = on && !atHold;
@@ -127,6 +131,7 @@ export const SectionRail = memo(function SectionRail({
                   <span className="mr-2 text-[var(--sect-gold)]">{String(i + 1).padStart(2, "0")}</span>
                   {s.section}
                   <span className="ml-2 normal-case tracking-[0.06em] text-[var(--sect-paper-soft)]">{s.label}</span>
+                  <BrushName text={s.zh} className="ml-2 text-[0.95rem] leading-none text-[var(--sect-gold)]" />
                 </span>
                 <span aria-hidden className="pointer-events-auto grid h-6 w-6 cursor-pointer place-items-center">
                   <span
@@ -171,7 +176,7 @@ export const CompactRail = memo(function CompactRail({
       className="pointer-events-none fixed inset-x-0 top-[3.85rem] z-20 flex flex-col items-center [@media(min-width:48rem)_and_(min-height:31.25rem)]:hidden"
     >
       <Arrival stops={stops} active={active} atHold={atHold} />
-      <ol className="pointer-events-auto flex items-center">
+      <ol className="sect-rail-thread-h pointer-events-auto flex items-center">
         {stops.map((s) => {
           const on = s.id === active;
           return (
@@ -197,10 +202,7 @@ export const CompactRail = memo(function CompactRail({
           aria-hidden
           className={`sect-plate rounded-[2px] px-2.5 py-0.5 text-[0.68rem] uppercase tracking-[0.22em] text-[var(--sect-paper)] transition-opacity duration-500 ${labelHidden ? "opacity-0" : "opacity-100"}`}
         >
-          {cur.section}{" "}
-          <span lang="zh" className="sect-zh ml-1 tracking-[0.12em] text-[var(--sect-gold)]">
-            {cur.zh}
-          </span>
+          {cur.section} <BrushName text={cur.zh} className="ml-1 text-[0.9rem] leading-none text-[var(--sect-gold)]" />
         </p>
       )}
     </nav>
@@ -312,7 +314,7 @@ export function QualityButton({ tier, recommended, onPick }: { tier: Tier; recom
   );
 }
 
-/** A far jump is waiting for its area to load: a small seal that turns, with the place's name. */
+/** A far jump is waiting for its area to load: an ink ring that turns, with the place's name. */
 export function Gathering({ label }: { label: string }) {
   return (
     <div
@@ -320,7 +322,7 @@ export function Gathering({ label }: { label: string }) {
       aria-live="polite"
       className="sect-panel sect-plate pointer-events-none fixed left-1/2 top-[8.2rem] z-30 flex -translate-x-1/2 items-center gap-3 rounded-[3px] px-4 py-2 md:top-5"
     >
-      <span aria-hidden className="sect-gather block h-3 w-3 rotate-45 border border-[var(--sect-gold)]" />
+      <InkRing className="text-[0.875rem]" />
       <span className="text-[0.68rem] uppercase tracking-[0.26em] text-[var(--sect-paper)]">Loading {label}</span>
     </div>
   );
@@ -547,9 +549,10 @@ export const DebugHud = forwardRef<HTMLDivElement>(function DebugHud(_, ref) {
 });
 
 /**
- * Top-left, on an ink plate: whose portfolio this is (a link back to the main site), and the
- * one-page view of everything. The link is a plain one: a full page load frees the scene's memory,
- * its decoder workers and its audio, which a client-side route change would keep alive.
+ * Top-left, on an ink plate: whose portfolio this is (a link back to the main site), with the sect's
+ * seal pressed before the name, and the one-page view of everything. The link is a plain one: a full
+ * page load frees the scene's memory, its decoder workers and its audio, which a client-side route
+ * change would keep alive.
  */
 export function TopLinks({ onReadAsPage }: { onReadAsPage: () => void }) {
   return (
@@ -560,12 +563,13 @@ export function TopLinks({ onReadAsPage }: { onReadAsPage: () => void }) {
           href="/"
           className="sect-ctl flex min-h-11 items-center gap-2.5 rounded-[2px] px-2.5 text-[var(--sect-paper)] hover:text-[var(--sect-gold)] md:min-h-10 md:px-4 [@media(max-width:340px)]:px-2"
         >
+          <SealStamp className="sect-toplinks-seal" />
           <span className="font-serif text-[1.05rem] leading-none tracking-[0.01em]">Bill Zhang</span>
           <span className="sr-only text-[0.68rem] uppercase tracking-[0.22em] text-[var(--sect-paper-soft)] md:not-sr-only">
             art3m1s.me
           </span>
         </a>
-        <span aria-hidden className="my-2.5 w-px bg-[var(--sect-gold-soft)]" />
+        <span aria-hidden className="sect-brushrule-v my-2" />
         <button
           type="button"
           onClick={onReadAsPage}

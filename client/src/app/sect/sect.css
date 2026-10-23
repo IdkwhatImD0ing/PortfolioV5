@@ -50,6 +50,262 @@
   font-family: var(--sect-zh);
 }
 
+/*
+ * The sect's Chinese dress (ornaments.tsx), in Black Myth: Wukong's manner: the HUD stays plain, and
+ * the character is in the frames, the names and the loading screens. Body text and English labels
+ * keep their modern faces.
+ *
+ * The ornaments are SVG masks (only their shape counts; the element's background colours them, so
+ * they are crisp at any pixel ratio and take any colour):
+ *   cloud, cloud-sm   祥云 corners: a cloud scroll for the large panels, a small curl for controls
+ *   brush             a short brush stroke, pressed on the left and flicked off to the right
+ *   brush-rule(-v)    a long dry stroke, thin at both ends with streaks of flying white (and upright)
+ *   enso              an ink ring, thick where the brush landed and tapering to its tail
+ *   ink-pool          a soft pool of ink wash with a ragged, bled edge
+ */
+.sect-root,
+.sc-theme {
+  /* The brush hand (brush-font.ts), and the serif while it loads or where it lacks a character. */
+  --sect-brush-font: var(--font-sect-brush, "Ma Shan Zheng"), "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, serif;
+  --sect-cloud: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 36 36' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M35 1.6H17.2C15.6 1.6 14.6 2.6 14.6 3.9C14.6 5.4 15.9 6.3 17.2 6.1C18.3 5.9 18.8 5 18.5 4.2'/%3E%3Cpath d='M1.6 35V17.2C1.6 15.6 2.6 14.6 3.9 14.6C5.4 14.6 6.3 15.9 6.1 17.2C5.9 18.3 5 18.8 4.2 18.5'/%3E%3Cpath d='M14.6 3.9C10.8 2.4 6.6 3.4 4.6 6.4C2.8 9.2 3.2 12.4 5.4 14.2C3.4 12 3.8 8.6 6.4 7C8.4 5.8 11 6.4 12 8.2C12.9 9.8 12 11.6 10.4 11.8C9.2 12 8.4 11 8.8 10'/%3E%3C/svg%3E");
+  --sect-cloud-sm: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 1.4H8.6C7 1.4 6 2.4 6 3.6C6 4.8 7 5.5 7.9 5.3C8.6 5.1 8.9 4.4 8.6 3.8'/%3E%3Cpath d='M1.4 19V8.6C1.4 7 2.4 6 3.6 6C4.8 6 5.5 7 5.3 7.9C5.1 8.6 4.4 8.9 3.8 8.6'/%3E%3Cpath d='M6 3.6C3.8 3.4 2.2 5 2.6 6.8'/%3E%3C/svg%3E");
+  --sect-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 12' preserveAspectRatio='none'%3E%3Cpath fill-rule='evenodd' d='M3 6.4C2.2 4.2 4.4 2.6 7.4 2.5C10 2.4 13 3 17 3.1C33 3.4 52 3.2 72 3.6C90 3.9 104 4.6 118.5 5.9C113 6.4 104 6.7 92 7.3C74 8.1 52 8.6 33 8.9C22 9.1 13 9.6 8.6 9.6C5.4 9.6 3.6 8.4 3 6.4ZM46 5.2C62 4.9 80 5.1 101 5.7L101 6.05C80 5.7 62 5.6 46 5.75ZM58 7.3C72 7 84 6.8 96 6.6L96 6.85C84 7.1 72 7.4 58 7.65ZM30 4.6C40 4.4 49 4.4 56 4.5L56 4.75C49 4.7 40 4.8 30 4.95Z'/%3E%3C/svg%3E");
+  --sect-brush-rule: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 8' preserveAspectRatio='none'%3E%3Cpath fill-rule='evenodd' d='M0 4.4C30 3.2 80 2.5 140 2.4C200 2.3 270 2.6 330 3.1C360 3.4 385 3.9 400 4.6C384 5.2 360 5.5 330 5.7C270 6 200 6.1 140 5.9C80 5.7 30 5.3 0 4.4ZM60 3.9C100 3.5 150 3.4 190 3.5L190 3.85C150 3.8 100 3.9 60 4.25ZM230 4.7C270 4.6 310 4.7 350 4.9L350 5.15C310 5 270 5 230 5.05ZM120 4.9C150 4.8 175 4.85 205 4.95L205 5.2C175 5.15 150 5.15 120 5.2Z'/%3E%3C/svg%3E");
+  --sect-brush-rule-v: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 400' preserveAspectRatio='none'%3E%3Cpath fill-rule='evenodd' transform='matrix(0 1 1 0 0 0)' d='M0 4.4C30 3.2 80 2.5 140 2.4C200 2.3 270 2.6 330 3.1C360 3.4 385 3.9 400 4.6C384 5.2 360 5.5 330 5.7C270 6 200 6.1 140 5.9C80 5.7 30 5.3 0 4.4ZM60 3.9C100 3.5 150 3.4 190 3.5L190 3.85C150 3.8 100 3.9 60 4.25ZM230 4.7C270 4.6 310 4.7 350 4.9L350 5.15C310 5 270 5 230 5.05ZM120 4.9C150 4.8 175 4.85 205 4.95L205 5.2C175 5.15 150 5.15 120 5.2Z'/%3E%3C/svg%3E");
+  --sect-enso: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M20 4.2C29.4 4 36.1 11.4 35.8 20.4C35.5 29.6 27.8 36.2 19 35.7C10.6 35.2 4.4 28.6 4.3 20.6C4.2 14.6 7.4 9.6 12 6.9C8.6 9.8 6.6 14.6 7.1 19.8C7.8 27.4 13.6 32.8 20.4 32.8C27.4 32.8 33.2 27.2 33.2 20.2C33.2 13 27.4 7.6 20.8 7.3C17.4 7.2 15 7.9 13.4 8.8C15.2 6.2 17.4 4.3 20 4.2Z'/%3E%3C/svg%3E");
+  --sect-ink-pool: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 600 300'%3E%3Cfilter id='f' filterUnits='userSpaceOnUse' x='0' y='0' width='600' height='300'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.011 0.018' numOctaves='3' seed='4'/%3E%3CfeDisplacementMap in='SourceGraphic' scale='64' xChannelSelector='R' yChannelSelector='G'/%3E%3CfeGaussianBlur stdDeviation='15'/%3E%3C/filter%3E%3Cg filter='url(%23f)'%3E%3Cellipse cx='300' cy='150' rx='185' ry='62' opacity='.9'/%3E%3Cellipse cx='235' cy='166' rx='120' ry='48' opacity='.55'/%3E%3Cellipse cx='372' cy='134' rx='128' ry='44' opacity='.55'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+/* A place's name in the brush hand; set upright in a column with .sect-brushname-v. */
+.sect-brushname {
+  font-family: var(--sect-brush-font);
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+.sect-brushname-v {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  letter-spacing: 0.08em;
+}
+
+/*
+ * The red seal beside a name: one em square, set a touch askew (sized by font-size: these rules sit
+ * outside Tailwind's layers, so its width and height utilities would not reach them).
+ */
+.sect-seal {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  transform: rotate(-3deg);
+}
+/*
+ * The seal's character keeps its own size and spacing (in the seal's 40-unit box) wherever the seal
+ * sits: rules that size the names around it (.sc-place .sect-brushname, .sc-panel-mark .sect-brushname)
+ * would otherwise reach its <text> too, and draw it small and low in one place, past its frame in another.
+ */
+.sect-seal text.sect-brushname,
+.sect-seal text.sect-zh {
+  font-size: 24px;
+  letter-spacing: 0;
+}
+
+/* A name and its seal (ornaments.tsx SealedName): one unit when a line wraps. */
+.sect-sealedname {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+}
+
+/*
+ * The top bar's seal, before the owner's name. Phones under 390 px need its room: there the bar would
+ * reach the Map button (at 360 px it overlapped it by 17 px).
+ */
+.sect-toplinks-seal {
+  font-size: 1.05rem;
+}
+@media (max-width: 389px) {
+  .sect-toplinks-seal {
+    display: none;
+  }
+}
+
+/* Under a title: a short gold brush stroke (in the old thin rule's place). */
+.sect-brushstroke {
+  display: block;
+  width: 3.75rem;
+  height: 0.4rem;
+  background: var(--sect-gold);
+  -webkit-mask: var(--sect-brush) center / 100% 100% no-repeat;
+  mask: var(--sect-brush) center / 100% 100% no-repeat;
+}
+
+/* A full-width divider: the long dry stroke, faint. */
+.sect-brushrule {
+  display: block;
+  height: 4px;
+  background: var(--sect-gold-soft);
+  -webkit-mask: var(--sect-brush-rule) center / 100% 100% no-repeat;
+  mask: var(--sect-brush-rule) center / 100% 100% no-repeat;
+}
+
+/* A progress line drawn as a brush stroke: the faint stroke, filled in gold from the left. */
+.sect-brushbar {
+  position: relative;
+  height: 5px;
+  background: var(--sect-gold-soft);
+  -webkit-mask: var(--sect-brush-rule) center / 100% 100% no-repeat;
+  mask: var(--sect-brush-rule) center / 100% 100% no-repeat;
+}
+.sect-brushbar-fill {
+  height: 100%;
+  background: var(--sect-gold);
+}
+
+/* The ink ring that turns while a place loads (still with reduced motion, below), one em across. */
+.sect-enso {
+  display: block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  background: var(--sect-gold);
+  -webkit-mask: var(--sect-enso) center / 100% 100% no-repeat;
+  mask: var(--sect-enso) center / 100% 100% no-repeat;
+  animation: sect-enso 1.6s linear infinite;
+}
+
+@keyframes sect-enso {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+ * Large brush type with the seal pressed at its lower right, as a painter signs (the intro, the
+ * loading screens): the seal hangs outside the line, so the name alone stays centred.
+ */
+.sect-sealed {
+  position: relative;
+}
+/*
+ * The brush leaves wide side bearings: a large name is drawn a little closer. The last character's
+ * tracking is given back as a margin, so the box ends where the ink does and the name centres true.
+ */
+.sect-sealed > .sect-brushname {
+  letter-spacing: -0.12em;
+  margin-right: 0.12em;
+}
+.sect-sealed > .sect-seal {
+  position: absolute;
+  left: 100%;
+  bottom: 0.02em;
+  width: 0.3em;
+  height: 0.3em;
+  margin-left: 0.06em;
+}
+
+/* A pool of ink wash behind large type on the scene (the intro's 明教, the loading screen's). */
+.sect-ink {
+  position: relative;
+  isolation: isolate;
+}
+.sect-ink::before {
+  content: "";
+  position: absolute;
+  inset: -2.75rem -5.5rem -2rem;
+  z-index: -1;
+  background: rgba(14, 12, 20, 0.8);
+  -webkit-mask: var(--sect-ink-pool) center / 100% 100% no-repeat;
+  mask: var(--sect-ink-pool) center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+/*
+ * An upright divider (the top bar's, between the name and Read as page). It takes the 1 px of the
+ * rule it replaced, so the bar is no wider on the narrowest phones.
+ */
+.sect-brushrule-v {
+  display: block;
+  flex: none;
+  width: 4px;
+  margin-inline: -1.5px;
+  background: var(--sect-gold-soft);
+  -webkit-mask: var(--sect-brush-rule-v) center / 100% 100% no-repeat;
+  mask: var(--sect-brush-rule-v) center / 100% 100% no-repeat;
+}
+
+/*
+ * The rail's stops hang on a thread of brush ink, like beads on a scroll's cord: a dark stroke so it
+ * shows on a pale sky, a thinner gold one on it. Drawn behind the diamonds, from the first stop's
+ * centre to the last's (the desktop column: 24 px boxes at the right end; the phone row: 32 px
+ * buttons, 28 px on the narrowest phones).
+ */
+.sect-rail-thread,
+.sect-rail-thread-h {
+  position: relative;
+  isolation: isolate;
+}
+.sect-rail-thread::before,
+.sect-rail-thread::after,
+.sect-rail-thread-h::before,
+.sect-rail-thread-h::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+}
+.sect-rail-thread::before,
+.sect-rail-thread::after {
+  top: 12px;
+  bottom: 12px;
+  -webkit-mask: var(--sect-brush-rule-v) center / 100% 100% no-repeat;
+  mask: var(--sect-brush-rule-v) center / 100% 100% no-repeat;
+}
+.sect-rail-thread::before {
+  right: 9px;
+  width: 6px;
+  background: rgba(14, 12, 20, 0.5);
+}
+.sect-rail-thread::after {
+  right: 10.5px;
+  width: 3px;
+  background: rgba(233, 199, 126, 0.6);
+}
+.sect-rail-thread-h::before,
+.sect-rail-thread-h::after {
+  left: 16px;
+  right: 16px;
+  -webkit-mask: var(--sect-brush-rule) center / 100% 100% no-repeat;
+  mask: var(--sect-brush-rule) center / 100% 100% no-repeat;
+}
+.sect-rail-thread-h::before {
+  top: calc(50% - 3px);
+  height: 6px;
+  background: rgba(14, 12, 20, 0.5);
+}
+.sect-rail-thread-h::after {
+  top: calc(50% - 1.5px);
+  height: 3px;
+  background: rgba(233, 199, 126, 0.6);
+}
+@media (max-width: 340px) {
+  .sect-rail-thread-h::before,
+  .sect-rail-thread-h::after {
+    left: 14px;
+    right: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sect-enso {
+    animation: none;
+  }
+}
+
 .sect-veil {
   background:
     radial-gradient(60% 50% at 50% 42%, rgba(233, 199, 126, 0.14), transparent 70%),
@@ -66,27 +322,38 @@
   -webkit-backdrop-filter: blur(10px) saturate(1.1);
 }
 
-/* Gold corner ticks, like the frame of a game dialogue box. */
+/*
+ * Gold 祥云 corners, the frame of a sect dialogue box: a small cloud curl on controls and plates, the
+ * full cloud scroll on the large panels (.sect-panel-lg). Top left, and the same turned round at the
+ * bottom right.
+ */
 .sect-panel::before,
 .sect-panel::after {
   content: "";
   position: absolute;
-  width: 14px;
-  height: 14px;
-  border-color: var(--sect-gold);
+  width: var(--sect-corner, 16px);
+  height: var(--sect-corner, 16px);
+  background: var(--sect-gold);
+  -webkit-mask: var(--sect-cloud-sm) center / 100% 100% no-repeat;
+  mask: var(--sect-cloud-sm) center / 100% 100% no-repeat;
   pointer-events: none;
 }
 .sect-panel::before {
   top: -1px;
   left: -1px;
-  border-top: 1px solid;
-  border-left: 1px solid;
 }
 .sect-panel::after {
   bottom: -1px;
   right: -1px;
-  border-bottom: 1px solid;
-  border-right: 1px solid;
+  transform: rotate(180deg);
+}
+.sect-panel-lg {
+  --sect-corner: 34px;
+}
+.sect-panel-lg::before,
+.sect-panel-lg::after {
+  -webkit-mask-image: var(--sect-cloud);
+  mask-image: var(--sect-cloud);
 }
 
 /*
@@ -112,19 +379,10 @@
     0 1px 14px rgba(0, 0, 0, 0.6);
 }
 
-/* The intro seal floats on a soft pool of ink, so its smaller lines stay readable on a bright sky. */
-.sect-intro-seal {
-  position: relative;
-  isolation: isolate;
-}
-.sect-intro-seal::before {
-  content: "";
-  position: absolute;
-  inset: -1.5rem -3rem -1rem;
-  z-index: -1;
-  background: radial-gradient(closest-side, rgba(14, 12, 20, 0.62), rgba(14, 12, 20, 0.32) 60%, transparent);
-  pointer-events: none;
-}
+/*
+ * The intro's 明教 is written on a pool of ink wash (.sect-ink), so it and the plate under it stay
+ * readable on a bright sky; its seal is pressed beside the last character (.sect-sealed).
+ */
 
 .sect-hint-arrow {
   animation: sect-hint 2.2s ease-in-out infinite;
@@ -166,35 +424,100 @@
   }
 }
 
+/*
+ * The loading screen's "Turn on sound" (experience/sound-toggle.tsx SoundCall): a round seal with the
+ * speaker, a gold rim on ink like the map's stops and the talisman, its words beside it. With the
+ * sound on the speaker turns gold and one slow ripple leaves the seal (still with reduced motion).
+ * It sits on a soft wash of ink, centred on its words: bare, its small gold line measured 3.4:1 on
+ * the poster's pale stairs.
+ */
+.sect-soundcall {
+  position: relative;
+  isolation: isolate;
+}
+.sect-soundcall::before {
+  content: "";
+  position: absolute;
+  inset: -1rem -3rem -1rem -1.5rem;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(14, 12, 20, 0.8), rgba(14, 12, 20, 0.66) 50%, rgba(14, 12, 20, 0.26) 80%, rgba(14, 12, 20, 0));
+  pointer-events: none;
+}
+.sect-soundcall-seal {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  color: var(--sect-paper);
+  background: radial-gradient(circle at 50% 35%, #2a2233 0%, var(--sect-ink) 72%);
+  box-shadow:
+    0 0 0 1px var(--sect-gold),
+    0 0 0 3px rgba(14, 12, 20, 0.9),
+    0 0 0 4px var(--sect-gold-soft);
+  transition:
+    box-shadow 0.2s ease,
+    color 0.2s ease;
+}
+.sect-soundcall:hover .sect-soundcall-seal,
+.sect-soundcall:focus-visible .sect-soundcall-seal {
+  color: var(--sect-gold);
+  box-shadow:
+    0 0 0 1px var(--sect-gold),
+    0 0 0 3px rgba(14, 12, 20, 0.9),
+    0 0 0 4px var(--sect-gold),
+    0 0 16px rgba(233, 199, 126, 0.35);
+}
+.sect-soundcall[data-on] .sect-soundcall-seal::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 1px solid var(--sect-gold);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: sect-soundcall-ripple 2.8s ease-out infinite;
+}
+
+@keyframes sect-soundcall-ripple {
+  from {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  to {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sect-soundcall[data-on] .sect-soundcall-seal::after {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* Scrolling popovers (the Places list). */
 .sect-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--sect-gold-soft) transparent;
 }
 
-/* "Gathering": a far jump waits for its area to load. */
-.sect-gather {
-  animation: sect-gather 1.4s linear infinite;
-}
-
-@keyframes sect-gather {
-  from {
-    transform: rotate(45deg);
-  }
-  to {
-    transform: rotate(405deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sect-gather {
-    animation: none;
-  }
-}
+/* ---- the voice talisman (experience/voice.tsx) ---------------------------------------------------- */
 
 /*
- * The main site's voice orb, unchanged, in the sect's gold and jade. Its CSS variables change here,
- * and (below) the few shapes and colours it hard-codes; the component is the main page's.
+ * The main site's voice orb, unchanged, dressed as a 传音符: the talisman a cultivator speaks through
+ * across a distance. The orb is the main page's component, so everything here reaches it through its
+ * own classes, and through the state its wrapper reads from it (data-talisman: lib/sect/talisman.ts).
+ *   the button  a jade seal in the map seals' dress (a gold rim, a ring of ink and gold), the
+ *               microphone in gold on its face, 音 (sound) stamped in cinnabar at its foot and a slow
+ *               ripple of qi round it; "Talk to the AI" shows over it on hover and keyboard focus
+ *   the panel   an ink sheet with the stop panels' rice paper, cloud corners and brush rules, headed
+ *               by the talisman and its name. The talisman glows jade while it listens and gold while
+ *               the agent speaks, an ink ring turns round it while a call connects or an answer is on
+ *               its way, it reddens on an error and dims when a call has ended.
+ * With reduced motion nothing ripples or turns: each glow holds still.
  */
 .sect-orb {
   --grad: linear-gradient(135deg, #e9c77e 0%, #c98a4b 48%, #6fbfa5 100%);
@@ -209,45 +532,155 @@
   --ink: #f5ecdc;
   --ink-soft: rgba(245, 236, 220, 0.78);
   --muted: rgba(245, 236, 220, 0.62);
+  /* The talisman's jade face, lit from above like the map's seals, and the marks on it. */
+  --talisman-face: radial-gradient(circle at 50% 28%, #4c9580 0%, #22594b 48%, #102a25 100%);
+  --talisman-rim: 0 0 0 2.5px rgba(14, 10, 18, 0.88), 0 0 0 4px rgba(233, 199, 126, 0.6);
+  /* A line of gold cut a little inside the rim, as on a carved jade token. */
+  --talisman-carve: inset 0 0 0 3.5px rgba(8, 24, 21, 0.45), inset 0 0 0 4.5px rgba(233, 199, 126, 0.42);
+  --talisman-mic: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f1d697' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='3' width='6' height='12' rx='3'/%3E%3Cpath d='M5 11a7 7 0 0 0 14 0'/%3E%3Cpath d='M12 18v4'/%3E%3C/svg%3E");
+  --talisman-chat: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23f1d697' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4.5 5h15v10.5h-8l-4 3.5v-3.5h-3z'/%3E%3Cpath d='M8.5 9h7M8.5 12h4.5'/%3E%3C/svg%3E");
+  /* The seal stamped on it: SealStamp's cinnabar square and paper frame (ornaments.tsx), its character set as text. */
+  --talisman-seal: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cpath d='M3.6 3.2L12 2.7L20.4 3.1L29 2.6L36.8 3.5L37.2 12L36.9 20.6L37.4 29L36.5 36.8L28 37.3L19.6 36.9L11.2 37.4L3.1 36.6L2.7 28.2L3.2 19.6L2.6 11.4Z' fill='%23b8412d'/%3E%3Cpath d='M6.7 6.6H33.3V33.4H6.7Z' fill='none' stroke='%23f5ecdc' stroke-opacity='.5'/%3E%3C/svg%3E");
   /* ▶ and friends as plain glyphs, not blue emoji tiles. */
   font-variant-emoji: text;
 }
 
+/* -- the button -- */
+
 .sect-orb > div:not([role="dialog"]) > button {
+  border: 1.5px solid var(--sect-gold);
+  background: var(--talisman-face);
   box-shadow:
-    0 12px 40px rgba(233, 170, 90, 0.42),
-    0 0 0 1px rgba(255, 255, 255, 0.08) inset;
+    var(--talisman-carve),
+    var(--talisman-rim),
+    0 0 22px 5px rgba(143, 227, 200, 0.22),
+    0 10px 26px rgba(0, 0, 0, 0.45);
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
+}
+.sect-orb > div:not([role="dialog"]) > button:hover,
+.sect-orb > div:not([role="dialog"]) > button:focus-visible {
+  box-shadow:
+    var(--talisman-carve),
+    0 0 0 2.5px rgba(14, 10, 18, 0.88),
+    0 0 0 4px var(--sect-gold),
+    0 0 26px 8px rgba(143, 227, 200, 0.32),
+    0 10px 26px rgba(0, 0, 0, 0.45);
+}
+/* The focus ring clears the seal's rim and its ripple's start. */
+.sect-orb > div:not([role="dialog"]) > button:focus-visible {
+  outline-offset: 7px;
 }
 
-/* The orb's pulse rings: gold, not magenta. */
+.sect-orb > div:not([role="dialog"]) > button svg {
+  width: 26px;
+  height: 26px;
+  color: #f1d697;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.55));
+}
+
+/*
+ * One ripple of qi in place of the orb's two pulse rings. It takes no taps: grown, it reached over
+ * the phone rail's last diamonds (the summit's, the abode's) and started a call instead of a flight.
+ */
 .sect-orb > div:not([role="dialog"]) > button::before {
-  border-color: rgba(233, 199, 126, 0.45);
+  inset: -9px;
+  border: 1.5px solid rgba(233, 199, 126, 0.7);
+  animation: sect-talisman-ripple 3s ease-out infinite;
+  pointer-events: none;
 }
+
+/* 音, sound, stamped in cinnabar at the seal's foot (the orb's second ring, put to use). */
 .sect-orb > div:not([role="dialog"]) > button::after {
-  border-color: rgba(233, 199, 126, 0.22);
+  content: "音";
+  content: "音" / "";
+  inset: auto -7px -6px auto;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 0;
+  background: var(--talisman-seal) center / 100% 100% no-repeat;
+  color: var(--sect-paper);
+  font-family: var(--sect-brush-font);
+  font-size: 14px;
+  line-height: 1;
+  transform: rotate(-4deg);
+  animation: none;
 }
 
-/* Gold fills carry dark ink, like the sect's own gold buttons (white on gold measured 1.6-2.9:1). */
-.sect-orb [class*="bg-[image:var(--grad)]"] {
-  color: #1a1306;
-}
-.sect-orb button[class*="bg-[image:var(--grad)]"] svg {
-  color: #1a1306;
+@keyframes sect-talisman-ripple {
+  from {
+    transform: scale(0.9);
+    opacity: 0.85;
+  }
+  to {
+    transform: scale(1.45);
+    opacity: 0;
+  }
 }
 
-/* The "tap to talk" pill: an ink plate, not a pill. */
+/*
+ * "Talk to the AI" on an ink plate over the talisman, on hover and keyboard focus. Shown, it would be
+ * read after the button's own name, so it is given an empty alternative, like the seals' characters.
+ */
+.sect-orb > div:not([role="dialog"])::after {
+  content: "Talk to the AI";
+  content: "Talk to the AI" / "";
+  position: absolute;
+  right: -2px;
+  bottom: calc(100% + 16px);
+  padding: 0.45rem 0.7rem 0.42rem;
+  border: 1px solid var(--sect-gold-soft);
+  border-radius: 3px;
+  background: var(--sect-panel-strong);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: var(--sect-paper);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 0.16s,
+    transform 0.16s,
+    visibility 0.16s;
+  pointer-events: none;
+}
+.sect-orb > div:not([role="dialog"]):has(> button:hover)::after,
+.sect-orb > div:not([role="dialog"]):has(> button:focus-visible)::after {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+}
+
+/* The "tap to talk" pill: an ink plate, not a pill, its live dot in jade. */
 .sect-orb > div:not([role="dialog"]) > div:first-child {
   border-radius: 3px;
   border-color: var(--sect-gold-soft);
   background: var(--sect-panel-strong);
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
+.sect-orb > div:not([role="dialog"]) > div:first-child > span:first-child {
+  background: var(--sect-jade);
+  box-shadow: 0 0 8px var(--sect-jade);
+}
 
-/* The panel: a sect sheet (square corners, gold ticks, sans text, serif heading). */
+/* -- the panel: a sect sheet (square corners, rice paper, gold cloud corners, sans text, serif heading) -- */
+
 .sect-orb [role="dialog"] {
   border-radius: 3px;
   border-color: var(--sect-gold-soft);
-  background: rgba(16, 12, 22, 0.95);
+  background:
+    url("./assets/paper.webp") 0 0 / 256px 256px,
+    rgba(13, 10, 19, 0.95);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.25),
     0 30px 80px rgba(0, 0, 0, 0.55);
@@ -257,36 +690,315 @@
   content: "";
   position: absolute;
   z-index: 20;
-  width: 14px;
-  height: 14px;
-  border-color: var(--sect-gold);
+  width: 34px;
+  height: 34px;
+  background: var(--sect-gold);
+  -webkit-mask: var(--sect-cloud) center / 100% 100% no-repeat;
+  mask: var(--sect-cloud) center / 100% 100% no-repeat;
   pointer-events: none;
 }
 .sect-orb [role="dialog"]::before {
   top: 0;
   left: 0;
-  border-top: 1px solid;
-  border-left: 1px solid;
 }
 .sect-orb [role="dialog"]::after {
   bottom: 0;
   right: 0;
-  border-bottom: 1px solid;
-  border-right: 1px solid;
+  transform: rotate(180deg);
+}
+/* The orb's colour washing off the opening sheet: qi from the talisman's corner. */
+.sect-orb [role="dialog"] > div[aria-hidden]:first-child {
+  background: radial-gradient(130% 100% at 100% 100%, rgba(143, 227, 200, 0.42), rgba(233, 199, 126, 0.3) 42%, rgba(14, 12, 20, 0) 78%);
 }
 .sect-orb [role="dialog"] .font-mono:not(code) {
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
-.sect-orb [role="dialog"] header .font-mono {
-  font-size: 0.68rem;
+
+/* The head: the talisman, its name in the brush hand over the line it speaks on, the close button. */
+.sect-orb [role="dialog"] header {
+  position: relative;
+  gap: 0.85rem;
+  padding: 1.05rem 0.6rem 0.9rem 1.45rem;
+  border-bottom-color: transparent;
+}
+.sect-orb [role="dialog"] header > span:nth-child(2) {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.62rem;
   letter-spacing: 0.22em;
   text-transform: uppercase;
 }
+.sect-orb [role="dialog"] header > span:nth-child(2)::before {
+  content: "传音符";
+  content: "传音符" / "";
+  font-family: var(--sect-brush-font);
+  font-size: 1.35rem;
+  line-height: 1;
+  letter-spacing: 0.12em;
+  color: var(--sect-paper);
+}
+.sect-orb [role="dialog"] header > button {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+}
+
+/* The dividers under the head and over the controls: the long dry brush stroke. */
+.sect-orb [role="dialog"] header::after,
+.sect-orb [role="dialog"] > div:last-child::before {
+  content: "";
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  height: 4px;
+  background: var(--sect-gold-soft);
+  -webkit-mask: var(--sect-brush-rule) center / 100% 100% no-repeat;
+  mask: var(--sect-brush-rule) center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+.sect-orb [role="dialog"] header::after {
+  bottom: -2px;
+}
+.sect-orb [role="dialog"] > div:last-child {
+  position: relative;
+  border-top-color: transparent;
+}
+.sect-orb [role="dialog"] > div:last-child::before {
+  top: -2px;
+}
+
+/*
+ * The talisman at the head (the orb's status dot): a small jade seal, the microphone on its face (a
+ * written slip in text chat). Its ::before is the ripple of qi, its ::after the turning ink ring.
+ */
+.sect-orb [role="dialog"] header > span:first-child {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid var(--sect-gold);
+  border-radius: 50%;
+  background:
+    var(--talisman-mic) center / 17px 17px no-repeat,
+    var(--talisman-face);
+  box-shadow: var(--talisman-rim);
+  animation: none;
+  transition:
+    box-shadow 0.3s,
+    filter 0.3s;
+}
+.sect-orb [role="dialog"] header > span:first-child::before,
+.sect-orb [role="dialog"] header > span:first-child::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.sect-orb [role="dialog"] header > span:first-child::before {
+  inset: -7px;
+  border: 1.5px solid transparent;
+}
+.sect-orb [role="dialog"] header > span:first-child::after {
+  inset: -8px;
+}
+
+/* The big talisman over "Ask anything.", while the panel holds no conversation, with its seal. */
+.sect-orb [role="dialog"] div:has(> h4) {
+  position: relative;
+}
 .sect-orb [role="dialog"] h4 {
+  position: relative;
   font-family: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
   font-weight: 400;
   font-size: 1.75rem;
   letter-spacing: 0;
+}
+.sect-orb [role="dialog"] h4::before {
+  content: "";
+  display: block;
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 1.15rem;
+  border: 1.5px solid var(--sect-gold);
+  border-radius: 50%;
+  background:
+    var(--talisman-mic) center / 30px 30px no-repeat,
+    var(--talisman-face);
+  box-shadow:
+    var(--talisman-carve),
+    0 0 0 3px rgba(14, 10, 18, 0.88),
+    0 0 0 4.5px rgba(233, 199, 126, 0.6),
+    0 10px 24px rgba(0, 0, 0, 0.45);
+  transition:
+    box-shadow 0.3s,
+    filter 0.3s;
+}
+/* Its ink ring (connecting), centred on it. */
+.sect-orb [role="dialog"] h4::after {
+  content: "";
+  position: absolute;
+  top: -9px;
+  left: calc(50% - 43px);
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.sect-orb [role="dialog"] div:has(> h4)::before {
+  content: "音";
+  content: "音" / "";
+  position: absolute;
+  z-index: 1;
+  top: 50px;
+  left: calc(50% + 17px);
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  background: var(--talisman-seal) center / 100% 100% no-repeat;
+  color: var(--sect-paper);
+  font-family: var(--sect-brush-font);
+  font-size: 14px;
+  line-height: 1;
+  transform: rotate(-4deg);
+}
+/* A short gold brush stroke between the heading and its line, as under every title on /sect. */
+.sect-orb [role="dialog"] h4 + p::before {
+  content: "";
+  display: block;
+  width: 3.75rem;
+  height: 0.4rem;
+  margin: 0.55rem auto 0.8rem;
+  background: var(--sect-gold);
+  -webkit-mask: var(--sect-brush) center / 100% 100% no-repeat;
+  mask: var(--sect-brush) center / 100% 100% no-repeat;
+}
+
+/* -- the talisman's states (both seals: the head's and the big one) -- */
+
+/* Connecting, or an answer on its way: the ink ring turns round it. */
+.sect-orb:is([data-talisman="connecting"], [data-talisman="thinking"]) [role="dialog"] header > span:first-child::after,
+.sect-orb:is([data-talisman="connecting"], [data-talisman="thinking"]) [role="dialog"] h4::after {
+  background: var(--sect-gold);
+  -webkit-mask: var(--sect-enso) center / 100% 100% no-repeat;
+  mask: var(--sect-enso) center / 100% 100% no-repeat;
+  animation: sect-enso 1.6s linear infinite;
+}
+
+/* Listening: jade qi, breathing out in slow ripples. */
+.sect-orb[data-talisman="listening"] [role="dialog"] header > span:first-child {
+  box-shadow:
+    var(--talisman-rim),
+    0 0 16px 4px rgba(143, 227, 200, 0.5);
+}
+.sect-orb[data-talisman="listening"] [role="dialog"] h4::before {
+  box-shadow:
+    var(--talisman-carve),
+    0 0 0 3px rgba(14, 10, 18, 0.88),
+    0 0 0 4.5px rgba(233, 199, 126, 0.75),
+    0 0 30px 9px rgba(143, 227, 200, 0.45);
+}
+.sect-orb[data-talisman="listening"] [role="dialog"] header > span:first-child::before,
+.sect-orb[data-talisman="listening"] [role="dialog"] h4::after {
+  border: 1.5px solid rgba(143, 227, 200, 0.85);
+  animation: sect-talisman-ripple 2.2s ease-out infinite;
+}
+
+/* Speaking: gold, the ripples quicker, as a voice carries. */
+.sect-orb[data-talisman="speaking"] [role="dialog"] header > span:first-child {
+  border-color: #f3dca2;
+  box-shadow:
+    0 0 0 2.5px rgba(14, 10, 18, 0.88),
+    0 0 0 4px var(--sect-gold),
+    0 0 18px 5px rgba(233, 199, 126, 0.55);
+}
+.sect-orb[data-talisman="speaking"] [role="dialog"] h4::before {
+  box-shadow:
+    var(--talisman-carve),
+    0 0 0 3px rgba(14, 10, 18, 0.88),
+    0 0 0 4.5px var(--sect-gold),
+    0 0 32px 10px rgba(233, 199, 126, 0.5);
+}
+.sect-orb[data-talisman="speaking"] [role="dialog"] header > span:first-child::before,
+.sect-orb[data-talisman="speaking"] [role="dialog"] h4::after {
+  border: 1.5px solid rgba(243, 220, 162, 0.9);
+  animation: sect-talisman-ripple 1.2s ease-out infinite;
+}
+/* The head's ripple stays close: grown as far as the big one's, it crossed the sheet's cloud corner and 传. */
+.sect-orb:is([data-talisman="listening"], [data-talisman="speaking"]) [role="dialog"] header > span:first-child::before {
+  animation-name: sect-talisman-ripple-near;
+}
+@keyframes sect-talisman-ripple-near {
+  from {
+    transform: scale(0.9);
+    opacity: 0.85;
+  }
+  to {
+    transform: scale(1.22);
+    opacity: 0;
+  }
+}
+
+/* Text chat: the written slip on its face, a steady jade light. */
+.sect-orb:is([data-talisman="text"], [data-talisman="thinking"]) [role="dialog"] header > span:first-child {
+  background:
+    var(--talisman-chat) center / 17px 17px no-repeat,
+    var(--talisman-face);
+}
+.sect-orb[data-talisman="text"] [role="dialog"] header > span:first-child {
+  box-shadow:
+    var(--talisman-rim),
+    0 0 12px 2px rgba(143, 227, 200, 0.3);
+}
+.sect-orb[data-talisman="text"] [role="dialog"] h4::before {
+  background:
+    var(--talisman-chat) center / 30px 30px no-repeat,
+    var(--talisman-face);
+}
+
+/* Ended: the talisman goes quiet. */
+.sect-orb[data-talisman="ended"] [role="dialog"] header > span:first-child,
+.sect-orb[data-talisman="ended"] [role="dialog"] h4::before {
+  filter: saturate(0.35) brightness(0.8);
+}
+
+/* An error: a cinnabar light, and the line under the heading in cinnabar. */
+.sect-orb[data-talisman="error"] [role="dialog"] header > span:first-child {
+  border-color: #d9694f;
+  box-shadow:
+    0 0 0 2.5px rgba(14, 10, 18, 0.88),
+    0 0 0 4px rgba(217, 105, 79, 0.7),
+    0 0 14px 3px rgba(217, 105, 79, 0.45);
+}
+.sect-orb[data-talisman="error"] [role="dialog"] h4::before {
+  border-color: #d9694f;
+  box-shadow:
+    var(--talisman-carve),
+    0 0 0 3px rgba(14, 10, 18, 0.88),
+    0 0 0 4.5px rgba(217, 105, 79, 0.7),
+    0 0 26px 6px rgba(217, 105, 79, 0.4);
+}
+.sect-orb[data-talisman="error"] [role="dialog"] h4 + p {
+  color: #f0a089;
+}
+
+/* -- the conversation -- */
+
+/* The visitor's words on a gold wash; the agent's on the paper, with a gold rule down their edge. */
+.sect-orb [role="dialog"] [class*="bg-violet"] {
+  border: 1px solid rgba(233, 199, 126, 0.42);
+  background: rgba(233, 199, 126, 0.15);
+  color: var(--sect-paper);
+}
+.sect-orb [role="dialog"] [class*="bg-white/[0.05]"] {
+  border-color: var(--sect-gold-soft);
+  border-left: 2px solid rgba(233, 199, 126, 0.55);
+  background: rgba(14, 11, 20, 0.55);
+}
+.sect-orb [role="dialog"] strong {
+  color: #fff8ea;
 }
 .sect-orb [role="dialog"] [class*="rounded-full"]:not([class*="w-1"]):not([class*="w-2"]) {
   border-radius: 2px;
@@ -305,10 +1017,56 @@
   border-color: var(--sect-gold);
 }
 
+/* Start a call, Send: gold with dark ink, like the sect's own gold buttons (white on gold measured 1.6-2.9:1). */
+.sect-orb [role="dialog"] button[class*="bg-[image:var(--grad)]"] {
+  border-color: var(--sect-gold);
+  background: var(--sect-gold);
+  color: #1a1306;
+  font-weight: 600;
+}
+.sect-orb [role="dialog"] button[class*="bg-[image:var(--grad)]"]:hover {
+  background: #f3d89a;
+}
+/* Waiting (a call connecting, a reply on its way, nothing typed yet): an unlit plate. */
+.sect-orb [role="dialog"] button[class*="bg-[image:var(--grad)]"]:disabled {
+  border-color: var(--sect-gold-soft);
+  background: rgba(233, 199, 126, 0.1);
+  color: var(--sect-paper-soft);
+  opacity: 1;
+  cursor: default;
+}
+/* "Connecting…" turns the ink ring beside its word, as the sect's loading seals do. */
+.sect-orb [role="dialog"] button[class*="bg-[image:var(--grad)]"]:disabled:not([type="submit"])::before {
+  content: "";
+  flex: none;
+  width: 1.05em;
+  height: 1.05em;
+  background: var(--sect-gold);
+  -webkit-mask: var(--sect-enso) center / 100% 100% no-repeat;
+  mask: var(--sect-enso) center / 100% 100% no-repeat;
+  animation: sect-enso 1.6s linear infinite;
+}
+
+/* End call: cinnabar, not the main site's alarm red. */
+.sect-orb [role="dialog"] button[class*="text-danger"] {
+  border-color: rgba(217, 105, 79, 0.6);
+  background: rgba(184, 65, 45, 0.16);
+  color: #f0a089;
+}
+.sect-orb [role="dialog"] button[class*="text-danger"]:hover {
+  border-color: #d9694f;
+  background: rgba(184, 65, 45, 0.26);
+}
+.sect-orb [role="dialog"] button[class*="text-danger"] > span {
+  background: #e07a62;
+  box-shadow: 0 0 10px rgba(224, 122, 98, 0.8);
+}
+
 /*
  * Phones: the area panel spans the bottom, so the orb moves to the top-right corner. Over a reader
  * (whose header holds its close button there) it sits at the bottom centre, in the gap the reader's
  * footer leaves between its previous and next buttons. In the page view it keeps to the corner.
+ * Its "Talk to the AI" follows it: under it in the corner, over it elsewhere.
  */
 @media (max-width: 767px) {
   body:not([data-sect-modal]) .sect-orb > div:not([role="dialog"]) {
@@ -316,10 +1074,19 @@
     right: 0.6rem;
     bottom: auto;
   }
+  body:not([data-sect-modal]) .sect-orb > div:not([role="dialog"])::after {
+    top: calc(100% + 14px);
+    bottom: auto;
+  }
   body[data-sect-modal] .sect-orb > div:not([role="dialog"]) {
     left: calc(50% - 1.5rem);
     right: auto;
     bottom: 0.6rem;
+  }
+  body[data-sect-modal] .sect-orb > div:not([role="dialog"])::after {
+    right: auto;
+    left: 50%;
+    translate: -50% 0;
   }
   body:has(.sc-page) .sect-orb > div:not([role="dialog"]) {
     top: auto;
@@ -327,9 +1094,32 @@
     right: 0.75rem;
     bottom: 0.75rem;
   }
+  body:has(.sc-page) .sect-orb > div:not([role="dialog"])::after {
+    top: auto;
+    left: auto;
+    right: -2px;
+    bottom: calc(100% + 16px);
+    translate: none;
+  }
   .sect-orb > div:not([role="dialog"]) > button {
     width: 3rem;
     height: 3rem;
+  }
+  .sect-orb > div:not([role="dialog"]) > button svg {
+    width: 21px;
+    height: 21px;
+  }
+  .sect-orb > div:not([role="dialog"]) > button::before {
+    inset: -7px;
+  }
+  .sect-orb > div:not([role="dialog"]) > button:focus-visible {
+    outline-offset: 4px;
+  }
+  .sect-orb > div:not([role="dialog"]) > button::after {
+    width: 20px;
+    height: 20px;
+    font-size: 12px;
+    inset: auto -6px -5px auto;
   }
 }
 
@@ -341,6 +1131,24 @@
 body[data-sect-modal] .sect-orb > div:not([role="dialog"]) > div:first-child,
 body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   display: none;
+}
+
+/*
+ * Reduced motion: no ripple and no turning ring; the glows and a still ring stay. The state rules
+ * above name [data-talisman], so these do too, or they lose to them and the rings keep running.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .sect-orb > div:not([role="dialog"]) > button::before {
+    animation: none;
+    transform: scale(1.08);
+    opacity: 0.5;
+  }
+  .sect-orb[data-talisman] [role="dialog"] header > span:first-child::before,
+  .sect-orb[data-talisman] [role="dialog"] header > span:first-child::after,
+  .sect-orb[data-talisman] [role="dialog"] h4::after,
+  .sect-orb[data-talisman] [role="dialog"] button[class*="bg-[image:var(--grad)]"]:disabled::before {
+    animation: none;
+  }
 }
 
 /* ---- the map (experience/map-view.tsx) ------------------------------------------------------------ */
@@ -394,9 +1202,12 @@ body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   color: var(--sect-gold);
 }
 
+/* Beside the eyebrow (phones, medium screens): no taller than the eyebrow's line, so the map keeps its room. */
 .sect-map-zh {
   margin-left: 0.25rem;
-  letter-spacing: 0.16em;
+  font-size: 0.95rem;
+  line-height: 0;
+  letter-spacing: 0.1em;
 }
 
 .sect-map-title {
@@ -686,7 +1497,9 @@ body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   margin: 0 0.5rem;
   border-radius: 3px;
   padding: 0.6rem 0.6rem 1rem;
-  background: var(--sect-panel-strong);
+  background:
+    url("./assets/paper.webp") 0 0 / 256px 256px local,
+    rgba(15, 11, 21, 0.84);
 }
 
 .sect-map[data-pane="map"] .sect-map-aside,
@@ -828,9 +1641,9 @@ body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   .sect-map-zh {
     display: block;
     margin: 0.7rem 0 0.15rem;
-    font-size: 2.6rem;
+    font-size: 2.9rem;
     line-height: 1;
-    letter-spacing: 0.22em;
+    letter-spacing: 0.1em;
     color: var(--sect-paper);
   }
   .sect-map-title {
@@ -861,10 +1674,13 @@ body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   }
 }
 
-.sect-map-card {
+.sect-map-card.sect-panel {
   position: relative;
   border-radius: 3px;
   padding: 1.1rem 1.15rem 1.15rem;
+  background:
+    url("./assets/paper.webp") 0 0 / 256px 256px,
+    rgba(15, 11, 21, 0.84);
 }
 
 /* The card's seal: the map's medallion, larger (gold when the visitor is there). */
@@ -944,16 +1760,24 @@ body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   text-align: center;
   opacity: 0;
   transform: translateY(6px);
+  filter: blur(3px);
   transition:
     opacity 0.35s ease-out,
-    transform 0.6s ease-out;
+    transform 0.6s ease-out,
+    filter 0.45s ease-out;
   pointer-events: none;
 }
 
 .sect-travel[data-phase="hold"] .sect-travel-card {
   opacity: 1;
   transform: none;
+  filter: none;
 }
+
+.sect-travel-card .sect-brushstroke {
+  width: 5.5rem;
+}
+
 
 .sect-travel[data-phase="reveal"] .sect-travel-card {
   opacity: 0;
@@ -983,5 +1807,8 @@ body[data-sect-travel] .sect-orb > div:not([role="dialog"]) {
   .sect-map-seal-face,
   .sect-travel-card {
     transition: none;
+  }
+  .sect-travel-card {
+    filter: none;
   }
 }

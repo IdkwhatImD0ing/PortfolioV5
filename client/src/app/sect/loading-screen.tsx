@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { PORTFOLIO } from "@/lib/portfolio-data";
 import { pageViewHref } from "@/lib/sect/content-start";
 import { POSTER, posterBox } from "@/lib/sect/opening";
+import { BrushName, SealStamp } from "./ornaments";
 import { QualityPicker, QualityPickerSpace, type QualityPickerProps } from "./quality-picker";
 
 /** After this long without the scene, the page-view offer is promoted ("Slow connection?"). */
@@ -52,11 +53,18 @@ function SunMoonEmblem({ className }: { className?: string }) {
  * here ("reserve" keeps its place empty until then), and above the buttons when the scene failed:
  * a phone that picked High and lost its graphics context gets back with Low and Reload.
  *
+ * Under the picker, "Turn on sound, for the best experience" (experience/sound-toggle.tsx
+ * SoundPrompt): the music starts muted, and browsers allow sound only after a press, so the screen
+ * the visitor waits on offers it. Its place is kept too ("reserve"), and stays empty without music.
+ *
  * The flight's veil can show the poster still of the opening view behind it (Poster), while <html>
  * has POSTER_ATTR; the veil's fade when the scene is ready is then a crossfade to the same view.
  *
  * Its way back to the main site is a plain link: a full page load frees the scene's memory, its
  * decoder workers and its audio (a client-side route change would keep them alive).
+ *
+ * Dressed as a Wukong loading screen: 明教 in the brush hand on a pool of ink wash with the sect's
+ * seal, and the progress drawn as a brush stroke filling with gold (ornaments.tsx, sect.css).
  */
 export function LoadingScreen({
   progress,
@@ -67,6 +75,7 @@ export function LoadingScreen({
   onReload,
   onReadAsPage,
   quality,
+  sound,
   poster = false,
 }: {
   progress: number;
@@ -80,6 +89,8 @@ export function LoadingScreen({
   onReadAsPage?: () => void;
   /** The graphics picker, or "reserve" for its empty place (it is coming); none without either. */
   quality?: QualityPickerProps | "reserve";
+  /** The sound prompt, or "reserve" for its empty place; none without either. */
+  sound?: ReactNode | "reserve";
   /** The flight's veil: the poster still shows behind it while <html> has POSTER_ATTR. */
   poster?: boolean;
 }) {
@@ -115,11 +126,9 @@ export function LoadingScreen({
       {poster && <Poster />}
       {/* The emblem sits above the name; short screens (a phone on its side) drop it so the column still fits. */}
       <SunMoonEmblem className="mt-auto mb-5 h-[clamp(2.75rem,7vw,3.75rem)] w-[clamp(2.75rem,7vw,3.75rem)] shrink-0 [@media(max-height:30rem)]:hidden" />
-      <p
-        className="sect-zh pl-[0.2em] text-[clamp(3.25rem,10vw,6rem)] leading-none tracking-[0.2em] text-[var(--sect-paper)] [@media(max-height:30rem)]:mt-auto [@media(max-height:30rem)]:text-[3rem]"
-        lang="zh"
-      >
-        明教
+      <p className="sect-sealed sect-ink text-[clamp(3.6rem,11vw,6.6rem)] leading-none text-[var(--sect-paper)] [@media(max-height:30rem)]:mt-auto [@media(max-height:30rem)]:text-[3.2rem]">
+        <BrushName text="明教" />
+        <SealStamp />
       </p>
       <p className="mt-4 text-[0.75rem] uppercase tracking-[0.42em] text-[var(--sect-gold)]">The Ming Sect</p>
       <p className="mt-5 max-w-md text-[0.9375rem] leading-relaxed text-[var(--sect-paper-soft)]">
@@ -167,21 +176,19 @@ export function LoadingScreen({
           <p className="sr-only" role="status" aria-live="polite">
             {phaseLabel}
           </p>
-          <div
-            className="h-px w-full bg-[var(--sect-gold-soft)]"
-            role="progressbar"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={pct}
-            aria-label="Loading progress"
-          >
-            <div className="h-px bg-[var(--sect-gold)] transition-[width] duration-300" style={{ width: `${pct}%` }} />
+          <div className="sect-brushbar w-full" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label="Loading progress">
+            <div className="sect-brushbar-fill transition-[width] duration-300" style={{ width: `${pct}%` }} />
           </div>
           <div aria-hidden className="mt-3 flex w-full justify-between font-mono text-[0.68rem] tracking-[0.18em] text-[var(--sect-paper-soft)]">
             <span>{label}</span>
             <span>{pct}%</span>
           </div>
           {picker}
+          {sound !== undefined && (
+            <div data-sect-sound-place className="mt-1 flex h-12 w-full items-center justify-center [@media(max-height:30rem)]:mt-0">
+              {sound === "reserve" ? null : sound}
+            </div>
+          )}
           <div className="mt-3 flex flex-col items-center gap-2">
             {/* Its line is always kept (hidden until slow), so the centred column and the picker above
                 don't jump up 15 px under a finger when it shows. */}

@@ -3,6 +3,7 @@
 /**
  * Every area's content as one themed, scrollable page, with a top navigation of the 11 areas. Shown
  * when WebGL is unavailable, as /sect?view=page, and as the "Read as page" mode over the flight.
+ * Dressed as the reader is: rice paper, brush-stroke dividers, the places' names in the brush hand.
  */
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -16,9 +17,9 @@ import {
   sectionDomId,
   type ContentTarget,
 } from "@/lib/sect/content";
+import { BrushName, SealedName, SealStamp } from "../ornaments";
 import { flightFocusFallback, focusIsKept, reducedMotion, trapTab, useModalLifecycle } from "./modal";
 import { AreaBody } from "./sections";
-import { Zh } from "./ui";
 
 export interface ContentFallbackProps {
   /** Start a voice call with the portfolio's AI, when the page supports it. */
@@ -174,7 +175,8 @@ export function ContentFallback({ onTalk, onExit, initial, onHighlight, note }: 
     >
       <Top className="sc-page-top">
         <div className="sc-page-brand">
-          <Zh className="sc-page-seal">明教</Zh>
+          <BrushName text="明教" className="sc-page-seal" />
+          <SealStamp />
           <span className="sc-page-brandname">The Ming Sect</span>
           {onExit ? (
             <button type="button" className="sc-btn sc-btn-gold sc-page-exit" onClick={onExit}>
@@ -226,7 +228,7 @@ export function ContentFallback({ onTalk, onExit, initial, onHighlight, note }: 
           >
             <header className="sc-page-section-head">
               <p className="sc-place">
-                <span>{a.label}</span> <Zh>{a.zh}</Zh>
+                <span>{a.label}</span> <SealedName text={a.zh} />
               </p>
               <h2 id={`sc-page-title-${a.id}`} tabIndex={-1} className="sc-h2">
                 {SECTION_NAMES[a.id]}

@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { Tier } from "@/lib/sect/runtime";
 import type { MusicEngine } from "./experience/music-engine";
 import { QualityButton } from "./experience/overlay";
-import { SoundToggle } from "./experience/sound-toggle";
+import { SoundCall, SoundPrompt, SoundToggle } from "./experience/sound-toggle";
 import { LoadingScreen } from "./loading-screen";
 import { QUALITY_HINT, QualityPicker, QualityPickerSpace } from "./quality-picker";
 
@@ -152,13 +152,56 @@ describe("SoundToggle's place", () => {
   const extra = <button type="button" data-extra />;
 
   it("shows the extra control once the loading screen is gone, even without sound", () => {
-    const html = renderToStaticMarkup(<SoundToggle engine={engine} raised={false} extra={extra} />);
+    const html = renderToStaticMarkup(<SoundToggle engine={engine} loading={false} extra={extra} />);
     expect(html).toContain("data-extra");
     expect(html).not.toContain("data-sect-sound");
   });
 
-  it("hides it while the loading screen is up (it has its own picker)", () => {
-    expect(renderToStaticMarkup(<SoundToggle engine={engine} raised extra={extra} />)).toBe("");
-    expect(renderToStaticMarkup(<SoundToggle engine={engine} raised={false} />)).toBe("");
+  it("is away while the loading screen is up (it has its own picker and sound prompt)", () => {
+    expect(renderToStaticMarkup(<SoundToggle engine={engine} loading extra={extra} />)).toBe("");
+    expect(renderToStaticMarkup(<SoundToggle engine={engine} loading={false} />)).toBe("");
+  });
+});
+
+describe("the loading screen's sound prompt", () => {
+  const engine = { subscribe: () => () => {}, snapshot: () => ({ available: false, on: false, muted: false }), toggle: () => {} } as unknown as MusicEngine;
+  const screen = (extra: Partial<Parameters<typeof LoadingScreen>[0]>) =>
+    renderToStaticMarkup(<LoadingScreen progress={0.4} label="Loading the sect" {...extra} />);
+
+  it("is one real button that says what it does, and why", () => {
+    const off = renderToStaticMarkup(<SoundCall on={false} onToggle={() => {}} />);
+    expect(off).toMatch(/^<button type="button" data-sect-sound="true" aria-label="Turn on sound, for the best experience"/);
+    expect(textOf(off)).toBe("Turn on sound For the best experience");
+    const on = renderToStaticMarkup(<SoundCall on onToggle={() => {}} />);
+    expect(on).toContain('aria-label="Sound on, tap again to mute"');
+    expect(on).toContain('data-on="true"');
+    expect(textOf(on)).toBe("Sound on Tap again to mute");
+    for (const html of [off, on]) {
+      // The visible words are in its name (WCAG 2.5.3), and the icon is not read out.
+      const name = /aria-label="([^"]+)"/.exec(html)![1].toLowerCase();
+      const [line, note] = [...html.matchAll(/<span class="[^"]*">([^<]+)<\/span>/g)].map((m) => m[1].toLowerCase());
+      expect(name).toBe(`${line}, ${note}`);
+      expect(html).toMatch(/<span aria-hidden="true" class="sect-soundcall-seal"><svg/);
+    }
+  });
+
+  it("shows nothing until the music is there (no Web Audio, no track list)", () => {
+    expect(renderToStaticMarkup(<SoundPrompt engine={engine} />)).toBe("");
+  });
+
+  it("has its own place under the graphics picker, kept before it shows, and none on the error screen", () => {
+    const quality = { tier: "mid" as Tier, recommended: "mid" as Tier, onPick: () => {} };
+    const html = screen({ quality, sound: <SoundCall on={false} onToggle={() => {}} /> });
+    expect(html.indexOf("<fieldset")).toBeLessThan(html.indexOf("data-sect-sound-place"));
+    expect(html.indexOf("data-sect-sound-place")).toBeLessThan(html.indexOf("Read as page"));
+    expect(html).toContain("Turn on sound");
+    const reserved = screen({ quality: "reserve", sound: "reserve" });
+    expect(reserved).toContain("data-sect-sound-place");
+    expect(reserved).not.toContain("data-sect-sound=");
+    // The kept place and the prompt's are the same box, so nothing moves when it arrives.
+    const box = (h: string) => /<div data-sect-sound-place="true" class="([^"]+)"/.exec(h)![1];
+    expect(box(reserved)).toBe(box(html));
+    expect(screen({})).not.toContain("data-sect-sound-place");
+    expect(screen({ sound: "reserve", error: "The scene failed to load." })).not.toContain("data-sect-sound-place");
   });
 });

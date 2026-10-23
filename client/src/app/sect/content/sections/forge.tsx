@@ -19,7 +19,9 @@ import {
   projectMedia,
   thingLore,
 } from "@/lib/sect/content";
+import { withJsApi } from "@/lib/sect/youtube";
 import { ExtLink, highlightProps, type BodyProps } from "../ui";
+import { useVideoWatch } from "../video-watch";
 
 /** "project:dispatchai" -> "dispatchai" (resolved through aliases), or the raw id for archived ones. */
 function projectIdOf(item: string | null): string | null {
@@ -291,17 +293,7 @@ function ProjectCard({
 function DemoMedia({ project: p }: { project: Project }) {
   const { embed, image } = projectMedia(p);
   const [play, setPlay] = useState(false);
-  if (embed && play) {
-    return (
-      <iframe
-        src={`${embed}&autoplay=1`}
-        title={`${p.name} demo video`}
-        allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
-        allowFullScreen
-        className="sc-media-frame"
-      />
-    );
-  }
+  if (embed && play) return <DemoVideo src={`${embed}&autoplay=1`} title={`${p.name} demo video`} />;
   if (embed) {
     // The player loads only when asked: the 3D scene is already using the GPU.
     return (
@@ -326,6 +318,26 @@ function DemoMedia({ project: p }: { project: Project }) {
       <span className="sc-media-id">/{p.id}</span>
       <span className="sc-note">{PROJECTS_HEAD.noMedia}</span>
     </div>
+  );
+}
+
+/**
+ * The YouTube player. It reports its state to the page (enablejsapi, this origin), so the sect's music
+ * steps aside while it plays (../video-watch.ts).
+ */
+function DemoVideo({ src, title }: { src: string; title: string }) {
+  const ref = useRef<HTMLIFrameElement>(null);
+  const [url] = useState(() => withJsApi(src, typeof window === "undefined" ? null : window.location.origin));
+  useVideoWatch(ref);
+  return (
+    <iframe
+      ref={ref}
+      src={url}
+      title={title}
+      allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+      allowFullScreen
+      className="sc-media-frame"
+    />
   );
 }
 

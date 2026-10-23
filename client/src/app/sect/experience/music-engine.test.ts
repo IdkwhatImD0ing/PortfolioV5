@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DUCKED_GAIN, MASTER_GAIN, parseMusicManifest, type MusicKey } from "@/lib/sect/music";
+import { MASTER_GAIN, VOICE_DUCK, parseMusicManifest, type MusicKey } from "@/lib/sect/music";
 import { MusicEngine } from "./music-engine";
 
 // --- a small fake of the Web Audio API ------------------------------------------------------------------
@@ -243,14 +243,60 @@ describe("MusicEngine", () => {
     expect(mirror).toMatchObject({ key: "mirror", fadingTo: 0 });
   });
 
-  it("ducks under a voice call and comes back", async () => {
+  it("ducks under a voice call, lower while the agent speaks, and comes back", async () => {
     const r = rig();
     r.engine.setManifest(MANIFEST);
     plan(r.engine, "gate");
     r.engine.gesture();
-    r.engine.setDucked(true);
-    expect(r.ctx!.master.gain.aim).toBe(DUCKED_GAIN);
-    r.engine.setDucked(false);
+    r.engine.setVoice("call");
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN * VOICE_DUCK.call);
+    r.engine.setVoice("speaking");
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN * VOICE_DUCK.speaking);
+    r.engine.setVoice("call");
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN * VOICE_DUCK.call);
+    r.engine.setVoice("none");
+    expect(r.ctx!.master.gain.aim).toBe(MASTER_GAIN);
+    // A duck never suspends anything: the call is short, and the music carries on under it.
+    expect(r.ctx!.state).toBe("running");
+  });
+
+  it("steps aside while a video plays: fades out, rests, and picks up where it was", async () => {
+    const r = rig();
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "gate");
+    r.engine.gesture();
+    await settle();
+    expect(r.ctx!.playing("gate")).toHaveLength(1);
+    r.ctx!.currentTime = 40;
+    r.engine.setVideo(true);
+    expect(r.ctx!.master.gain.aim).toBe(0);
+    expect(r.engine.state().video).toBe(true);
+    // A short pause does not stop the track; a long video lets the context rest.
+    vi.advanceTimersByTime(1600);
+    expect(r.ctx!.state).toBe("suspended");
+    expect(r.ctx!.playing("gate")).toHaveLength(0);
+    r.ctx!.currentTime = 41;
+    r.engine.setVideo(false);
+    expect(r.ctx!.state).toBe("running");
+    expect(r.ctx!.master.gain.aim).toBe(MASTER_GAIN);
+    const again = r.ctx!.playing("gate");
+    expect(again).toHaveLength(1);
+    // From where it stopped (40 s in), not from the top.
+    expect(again[0].started![1]).toBeCloseTo(40, 3);
+  });
+
+  it("stays silent under a video even when sound is turned on or the call ends", async () => {
+    const r = rig();
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "gate");
+    r.engine.setVideo(true);
+    r.engine.toggle();
+    expect(r.engine.snapshot().on).toBe(true);
+    expect(r.ctx!.master.gain.aim).toBe(0);
+    r.engine.setVoice("speaking");
+    r.engine.setVoice("none");
+    expect(r.ctx!.master.gain.aim).toBe(0);
+    r.engine.setVideo(false);
     expect(r.ctx!.master.gain.aim).toBe(MASTER_GAIN);
   });
 

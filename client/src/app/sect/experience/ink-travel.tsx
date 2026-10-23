@@ -9,6 +9,10 @@
  * line that fills as the pieces come. Then the ink clears from the middle of the screen onto the
  * finished place. With reduced motion a plain fade stands in for the ink (the same wait).
  *
+ * The card is a loading screen of Wukong's kind: the place's name in the brush hand, settling out of
+ * a blur as ink into paper (sect.css), the sect's seal pressed after it, a brush stroke under it,
+ * and while it waits an ink ring and a brush-stroke line (ornaments.tsx).
+ *
  * Drawn on one 2D canvas at half the screen's resolution (soft edges suit ink, and it is cheap), and
  * only while a travel is under way: nothing of it exists otherwise. While it is up it takes the
  * wheel, touches and the flight's keys, so nothing moves the camera from under it.
@@ -17,6 +21,7 @@ import { useEffect, useRef, useState } from "react";
 import { areaInfo, type AreaId } from "@/lib/sect/areas";
 import { SECTION_NAMES } from "@/lib/sect/content";
 import { BLOT_HALO, blotOutline, easeInOutCubic, dropGrowth, inkDrops, seededRandom, seedOf, travelTiming, type InkDrop } from "@/lib/sect/travel";
+import { BrushName, InkRing, SealStamp } from "../ornaments";
 import { Emblem } from "./map-emblems";
 
 export interface TravelRequest {
@@ -267,20 +272,21 @@ export function InkTravel({
       <canvas ref={canvasRef} aria-hidden className="absolute inset-0 h-full w-full" />
       <div aria-hidden className="sect-travel-card">
         <Emblem id={request.area} className="mb-5 h-12 w-12 text-[var(--sect-gold)] opacity-90" />
-        <p lang="zh" className="sect-zh sect-text-shadow pl-[0.3em] text-[clamp(2.4rem,9vw,4.6rem)] leading-none tracking-[0.3em] text-[var(--sect-paper)]">
-          {info.zh}
+        <p className="sect-sealed sect-text-shadow text-[clamp(2.9rem,10.5vw,5.4rem)] leading-none text-[var(--sect-paper)]">
+          <BrushName text={info.zh} />
+          <SealStamp />
         </p>
-        <span className="mt-5 block h-px w-16 bg-[var(--sect-gold)] opacity-70" />
+        <span aria-hidden className="sect-brushstroke mt-5" />
         <p className="mt-4 text-[0.75rem] uppercase tracking-[0.34em] text-[var(--sect-gold)]">{info.label}</p>
         <p className="mt-1.5 text-[0.8125rem] text-[var(--sect-paper-soft)]">{SECTION_NAMES[request.area]}</p>
         <span className={`mt-6 flex flex-col items-center transition-opacity duration-300 ${waiting ? "opacity-100" : "opacity-0"}`}>
           <span className="flex items-center gap-3">
-            <span className="sect-gather block h-3 w-3 rotate-45 border border-[var(--sect-gold)]" />
+            <InkRing className="text-[0.95rem]" />
             <span className="text-[0.68rem] uppercase tracking-[0.26em] text-[var(--sect-paper-soft)]">Loading</span>
           </span>
-          {/* A thin brush line, as the loading screen's: how far the place has come. */}
-          <span className="mt-3 block h-px w-28 bg-[var(--sect-gold-soft)]">
-            <span className="block h-px origin-left bg-[var(--sect-gold)]" style={{ transform: `scaleX(${pct / 100})` }} />
+          {/* A brush-stroke line, as the loading screen's: how far the place has come. */}
+          <span className="sect-brushbar mt-3 block w-28">
+            <span className="sect-brushbar-fill block origin-left" style={{ transform: `scaleX(${pct / 100})` }} />
           </span>
         </span>
       </div>

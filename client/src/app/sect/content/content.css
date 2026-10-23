@@ -2,6 +2,9 @@
  * /sect content layer: summary panels, the reader sheet and the one-page view.
  * Same palette as sect.css (lacquer ink, gold leaf, rice paper, jade), with fallbacks so the
  * components also look right outside .sect-root. Text colours keep at least 4.5:1 on the sheet.
+ * The Chinese dress is sect.css's (brush names, seals, cloud corners, brush strokes); the large
+ * surfaces here lay its faint rice paper (../assets/paper.webp) over their ink, on a base a shade
+ * darker than before so the text keeps its contrast.
  */
 .sc-theme {
   --sc-ink: var(--sect-ink, #0e0c14);
@@ -83,6 +86,18 @@
   font-size: 0.95rem;
   text-transform: none;
   color: var(--sc-paper-soft);
+}
+
+/* The place's name in the brush hand (ornaments.tsx BrushName), the sect's seal pressed after it. */
+.sc-place .sect-brushname {
+  font-size: 1.3rem;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  color: var(--sc-paper);
+}
+
+.sc-place .sect-seal {
+  font-size: 1.05rem;
 }
 
 .sc-h1,
@@ -266,11 +281,11 @@
 }
 
 .sc-block {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
   padding-top: 1.25rem;
-  border-top: 1px solid var(--sc-line);
 }
 
 .sc-list {
@@ -861,12 +876,12 @@ img.sc-cover {
 }
 
 .sc-pager {
+  position: relative;
   display: flex;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 0.6rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--sc-line);
 }
 
 /* ---- hackathons (arena) ------------------------------------------------------------------------ */
@@ -1304,7 +1319,9 @@ img.sc-cover {
   max-width: 24rem;
   padding: 1.25rem 1.4rem 1.3rem;
   border-radius: 3px;
-  background: rgba(16, 12, 22, 0.86);
+  background:
+    url("../assets/paper.webp") 0 0 / 256px 256px,
+    rgba(13, 10, 19, 0.895);
 }
 
 .sc-panel-title {
@@ -1313,11 +1330,14 @@ img.sc-cover {
   line-height: 1.02;
 }
 
+/* Under the title: the gold brush stroke (sect.css .sect-brushstroke). */
 .sc-rule {
-  width: 3rem;
-  height: 1px;
-  margin-top: 0.8rem;
-  background: var(--sc-gold);
+  margin-top: 0.85rem;
+}
+
+/* The upright name and seal (wider screens only; a phone writes the name beside the eyebrow). */
+.sc-panel-mark {
+  display: none;
 }
 
 .sc-panel-line {
@@ -1341,6 +1361,52 @@ body[data-sect-modal] .sect-panel.sc-panel {
 }
 
 @media (min-width: 768px) {
+  .sect-panel.sc-panel {
+    display: flex;
+    gap: 1.15rem;
+    max-width: 27rem;
+    padding-left: 1.15rem;
+  }
+
+  .sc-panel-mark {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.7rem;
+    padding-top: 0.15rem;
+  }
+
+  .sc-panel-mark .sect-brushname {
+    font-size: 1.85rem;
+    line-height: 1.05;
+    color: var(--sc-paper);
+  }
+
+  .sc-panel-mark .sect-seal {
+    width: 1.3rem;
+    height: 1.3rem;
+  }
+
+  .sc-panel-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* The column says it; the eyebrow's copy stays for screen readers. */
+  .sc-panel .sc-place .sect-brushname {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .sc-panel .sc-place .sect-seal {
+    display: none;
+  }
+
   .sect-panel.sc-panel.sc-panel-left {
     left: max(2rem, 4vw);
     right: auto;
@@ -1376,18 +1442,20 @@ body[data-sect-modal] .sect-panel.sc-panel {
   width: min(62rem, 100%);
   max-height: 100%;
   border-radius: 3px;
-  background: var(--sc-sheet);
+  background:
+    url("../assets/paper.webp") 0 0 / 256px 256px,
+    rgba(9, 7, 14, 0.97);
   outline: none;
   animation: sc-rise 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .sc-sheet-head {
+  position: relative;
   flex: none;
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
   padding: 1.1rem 1.25rem 1rem 1.6rem;
-  border-bottom: 1px solid var(--sc-gold-soft);
 }
 
 .sc-sheet-titles {
@@ -1431,12 +1499,70 @@ body[data-sect-modal] .sect-panel.sc-panel {
 }
 
 .sc-sheet-foot {
+  position: relative;
   flex: none;
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.6rem 0.9rem;
-  border-top: 1px solid var(--sc-gold-soft);
+}
+
+/*
+ * The structural dividers (under the sheet's head, over its foot, between the page view's sections,
+ * over a block or a pager) are long dry brush strokes (sect.css --sect-brush-rule), thin at both
+ * ends; the fine rules inside lists and tables stay straight, for scanning.
+ */
+.sc-sheet-head::after,
+.sc-sheet-foot::before,
+.sc-page-top::after,
+.sc-page-section::before,
+.sc-page-end::before,
+.sc-block::before,
+.sc-pager::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--sc-gold-soft);
+  -webkit-mask: var(--sect-brush-rule, linear-gradient(transparent 1.5px, #000 1.5px 2.5px, transparent 2.5px)) center / 100% 100% no-repeat;
+  mask: var(--sect-brush-rule, linear-gradient(transparent 1.5px, #000 1.5px 2.5px, transparent 2.5px)) center / 100% 100% no-repeat;
+  pointer-events: none;
+}
+
+.sc-sheet-head::after,
+.sc-page-top::after {
+  bottom: -2px;
+}
+
+.sc-sheet-foot::before,
+.sc-page-section::before,
+.sc-page-end::before,
+.sc-block::before,
+.sc-pager::before {
+  top: -2px;
+}
+
+.sc-block::before,
+.sc-pager::before {
+  background: rgba(233, 199, 126, 0.26);
+}
+
+/*
+ * Forced colours (Windows high contrast): a mask's background is painted out like any other, so the
+ * brush dividers draw in the text colour, as the borders they replaced did.
+ */
+@media (forced-colors: active) {
+  .sc-sheet-head::after,
+  .sc-sheet-foot::before,
+  .sc-page-top::after,
+  .sc-page-section::before,
+  .sc-page-end::before,
+  .sc-block::before,
+  .sc-pager::before {
+    forced-color-adjust: none;
+    background: CanvasText;
+  }
 }
 
 .sc-navbtn {
@@ -1518,12 +1644,23 @@ body[data-sect-modal] .sect-panel.sc-panel {
   overflow-y: auto;
   overscroll-behavior: contain;
   background:
+    url("../assets/paper.webp") 0 0 / 256px 256px local,
     radial-gradient(70% 40% at 50% 0%, rgba(233, 199, 126, 0.1), transparent 70%),
-    linear-gradient(180deg, #1b1826 0%, #0e0c14 32rem);
-  background-color: #0e0c14;
+    linear-gradient(180deg, #15121b 0%, #08060e 32rem);
+  background-color: #08060e;
   outline: none;
   scrollbar-width: thin;
   scrollbar-color: var(--sc-gold-soft) transparent;
+}
+
+/*
+ * Forced colours: the paper's url() keeps the gradients beside it in, so the page would stay dark
+ * under the system's text. Dropped, the page is the system's plain sheet, as it was before the paper.
+ */
+@media (forced-colors: active) {
+  .sc-page {
+    background-image: none;
+  }
 }
 
 .sc-page-top {
@@ -1534,7 +1671,6 @@ body[data-sect-modal] .sect-panel.sc-panel {
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.75rem clamp(1rem, 4vw, 2.5rem) 0.6rem;
-  border-bottom: 1px solid var(--sc-gold-soft);
   background: rgba(14, 12, 20, 0.94);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1551,10 +1687,16 @@ body[data-sect-modal] .sect-panel.sc-panel {
 }
 
 .sc-page-seal {
-  font-size: 1.15rem;
+  font-size: 1.45rem;
+  line-height: 1;
   color: var(--sc-paper);
-  text-transform: none;
   white-space: nowrap;
+}
+
+.sc-page-brand .sect-seal {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: -0.45rem;
 }
 
 .sc-page-brandname {
@@ -1649,11 +1791,11 @@ body[data-sect-modal] .sect-panel.sc-panel {
 }
 
 .sc-page-section {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   padding: 2.5rem 0;
-  border-top: 1px solid var(--sc-gold-soft);
   scroll-margin-top: 7.5rem;
 }
 
@@ -1688,9 +1830,9 @@ body[data-sect-modal] .sect-panel.sc-panel {
 }
 
 .sc-page-end {
+  position: relative;
   margin: 0;
   padding-top: 2rem;
-  border-top: 1px solid var(--sc-gold-soft);
 }
 
 /* ---- item views (a clicked tablet, banner, floor, row, pillar, fact or spot) --------------------- */

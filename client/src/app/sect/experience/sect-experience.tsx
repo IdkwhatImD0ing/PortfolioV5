@@ -120,6 +120,7 @@ import { LoreCard, useLoreCard } from "./lore-card";
 import type { MapViewProps } from "./map-view";
 import { installFog } from "./materials";
 import { SectMusic } from "./music";
+import type { MusicEngine } from "./music-engine";
 import {
   CompactRail,
   DebugHud,
@@ -141,6 +142,7 @@ import {
 } from "./overlay";
 import { disposeObjects } from "./prepare";
 import SectCanvas, { MOON_HOTSPOT } from "./scene";
+import { SoundPrompt } from "./sound-toggle";
 import { cameraStill, createStore, isMoving, recenterView, wake, type SectStore } from "./store";
 import { ChunkStreamer, streamBudget } from "./streaming";
 import { SectVoice, startTalk, useVoiceRouting } from "./voice";
@@ -340,6 +342,8 @@ export default function SectExperience() {
   const [openingTimedOut, setOpeningTimedOut] = useState(false);
   const [track, setTrack] = useState<TrackViewport>(() => ({ width: window.innerWidth, height: window.innerHeight }));
   const [veil, setVeil] = useState(true);
+  /** The music (SectMusic hands it out), for the loading screen's "Turn on sound". */
+  const [music, setMusic] = useState<MusicEngine | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [mapOpen, setMapOpen] = useState(false);
   /** Fast travel under way (ink-travel.tsx), or null. */
@@ -2006,6 +2010,7 @@ export default function SectExperience() {
           onReload={error ? reloadAfterError : undefined}
           onReadAsPage={readAsPage}
           quality={picker ? { ...picker, autoFocus: refocusPicker } : undefined}
+          sound={music ? <SoundPrompt engine={music} /> : "reserve"}
           poster
         />
       )}
@@ -2030,6 +2035,7 @@ export default function SectExperience() {
           away={fallback !== null || phase === "error"}
           debug={params.debug}
           extra={showUi && picker ? <QualityButton {...picker} /> : undefined}
+          onEngine={setMusic}
         />
       )}
     </>
