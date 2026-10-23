@@ -1,77 +1,182 @@
 <!--
-  art3m1s.me — Voice-driven AI Portfolio
+  art3m1s.me · 明教 The Ming Sect
+  A voice-driven AI portfolio, and a fly-through of a floating xianxia sect.
   Author: Bill Zhang (@IdkwhatImD0ing)
 -->
 
 <a id="top"></a>
 
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,20,24&height=220&section=header&text=art3m1s.me&fontSize=72&fontAlignY=38&desc=A%20voice-driven%20AI%20portfolio%20you%20can%20talk%20to&descAlignY=58&descAlign=50&fontColor=ffffff&animation=fadeIn" alt="header"/>
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0e0c14,55:2c2233,100:c98a4b&height=230&section=header&text=%E6%98%8E%E6%95%99%20%C2%B7%20The%20Ming%20Sect&fontSize=58&fontColor=e9c77e&fontAlignY=36&desc=art3m1s.me%20%C2%B7%20a%20portfolio%20you%20can%20talk%20to%2C%20and%20fly%20through&descSize=20&descAlignY=58&animation=fadeIn" alt="明教 · The Ming Sect · art3m1s.me"/>
 </p>
 
 <p align="center">
   <a href="https://art3m1s.me">
-    <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=600&size=22&pause=1000&color=7C3AED&center=true&vCenter=true&width=720&lines=Hi%2C+I'm+Bill+%E2%80%94+AI+Engineer+at+Pinterest;This+portfolio+is+a+real-time+voice+agent;Click+%E2%80%9CStart+Voice%E2%80%9D+%E2%80%94+then+just+talk;Powered+by+Retell+%2B+OpenAI+%2B+Pinecone" alt="typing"/>
+    <img src="https://readme-typing-svg.demolab.com?font=Noto+Serif+SC&weight=600&size=22&pause=1200&color=E9C77E&center=true&vCenter=true&width=760&lines=Hi%2C+I'm+Bill.+Software+engineer+at+Pinterest.;Talk+to+my+portfolio%2C+or+fly+through+it.;%E6%98%8E+%3D+%E6%97%A5+sun+%2B+%E6%9C%88+moon;Built+in+Blender%2C+baked+on+cloud+GPUs%2C+drawn+in+three.js." alt="Hi, I'm Bill. Talk to my portfolio, or fly through it."/>
   </a>
 </p>
 
 <p align="center">
-  <a href="https://art3m1s.me"><img src="https://img.shields.io/badge/Live-art3m1s.me-7C3AED?style=for-the-badge&logo=vercel&logoColor=white" alt="live"/></a>
-  <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/actions"><img src="https://img.shields.io/badge/CI-passing-22C55E?style=for-the-badge&logo=githubactions&logoColor=white" alt="ci"/></a>
-  <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/stargazers"><img src="https://img.shields.io/github/stars/IdkwhatImD0ing/PortfolioV5?style=for-the-badge&logo=github&color=FFD700&logoColor=white" alt="stars"/></a>
-  <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-3B82F6?style=for-the-badge&logo=opensourceinitiative&logoColor=white" alt="license"/></a>
-  <img src="https://komarev.com/ghpvc/?username=IdkwhatImD0ing&style=for-the-badge&color=14B8A6&label=PROFILE+VIEWS" alt="views"/>
+  <a href="https://art3m1s.me"><img src="https://img.shields.io/badge/Live-art3m1s.me-e9c77e?style=for-the-badge&labelColor=0e0c14&logo=vercel&logoColor=e9c77e" alt="live site"/></a>
+  <a href="#入门--quickstart"><img src="https://img.shields.io/badge/%E6%98%8E%E6%95%99%20%2Fsect-run%20it%20locally-2c2233?style=for-the-badge&labelColor=0e0c14" alt="/sect: run it locally"/></a>
+  <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/IdkwhatImD0ing/PortfolioV5/test.yml?branch=main&style=for-the-badge&label=tests&labelColor=0e0c14&logo=githubactions&logoColor=e9c77e" alt="tests"/></a>
+  <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/stargazers"><img src="https://img.shields.io/github/stars/IdkwhatImD0ing/PortfolioV5?style=for-the-badge&logo=github&color=e9c77e&labelColor=0e0c14&logoColor=e9c77e" alt="stars"/></a>
+  <img src="https://komarev.com/ghpvc/?username=IdkwhatImD0ing&style=for-the-badge&color=2c2233&label=PROFILE+VIEWS" alt="profile views"/>
 </p>
 
 <p align="center">
-  <a href="https://art3m1s.me"><img src="https://img.shields.io/badge/%F0%9F%8E%99%EF%B8%8F%20Try%20the%20voice%20agent%20%E2%86%92-0a0a0a?style=for-the-badge&labelColor=0a0a0a&color=7C3AED" alt="try-voice"/></a>
+  <img src=".github/readme/gate.jpg" alt="The Mountain Gate of the Ming Sect: a red and teal paifang with the 明教 plaque, the Heaven Sword and the Dragon Saber on either side, floating peaks and a giant moon behind" width="100%"/>
+  <br/>
+  <sub>山门 The Mountain Gate, the first stop. A live frame from the browser, not an offline render.</sub>
 </p>
 
 ---
 
-## TL;DR
+## 山门 · What this is
 
-> **`art3m1s.me`** is a portfolio you don't *read* — you **talk to it**.
-> Click "Start Voice", and a Retell-powered agent listens, semantic-searches my projects in Pinecone, and **navigates the page for you in real time** while it answers.
+This repo is my portfolio, [art3m1s.me](https://art3m1s.me). There are two ways in.
 
-<table>
-<tr>
-<td>
+**1. Talk to it.** The main site is a one-page portfolio with a voice agent. Press the mic and ask a question. The agent searches my projects, answers out loud, and scrolls the page to what it's talking about.
 
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#7C3AED','primaryTextColor':'#fff','primaryBorderColor':'#7C3AED','lineColor':'#A78BFA','secondaryColor':'#1E1B4B','tertiaryColor':'#0a0a0a'}}}%%
-flowchart LR
-  U(["🗣️ You"]) -- "speech" --> R{{"Retell AI<br/>(WebRTC)"}}
-  R -- "transcript" --> WS(["FastAPI<br/>WebSocket"])
-  WS -- "stream" --> A[["OpenAI<br/>Agents SDK"]]
-  A <-- "tool: search_projects" --> P[("Pinecone<br/>vector DB")]
-  A -- "tool: navigate_to" --> N["Next.js client<br/>(metadata event)"]
-  A -- "tokens" --> WS --> R --> U
-  N -. "page swap" .-> U
-```
+**2. Fly through it.** The `/sect` route turns the same portfolio into a flight through a floating mountain sect. Scroll, and the camera climbs from the gate to the summit. Each of the 11 stops is one section of the portfolio. You can drag to look around, open the map, and fast-travel. The voice agent works here too, and it flies you to the stop it's talking about.
 
-</td>
-<td>
+The sect is 明教, **the Ming Sect**, from Jin Yong's novel *Heaven Sword and Dragon Saber*. I'm a big Jin Yong fan. The name also fits the site: 明 is 日 (sun) plus 月 (moon), and art3m1s is Artemis, goddess of the moon. So the moon leads, and sun-and-moon marks run through the whole sect.
 
-### What it does
-- 🎙️  **Talk** to my portfolio in natural language
-- 🧭  Agent **navigates the site** for you (`navigate_to` tool)
-- 🔎  **Semantic search** over every project (Pinecone)
-- 🛡️  Prompt-injection **guardrails** on the LLM tier
-- ⚡  **Streaming** end-to-end — voice in → voice out
-- 🌗  Dark-mode-first UI w/ Tailwind v4
-
-</td>
-</tr>
-</table>
+> **Status:** `/sect` is not public yet. It's coming to `art3m1s.me/sect`. For now, [run it locally](#入门--quickstart).
 
 ---
 
-## ✨ Tech Stack
+## 十一处 · The eleven stops
+
+The camera flies one path up a floating mountain range. It stops at each place below, in this order.
+
+| # | 中文 | Stop | Portfolio section | What you'll find |
+|:-:|:-:|---|---|---|
+| 1 | 山门 | Mountain Gate | Welcome | A five-bay gate with the 明教 plaque, guarded by the Heaven Sword and the Dragon Saber |
+| 2 | 心镜台 | Heart-Mirror Terrace | About | A giant bronze mirror above a still pond. On Medium and High quality, both show live reflections |
+| 3 | 炼器峰 | Artifact Forge Peak | Projects | A cauldron circled by 11 prize-winning projects, each forged into a magic artifact |
+| 4 | 论剑台 | Sword-Discussion Arena | Hackathons | A floating duelling ring lined with banners, with a black iron sword driven through it |
+| 5 | 任务殿 | Mission Hall | Experience | A wall of seven white-jade boards, one for each role |
+| 6 | 藏经阁 | Scripture Pavilion | Education | A seven-storey pagoda with one glowing floor per school and scrolls circling it |
+| 7 | 碑林 | Stele Forest | Skills | Rows of glowing stone tablets, one colour per skill area |
+| 8 | 玉简阁 | Jade Slip Pavilion | Resume | The resume, kept the way a sect keeps its records |
+| 9 | 护宗大阵 | Grand Sect-Protecting Formation | How this site works | Eight carved pillars with holy-fire braziers around a bronze armillary sphere. Each pillar explains one part of how the site works |
+| 10 | 洞府 | Cave Abode | Off the clock | A cliff home with a waterfall, a koi pool and a tea pavilion |
+| 11 | 望月台 | Moon-Gazing Terrace | Contact | The summit under a giant moon. Click the moon to talk to the AI |
+
+---
+
+## 画卷 · Gallery
+
+<table>
+  <tr>
+    <td width="50%"><img src=".github/readme/mirror.jpg" alt="Heart-Mirror Terrace: a round bronze mirror on a marble dais, reflected in a still pond beside a teal-roofed pavilion"/></td>
+    <td width="50%"><img src=".github/readme/arena.jpg" alt="Sword-Discussion Arena with its info panel open: Hackathons, 36 wins during college"/></td>
+  </tr>
+  <tr>
+    <td><sub>心镜台 Heart-Mirror Terrace. The still pond reflects the bronze mirror.</sub></td>
+    <td><sub>论剑台 Sword-Discussion Arena, with its panel open. "Open" shows all 36 wins.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src=".github/readme/library.jpg" alt="Scripture Pavilion: a red seven-storey pagoda with scrolls drifting around it and a half-ice floating island at top left"/></td>
+    <td width="50%"><img src=".github/readme/summit.jpg" alt="Moon-Gazing Terrace: a white-roofed round pavilion under a giant full moon, a dark condor on a rock to the left"/></td>
+  </tr>
+  <tr>
+    <td><sub>藏经阁 Scripture Pavilion. Scrolls circle the pagoda. The ice island at top left is Ice-Fire Island.</sub></td>
+    <td><sub>望月台 Moon-Gazing Terrace, the end of the flight. The Divine Condor waits on its rock.</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src=".github/readme/map.jpg" alt="明教全图, the map of the sect: an ink-wash painting on a hanging scroll, with a seal on each of the 11 stops joined by a dotted route" width="100%"/>
+  <br/>
+  <sub>明教全图, the map of the sect (press <kbd>M</kbd>). Pick a seal and the camera fast-travels there.</sub>
+</p>
+
+---
+
+## 炼器 · How it's built
+
+炼器 means "forging artifacts". Here is how the sect gets from code to your browser.
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#15101b','primaryTextColor':'#f5ecdc','primaryBorderColor':'#e9c77e','lineColor':'#e9c77e','secondaryColor':'#2c2233','tertiaryColor':'#0e0c14','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  A["Blender + Python<br/>every stop built by code"] --> B["Cycles light bake<br/>on rented cloud GPUs"]
+  B --> C["sect_pack.py<br/>glTF · meshopt · WebP · gzip"]
+  C --> D[("Per-stop chunks<br/>in Git LFS")]
+  D --> E["three.js in the browser<br/>streams chunks as you fly"]
+  E --> F["Live touches<br/>reflections · banners · water<br/>clouds · birds · qi motes"]
+```
+
+1. **Built by code.** The whole sect is Python scripts that run inside Blender: one module per stop, plus shared libraries for buildings, props, trees, rock and water. The build code is about 55,000 lines. A few CC0 photo textures and one CC BY model come from outside (see [Credits](#鸣谢--credits)).
+2. **Lit once, offline.** The lighting is baked in Cycles, Blender's path tracer, on a rented RTX 5090 in the cloud. A quick development bake takes about an hour and a half. The browser never computes this lighting. It just reads the result.
+3. **Packed small.** [`sect_pack.py`](./blender/xianxia-sect/tools/sect_pack.py) packs each stop into its own glTF files (meshopt geometry, WebP textures, gzip), then checks every file before installing it. There are 55 files, about 190 MB in all: a full set, plus a lighter set for phones. A visitor downloads only one set, a few stops at a time.
+4. **Drawn live.** The page uses three.js through React Three Fiber. It shows the baked light and adds live layers on top: real reflections in the Heart-Mirror and its pond (Medium and High quality), banners that wave, flowing water, drifting clouds, birds, cranes, glowing qi motes and peach petals.
+5. **Fits the device.** It picks a Low, Medium or High quality tier from your device, and you can change it. If frames run slow, it steps the quality down until they don't.
+
+Other things to try on `/sect`:
+
+- **Drag** to look around at any stop (or hold the left and right arrow keys).
+- **Hover** a Jin Yong item to see a small card about it.
+- **Press <kbd>M</kbd>** for the ink-wash world map. Click a seal to fast-travel there, Black Myth: Wukong style.
+- **Turn on the music.** Each stop has its own instrumental track. It starts muted.
+- **Read as page** shows the same content as a plain page, without the 3D.
+
+The full scene contract is in [`blender/xianxia-sect/spec.md`](./blender/xianxia-sect/spec.md).
+
+---
+
+## 传音 · The voice agent
+
+传音 means "sound transmission", the way cultivators talk across a distance. The voice agent is the original heart of this portfolio, and it works on both the main page and `/sect`.
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#15101b','primaryTextColor':'#f5ecdc','primaryBorderColor':'#e9c77e','lineColor':'#e9c77e','secondaryColor':'#2c2233','tertiaryColor':'#0e0c14','fontFamily':'Georgia, serif'}}}%%
+flowchart LR
+  U(["You"]) -- "speech" --> R{{"Retell AI<br/>(WebRTC)"}}
+  R -- "transcript" --> WS(["FastAPI<br/>WebSocket"])
+  WS -- "stream" --> A[["OpenAI<br/>Agents SDK"]]
+  A <-- "search_projects" --> P[("Pinecone<br/>vector DB")]
+  A -- "display_* tools" --> N["Next.js client<br/>(via Retell metadata)"]
+  A -- "tokens" --> WS --> R --> U
+  N -. "scroll, or fly" .-> U
+```
+
+- **Voice as the router.** The agent calls tools like `display_project` and `display_hackathons_page`. The server turns each call into a small navigation message, sends it through Retell's metadata channel, and the browser scrolls (or flies) to that section.
+- **Search by meaning.** Every project is embedded into Pinecone with `text-embedding-3-large`. Ask "what did you build for emergency dispatch?" and it finds **DispatchAI**, even though you never said its name.
+- **Guardrails that don't slow you down.** A small classifier checks each question while the main model starts answering. If it flags the question, the answer is cancelled and replaced with a polite refusal. Normal questions get their first word with no extra wait.
+- **Streaming end to end.** Words stream from OpenAI through FastAPI to Retell, so the agent starts speaking before its answer is finished.
+- **Findable by people and by AI.** JSON-LD and [`/llms.txt`](https://art3m1s.me/llms.txt) describe the site for search engines and language models.
+
+---
+
+## 彩蛋 · Jin Yong easter eggs
+
+These 15 objects from Jin Yong's novels are hidden along the flight. Hover one (or tap it on a phone) to see what it is.
+
+| Stop | Items | From |
+|---|---|---|
+| Mountain Gate | 倚天劍 Heaven-Reliant Sword · 屠龍刀 Dragon-Slaying Saber · 日月 Sun and Moon | *Heaven Sword and Dragon Saber* (and the sect's name) |
+| Heart-Mirror Terrace | 玉簫 Huang Yaoshi's Jade Flute | *Legend of the Condor Heroes* |
+| Artifact Forge Peak | 金銀銅鐵鉛五輪 Five Metal Wheels · 劍塚 Sword Tomb | *Return of the Condor Heroes* |
+| Sword-Discussion Arena | 玄鐵重劍 Black Iron Heavy Sword | *Return of the Condor Heroes* |
+| Mission Hall | 聖火 Holy Flame | *Heaven Sword and Dragon Saber* |
+| Scripture Pavilion | 冰火島 Ice-Fire Island | *Heaven Sword and Dragon Saber* |
+| Jade Slip Pavilion | 聖火令 Holy Flame Tablets | *Heaven Sword and Dragon Saber* |
+| Grand Formation | 五行旗 Five Element Banners · 天罡北斗陣 Big Dipper Formation | *Heaven Sword and Dragon Saber* · *Legend of the Condor Heroes* |
+| Cave Abode | 笑傲江湖 Qu Yang and Liu Zhengfeng's duet · 金鈴索 Golden Bell Rope | *The Smiling, Proud Wanderer* · *Return of the Condor Heroes* |
+| Moon-Gazing Terrace | 神鵰 Divine Condor | *Return of the Condor Heroes* |
+
+The stele tablets are carved with martial-arts manuals from the novels too.
+
+---
+
+## 法器 · Tech stack
 
 <p align="center">
   <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=nextjs,react,typescript,tailwind,fastapi,python,docker,gcp,vercel,vscode&theme=dark" alt="stack"/>
+    <img src="https://skillicons.dev/icons?i=nextjs,react,typescript,tailwind,threejs,blender,python,fastapi,docker,gcp,vercel&theme=dark" alt="Next.js, React, TypeScript, Tailwind, three.js, Blender, Python, FastAPI, Docker, GCP, Vercel"/>
   </a>
 </p>
 
@@ -80,143 +185,145 @@ flowchart LR
 
 | Layer | Tech | Why |
 |---|---|---|
-| **Frontend** | Next.js 15 (App Router) · React 19 · TypeScript 5 · Tailwind v4 · Retell SDK | Fast, modern, theme-able, voice-ready |
-| **Backend** | FastAPI · Uvicorn · OpenAI Agents SDK · Retell SDK 4.4 · Pydantic | Streaming WebSocket + tool-calling agent |
-| **Vector DB** | Pinecone 7 · `text-embedding-3-large` | Semantic search across projects |
-| **Infra** | Docker · Cloud Run · Vercel · ngrok (dev) | One-command deploys, edge-friendly |
-| **Observability** | Vercel Analytics · Speed Insights · structured logs · [FireTrace](https://tracing.art3m1s.me) | Real-user perf + one trace per agent run |
+| **Frontend** | Next.js 15 (App Router) · React 19 · TypeScript 5 · Tailwind v4 · Retell web SDK | Fast, modern, voice-ready |
+| **3D** | three.js · React Three Fiber · drei · postprocessing · three-mesh-bvh | The `/sect` fly-through, picking and post effects |
+| **Scene build** | Blender 5.2 Python · Cycles on cloud RTX 5090s · glTF Transform + meshopt · WebP · Git LFS | Procedural sect, baked light, small streamed files |
+| **Backend** | FastAPI · Uvicorn · OpenAI Agents SDK · Retell SDK · Pydantic | Streaming WebSocket and a tool-calling agent |
+| **Vector DB** | Pinecone · `text-embedding-3-large` | Semantic search across projects |
+| **Infra** | Docker · Cloud Run · Vercel · ngrok (dev) | One-command deploys |
+| **Observability** | Vercel Analytics · Speed Insights · structured logs · [FireTrace](https://tracing.art3m1s.me) | Real-user performance, plus one trace per agent run |
+| **Tests** | Vitest · pytest · GitHub Actions | 1,556 client and 365 server tests. CI runs them on every push to main, minus 10 that need real API keys |
 
 </details>
 
 ---
 
-## 🚀 Quickstart
+## 入门 · Quickstart
+
+入门 means "entering the gate", which is also how Chinese says "getting started".
+
+The fly-through only needs the client:
 
 ```bash
+git lfs install          # the /sect scene files live in Git LFS
 git clone https://github.com/IdkwhatImD0ing/PortfolioV5.git
-cd PortfolioV5
-make install-deps        # uv + pnpm + ngrok
-
-# In one shot — opens server, client, and ngrok in 3 tabs
-make tabs
+cd PortfolioV5/client
+pnpm install
+pnpm dev                 # then open http://localhost:3000/sect
 ```
+
+Add `?tier=low`, `?tier=mid` or `?tier=high` to force a quality tier, or `?view=page` to read `/sect` as a plain page. If you cloned before installing Git LFS, run `git lfs pull` to fetch the scene files.
 
 <details>
-<summary><b>Manual mode</b></summary>
+<summary><b>Running the voice agent too</b></summary>
+
+The voice agent needs the server, a public address for Retell to reach it, and the keys below.
 
 ```bash
-cd server && uv run uvicorn main:app --reload          # :8000
-cd client && pnpm dev                                  # :3000
-ngrok http --url=conversational.ngrok.app 8000         # public webhook
+make install-deps                                # uv, pnpm and ngrok, then each app's packages
+cd server && uv run uvicorn main:app --reload    # :8000
+cd client && pnpm dev                            # :3000
+ngrok http 8000                                  # a public URL for Retell to reach the server
 ```
+
+Then open **http://localhost:3000** for the voice portfolio.
 
 </details>
 
-### Required env vars
+### Environment variables
+
+Names only. Never commit the values.
 
 ```bash
 # server/.env
 RETELL_API_KEY=...
 OPENAI_API_KEY=...
 PINECONE_API_KEY=...
-FIRETRACE_API_KEY=...     # optional: records every agent run at tracing.art3m1s.me
+FIRETRACE_API_KEY=...            # optional: records every agent run
 
-# client/.env.local (see client/.env.local.example for optional dev-agent vars)
-RETELLAI_API_KEY=...
+# client/.env.local (see client/.env.local.example)
+RETELLAI_API_KEY=...             # server-side only, used by the create-web-call proxy
 NEXT_PUBLIC_RETELL_AGENT_ID=...
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=...          # optional: backend URL for warm-up and text chat
+```
+
+### Tests
+
+```bash
+cd client && pnpm lint && pnpm typecheck && pnpm test
+cd server && uv run pytest tests/ -m "not integration"   # what CI runs
 ```
 
 ---
 
-## 📐 Architecture
+## 藏经阁 · Modules and docs
 
-```text
-┌──────────────────────────┐         ┌──────────────────────────┐
-│   client/  (Next.js 15)  │  WSS    │  server/  (FastAPI)      │
-│   • voice orb (mic)      │ ◀────▶  │  • /webhook (Retell)     │
-│   • page.tsx (sections)  │         │  • /ws-* (LLM stream)    │
-│   • metadata listener    │         │  • LlmClient + tools     │
-└────────────┬─────────────┘         └─────────────┬────────────┘
-             │                                     │
-             ▼                                     ▼
-       Retell WebRTC                        OpenAI Agents SDK
-                                                   │
-                                                   ▼
-                                         Pinecone (project-search)
-```
+藏经阁 is the Scripture Pavilion, where a sect keeps its manuals.
 
 | Module | What lives there |
 |---|---|
-| [`client/`](./client) | Next.js 15 UI · voice orb · one-page scroll sections · `/api/create-web-call` proxy |
-| [`server/`](./server) | FastAPI WebSocket · OpenAI Agents · navigation + search tools · guardrails |
+| [`client/`](./client) | Next.js 15 UI · voice orb · one-page portfolio · the `/sect` fly-through · `/api/create-web-call` proxy |
+| [`server/`](./server) | FastAPI WebSocket · OpenAI Agents · navigation and search tools · guardrails |
 | [`pinecone/`](./pinecone) | One-shot ingestion: `data.json` → embeddings → Pinecone index |
-| [`browserless/`](./browserless) | Headless browser sidecar for resume / preview rendering on Cloud Run |
+| [`browserless/`](./browserless) | Deploy script for a separate headless-browser service (Browserless) on Cloud Run |
+| [`blender/xianxia-sect/`](./blender/xianxia-sect) | The Ming Sect: Blender Python for every stop, the light bake, and the packer for the web files |
+| [`music/sect-themes/`](./music/sect-themes) | The prompts behind each stop's music |
+| [`research/`](./research) | Background research: fact checks, voice platform comparison, design audits |
 
-Deeper docs: [`client/docs`](./client/docs) · [`server/docs`](./server/docs) · [`pinecone/docs`](./pinecone/docs)
-
----
-
-## 🎯 Features that make this not-just-another-portfolio
-
-- **Voice as a first-class router.** The agent emits `navigate_to(page)` tool calls; the client subscribes to Retell metadata events and swaps pages — no buttons required.
-- **RAG over me.** Every project + experience is embedded into Pinecone. Ask *"what did you build for emergency dispatch?"* — it pulls **DispatchAI** by meaning, not keywords.
-- **Guardrails that actually run.** A small classifier agent checks each user turn for prompt-injection / off-topic while the main LLM starts answering. If it trips, the answer is cancelled and swapped for a refusal, so legit questions get their first word with no extra wait.
-- **Streaming end-to-end.** Tokens stream from OpenAI → FastAPI → Retell → audio in <600 ms.
-- **JSON-LD + `/llms.txt`** so search engines *and* LLMs both index the site cleanly.
-- **Edge-grade UX.** Speed Insights, Vercel Analytics, theme-color matched to the dark hero.
+Deeper docs: [`client/docs`](./client/docs) · [`server/docs`](./server/docs) · [`pinecone/docs`](./pinecone/docs) · [`blender/xianxia-sect/docs`](./blender/xianxia-sect/docs) (including [the Jin Yong references](./blender/xianxia-sect/docs/jin-yong-references.md))
 
 ---
 
-## 📊 Repo at a glance
+## 法宝 · Featured projects
 
-<p align="center">
-  <a href="https://github.com/IdkwhatImD0ing/PortfolioV5">
-    <img height="160" src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=PortfolioV5&theme=tokyonight&hide_border=true&bg_color=0a0a0a&title_color=A78BFA&icon_color=7C3AED" alt="repo card"/>
-  </a>
-  <a href="https://github.com/IdkwhatImD0ing">
-    <img height="160" src="https://github-readme-stats.vercel.app/api?username=IdkwhatImD0ing&show_icons=true&theme=tokyonight&hide_border=true&bg_color=0a0a0a&title_color=A78BFA&icon_color=7C3AED&count_private=true" alt="github stats"/>
-  </a>
-</p>
-
-<p align="center">
-  <img src="https://github-readme-activity-graph.vercel.app/graph?username=IdkwhatImD0ing&bg_color=0a0a0a&color=A78BFA&line=7C3AED&point=ffffff&hide_border=true&area=true" alt="activity graph"/>
-</p>
-
----
-
-## 🌟 Featured projects (pulled into the agent)
+Four of the projects the agent knows about. All four won prizes, and each one is an artifact on the forge's ring.
 
 <p align="center">
   <a href="https://github.com/IdkwhatImD0ing/DispatchAI">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=DispatchAI&theme=tokyonight&hide_border=true&bg_color=0a0a0a&title_color=A78BFA&icon_color=7C3AED"/>
+    <img src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=DispatchAI&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc" alt="DispatchAI"/>
   </a>
   <a href="https://github.com/aurelisajuan/TalkTuahBank">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=aurelisajuan&repo=TalkTuahBank&theme=tokyonight&hide_border=true&bg_color=0a0a0a&title_color=A78BFA&icon_color=7C3AED"/>
+    <img src="https://github-readme-stats.vercel.app/api/pin/?username=aurelisajuan&repo=TalkTuahBank&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc" alt="TalkTuahBank"/>
   </a>
   <a href="https://github.com/IdkwhatImD0ing/SlugLoop">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=SlugLoop&theme=tokyonight&hide_border=true&bg_color=0a0a0a&title_color=A78BFA&icon_color=7C3AED"/>
+    <img src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=SlugLoop&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc" alt="SlugLoop"/>
   </a>
   <a href="https://github.com/IdkwhatImD0ing/AdaptEd">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=AdaptEd&theme=tokyonight&hide_border=true&bg_color=0a0a0a&title_color=A78BFA&icon_color=7C3AED"/>
+    <img src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=AdaptEd&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc" alt="AdaptEd"/>
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/IdkwhatImD0ing">
+    <img height="160" src="https://github-readme-stats.vercel.app/api?username=IdkwhatImD0ing&show_icons=true&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc&count_private=true" alt="GitHub stats"/>
   </a>
 </p>
 
 ---
 
-## 🤝 Connect
+## 鸣谢 · Credits
+
+- **Divine Condor** model: "Dark Vulture" by [Pigcraft](https://sketchfab.com/s8819296) on Sketchfab, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), reduced and re-textured.
+- **Photo textures** from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). Pine twig texture: "Pine Tree 01" by Rob Tuytel and Rico Cilliers. Mist flipbooks by Thomas Iché (Unity Labs), via the Brackeys VFX Bundle. Waterfall texture by Martin Vorel (LibreShot). All CC0.
+- The full list is in [`blender/xianxia-sect/assets/CREDITS.md`](./blender/xianxia-sect/assets/CREDITS.md).
+- The sect, its treasures and its martial arts come from the novels of **Jin Yong** (金庸).
+
+---
+
+## 传书 · Connect
 
 <p align="center">
-  <a href="https://art3m1s.me"><img src="https://img.shields.io/badge/Portfolio-art3m1s.me-7C3AED?style=for-the-badge&logo=vercel&logoColor=white"/></a>
-  <a href="https://linkedin.com/in/bill-zhang1"><img src="https://img.shields.io/badge/LinkedIn-bill--zhang1-0A66C2?style=for-the-badge&logo=linkedin&logoColor=white"/></a>
-  <a href="https://github.com/IdkwhatImD0ing"><img src="https://img.shields.io/badge/GitHub-IdkwhatImD0ing-181717?style=for-the-badge&logo=github&logoColor=white"/></a>
-  <a href="https://devpost.com/IdkwhatImD0ing"><img src="https://img.shields.io/badge/Devpost-34%20wins-003E54?style=for-the-badge&logo=devpost&logoColor=white"/></a>
-  <a href="mailto:jzhang71@usc.edu"><img src="https://img.shields.io/badge/Email-jzhang71@usc.edu-EA4335?style=for-the-badge&logo=gmail&logoColor=white"/></a>
+  <a href="https://art3m1s.me"><img src="https://img.shields.io/badge/Portfolio-art3m1s.me-e9c77e?style=for-the-badge&labelColor=0e0c14&logo=vercel&logoColor=e9c77e" alt="Portfolio"/></a>
+  <a href="https://www.linkedin.com/in/bill-zhang1/"><img src="https://img.shields.io/badge/LinkedIn-bill--zhang1-2c2233?style=for-the-badge&labelColor=0e0c14&logo=linkedin&logoColor=e9c77e" alt="LinkedIn"/></a>
+  <a href="https://github.com/IdkwhatImD0ing"><img src="https://img.shields.io/badge/GitHub-IdkwhatImD0ing-2c2233?style=for-the-badge&labelColor=0e0c14&logo=github&logoColor=e9c77e" alt="GitHub"/></a>
+  <a href="https://devpost.com/IdkwhatImD0ing"><img src="https://img.shields.io/badge/Devpost-36%20wins-2c2233?style=for-the-badge&labelColor=0e0c14&logo=devpost&logoColor=e9c77e" alt="Devpost"/></a>
+  <a href="mailto:billzhangsc@gmail.com"><img src="https://img.shields.io/badge/Email-say%20hello-2c2233?style=for-the-badge&labelColor=0e0c14&logo=gmail&logoColor=e9c77e" alt="Email"/></a>
 </p>
 
 ---
 
-## ⭐ Star history
+## 星图 · Star history
 
 <p align="center">
   <a href="https://star-history.com/#IdkwhatImD0ing/PortfolioV5&Date">
@@ -225,13 +332,13 @@ Deeper docs: [`client/docs`](./client/docs) · [`server/docs`](./server/docs) ·
 </p>
 
 <p align="center">
-  <sub>If this project sparks an idea, drop a ⭐ — it helps a ton.</sub>
+  <sub>If this project sparks an idea, a ⭐ helps a lot.</sub>
 </p>
 
 <p align="center">
-  <a href="#top">⬆ Back to top</a>
+  <a href="#top">⬆ Back to the gate</a>
 </p>
 
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=gradient&customColorList=12,20,24&height=120&section=footer" alt="footer"/>
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:c98a4b,45:2c2233,100:0e0c14&height=120&section=footer" alt="footer"/>
 </p>
