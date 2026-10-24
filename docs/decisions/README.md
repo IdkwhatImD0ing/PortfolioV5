@@ -228,6 +228,17 @@ currently is".
 
 ---
 
+### 2026-10-24 · The talisman's icon is a talisman slip
+
+**Decided.** The agent's button shows a gold talisman slip with a spirit spark and two jade sparks
+(`client/src/components/voice-orb/talisman-icons.tsx`, `ORB_ICON = "slip"`), not a microphone. The
+paper crane and the senior disciple's figure stay in the file as drawn alternatives.
+
+**Why.** The owner: "Need a more agentic icon than the microphone". Of three candidates on the real
+button, the slip read most clearly at its real size and is the 传音符 the panel is named after.
+
+---
+
 ## Longer write-ups
 
 | Date | Change | Write-up |

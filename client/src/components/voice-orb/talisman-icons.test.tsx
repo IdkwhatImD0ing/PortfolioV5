@@ -10,9 +10,9 @@ import { ORB_ICON, ORB_ICON_IDS, OrbIcon, type OrbIconId } from "./talisman-icon
 const draw = (icon?: OrbIconId, className?: string) => renderToStaticMarkup(<OrbIcon icon={icon} className={className} />);
 
 describe("OrbIcon", () => {
-  it("shows the microphone until the owner picks a candidate", () => {
-    expect(ORB_ICON).toBe("mic");
-    expect(draw()).toContain('data-orb-icon="mic"');
+  it("shows the talisman slip, the owner's pick", () => {
+    expect(ORB_ICON).toBe("slip");
+    expect(draw()).toContain('data-orb-icon="slip"');
   });
 
   it("draws every icon as a hidden 24-unit SVG, each one different", () => {

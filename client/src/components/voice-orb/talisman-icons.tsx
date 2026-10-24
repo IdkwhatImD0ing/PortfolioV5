@@ -11,7 +11,7 @@
  *             sword's hilt over the shoulder.
  *   slip      a talisman slip with a spirit spark written on it in ink, and two sparks of jade qi
  *             round it.
- * ORB_ICON picks the one the button shows. It stays on the microphone until the owner picks.
+ * ORB_ICON picks the one the button shows: the slip, the owner's pick (2026-10-24).
  */
 import type { ComponentType } from "react";
 
@@ -21,7 +21,7 @@ export type OrbIconId = "mic" | "crane" | "disciple" | "slip";
 export const ORB_ICON_IDS: readonly OrbIconId[] = ["mic", "crane", "disciple", "slip"];
 
 /** The icon the orb's button shows. */
-export const ORB_ICON: OrbIconId = "mic";
+export const ORB_ICON: OrbIconId = "slip";
 
 /** The slip's writing: a dark jade, the shade of the talisman face's lower edge. */
 const SLIP_INK = "#123a31";
