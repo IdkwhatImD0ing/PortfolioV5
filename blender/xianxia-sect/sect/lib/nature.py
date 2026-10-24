@@ -2115,10 +2115,14 @@ class _PillarShape:
         z = self.tz
         i = 0
         base = 0.0
+        smin = P.get("shelf_min", 0.0) if lod == "hero" else 0.0
+        mas = P.get("massive")
         while z > self.tz - self.h - 1:
             t = (lo + (hi - lo) * r.random() ** 1.6) * (1.0 if i else 0.7)
+            if mas and i > 1 and r.random() < mas[0]:
+                t *= r.uniform(mas[1], mas[2])
             if i > 1 and r.random() < P["shelf_p"]:
-                amp = base + r.uniform(*P["shelf_amp"]) * R
+                amp = base + max(r.uniform(*P["shelf_amp"]) * R, smin)
             else:
                 base = r.uniform(-1.0, 1.0) * P["bed_amp"] * R
                 amp = base
@@ -3379,8 +3383,12 @@ board_clouds.preview_cameras = [("front", (0, -30, 8), (0, 40, 14), 35)]
 PILLAR_PRESETS = dict(
     # Zhangjiajie sandstone column: thin uneven beds, a real shelf on about a quarter of them (2-5 m deep on a main
     # peak: shelf_amp x R past the bed above), 5-9 deep fissures, a low dome
+    # (round 48 slice: a hero pillar's shelves stick out up to shelf_min m or more (0.2-1 x that round the pillar,
+    # about 2 m on average), so they read as ledges with plants;
+    # massive: a share of beds 2-3x thicker, so the beds are not stacked drums of one height)
     sandstone=dict(fissures=(5, 9), fissure_k=0.16, fissure_cap=7.0, lobe=0.12, bulge=(-0.04, 0.06), shoulder_k=1.0,
-                   bed_k=1.4, shelf_p=0.26, shelf_amp=(0.08, 0.15), bed_amp=0.02, dome=(0.12, 0.28), dip=(1.0, 3.0)),
+                   bed_k=1.4, shelf_p=0.26, shelf_amp=(0.08, 0.15), bed_amp=0.02, dome=(0.12, 0.28), dip=(1.0, 3.0),
+                   shelf_min=3.0, massive=(0.15, 2.0, 3.0)),
     # Huangshan granite: thick beds with only small ledges, 8-12 fissures splitting it into columns, a rounded crown
     granite=dict(fissures=(8, 12), fissure_k=0.12, fissure_cap=5.5, lobe=0.16, bulge=(0.0, 0.1), shoulder_k=1.8,
                  bed_k=2.0, shelf_p=0.16, shelf_amp=(0.035, 0.07), bed_amp=0.02, dome=(0.26, 0.42), dip=(0.5, 2.0)),
@@ -3399,6 +3407,11 @@ DRAPE_P = 0.16             # share of a fringed lip's samples that also drop a l
 DRAPE_LEN = (3.0, 8.0)     # m
 DRAPE_W = (0.8, 1.6)       # m wide at the lip
 FRINGE_LOW = 0.85          # no fringe on the lowest 15 % of a pillar (mist and the plinth's forest hide it)
+# Round 48 slice: peak_pillar makes no fringe by default. The strips baked as flat green paper up close and black
+# sticks on the web, and their few upward faces marked the client's "built" mask (range-look.ts RANGE_LOOK.built)
+# over three quarters of a pillar, so the range rock grade never reached it (B0 b: sunlit rock saturation 0.50).
+# The shelf shrubs (clumped, overhanging the lip) carry the green instead.
+PILLAR_FRINGE = False
 
 
 def _shear(co, k_x, k_y):
@@ -3476,16 +3489,17 @@ def _pillar_fringe_bm(shape, seed, kx, ky, detail):
 
 
 def peak_pillar(collection, height=150.0, top_radius=18.0, bottom_radius=None, seed=0, top_z=0.0, preset="sandstone",
-                lod="mid", name=None, location=(0, 0, 0), parent=None, dip=None, dip_az=None, fringe=True,
+                lod="mid", name=None, location=(0, 0, 0), parent=None, dip=None, dip_az=None, fringe=None,
                 green_shelves=True):
     """Round 48 (P-1): one of the range's peaks as a karst pillar from ``top_z`` down ``height`` m (sink its foot
     8-10 m into the plinth), PILLAR_PRESETS[``preset``] shape at ``lod`` ('hero' 1.25 m, 'mid' 2.5 m, 'far' 4 m wall
     resolution), tilted ``dip`` degrees (seeded 1-3 sandstone / 0.5-2 granite) toward ``dip_az`` so its beds are not
     level lines. Vegetated dome cap (material 1). Face attributes 'nature_cap', 'nature_shelf' (shelf tops; material
-    1 when ``green_shelves``) and 'nature_crack'. ``fringe``: a child mesh '<name>.fringe' (material nature_vine)
-    hanging over every shelf lip. No plants: patch_r48_green / scenery.build_canopy plant the attributes.
-    Returns (object, info)."""
+    1 when ``green_shelves``) and 'nature_crack'. ``fringe`` (None: PILLAR_FRINGE): a child mesh '<name>.fringe'
+    (material nature_vine) hanging over every shelf lip. No plants: patch_r48_green / scenery.build_canopy plant the
+    attributes. Returns (object, info)."""
     t0 = time.perf_counter()
+    fringe = PILLAR_FRINGE if fringe is None else fringe
     P = PILLAR_PRESETS[preset]
     bottom_radius = top_radius * 1.15 if bottom_radius is None else bottom_radius
     shape = _PillarShape(seed, height, top_radius, bottom_radius, top_z, lod, preset=P)

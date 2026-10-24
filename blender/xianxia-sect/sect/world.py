@@ -126,6 +126,8 @@ PILLAR_SINK = 9.0              # m the pillar's foot sinks into the plinth
 PILLAR_MIN_H = 30.0            # m: a pillar shorter than this over its plinth is not built (the old cone stays)
 PILLAR_FOOT_SHARE = 0.6        # a pillar's foot radius at most this share of the old cone's radius at the plinth
 PILLAR_HERO_D = 180.0          # m: a pillar this near a hold camera is built at the "hero" level (1.25 m), else "mid"
+PILLAR_PRESET = "sandstone"    # every cut peak (round 48 B0 pick: b). "auto": columns sandstone, granite cones granite
+                               # (auto made the f870 wall, peak 72, a granite cone with no ledges)
 PILLAR_FIT_SLACK = 1.5         # m: the pillar's radius may pass the old cone's (nominal) by this much at any height
 # Peaks that stay cones in every mode, like the shrine peaks: their pillar would stand on an area's terrace (mirror 15
 # 17, forge 4 5, steles 64 66, formation 61 62 63), within patch_r48_range.PATH_CLEAR m of chase.cam (15 18 44 64) or
@@ -495,7 +497,7 @@ class Range:
         """{peak: pillar spec} for peak_mode 'pillars' (built once): plinth z (highest rim over the footprint +
         PILLAR_RIM_CLEAR, at least the peak-free ground there), the pillar's top (the old top less part of its rounded
         cap; plan_opts['limits'] can lower it: the composition's skyline, quiet-sky and moon rules), radii inside the
-        old cone, preset (columns sandstone, granite cones granite, or plan_opts['preset']), LOD ('hero' within
+        old cone, preset (plan_opts['preset'], else PILLAR_PRESET; 'auto': columns sandstone, granite cones granite), LOD ('hero' within
         PILLAR_HERO_D m of a hold camera), seed. plan_opts: skip (peak indices that stay cones: the shrine peaks),
         only (peak indices to rebuild, the rest stay; B0 / slice scope), limits {peak: top z}, holds [xyz], preset."""
         if getattr(self, "_pillars", None) is not None:
@@ -513,7 +515,7 @@ class Range:
             reach = rc + max(0.0, top - hc - (rim_c - 15.0)) / wall     # where the cone meets the rim
             rim_max, ground = self._peak_base_stats(k, min(reach * 1.5, 420.0), rc * 1.5 + 6.0)
             plinth = max(rim_max + PILLAR_RIM_CLEAR, min(ground + 2.0, top - PILLAR_MIN_H))
-            preset = o.get("preset") or "auto"
+            preset = o.get("preset") or PILLAR_PRESET
             if preset == "auto":
                 preset = "sandstone" if column else "granite"
             r = U.rng("world.pillar", k)

@@ -742,7 +742,7 @@ R48_HIDDEN = "r48_hidden"          # objects a round-48 part hid (hide_render): 
 OLD_RANGE_MASKS = ("scenery_forest", "scenery_cliff", "scenery_cliff_dense", "scenery_cliff_wall", "scenery_crown",
                    "world_veg")
 CANOPY_NEAR = 90.0             # m from the camera path: nearer than this the canopy thins to CANOPY_NEAR_K (the bake
-CANOPY_NEAR_K = 0.3            # draws trees within --tree-near as 3D meshes; keep that count close to today's)
+CANOPY_NEAR_K = 0.6            # draws trees within --tree-near as 3D meshes; B0 had only 66 within 70 m at 0.3)
 CANOPY_DENSITY = 0.028         # broadleaf crowns per m2 at factor 1 (a closed canopy: ~1 per 30 m2)
 SPIRE_DENSITY = 0.005          # Masson spires (10-25 % of a canopy, more on rims and crests)
 PINE_DENSITY = 0.002           # Huangshan pines on convex crests only (under 15 %)
@@ -756,17 +756,23 @@ GROVE_SCALE = 45.0             # m: groves and clearings (2D noise)
 GROVE_FLOOR = 0.2              # density factor in a clearing
 CONCAVE_BLUR = 30.0            # m: concavity (gullies x2, ridges x0.4) against the terrain smoothed this wide
 CONCAVE_K = 6.0                # m of hollow for a factor of 2
-FOREST_MODE = "hull"           # P-4 (B0 picks): 'cards' (trees everywhere), 'shell150' (trees to 150 m, shell beyond),
-                               # 'shell250', 'hull' (trees to CANOPY_NEAR, hull clumps to 250 m, shell beyond)
+FOREST_MODE = "hull"           # P-4 (B0 picked hull): 'cards' (trees everywhere), 'shell150' (trees to 150 m, shell
+                               # beyond), 'shell250', 'hull' (trees to HULL_TREE_END, hull clumps to 250 m, shell beyond)
+HULL_TREE_END = 150.0          # m from the path: hull mode's trees reach this far (B0: only a's trees to 150 m read as
+                               # green forest; the hulls alone read as boulders on a lawn)
 SHELL_CELL = 7.5               # m: the shell's grid
 SHELL_LIFT = (6.0, 11.0)       # m over the ground (the crowns' height), lumpy
 SHELL_TILE = 320.0             # m: one shell / hull object per tile (the export splits by chunk)
-HULL_STEP = 21.0               # m between hull clumps (jittered), in groves only
-HULL_R = (5.0, 10.0)           # clump radius
-SHELF_DENSITY = 0.05           # shrubs per m2 of pillar shelf top
+HULL_STEP = 11.0               # m between hull clumps (jittered HULL_JITTER x the step): one closed canopy, not a
+HULL_JITTER = 0.45             # grid of boulders (B0: 21 m apart with radius 5-10 m covered at most 40 %)
+HULL_R = (4.0, 12.0)           # clump radius: big, medium and small (C6)
+HULL_KEEP = (0.75, 0.5)        # a cell keeps its clump with chance KEEP[0] + KEEP[1] x the grove factor (B0: 0.35 + 0.5f)
+SHELF_DENSITY = 0.2            # shrubs per m2 of pillar shelf top (mean; in clumps of 3-15 by SHELF_CLUMP)
+SHELF_CLUMP = (6.0, 2.6)       # m across a shelf clump; density factor inside one (about 40 % of a shelf is in clumps)
 CRACK_DENSITY = 0.04           # ferns per m2 of pillar crack strip
-CAP_DENSITY = 0.03             # broadleaf per m2 of pillar cap
+CAP_DENSITY = 0.06             # broadleaf per m2 of pillar cap (a closed canopy cap from 50 m, rule 3)
 CAP_RIM_SPIRE = 0.012          # spires per m2 on the cap's outer quarter
+CAP_RIM_BROADLEAF = 0.03       # broadleaf per m2 on the cap's outer quarter, leaning out: 1-2 crowns spill over the rim
 HERO_PINE_H = (7.0, 10.0)      # m (scaled by the pillar's size 0.8-1.3)
 HERO_PX = 18.0                 # a pillar is a hero-pine candidate when its top is this many px wide at the hold
 
@@ -964,7 +970,7 @@ def r48_canopy_masks(rng_obj, scene, anchors, hold_views, star, scope=None):
     f = f_grove * f_conc * np.where(path_d < CANOPY_NEAR, CANOPY_NEAR_K, 1.0)
     f_crest = f_grove * np.clip(1.0 - lap / CONCAVE_K, 0.3, 2.5)
     shell_start = dict(cards=1e9, shell150=150.0, shell250=250.0, hull=250.0)[FOREST_MODE]
-    tree_end = dict(cards=1e9, shell150=150.0, shell250=250.0, hull=CANOPY_NEAR)[FOREST_MODE]
+    tree_end = dict(cards=1e9, shell150=150.0, shell250=250.0, hull=HULL_TREE_END)[FOREST_MODE]
     ok = cand & ~ex & insc
     canopy = ok & (nz >= 0.78) & (path_d < tree_end)
     slope = ok & (nz < 0.78) & (path_d < tree_end)
@@ -1065,9 +1071,26 @@ def _pillars(scope=None):
     return [o for o in out if R.in_scope(scope, [tuple(o.matrix_world.translation)[:2]])[0]]
 
 
+def _shelf_clumps(ob):
+    """'r48_shelf_f' (FACE float) on a pillar: the shelf shrubs' density factor, SHELF_CLUMP[1] inside clumps about
+    SHELF_CLUMP[0] m across (noise on the face centre, sheared with height so clumps differ from shelf to shelf), 0
+    between them: shrubs come in clumps of 3-15, not evenly spaced (rule 2)."""
+    me = ob.data
+    c = np.empty(len(me.polygons) * 3)
+    me.polygons.foreach_get("center", c)
+    c = c.reshape(-1, 3)
+    nz = W._VNoise(4903 + int(ob.get("r48_peak", 0)))
+    v = nz(c[:, 0] + 0.7 * c[:, 2], c[:, 1] - 0.45 * c[:, 2], 1.0 / SHELF_CLUMP[0], o=5)
+    f = (SHELF_CLUMP[1] * W._smooth(0.05, 0.25, v)).astype(np.float32)
+    at = me.attributes.get("r48_shelf_f") or me.attributes.new("r48_shelf_f", 'FLOAT', 'FACE')
+    at.data.foreach_set("value", f)
+    me.update()
+
+
 def r48_pillar_plants(coll, scope=None):
-    """P-2 / P-3 on every round-48 pillar (world.peak.*): a broadleaf cap with spires on its rim, shrub clumps on the
-    shelves, ferns and small shrubs in the crack strips (shared nature.scatter group, version 3: unchanged)."""
+    """P-2 / P-3 on every round-48 pillar (world.peak.*): a closed broadleaf cap with spires and outward-leaning
+    crowns on its rim (they spill over it), shrub clumps on the shelves (the range-only group with the clump factor
+    'r48_shelf_f'), ferns and small shrubs in the crack strips (shared nature.scatter group, version 3: unchanged)."""
     n = dict(pillars=0)
     for ob in _pillars(scope):
         me = ob.data
@@ -1087,15 +1110,24 @@ def r48_pillar_plants(coll, scope=None):
             a2 = me.attributes.new("r48_rim", 'FLOAT', 'FACE')
             a2.data.foreach_set("value", v)
             me.update()
+        _shelf_clumps(ob)
         seed = int(ob.get("r48_peak", 0)) * 13 + 4900
         for nm, protos, dens, mask, scale, slope, align in (
                 (".cap", N.canopy_prototypes("broadleaf"), CAP_DENSITY, "nature_cap", (0.55 * ks, 1.0 * ks), 50.0, 0.1),
                 (".cap_spire", N.canopy_prototypes("spire"), CAP_RIM_SPIRE, "r48_rim", (0.5 * ks, 1.1 * ks), 60.0,
                  0.05),
                 (".shelf", N.canopy_prototypes("shelf"), SHELF_DENSITY, "nature_shelf", (1.2, 2.4), 60.0, 0.2),
-                (".crack", N.canopy_prototypes("fern"), CRACK_DENSITY, "nature_crack", (0.45, 0.9), 84.0, 0.5)):
-            s = N.scatter_on(ob, protos, density=dens, seed=seed, max_slope=math.radians(slope), scale_range=scale,
-                             collection=coll, name=ob.name + nm, align=align, mask_attribute=mask)
+                (".crack", N.canopy_prototypes("fern"), CRACK_DENSITY, "nature_crack", (0.45, 0.9), 84.0, 0.5),
+                (".cap_rim", N.canopy_prototypes("broadleaf"), CAP_RIM_BROADLEAF, "r48_rim", (0.6 * ks, 1.05 * ks),
+                 75.0, 0.35)):
+            if nm == ".shelf":
+                s = N.rscatter_on(ob, protos, density=dens, seed=seed, max_slope=math.radians(slope),
+                                  scale_range=scale, collection=coll, name=ob.name + nm, align=align,
+                                  mask_attribute=mask, factor_attribute="r48_shelf_f")
+            else:
+                s = N.scatter_on(ob, protos, density=dens, seed=seed, max_slope=math.radians(slope),
+                                 scale_range=scale, collection=coll, name=ob.name + nm, align=align,
+                                 mask_attribute=mask)
             s[R48_TAG] = "shelves"
             seed += 1
         n["pillars"] += 1
@@ -1241,12 +1273,15 @@ def r48_hulls(rng_obj, coll, masks):
     idx = np.nonzero(m)[0]
     _u, first = np.unique(key[:, 0] * 100003 + key[:, 1], return_index=True)
     clumps = []
+    j = HULL_JITTER * HULL_STEP
+    kdh = _kd2(cw[m, :2])           # the ground under a jittered clump: the nearest hull face's height
     for i in idx[first]:
-        if r.random() > min(1.0, 0.35 + 0.5 * float(f[i])):
+        if r.random() > min(1.0, HULL_KEEP[0] + HULL_KEEP[1] * float(f[i])):
             continue
         x, y, z = cw[i]
-        clumps.append((float(x) + r.uniform(-4, 4), float(y) + r.uniform(-4, 4), float(z) - 0.6,
-                       r.uniform(*HULL_R)))
+        x, y = float(x) + r.uniform(-j, j), float(y) + r.uniform(-j, j)
+        zg = float(cw[idx[kdh.find((x, y, 0.0))[1]], 2])
+        clumps.append((x, y, min(float(z), zg) - 0.6, r.uniform(*HULL_R)))
     tiles = {}
     for cl in clumps:
         tk = tuple(_tiles(np.array(cl[:2]))[:2])

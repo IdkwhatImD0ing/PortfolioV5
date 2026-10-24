@@ -12,6 +12,8 @@ world's up axis (positive = left), its lens times zoom. Writes out/tmp/r48/still
 .png (rblender.py copies them back to the PC). Cycles on the GPU only (OptiX, else CUDA; it stops on the CPU) at
 --samples with the denoiser, the web's clip planes (0.5 / 9000 m), the flyer and the volume puffs hidden (the web
 draws its own mist). The first line it prints is 'PREVIEW cycles device <OPTIX|CUDA>'.
+--at name=x,y,z:tx,ty,tz[:lens mm];...: extra stills from a free camera at x,y,z looking at tx,ty,tz (world
+metres; e.g. a low look at a pillar's foot, or a near tree), written as <label>_at_<name>.png.
 """
 import argparse
 import math
@@ -20,7 +22,7 @@ import sys
 import time
 
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
@@ -45,6 +47,7 @@ def args():
     ap.add_argument("--samples", type=int, default=24)
     ap.add_argument("--res", default="1280x720")
     ap.add_argument("--zoom", type=float, default=1.0)
+    ap.add_argument("--at", default="")
     return ap.parse_args(argv)
 
 
@@ -143,7 +146,21 @@ def main():
         t1 = time.time()
         bpy.ops.render.render(write_still=True)
         log("still", name, "%.1f s" % (time.time() - t1))
-    log("done", len(shots(a.shots)), "stills in %.1f s" % (time.time() - t0))
+    n_at = 0
+    for tok in [t for t in a.at.split(";") if t.strip()]:
+        name, rest = tok.split("=", 1)
+        parts = rest.split(":")
+        pos = Vector([float(x) for x in parts[0].split(",")])
+        tgt = Vector([float(x) for x in parts[1].split(",")])
+        shot_cam.matrix_world = Matrix.Translation(pos) @ (tgt - pos).to_track_quat('-Z', 'Y').to_matrix().to_4x4()
+        shot_cam.data.lens = float(parts[2]) if len(parts) > 2 else lens0
+        nm = "%s_at_%s.png" % (a.label, name.strip())
+        sc.render.filepath = os.path.join(OUT, nm)
+        t1 = time.time()
+        bpy.ops.render.render(write_still=True)
+        log("still", nm, "%.1f s" % (time.time() - t1))
+        n_at += 1
+    log("done", len(shots(a.shots)) + n_at, "stills in %.1f s" % (time.time() - t0))
 
 
 if __name__ == "__main__":

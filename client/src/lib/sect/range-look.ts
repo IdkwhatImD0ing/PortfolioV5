@@ -104,12 +104,13 @@ export const RANGE_LOOK = {
    * root like the stops' ground) only `tame.tame` of green's lead is removed. Far ones read as canopy
    * (mid and high tiers): from `near` to `far` metres the colour turns `amount` of the way to
    * `color`'s hue at `value` x its own brightness, broken into lumps `lumpM` metres across
-   * (brightness x lump[0] to lump[1]).
+   * (brightness x lump[0] to lump[1]). Round 48: from 90 m (was 150-260 m), so the baked canopy hulls
+   * (nature_canopy_mass, a ground class) and the lawns past the near forest read canopy green, not olive grey.
    */
   ground: {
     tame: { tame: 0.5, near: 50, far: 100 },
-    near: 150,
-    far: 260,
+    near: 90,
+    far: 180,
     amount: 0.75,
     value: 0.85,
     color: "#3f5a33",

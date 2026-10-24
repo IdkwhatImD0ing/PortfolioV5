@@ -22,7 +22,7 @@ order, host, quiet sky, islets, falls, mist heights for each of the eleven stops
 | Problem | Change | Where |
 |---|---|---|
 | Trees on sheer walls | The cliff, wall and crown pine scatters and the ledge tiers are switched off everywhere except within 60 m of a stop's camera, where every tree stays as it was. The Cave Abode cliff's 29 face pines go; two pines stand on one rock shelf instead, with fern strips in the joints and vines from the rim | `scenery.r48_walls_out`, `areas/abode.r48_dress` |
-| No ledges with grass | About 70 of the range's peaks become karst pillars with their own uneven rock beds, real shelves with green tops, a green fringe pouring over each shelf lip, fissures with ferns, and a forest cap | `world.Range` (peak mode `pillars`), `lib/nature.peak_pillar` |
+| No ledges with grass | About 70 of the range's peaks become karst pillars with their own uneven rock beds, real shelves with green tops and clumps of shrubs, fissures with ferns, and a forest cap whose rim crowns lean out over the edge | `world.Range` (peak mode `pillars`), `lib/nature.peak_pillar` |
 | Trunks, not green | A broadleaf canopy (rounded crowns that hide their trunks, six variants in three greens) with slim Masson pine spires and scrub replaces the one see-through pine copied 31,000 times. Beyond the near band the forest is a solid canopy mass, not single trees | `lib/nature.canopy_tree`, `scenery.r48_range_canopy`, `r48_shell`, `r48_hulls` |
 | Confetti islands, light-beam falls | Islands are cut to 0-3 per stop (about 40 islands and 12 islets in all, at most 7 in any frame); the ones that stay get canopy caps. Falls are shorter, arc and break into spray; none at the arena, mission, library, steles or scroll stops | `lib/compose.cull_islands`, `cull_falls`, `scenery.r48_isles`, `r48_falls` |
 | A row of cakes on the horizon | Three pillar families and two low mesas, placed from the stops' cameras | `world.BACKDROP_R48` |
@@ -32,6 +32,20 @@ order, host, quiet sky, islets, falls, mist heights for each of the eleven stops
 
 Every hall, prop, stair, bridge, shrine, plaque and inscription stays exactly as it is. A keep-list check
 (`sect/patch_r48_keep.py`) compares them, and every plant within 60 m of a stop camera, before and after.
+
+## What the first test changed (B0 and the slice, 2026-10-24)
+
+Three test builds were baked for the f870 wall and the scroll hillside. The pick: sandstone pillars on every cut
+peak (granite gave smooth walls with no ledges) and "hull" canopy clumps for the mid distance (a smooth shell reads as
+a lawn). Changes before the slice:
+
+- No fringe strips over the shelf lips. They baked as flat paper and black sticks, and a few of their faces marked
+  the page's "built" mask over most of a pillar, so the paler range rock never reached it and the pillar stayed orange.
+- Trees reach 150 m from the camera path (was 90 m); beyond that the hull clumps sit 11 m apart (was 21 m), 4-12 m
+  wide, so they close into one canopy instead of boulders on a lawn.
+- Shelf shrubs four times as dense, in clumps; caps twice as dense, with rim crowns leaning out; on the pillars near a
+  stop, shelves stick out about 2 m; some rock beds are 2-3 times thicker, so the beds are not equal drums.
+- The page turns far range ground (the hull clumps bake as ground) canopy green from 90-180 m (was 150-260 m).
 
 ## How it is built
 
