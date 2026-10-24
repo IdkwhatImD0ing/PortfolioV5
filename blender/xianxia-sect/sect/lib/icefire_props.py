@@ -47,6 +47,9 @@ ICE_AZ = 168.0                       # rock-local azimuth (deg) of the ice half'
 #                                      (azimuth -147 +- 22), so the hold sees ice left and right of the fall, then
 #                                      the basalt face beyond the seam
 VIEW_AZ = -130.0                     # rock-local azimuth of the hold camera (probe: -128..-134 over frames 705-849)
+#                                      before round 39 turned the island 150 deg (scenery.ICEFIRE_TURN; the hold now
+#                                      sees it from about 80 deg): round 36's icefire_island, which replaces this
+#                                      build, faces its halves from wherever the island stands
 # the seam: d - sum(A sin(ka a + kz z + ph)) = 0, d along the ice direction, a along the seam (toward ICE_AZ - 270)
 SEAM_WAVES = ((2.4, 0.09, 0.06, 0.8), (1.0, 0.23, 0.17, 2.3), (0.7, 0.52, 0.37, 4.1))
 SEAM_JAG = 1.1                       # m: the shader's extra noise on the seam (geometry keeps SEAM_CLEAR off it)

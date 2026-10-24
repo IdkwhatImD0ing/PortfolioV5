@@ -7,12 +7,20 @@
  * Their hover boxes come from meta.json "lore" (blender/xianxia-sect/sect/export_web.py LORE, the
  * same ids). A meta.json without them shows no cards and the page works as before. A box the
  * exporter found inside a content hotspot (the gate's swords, the arena's sword, the gate's sun and
- * moon) never gets a card of its own: the hotspot keeps the pointer and the click, and its hover
- * label carries the reference's name on one quiet extra line instead (loreNote).
+ * moon, the flute in the pond pavilion, the duet on the music fact, the summit's bamboo blinds, the
+ * master stele) never gets a card of its own: the hotspot keeps the pointer and the click, and its
+ * hover label carries the reference's name on one quiet extra line instead (loreNote).
+ *
+ * A card says what the thing is and which novel it comes from, nothing more: never why it stands at
+ * its stop (the owner, round 34).
+ *
+ * Round 34 moved six references to the stop whose story they share and added four (思過崖, the
+ * Mount Hua seats, 獨孤九劍, 綠竹巷): 15 became 19. Each meta.json box says where it stands, so the
+ * stops' lists follow the installed file before and after that bake (loreByArea).
  *
  * Pure: no React, no three.js.
  */
-import type { AreaId } from "./areas";
+import { isAreaId, type AreaId } from "./areas";
 import { rayBoxSpan, type BoxHit } from "./pick";
 import type { LoreBox, Vec3 } from "./types";
 
@@ -44,11 +52,13 @@ export interface LoreEntry {
 
 /** Every reference, in flight order. Ids match export_web.py LORE. */
 export const LORE = {
+  // The blades quote their halves of the saber rhyme (武林至尊，寶刀屠龍 … 倚天不出，誰與爭鋒), which
+  // the plinths carry but no one can read from the stop.
   "heaven-sword": {
     zh: "倚天劍",
     en: "Heaven-Reliant Sword",
     short: "Heaven Sword",
-    what: "The Dragon-Slaying Saber's only rival",
+    what: "The Dragon-Slaying Saber's only rival: 倚天不出，誰與爭鋒",
     novel: NOVELS.heavenSword,
     area: "gate",
   },
@@ -56,15 +66,15 @@ export const LORE = {
     zh: "屠龍刀",
     en: "Dragon-Slaying Saber",
     short: "Dragon Saber",
-    what: "The blade whose holder rules the martial world",
+    what: "The blade whose holder rules the martial world: 武林至尊，寶刀屠龍",
     novel: NOVELS.heavenSword,
     area: "gate",
   },
   "sun-moon": {
     zh: "日月",
     en: "Sun and Moon",
-    what: "The sect's emblem, and the first half of its name, 日月神教",
-    novel: null,
+    what: "This sect's name and emblem, 日月神教",
+    novel: NOVELS.wanderer,
     area: "gate",
   },
   "jade-flute": {
@@ -74,17 +84,17 @@ export const LORE = {
     novel: NOVELS.condorLegend,
     area: "mirror",
   },
+  "cliff-of-reflection": {
+    zh: "思過崖",
+    en: "Cliff of Reflection",
+    what: "Linghu Chong's year of reflection",
+    novel: NOVELS.wanderer,
+    area: "mirror",
+  },
   "five-wheels": {
     zh: "金銀銅鐵鉛五輪",
     en: "Five Metal Wheels",
     what: "Gold, silver, copper, iron and lead",
-    novel: NOVELS.condorReturn,
-    area: "forge",
-  },
-  "sword-tomb": {
-    zh: "劍塚",
-    en: "Sword Tomb",
-    what: "Where Dugu Qiubai buried his swords",
     novel: NOVELS.condorReturn,
     area: "forge",
   },
@@ -95,11 +105,19 @@ export const LORE = {
     novel: NOVELS.condorReturn,
     area: "arena",
   },
-  "holy-fire-altar": {
-    zh: "聖火",
-    en: "Holy Flame",
-    what: "The fire the Ming Sect worships",
-    novel: NOVELS.heavenSword,
+  // The first contest's titles (北丐 東邪 南帝 西毒) on four bronze plates; the taiji is the centre's seat.
+  "mount-hua": {
+    zh: "華山論劍",
+    en: "Sword Contest of Mount Hua",
+    what: "The seats of the Five Greats",
+    novel: NOVELS.condorLegend,
+    area: "arena",
+  },
+  "big-dipper-array": {
+    zh: "天罡北斗陣",
+    en: "Big Dipper Formation",
+    what: "Seven Quanzhen masters, one per star",
+    novel: NOVELS.condorLegend,
     area: "mission",
   },
   "icefire-island": {
@@ -114,6 +132,20 @@ export const LORE = {
     en: "Holy Flame Tablets",
     what: "The Ming Sect's tokens of command",
     novel: NOVELS.heavenSword,
+    area: "steles",
+  },
+  "dugu-nine-swords": {
+    zh: "獨孤九劍",
+    en: "Nine Swords of Dugu",
+    what: "The art of finding every move's flaw",
+    novel: NOVELS.wanderer,
+    area: "steles",
+  },
+  "sword-tomb": {
+    zh: "劍塚",
+    en: "Sword Tomb",
+    what: "Where Dugu Qiubai buried his swords",
+    novel: NOVELS.condorReturn,
     area: "scroll",
   },
   "five-element-banners": {
@@ -123,11 +155,11 @@ export const LORE = {
     novel: NOVELS.heavenSword,
     area: "formation",
   },
-  "big-dipper-array": {
-    zh: "天罡北斗陣",
-    en: "Big Dipper Formation",
-    what: "Seven Quanzhen masters, one per star",
-    novel: NOVELS.condorLegend,
+  "holy-fire-altar": {
+    zh: "聖火",
+    en: "Holy Flame",
+    what: "The fire the Ming Sect worships",
+    novel: NOVELS.heavenSword,
     area: "formation",
   },
   "wanderer-duet": {
@@ -142,13 +174,22 @@ export const LORE = {
     en: "Golden Bell Rope",
     what: "Xiaolongnü's white silk ribbon",
     novel: NOVELS.condorReturn,
-    area: "abode",
+    area: "summit",
   },
   "divine-condor": {
     zh: "神鵰",
     en: "Divine Condor",
     what: "Yang Guo's companion and teacher",
     novel: NOVELS.condorReturn,
+    area: "summit",
+  },
+  // Bamboo blinds half down over pale gauze, and a qin and a lamp in the open middle bay: Green Bamboo
+  // Lane, where Ren Yingying taught Linghu Chong the qin from behind a blind.
+  "green-bamboo": {
+    zh: "綠竹巷",
+    en: "Green Bamboo Lane",
+    what: "Qin lessons through a bamboo blind",
+    novel: NOVELS.wanderer,
     area: "summit",
   },
 } as const satisfies Record<string, LoreEntry>;
@@ -181,11 +222,6 @@ export function loreLine(e: LoreEntry): string {
   return novel ? `${e.what}, from ${novel}` : e.what;
 }
 
-/** Content hotspots whose hover label always carries a quiet extra line (the jade scroll's verses). */
-export const HOTSPOT_NOTES: Readonly<Record<string, string>> = {
-  resume: "Verses from Jin Yong's novels",
-};
-
 /** The quiet extra line in a hotspot's hover label: a reference's name (and novel), or a fixed note. */
 export interface HoverNote {
   zh?: string;
@@ -193,6 +229,101 @@ export interface HoverNote {
   /** The novel, set in italics after `text` (", from <novel>"). */
   novel?: string;
 }
+
+/** A hotspot's fixed quiet line (HOTSPOT_NOTES). */
+export interface FixedNote extends HoverNote {
+  /**
+   * Shown only once the installed meta.json has this reference (standing at `area`, when given): a
+   * line about something a later bake brings, which the scene before it does not have.
+   */
+  needs?: { id: LoreId; area?: AreaId };
+}
+
+/**
+ * The Big Dipper's seven stars in the array's order, bowl (斗魁) then handle (斗柄), each with the
+ * Quanzhen master who holds it (Legend of the Condor Heroes). The Mission Hall's star drums carry
+ * the names; its seven role tablets take the stars in their order (role:0 to role:6), the bowl's
+ * four under the top row of tablets and the handle's three under the bottom row.
+ */
+export const DIPPER_STARS = [
+  { zh: "天樞", en: "Tianshu", master: "Ma Yu" },
+  { zh: "天璇", en: "Tianxuan", master: "Tan Chuduan" },
+  { zh: "天璣", en: "Tianji", master: "Liu Chuxuan" },
+  { zh: "天權", en: "Tianquan", master: "Qiu Chuji" },
+  { zh: "玉衡", en: "Yuheng", master: "Wang Chuyi" },
+  { zh: "開陽", en: "Kaiyang", master: "Hao Datong" },
+  { zh: "搖光", en: "Yaoguang", master: "Sun Bu'er" },
+] as const;
+
+/** A martial-arts manual carved on a stele. */
+export interface SteleManual {
+  zh: string;
+  en: string;
+  novel: string;
+}
+
+/**
+ * The manual each stele row's front steles carry (round 34): one that fits the row's skill phrase
+ * (content.ts skillGroups, front row first). The row's hover label names it.
+ */
+export const STELE_ROW_MANUALS: readonly (readonly SteleManual[])[] = [
+  // voice-first
+  [
+    { zh: "獅子吼", en: "Lion's Roar", novel: NOVELS.heavenSword },
+    { zh: "清心普善咒", en: "Pure Heart Chant", novel: NOVELS.wanderer },
+  ],
+  // agents (the Holy Flame Tablets stand in front of it: a reference of their own)
+  [{ zh: "吸星大法", en: "Star-Absorbing Great Method", novel: NOVELS.wanderer }],
+  // latency
+  [{ zh: "天羅地網勢", en: "Heaven-and-Earth Net", novel: NOVELS.condorReturn }],
+  // keeping a human in the loop
+  [{ zh: "玉女心經", en: "Jade Maiden Heart Sutra", novel: NOVELS.condorReturn }],
+  // when the model is wrong
+  [{ zh: "乾坤大挪移", en: "Great Shift of Heaven and Earth", novel: NOVELS.heavenSword }],
+];
+
+/** A row's manuals as one hover line: their names, and the novel when they share one. */
+function manualsNote(ms: readonly SteleManual[]): HoverNote {
+  const novel = ms.every((m) => m.novel === ms[0].novel) ? ms[0].novel : undefined;
+  const zh = ms.map((m) => m.zh).join(" · ");
+  const text = ms.map((m) => m.en).join(" and the ");
+  return novel ? { zh, text, novel } : { zh, text };
+}
+
+/**
+ * The Ming Sect's five banner brigades (五行旗), one for each part of the site: the formation
+ * reader's four Stack groups (content-copy.ts ARCH_STACK) and the core.
+ */
+export const STACK_BRIGADES = [
+  { part: "Voice", zh: "洪水", en: "Flood Water" },
+  { part: "Brain", zh: "烈火", en: "Raging Fire" },
+  { part: "Frame", zh: "巨木", en: "Giant Wood" },
+  { part: "State", zh: "銳金", en: "Sharp Metal" },
+  { part: "core", zh: "厚土", en: "Thick Earth" },
+] as const;
+
+/** The brigade of a part of the site ("Voice", ..., "core"), or null. */
+export function stackBrigade(part: string): (typeof STACK_BRIGADES)[number] | null {
+  return STACK_BRIGADES.find((b) => b.part === part) ?? null;
+}
+
+/** The scene the round-34 bake brings: what the notes about it wait for. */
+const DIPPER_AT_MISSION = { id: "big-dipper-array", area: "mission" } as const;
+const STELES_RECARVED = { id: "dugu-nine-swords" } as const;
+
+/**
+ * Content hotspots whose hover label carries a quiet extra line: the jade scroll's verses, the
+ * Stack pillar's brigades, each role tablet's star (once the Dipper stands at the Mission Hall) and
+ * each stele row's manual (once the steles are re-carved).
+ */
+export const HOTSPOT_NOTES: Readonly<Record<string, FixedNote>> = {
+  resume: { text: "Verses from Jin Yong's novels" },
+  "arch:6": { zh: "五行旗", text: STACK_BRIGADES.map((b) => `${b.zh} ${b.part === "core" ? "the core" : b.part}`).join(" · ") },
+  ...Object.fromEntries(
+    DIPPER_STARS.map((s, i) => [`role:${i}`, { zh: s.zh, text: `${s.en}, ${s.master}'s star`, needs: DIPPER_AT_MISSION }]),
+  ),
+  ...Object.fromEntries(STELE_ROW_MANUALS.map((ms, i) => [`skills:${i}`, { ...manualsNote(ms), needs: STELES_RECARVED }])),
+};
 
 /**
  * The line a reference adds to the label of the hotspot that holds it: its name and novel ("玄鐵重劍
@@ -205,30 +336,53 @@ export function loreNote(id: LoreId): HoverNote {
   return e.novel ? { zh: e.zh, text: e.en, novel: e.novel } : { zh: e.zh, text: e.what };
 }
 
+/** True when `boxes` has a box of reference `needs.id` (at stop `needs.area`, when given). */
+function hasReference(boxes: readonly LoreBox[], needs: { id: LoreId; area?: AreaId }): boolean {
+  return boxes.some((b) => b.id === needs.id && (needs.area === undefined || b.area === needs.area));
+}
+
 /**
  * The hover label's extra line for hotspot `hovered`: the reference under the pointer that the
- * hotspot holds (`hosted`, when its host is that hotspot), else the hotspot's fixed note (only with
- * `fixedNotes`: the page passes whether meta.json has references, so the verses note arrives with the
- * bake that has them), else null.
+ * hotspot holds (`hosted`, when its host is that hotspot), else the hotspot's fixed note, else null.
+ *
+ * `fixedNotes` says which fixed notes may show: meta.json's reference boxes (the page's
+ * `meta.lore`), or just whether it has any. None while it has none, so the notes arrive with the
+ * bake that has the references. A note that `needs` a reference shows only when the boxes are
+ * given and hold it: with `true` alone it stays hidden, since the scene may not have it yet.
  */
 export function hoverNote(
   hovered: string | null,
   hosted: { id: string; host: string | null } | null,
-  fixedNotes = true,
+  fixedNotes: boolean | readonly LoreBox[] = true,
 ): HoverNote | null {
   if (!hovered) return null;
   if (hosted && hosted.host === hovered && isLoreId(hosted.id)) return loreNote(hosted.id);
-  const fixed = fixedNotes ? HOTSPOT_NOTES[hovered] : undefined;
-  return fixed ? { text: fixed } : null;
+  const note = Object.prototype.hasOwnProperty.call(HOTSPOT_NOTES, hovered) ? HOTSPOT_NOTES[hovered] : undefined;
+  if (!note) return null;
+  const boxes = typeof fixedNotes === "boolean" ? null : fixedNotes;
+  if (boxes ? boxes.length === 0 : !fixedNotes) return null;
+  if (note.needs && !(boxes && hasReference(boxes, note.needs))) return null;
+  const line: HoverNote = { text: note.text };
+  if (note.zh) line.zh = note.zh;
+  if (note.novel) line.novel = note.novel;
+  return line;
 }
 
-/** The references meta.json has boxes for, by stop, in flight order (the panel's screen reader list). */
+/**
+ * The references meta.json has boxes for, by stop, in flight order (the panel's screen reader
+ * list). Each goes to the stop its box names (where the installed bake put it: before round 34 the
+ * altars stood at the Mission Hall, for one), else the one LORE gives.
+ */
 export function loreByArea(boxes: readonly LoreBox[] | undefined): Partial<Record<AreaId, LoreId[]>> {
-  const present = new Set((boxes ?? []).map((b) => b.id));
+  const at = new Map<LoreId, AreaId>();
+  for (const b of boxes ?? []) {
+    if (!isLoreId(b.id) || at.has(b.id)) continue;
+    at.set(b.id, b.area !== null && isAreaId(b.area) ? b.area : LORE[b.id].area);
+  }
   const out: Partial<Record<AreaId, LoreId[]>> = {};
   for (const id of LORE_IDS) {
-    if (!present.has(id)) continue;
-    (out[LORE[id].area] ??= []).push(id);
+    const area = at.get(id);
+    if (area) (out[area] ??= []).push(id);
   }
   return out;
 }

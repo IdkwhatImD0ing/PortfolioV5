@@ -141,6 +141,7 @@ import collections
 import json
 import math
 import os
+import re
 import sys
 import time
 import zlib
@@ -565,6 +566,37 @@ def capture(tkeys):
     return out
 
 
+DEGEN_AREA = 1e-10             # (r37) faces under this (m2, mesh space) count as degenerate: before a collapse, they and
+DEGEN_DIST = 1e-6              # the zero-length edges are dissolved (degen_clean). tidy_rock (world.py, round 12) closes
+_DEGEN = {}                    # each floating rock's cone in one point and leaves the moved bands' faces with no area;
+                               # collapsed with them, a rock turned into one flat triangle (the summit rock at 0.06) or a
+                               # crushed wedge (the arena->mission stones in the proxies), and could not get under ~340
+                               # triangles at 0.008-0.015; cleaned, it keeps its cone at every level
+DEGEN_WORDS = ("island", "islet", "arena_mission.stone")   # tidy_rock's rocks (nature.floating_rock); the joined
+                               # lattices have zero-area faces too, but cleaned they collapse into crude stand-ins
+
+
+def degen_clean(me):
+    """`me`, or (memoized) a copy of it with its zero-area faces and zero-length edges dissolved."""
+    import bmesh
+    if me.name in _DEGEN:
+        return _DEGEN[me.name]
+    n = len(me.polygons)
+    a = np.empty(n)
+    me.polygons.foreach_get("area", a)
+    out = me
+    if n and (a < DEGEN_AREA).any():
+        out = me.copy()
+        bm = bmesh.new()
+        bm.from_mesh(out)
+        bmesh.ops.dissolve_degenerate(bm, dist=DEGEN_DIST, edges=bm.edges[:])
+        bm.to_mesh(out)
+        bm.free()
+        out.update()
+    _DEGEN[me.name] = out
+    return out
+
+
 class Decimator(EW.Decimator):
     """export_web.Decimator, keeping all data layers (the arch_* attributes drive the beam paintings)."""
 
@@ -575,6 +607,8 @@ class Decimator(EW.Decimator):
         if ck in self.cache:
             return self.cache[ck]
         t0 = time.time()
+        if not self.mod.vertex_group and any(w in key for w in DEGEN_WORDS):  # (r37) the floating rocks only
+            base = degen_clean(base)
         self.ob.data = base
         self.mod.ratio = ratio
         with bpy.context.temp_override(scene=self.sc, view_layer=self.sc.view_layers[0]):
@@ -3142,6 +3176,21 @@ STAGE_STEP = 9.0                   # m: the staged artifacts stack straight up, 
 OCC_PAD = 300.0                # m: a hidden owner's other pieces within this of the chunk come back as occluders
 FLOOR_SHARE_MAX = 0.6          # LOD floors may take at most this share of a chunk's budget (the budget grows <= 1.6x)
 FLOOR_GROWTH_MAX = 1.6
+ROOM_MIN = 0.12                # (r37) once every floor is set, the floors at the levels they really get (each rounds up
+ROOM_GROWTH_MAX = 2.0          # to a LEVEL) leave at least this share of the budget to the screen-size rule: the budget
+                               # grows for it, up to ROOM_GROWTH_MAX x the chunk's base budget. Round 12's heavier props
+                               # filled gate, forge, mission, library, steles and scroll with floors: k fell to its 1e-7
+                               # minimum and every unfloored piece went to the lowest level (the gate stair to ramps)
+STRUCT_SUFFIX = (".steps", ".ramp", "stairs", ".walls", ".beams", ".bargeboard", ".gable",
+                 ".rails", ".piers", ".arch", ".foot_landing", ".foot_rail", ".rest_landing", ".rest_rail",
+                 ".rest_pier", ".bridge.deck", ".bridge.boards", ".bridge.posts")
+STRUCT_FLOOR = 1.0             # (r37) stairs, walls, beams, gables and a link's structure (PROXY_WHOLE_PARTS) within
+STRUCT_NEAR = 150.0            # STRUCT_NEAR keep full detail, never scaled (~90k triangles over the 11 chunks): collapse
+                               # turned them into ramps, torn wall triangles and treads with gaps
+CUT_TAG = "sect_r12"           # (r37) a mesh tagged CUT_TAG = "cut" (lib/props.py _stele_cut, _scroll_cut, _slips_cut)
+CUT_WORDS = ("props.stele.border",)   # has holes its inlay fills edge to edge (the stele border: the slab's holes
+CUT_NEAR = 80.0                # under its strokes): within CUT_NEAR never decimated, like NO_DECIMATE (at 0.5 a stele
+                               # still showed ~0.1 m2 of holes and z-fighting strokes per slab, at 0.25 ~0.9 m2)
 TILE_FLOOR_NEAR = 120.0        # m: roof tile meshes ('.tiles', black / teal tiles over red boards in one mesh) this near
 TILE_FLOOR_TRIS = 60000        # a hold camera keep full detail up to this size (decimated, red boards poked through
                                # the tiles as streaks on the forge hall), 0.5 above
@@ -3483,6 +3532,23 @@ def _island_floors(F, idx, vmask, cap, far_rock, label):
     return r, rows
 
 
+_CUT = {}                      # _cut_mask memo: tkey -> cut
+
+
+def _cut_mask(R, idx):
+    """Per record of idx: its mesh has holes cut for an inlay (data[CUT_TAG] == "cut") or is named in CUT_WORDS."""
+    cache = _CUT
+    out = np.zeros(len(idx), bool)
+    for j, i in enumerate(idx):
+        tk = R.tkey[i]
+        if tk not in cache:
+            ob = bpy.data.objects.get(tk.lstrip("#"))
+            me = ob.data if ob is not None and ob.type == "MESH" else None
+            cache[tk] = bool(me is not None and me.get(CUT_TAG) == "cut") or any(w in tk for w in CUT_WORDS)
+        out[j] = cache[tk]
+    return out
+
+
 def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_views=None, isl_cap=ISLAND_FLOOR_CAP,
                far_rock=False):
     """LOD pick for records idx to `budget` triangles (prototype rules: glyph/banner protection, hold floors, item
@@ -3490,6 +3556,7 @@ def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_vie
     island floors (and with far_rock the far-rock floors) measured over those views (_island_floors), applied with
     or without `floors` and never scaled down by FLOOR_SHARE_MAX."""
     R, S = F["R"], F["S"]
+    budget_in = budget
     px = F["px"] if px is None else px
     dmin = S["d_eff"]
     members = F["members"]
@@ -3500,6 +3567,10 @@ def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_vie
         fl = EW.lod_floor(R, idx, S, EW.NEAR_MAX)
         protect = np.array([dmin[i] <= 80.0 and any(k in R.name[i] or k in R.owner[i] for k in NO_DECIMATE)
                             for i in idx], bool)
+        cut = _cut_mask(R, idx) & np.array([dmin[i] <= CUT_NEAR for i in idx], bool)
+        protect |= cut
+        struct = np.array([dmin[i] <= STRUCT_NEAR and re.sub(r"\.\d{3}$", "", R.name[i]).endswith(STRUCT_SUFFIX)
+                           for i in idx], bool)
         hm = F["hold_mats"]
         near_h = near_holds(R, idx, hm)
         close_h = near_holds(R, idx, hm, area_near=(HOLD_NEAR,) * len(HOLD_FRAMES))
@@ -3551,8 +3622,10 @@ def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_vie
         for g in set(tg.tolist()) - {""}:
             fl[tg == g] = fl[tg == g].max()
         log(label, "around-hold floors:", int(add_tris), "tris wanted, scale", round(s_add, 3))
-        fl = np.maximum.reduce([fl, protect.astype(float), fl_tile])     # never scaled down
-        log(label, "floors: protected", int(protect.sum()), "roof tiles", int((fl_tile > 0).sum()), "near holds", int((near_h | props_h).sum()),
+        fl = np.maximum.reduce([fl, protect.astype(float), fl_tile,
+                                np.where(struct, STRUCT_FLOOR, 0.0)])     # never scaled down
+        log(label, "floors: protected", int(protect.sum()), "(cut", int(cut.sum()), ") structure", int(struct.sum()),
+            "roof tiles", int((fl_tile > 0).sum()), "near holds", int((near_h | props_h).sum()),
             "around holds", int(around_h.sum()), "turning", int((tg != "").sum()),
             "items", int(item.sum()), "slender", int(sl.sum()), "floored tris", int((R.tris[idx] * fl).sum()))
     roots = np.array([any(x in R.name[i] or x in R.owner[i] for x in ROOT_WORDS) for i in idx], bool)
@@ -3561,6 +3634,14 @@ def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_vie
     if isl_views is not None:
         fl_i, isl_rows = _island_floors(F, idx, isl_views, isl_cap, far_rock, label)
         fl = np.maximum(fl, fl_i)
+    if floors and ROOM_MIN > 0:
+        # room for the screen-size rule: the floors' real cost (each rounds up to a LEVEL)
+        li = np.maximum((EW.LEVELS[None, :] >= fl[:, None]).sum(1) - 1, 0)
+        real = float((R.tris[idx] * np.where(fl > 0, EW.LEVELS[li], 0.0)).sum())
+        nb = min(real / (1.0 - ROOM_MIN), ROOM_GROWTH_MAX * budget_in)
+        if nb > budget:
+            log(label, "room: floors keep", int(real), "tris: budget", int(budget), "->", int(nb))
+            budget = nb
     k, lv, tot = EW.fit_budget(R, px, idx, budget, w, F["picker"], label, floor=fl)
     out = []
     pick = {}

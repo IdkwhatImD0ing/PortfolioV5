@@ -13,6 +13,43 @@ The first three are one family saga, the Condor Trilogy. Wanderer stands alone, 
 
 **Already in progress.** `spec.md` now makes the sect the Ming Cult 明教 (Míngjiào) from Heaven Sword. The client UI already says "The Ming Cult". Some Blender files still say 月华宗 (Yuèhuá Zōng, "Moonlit Sect"). The two stone monoliths at the gate are becoming the Heaven Sword 倚天剑 (Yǐtiān Jiàn) and the Dragon Saber 屠龙刀 (Túlóng Dāo). The formation track (`music/sect-themes/09-formation.md`) was rewritten today as "The Stone Guardian Wakes". Every idea below assumes those changes. Nothing in the repo was edited for this document.
 
+**Since then (round 32, October 2026).** The owner renamed the sect 日月神教 (Rì Yuè Shén Jiào), the Sun Moon Divine Cult of Wanderer: 日月 is sun and moon, 神 is divine (Artemis). The Heaven Sword pieces below stay, and the Ming Cult's own things (the holy fire, the Holy Fire Tokens, the Five Element Banners) are named as the Ming Cult's.
+
+**Round 34 (October 2026): where each reference stands now.** The owner said the references felt dropped at random. The r31 plan, which the owner approved, puts each one at the stop whose story it shares, mounted where such a thing would really be kept, in the part of the frame the panel leaves open. Six moved, five were re-staged and four are new, so 15 references became 19. One change from the plan: the cards say what the thing is and which novel it is from, and nothing about why it stands at its stop. The table below is the current state. The idea menu further down is the original brainstorm, and its placement notes are older than this table.
+
+| Stop (hold frame) | Reference | Object in `sect_chase.blend` | Shown as | Card line (`client/src/lib/sect/lore.ts`) |
+|---|---|---|---|---|
+| Gate (93) | 倚天劍 Heaven-Reliant Sword | `gate.sword_monolith` | line on the Sword Monoliths label | The Dragon-Slaying Saber's only rival: 倚天不出，誰與爭鋒 |
+| Gate | 屠龍刀 Dragon-Slaying Saber | `gate.sword_monolith.001` | line on the Sword Monoliths label | The blade whose holder rules the martial world: 武林至尊，寶刀屠龍 |
+| Gate | 日月 Sun and Moon | `gate.sun_medallion`, `gate.moon_medallion`, `gate.sunmoon_finial` | line on the gate's label | This sect's name and emblem, 日月神教 (Wanderer) |
+| Mirror (217) | 玉簫 Jade Flute | `mirror.flute`: on a black-lacquer stand in the pond pavilion, facing the mirror | line on the Pond Pavilion label | Huang Yaoshi's flute (Condor) |
+| Mirror | 思過崖 Cliff of Reflection (new) | `mirror.siguoya`: cut top to bottom in the cliff right of the mirror, pines cleared | card | Linghu Chong's year of reflection (Wanderer) |
+| Forge (352) | 金銀銅鐵鉛五輪 Five Metal Wheels | `forge.five_wheels`: rack, anvil and trough on the Sword Tomb's old spot, out from under the panel | card | Gold, silver, copper, iron and lead (Return) |
+| Arena (516) | 玄鐵重劍 Black Iron Heavy Sword | `arena.sword` | line on the arena's label | Dugu Qiubai's edgeless sword (Return) |
+| Arena | 華山論劍 Sword Contest of Mount Hua (new) | `arena.seat.north/east/south/west`: bronze plates 北丐 東邪 南帝 西毒 in the bagua ring; the taiji is the centre's seat | card | The seats of the Five Greats (Condor) |
+| Mission (619) | 天罡北斗陣 Big Dipper Formation (from the formation) | `mission.dipper.<star>`: seven star drums joined by gold lines, bowl left, handle right | card | Seven Quanzhen masters, one per star (Condor) |
+| Library (772) | 冰火島 Ice-Fire Island | `scenery.island.009` (re-staged by the centre lane; rebuilt by round 36) | card | Where Zhang Wuji was born (Heaven Sword) |
+| Steles (974) | 聖火令 Holy Flame Tablets (from the scroll) | `steles.tokens`: the tablets halved, on a waist-high stand at the head of the agents row | line on the agents row's label | The Ming Sect's tokens of command (Heaven Sword) |
+| Steles | 獨孤九劍 Nine Swords of Dugu (new) | `steles.stele_master`, re-carved (it carried 華山論劍); the exporter waits for `["manual"] == "獨孤九劍"` | line on the Stele Forest label | The art of finding every move's flaw (Wanderer) |
+| Scroll (1103) | 劍塚 Sword Tomb (from the forge) | `scroll.sword_tomb`: a boulder carved 劍塚 and a bluestone slab with the four places, the heavy sword's empty, on the lawn | card | Where Dugu Qiubai buried his swords (Return) |
+| Formation (1208) | 五行旗 Five Element Banners | `formation.flag.<element>` and `formation.flag_base.<element>` | card | The Ming Sect's five brigades (Heaven Sword) |
+| Formation | 聖火 Holy Flame (from the mission) | `formation.holy_fire`, `.001`: the two altars flanking the front paifang; the chant round the dais is recut in traditional | card | The fire the Ming Sect worships (Heaven Sword) |
+| Abode (1380) | 笑傲江湖 Laughing Proudly in the Jianghu | `abode.duet`, now the object of the fact "Plays drums and piano" (hotspot fact:3; the wind chimes before) | line on that fact's label | Qu Yang and Liu Zhengfeng's duet (Wanderer) |
+| Summit (1647) | 金鈴索 Golden Bell Rope (from the abode) | `summit.ribbon`: coiled on the condor's crag, one bell over the edge | card | Xiaolongnü's white silk ribbon (Return) |
+| Summit | 神鵰 Divine Condor | `summit.condor_bird`: its crag moved right of the pavilion, below the moon | card | Yang Guo's companion and teacher (Return) |
+| Summit | 綠竹巷 Green Bamboo Lane (new) | `summit.blinds`: bamboo blinds half down over pale gauze, a qin and a lit lamp in the open middle bay | line on the summit's label | Qin lessons through a bamboo blind (Wanderer) |
+
+Lines on hotspot labels that are not references of their own (`HOTSPOT_NOTES` in `lore.ts`):
+
+- The jade slip: "Verses from Jin Yong's novels".
+- The Stack pillar (arch:6): the five banners' brigades, 洪水 Voice · 烈火 Brain · 巨木 Frame · 銳金 State · 厚土 the core.
+- Each role tablet in the Mission Hall: its star, in the wall's order, bowl then handle: 天樞 Ma Yu, 天璇 Tan Chuduan, 天璣 Liu Chuxuan, 天權 Qiu Chuji (Dispatch AI), 玉衡 Wang Chuyi, 開陽 Hao Datong, 搖光 Sun Bu'er. Shown only once meta.json has the Dipper at the Mission Hall.
+- Each stele row: the manual its front steles carry. voice-first 獅子吼 Lion's Roar and 清心普善咒 Pure Heart Chant; agents 吸星大法; latency 天羅地網勢; keeping a human in the loop 玉女心經; when the model is wrong 乾坤大挪移. Shown only once meta.json has 獨孤九劍 (the same re-carving).
+
+Who builds what: the west lane (`patch_r34_west.py`: mirror, abode, summit) and the east lane (`patch_r34_east.py`: forge, arena, mission, formation) are written and tested on a copy. The centre lane (steles, scroll, the island's turn) is not built yet, and the names above are the ones it must use. Until it runs, `export_web.py meta` leaves those three references out, and they show no card.
+
+Left out on purpose in round 34: the cauldron line ("the gate's Dragon Saber was cast from the arena's black iron sword"), the library line about Jueyuan and the three schools, the Plum Manor line for the abode, and every "why it is here" sentence the plan had put on the cards.
+
 **How to read the ideas.**
 
 - **Effort.** S = text or config only. M = client code, or one small Blender prop plus a rebake of that one area on the box. L = a new Blender set piece plus a rebake.
@@ -367,7 +404,7 @@ Three novels want the summit. Rule: one line on the final frame (Su1). Everythin
 
 #### LS1. The first page of Heaven Sword, plus a pool of loading lines
 
-- **What the visitor sees:** under 明教 / The Ming Sect, one small grey line: 冷浸溶溶月 (lěng jìn róngróng yuè, "steeped cold in the flowing moonlight"), with a few white pear petals drifting. While the scene loads, one line at a time:
+- **What the visitor sees:** under 日月神教 / Sun Moon Divine Cult, one small grey line: 冷浸溶溶月 (lěng jìn róngróng yuè, "steeped cold in the flowing moonlight"), with a few white pear petals drifting. While the scene loads, one line at a time:
   - "Learning the palms one at a time, the way Guo Jing did."
   - "Counting sparrows: 81…"
   - "Cooling the jade bed…"

@@ -16,9 +16,15 @@ and a gallery at terrace height to the terrace. The way out to the library is a 
 the east railing at y -15 to -9, a paved spur along y -12 and a landing whose steps end at the
 declared depart point.
 
-Holy-fire altars 圣火坛 (the Ming Sect of Heaven Sword and Dragon Saber worships the holy fire): a symmetric pair on the
-open paving east and west of the mission wall (HOLY_FIRE), each a Sasanian hourglass fire altar in bronze on an
-octagonal stone plinth with a burning flame crown and a warm point light; see _holy_fire().
+The Quanzhen Big Dipper array 天罡北斗陣 (Legend of the Condor Heroes; round 34, lib/refs_east.py build_dipper): seven
+stone star drums in the open apron before the mission wall, each with a bronze top lettered with its star in glowing
+gold, joined by glowing gold inlay lines in the Dipper's shape, the bowl's four stars answering the wall's top row of
+four role boards and the handle's three its bottom row of three.
+
+Holy-fire altars 圣火坛 (the Ming Sect of Heaven Sword and Dragon Saber worships the holy fire): the Sasanian hourglass
+fire altar in bronze on an octagonal stone plinth with a burning flame crown and a warm point light (holy_fire()). Until
+round 33 a pair stood here, east and west of the mission wall (HOLY_FIRE); since round 34 the formation places them at
+its front paifang (formation.ALTARS) with this builder.
 """
 import math
 import os
@@ -33,6 +39,7 @@ from sect.lib import arch as A
 from sect.lib import props as P
 from sect.lib import nature as N
 from sect.lib import materials as MAT
+from sect.lib import refs_east as RE
 
 # arrival / depart: (x, y, z, heading) in the local frame, where world.py's connectors land / start
 # (architecture audit 1.5 and W1). z is the landing top the first / last step sits flush with;
@@ -693,9 +700,10 @@ def _corridors(coll, root, terrace_hw):
 # glowing ember bed and a stylised flame crown. Gold flame-and-cloud relief on the mid-band and the crown.
 # Everything below is plain Python geometry (no bpy) in the altar's own frame (z = 0 the plaza top), so a checker can
 # build it without Blender; _holy_fire() turns it into objects.
-HOLY_FIRE = ((25.0, -27.0), (-25.0, -27.0))   # Empty positions; east first, so it gets the bare names
+HOLY_FIRE = ((25.0, -27.0), (-25.0, -27.0))   # until round 33: the pair's Empty positions here (east first, so it got
+                                              # the bare names); no longer built at the mission
 HF_FRONT = math.radians(-28.4)   # east altar: yaw turning the flame's broad side to the 619 hold camera (local
-                                 # (0.1, -73, 15.4)); the west altar is the mirror image
+                                 # (0.1, -73, 15.4)); the west altar is the mirror image. holy_fire(front=) for others
 HF_FLAME_Z = 3.15                # flame and ember bed base (inside the bowl)
 HF_FLAME_H = 1.8                 # flame height cap (the central tongue)
 HF_RIM_Z = 3.30                  # top of the gold bowl rim
@@ -1114,10 +1122,11 @@ HF_SIDE_TONGUES = ((-52.0, 1.25, 0.56, 28.0, 0.0), (-128.0, 1.08, 0.54, -26.0, 1
                    (168.0, 1.02, 0.52, -24.0, 210.0), (88.0, 1.30, 0.58, 30.0, 300.0))
 
 
-def _hf_flame():
+def _hf_flame(front=HF_FRONT):
     """Stylised flame crown in the canonical frame (broad side to -y, x to its right): a broad low body filling the
     bowl, a central S-curved tongue twisting 40 deg, five wavy side tongues rising round it and leaning a little out,
-    a short core tongue and two detached licks. Every tongue is a closed lofted lens tube ending in a point."""
+    a short core tongue and two detached licks. Every tongue is a closed lofted lens tube ending in a point. Then
+    turned ``front`` (its broad side to -90 deg + front)."""
     g = _HFGeo()
     z0 = HF_FLAME_Z
     H = HF_FLAME_H
@@ -1144,39 +1153,40 @@ def _hf_flame():
     for (x, y, z, h, w, lean) in ((0.30, -0.04, 1.20, 0.24, 0.10, 0.06), (-0.26, 0.02, 1.46, 0.20, 0.08, -0.05)):
         _hf_tongue(g, [(x, y, z0 + z), (x + 0.4 * lean, y, z0 + z + 0.5 * h), (x + lean, y, z0 + z + h)],
                    w, 0.5, 6, 2, 0.0, (1.0, 0.0, 0.0), shape=lambda t: math.sin(math.pi * t) ** 0.7, pole_base=True)
-    # turn the broad side to the hold camera (canonical -y -> HF_FRONT)
-    c, s = math.cos(HF_FRONT), math.sin(HF_FRONT)
+    # turn the broad side to the hold camera (canonical -y -> front)
+    c, s = math.cos(front), math.sin(front)
     g.xform(lambda p: (c * p[0] - s * p[1], s * p[0] + c * p[1], p[2]))
     return g
 
 
-def holy_fire_geo(side=1.0):
+def holy_fire_geo(side=1.0, front=HF_FRONT):
     """{part: (_HFGeo, materials, smooth, glow, casts_shadow)} for one altar in its Empty's frame; side -1 (west)
-    is the mirror image of side +1 (east)."""
+    is the mirror image of side +1 (east); ``front``: the east altar's flame turn (HF_FRONT: the mission hold's)."""
     coals = _hf_coals()
-    c, s = math.cos(HF_FRONT), math.sin(HF_FRONT)
+    c, s = math.cos(front), math.sin(front)
     coals.xform(lambda p: (c * p[0] - s * p[1], s * p[0] + c * p[1], p[2]))
     parts = dict(plinth=(_hf_plinth(), ["stone_grey"], False, None, True),
                  altar=(_hf_altar(), ["bronze"], math.radians(35.0), None, True),
                  relief=(_hf_relief(), ["gold"], math.radians(65.0), None, True),
                  coals=(coals, ["molten", "iron"], math.radians(30.0), 1.5, True),
                  # fire casts no shadow (renders; the bake's joined mesh drops the flag, the light is unshadowed)
-                 flame=(_hf_flame(), ["props_flame"], True, 1.0, False))
+                 flame=(_hf_flame(front), ["props_flame"], True, 1.0, False))
     if side < 0:
         for geo, *_ in parts.values():
             geo.mirror_x()
     return parts
 
 
-def _holy_fire(coll, root, x, y):
-    """One holy-fire altar 圣火坛 at local (x, y): Empty 'mission.holy_fire[.001]' with the children .plinth, .altar,
-    .relief, .coals and .flame, and the warm point light 'mission.holy_fire_light[.001]' over the bowl (the bake
-    pools its light on the plinth and the paving). Returns the Empty."""
-    hf = U.empty(U.name(K, "holy_fire"), coll, location=(x, y, 0.0), parent=root, display_size=1.5)
-    parts = holy_fire_geo(1.0 if x >= 0 else -1.0)
-    for key in HF_PARTS:
-        geo, mats, smooth, glow, shadow = parts[key]
-        ob = U.mesh_from_pydata(U.name(K, hf.name + "." + key), geo.verts, geo.faces, coll, materials=mats,
+def holy_fire(coll, root, x, y, key=K, front=HF_FRONT):
+    """One holy-fire altar 圣火坛 at local (x, y) of ``root`` (area ``key``): Empty '<key>.holy_fire[.001]' with the
+    children .plinth, .altar, .relief, .coals and .flame, and the warm point light '<key>.holy_fire_light[.001]' over
+    the bowl (the bake pools its light on the plinth and the paving). x >= 0 builds the east altar (its flame turned
+    ``front``), x < 0 its mirror image. Returns the Empty."""
+    hf = U.empty(U.name(key, "holy_fire"), coll, location=(x, y, 0.0), parent=root, display_size=1.5)
+    parts = holy_fire_geo(1.0 if x >= 0 else -1.0, front)
+    for part in HF_PARTS:
+        geo, mats, smooth, glow, shadow = parts[part]
+        ob = U.mesh_from_pydata(U.name(key, hf.name + "." + part), geo.verts, geo.faces, coll, materials=mats,
                                 smooth=smooth, material_indices=geo.mat, parent=hf)
         me = ob.data
         if any(geo.edge) and len(me.polygons) == len(geo.edge):
@@ -1186,7 +1196,7 @@ def _holy_fire(coll, root, x, y):
             ob["glow"] = float(glow)
         if not shadow:
             U.set_visibility(ob, shadow=False)
-    ld = bpy.data.lights.new(U.name(K, "holy_fire_light", pool=bpy.data.lights), 'POINT')
+    ld = bpy.data.lights.new(U.name(key, "holy_fire_light", pool=bpy.data.lights), 'POINT')
     ld.energy = HF_LIGHT["energy"]
     ld.color = HF_LIGHT["color"]
     ld.shadow_soft_size = HF_LIGHT["soft"]
@@ -1194,11 +1204,16 @@ def _holy_fire(coll, root, x, y):
     # visible_shadow=False is lost there), so a shadowing light would be boxed in by the flame; the crown would
     # also shade the whole plinth. Unshadowed it pools on the plinth and paving as the fire's glow.
     ld.use_shadow = HF_LIGHT["shadow"]
-    lo = bpy.data.objects.new(U.name(K, "holy_fire_light"), ld)
+    lo = bpy.data.objects.new(U.name(key, "holy_fire_light"), ld)
     coll.objects.link(lo)
     lo.parent = hf
     lo.location = (0.0, 0.0, HF_LIGHT["z"])
     return hf
+
+
+def _holy_fire(coll, root, x, y):
+    """The mission's own altar as built until round 33 (sect/patch_holy_fire_altar.py)."""
+    return holy_fire(coll, root, x, y)
 
 
 def _props(coll, root):
@@ -1208,9 +1223,7 @@ def _props(coll, root):
             P.lantern_stone(coll, 2.6, name=U.name(K, "stone_lantern"), parent=root, location=(sx * 5.2, y, 0))
     # bronze censer between the wall and the hall stairs
     P.incense_burner(coll, 1.8, name=U.name(K, "censer"), parent=root, location=(0, -5.0, 0))
-    # the Ming Sect's holy-fire altars 圣火坛, a symmetric pair on the open paving beside the mission wall
-    for x, y in HOLY_FIRE:
-        _holy_fire(coll, root, x, y)
+    # (round 34: the holy-fire altars 圣火坛 left for the formation's front paifang, formation.ALTARS)
     # tall sect banners at the plaza front corners
     for i, sx in enumerate((-1, 1)):
         P.banner(coll, 9.0, 1.3, material=3 if i else 0, seed=40 + i, name=U.name(K, "banner"), parent=root,
@@ -1234,6 +1247,8 @@ def build(collection):
     _towers(collection, root)
     _corridors(collection, root, (hall["arch_platform"][0] + TERRACE_MARGIN) / 2)
     _props(collection, root)
+    # round 34: the Quanzhen Big Dipper 天罡北斗陣 in the open apron before the wall (lib/refs_east.py)
+    RE.build_dipper(collection, root, wall_stair_foot, K)
     root["hall_height"] = TERRACE_H + hall["arch_height"]
     root["wall_tablets"] = 7
     print("MISSION_INFO", dict(hall_platform=tuple(hall["arch_platform"]), hall_height=TERRACE_H + hall["arch_height"],

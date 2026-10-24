@@ -8,7 +8,7 @@ The first thing visitors hear. You rise out of the clouds up a long marble stair
 
 - **Mode:** Custom (Advanced on the web)
 - **Instrumental:** ON
-- **Title:** Gate of the Ming Sect 明教山门
+- **Title:** Gate of the Sun Moon Divine Cult 日月神教山门
 - **Model:** newest available (v5 or later)
 - **Weirdness:** 25%
 - **Style Influence:** 75%

@@ -5,10 +5,10 @@ cave entrance with a warm lit screen inside, a wooden balcony (stilts, red raili
 tea pavilion with a low tea table, cushions and wind chimes) reached by a marble stair on
 the gate axis, a waterfall pouring through a notch in the cliff into a misty koi pool beside
 the balcony, peach blossom trees, bamboo groves, cliff pines, a big red cliff inscription
-and a resting crane, and the Smiling, Proud Wanderer duet just after it ended (_duet): a stone qin table on the lawn
-at the koi pool's west rim with the qin and the xiao on it, two stone stools and Mo Da's huqin leaning on the table.
-Over it, Xiaolongnü's golden-bell silk ribbon (_ribbon) is tied to the tip of the tea pavilion's front-left hip ridge,
-its two tails hanging in the breeze off the falls with a golden bell at each end.
+and a resting crane, and the Smiling, Proud Wanderer duet just after it ended (_duet): a stone qin table on the open
+lawn west of the koi pool with the qin and the xiao on it, two stone stools and Mo Da's huqin leaning on the table.
+(Xiaolongnü's golden-bell ribbon hung from the tea pavilion's eave until round 34; it now lies coiled on the condor's
+rock at the summit, sect/lib/refs_west.py coil. _ribbon stays for the older patches.)
 Blocking pass: shape, scale and colour coding over detail.
 
 Route: the stair from the formation tops out on a paved arrival landing at the front rim (on
@@ -791,10 +791,14 @@ def _plants(coll, root, pool):
 # White marble (the balcony stair's) is what reads there against the dark lawn, with the black qin on top.
 #
 # Placement: the only lawn by the pool that the 1380 hold camera shows is its west side (the south rim lies along the
-# frame's bottom edge, behind the foreground peach): DUET_LOC sits there, 2.0-2.5 m outside the plunge mist's box
-# (abode.waterfall.mist, x 6.6..23.4, y 13.5..29.9 m), on flat lawn (z 0.03-0.09) between the koi flagstones, the
-# balcony stilts and the pool bank, ~66 m from the hold camera with nothing in between. DUET_YAW turns the table's
-# long axis 12 deg off square to the camera's line of sight so its right end (and the huqin) shows too.
+# frame's bottom edge, behind the foreground peach). Round 34 (r31 proposal, approved): the set is the object of the
+# personal fact 'Plays drums and piano' (export_web ABODE_FACTS[3]), so it grows from DUET_SCALE 1.25 to 1.5 and
+# steps 2 m out from under the balcony onto the open lawn, along the koi flagstones' line toward the path (it keeps
+# its distance from them, 1.4 m and more from the stones and the ledge, 2 m from the plunge mist's box
+# abode.waterfall.mist x 6.6..23.4, y 13.5..29.9 m, 2 m from the stilts), on flat lawn (z 0.01-0.07), ~74 m from the
+# hold camera with nothing in between; and DUET_YAW turns it 10 deg more to the camera (its front about 4 deg off square
+# to the camera's line of sight; it was 12). Round 5's place: DUET_LOC_R5, DUET_YAW_R5, DUET_SCALE_R5
+# (sect/patch_r34_west.py recognises the old set by them).
 #
 # Every part is a closed solid with outward winding (bake_web.facing_flip / _closed_faces treat the pieces as
 # closed), built as plain lists (_DGeo) so a plain-Python check can test it without Blender.
@@ -803,9 +807,10 @@ def _plants(coll, root, pool):
 # the hold camera's right), y = away from the camera (toward the balcony stilts), z up.
 DUET = K + ".duet"
 DUET_ITEM = "wanderer_duet"           # obj['sect_item'] on every object of the group (sect/patch_r5_duet.py)
-DUET_LOC = (1.35, 14.55)              # in abode.root's frame; the empty sits at z 0
-DUET_YAW = math.radians(25.0)
-DUET_SCALE = 1.25                     # uniform scale of the abode.duet empty
+DUET_LOC = (-0.2, 13.29)              # in abode.root's frame; the empty sits at z 0
+DUET_YAW = math.radians(35.0)
+DUET_SCALE = 1.5                      # uniform scale of the abode.duet empty
+DUET_LOC_R5, DUET_YAW_R5, DUET_SCALE_R5 = (1.35, 14.55), math.radians(25.0), 1.25   # rounds 5-33
 DUET_TRI_CAP = 8000                   # per object (export keeps full detail up to here inside the hold's reach)
 DUET_SMOOTH = math.radians(35.0)      # edges sharper than this stay hard
 DUET_CLEAR = (-2.4, 2.3, -1.75, 0.65)  # duet frame (x0, x1, y0, y1) round every part: the garden scatter keeps off it
@@ -2104,10 +2109,9 @@ def build(collection):
     for k, (x, y, zt, r, h) in enumerate(PINNACLES):
         N.rock_pillar(collection, height=h, top_radius=r, seed=21 + k, top_flat=False, top_z=zt,
                       pines=True, name=K + ".pinnacle", parent=root, location=(x, y, 0.0))
-    # the Smiling, Proud Wanderer duet, just left: the qin table scene on the lawn by the koi pool
+    # the Smiling, Proud Wanderer duet, just left: the qin table scene on the open lawn by the koi pool (round 34:
+    # Xiaolongnü's ribbon no longer hangs from the tea pavilion's eave; it lies coiled at the summit)
     _duet(collection, root)
-    # Xiaolongnü's golden-bell silk ribbon, tied to the tea pavilion's eave corner over the duet
-    _ribbon(collection, root)
     return root
 
 

@@ -279,3 +279,40 @@ Nothing has been bought or downloaded.
 I didn't open the Megascans and Megaplants listings myself. Their prices come from search snippets.
 
 The research browser left preview screenshots in `E:\Github\PortfolioV5\.playwright-mcp\`. They are untracked and can be deleted.
+
+## Guardian lions (search of 2026-10-23, r28)
+
+The owner said the procedural guardian lions (props.guardian_lion) "look really weird". I searched for free scans of real Chinese stone lions to replace them, the same way the summit condor was replaced.
+
+**Pick: "Stone Big Lion 01" by Game industry veteran (zhengzhangxun), CC-BY 4.0.** https://sketchfab.com/3d-models/68e7b4db10214d12bf4ae6ec53bf1e4f
+
+- It is a real photogrammetry scan (the source zip holds a RealityCapture OBJ). It is complete all the way round, including the back.
+- It is the Qing imperial look the procedural lion was aiming for: rows of curled mane, a collar with a bell and tassels, a tall plinth with a draped brocade. It is already white marble with grey veins.
+- 400,122 triangles. The glTF download has an 8192 px colour map; the GLB download only has 1024 px, so prepare from the glTF zip.
+- It is the female: a cub lies under her left forepaw. For the male slot, use a mirrored copy (cub under the right paw), or pair her with the NY Chinatown male below if a true ball-and-cub pair matters more than matching style.
+- In the file (glTF, y up) she faces +X, about 2 degrees off. In Blender after import that is +X too, so rotate about -88 degrees around Z to face -Y like the procedural lion.
+- The plinth top is at 41% of the height (the procedural one is at 29%). Trim the thin ground fringe below about 3% of the height. Paint out a small black sign on the front of the plinth base.
+
+Other candidates I downloaded and rendered (all CC-BY 4.0):
+
+| Asset | Creator | Link | Triangles | Why not the pick |
+|---|---|---|---|---|
+| Chinatown lion (New York) | alban | https://sketchfab.com/3d-models/88ba35b1bab54e749c0308614153aa08 | 169,275 | Male with ball, complete, but softer detail, a squat plinth and red paint stains. The page adds a "NoAI" term on top of CC-BY. |
+| Guardian Lion, Chinatown, Liverpool (female) | ickleweb | https://sketchfab.com/3d-models/68cccdb7b8a7445aa0711042238026dd | 247,760 | A true pair with the next one, but phone scans: pavement and a lamp post to cut, softer faces, plain modern plinths, green-bronze paint. |
+| Guardian Lion, Chinatown, Liverpool (male) | ickleweb | https://sketchfab.com/3d-models/e4aa6a704ff04ecb98ad8c51d9d212e2 | 249,999 | As above. |
+
+I screened 84 Sketchfab candidates in all; the full list with links and licences is in the r28 search report. Nothing suitable turned up elsewhere: Smithsonian 3D has no guardian lion scans, Poly Haven only has a European lion head, and the Scan the World Forbidden City lion is CC BY-NC-SA (non-commercial, so excluded).
+
+Comparison renders: `E:\Github\PortfolioV5\.playwright-mcp\r28\search\` (comparison_sheet.jpg, turntables tt_*.png, front views front_*.png).
+
+### How it went in (r28 integrate lane, 2026-10-23)
+
+Credit line for the site: "Guardian lions: Stone Big Lion 01 by Game industry veteran (Sketchfab), CC-BY 4.0, reduced, re-textured and adapted (male mirrored, ball added)."
+
+- **Code.** `sect/lib/lion_props.py` (prep and build, like `condor_props.py`) and `sect/patch_r28_lions.py` (swaps the lions in a patched main file). `props.guardian_lion` uses them once the pending change is applied (`LION_SCAN = True`; the change is kept outside the source tree until the running bake is done).
+- **Only the gate has lions.** The old note that other areas use them is wrong: in the file and in the source, `gate.lion` (the male, x +10.6) and `gate.lion.001` (the female, x -10.6) are the only two.
+- **Which side.** By custom (zh.wikipedia 石狮子; the Palace Museum's bronze lions) the pair is 左雄右雌 as you walk *out* of the gate: the male on your left, the female on your right. From outside, facing the gate, the male is on the right. At the Forbidden City the male stands east with his right forepaw on the embroidered ball, the female west with her left forepaw on a cub, both paws toward the axis. gate.py already had it this way (male at +X), so nothing moved.
+- **The male.** The scan is the female. The male is her mirror image with the cub cut away (the paw's sole and the brocade capped flat) and a carved ball under his right forepaw: 22 cm across at size 1 (43 cm at the gate), a lattice of grooved ribbon bands with a ring and a boss in each cell. Two females would have broken the custom.
+- **Size.** 2.27 m at size 1 (4.54 m at the gate), the old lion's height. The plinth's footprint is 0.98 x 1.31 m (old 1.07 x 1.31). The scanned ground fringe below 6 % of the height is cut off, and the sole sits 1.2 cm (x size) below the paving.
+- **Budget.** 28k triangles a lion, under the bake's 30k full-detail limit near a hold. The old lion had 113k. A 2048 px colour map and a 2048 px normal map per lion are baked from the 400k scan.
+- **Colour.** The scan's photographed light is divided out at a 10 cm scale: the bright and shaded sides, and the shade under the chin and belly. Its fine detail is kept: grain, blue-grey veins, grime in the carving. That detail is laid on the scene's marble colour (#dad4c8), with a little damp darkening at the foot. The museum sign on the base is painted out.

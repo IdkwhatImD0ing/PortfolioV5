@@ -651,14 +651,18 @@ export function contentInventory(): InventoryEntry[] {
     urls: [PERSONAL_HEAD.photo],
     where: reach("abode", "The moon gate (hotspot abode) opens the reader."),
   });
+  // The object each fact's hotspot is, in PERSONAL_FACTS order (blender/xianxia-sect/sect/export_web.py ABODE_FACTS).
+  // Round 34 made the 笑傲江湖 duet's qin table the drums-and-piano fact's object (the wind chimes before it).
+  const factObjects = ["waterfall", "peach tree", "cliff inscription", "qin table of the 笑傲江湖 duet", "tea table", "crane", "koi pool"];
   PERSONAL_FACTS.forEach((f, i) => {
+    const obj = factObjects[i];
     add({
       section: per,
       what: `Fact ${i + 1}: ${stripTags(f.line)}`,
       status: "carried",
       area: "abode",
       texts: [stripTags(f.line)],
-      where: reach("abode", `Its object in the abode is hotspot fact:${i}.`),
+      where: reach("abode", obj ? `Its object in the abode is the ${obj} (hotspot fact:${i}).` : `Its object in the abode is hotspot fact:${i}.`),
     });
   });
   add({

@@ -142,7 +142,7 @@ U.tube_mesh(U.name("mission", "cord", i), [(0, 0, 4), (0.05, 0, 3.2), (0, 0, 2.5
 | `text(name, body, collection, size=1, font_path=FONT_KAITI, extrude=0, bevel_depth=0, align_x='CENTER', align_y='CENTER', material=None, vertical=False, spacing=1, location, rotation=(pi/2,0,0), parent=None)` | Text object standing in the XZ plane, readable from -Y. `vertical=True` stacks characters top to bottom (steles, vertical plaques). |
 
 ```python
-U.text(U.name("gate", "plaque_text"), "明教", coll, size=1.4, extrude=0.03, material="gold",
+U.text(U.name("gate", "plaque_text"), "日月神教", coll, size=1.4, extrude=0.03, material="gold",
        location=(0, -0.08, 0), parent=plaque)
 ```
 

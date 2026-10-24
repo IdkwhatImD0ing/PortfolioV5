@@ -1882,9 +1882,9 @@
    "name": "scenery.island.fall.003.sheet",
    "kind": "sheet",
    "position": [
-    299.44,
-    113.16,
-    -978.96
+    363.46,
+    88.16,
+    -989.22
    ],
    "size": [
     16.787,
@@ -1892,58 +1892,58 @@
     12.936
    ],
    "worldSize": [
-    18.83506,
+    14.32392,
     386.31661,
-    20.68922
+    17.83169
    ],
    "rotation": [
     0.0,
-    -0.536593,
+    0.676207,
     0.0,
-    0.843841
+    0.736711
    ],
    "origin": [
-    304.72,
-    306.28,
-    -981.29
+    357.72,
+    281.28,
+    -989.84
    ],
-   "nearestM": 254.5,
+   "nearestM": 311.6,
    "material": [
     "M.nature_waterfall"
    ],
-   "chunk": "library",
-   "area": "library",
+   "chunk": "formation",
+   "area": "formation",
    "corners": [
     [
-     299.836,
-     291.277,
-     -985.994
+     359.604,
+     266.277,
+     -983.327
     ],
     [
-     305.195,
-     291.277,
-     -974.533
+     360.694,
+     266.277,
+     -995.933
     ],
     [
-     297.171,
-     -80.0,
-     -968.63
+     370.594,
+     -105.0,
+     -997.033
     ],
     [
-     290.109,
-     -80.0,
-     -983.86
+     369.095,
+     -105.0,
+     -980.313
     ]
    ],
    "lip": [
-    303.369,
-    299.233,
-    -980.655
+    359.215,
+    274.233,
+    -989.717
    ],
    "foot": [
-    293.662,
-    -72.543,
-    -976.611
+    369.643,
+    -97.543,
+    -988.367
    ],
    "height": 386.32,
    "sizeLocal": [
@@ -1957,9 +1957,9 @@
    "name": "scenery.island.fall.003.sheet.001",
    "kind": "sheet",
    "position": [
-    299.14,
-    113.16,
-    -977.88
+    364.26,
+    88.16,
+    -990.01
    ],
    "size": [
     16.103,
@@ -1967,58 +1967,58 @@
     13.6
    ],
    "worldSize": [
-    19.14622,
+    14.92698,
     386.32662,
-    20.35136
+    17.20691
    ],
    "rotation": [
     0.0,
-    -0.536593,
+    0.676207,
     0.0,
-    0.843841
+    0.736711
    ],
    "origin": [
-    304.85,
-    306.29,
-    -980.08
+    358.22,
+    281.29,
+    -990.96
    ],
-   "nearestM": 253.6,
+   "nearestM": 311.7,
    "material": [
     "M.nature_waterfall"
    ],
-   "chunk": "library",
-   "area": "library",
+   "chunk": "formation",
+   "area": "formation",
    "corners": [
     [
-     300.333,
-     291.287,
-     -983.625
+     360.359,
+     266.287,
+     -985.628
     ],
     [
-     304.686,
-     291.287,
-     -974.352
+     361.225,
+     266.287,
+     -995.835
     ],
     [
-     296.502,
-     -80.0,
-     -967.75
+     371.614,
+     -105.0,
+     -997.461
     ],
     [
-     289.651,
-     -80.0,
-     -982.323
+     370.26,
+     -105.0,
+     -981.415
     ]
    ],
    "lip": [
-    303.416,
-    299.243,
-    -979.396
+    359.804,
+    274.243,
+    -990.831
    ],
    "foot": [
-    293.262,
-    -72.542,
-    -974.885
+    370.853,
+    -97.542,
+    -989.661
    ],
    "height": 386.33,
    "sizeLocal": [
@@ -10430,6 +10430,278 @@
   }
  ],
  "beams": [],
+ "fires": [
+  {
+   "id": "forge.fire.chimney.0",
+   "kind": "chimney",
+   "area": "forge",
+   "chunk": "forge",
+   "position": [
+    140.923,
+    120.8,
+    -365.806
+   ],
+   "normal": null,
+   "width": 1.6,
+   "height": 1.5,
+   "depth": 1.6,
+   "radius": 0.8,
+   "foot": [
+    140.923,
+    120.8,
+    -365.806
+   ],
+   "size": [
+    1.6,
+    1.5,
+    1.6
+   ],
+   "facing": [
+    0.0,
+    1.0,
+    -0.0
+   ],
+   "quaternion": [
+    0.0,
+    -0.457582,
+    0.0,
+    0.889168
+   ],
+   "mouth": null,
+   "openSides": 3
+  },
+  {
+   "id": "forge.fire.chimney.1",
+   "kind": "chimney",
+   "area": "forge",
+   "chunk": "forge",
+   "position": [
+    152.548,
+    120.8,
+    -349.531
+   ],
+   "normal": null,
+   "width": 1.6,
+   "height": 1.5,
+   "depth": 1.6,
+   "radius": 0.8,
+   "foot": [
+    152.548,
+    120.8,
+    -349.531
+   ],
+   "size": [
+    1.6,
+    1.5,
+    1.6
+   ],
+   "facing": [
+    0.0,
+    1.0,
+    -0.0
+   ],
+   "quaternion": [
+    0.0,
+    -0.457582,
+    0.0,
+    0.889168
+   ],
+   "mouth": null,
+   "openSides": 3
+  },
+  {
+   "id": "forge.fire.ding",
+   "kind": "cauldron",
+   "area": "forge",
+   "chunk": "forge",
+   "position": [
+    107.676,
+    102.216,
+    -329.769
+   ],
+   "normal": null,
+   "width": 5.68,
+   "height": 3.55,
+   "depth": 5.68,
+   "radius": 2.84,
+   "foot": [
+    107.676,
+    102.216,
+    -329.769
+   ],
+   "size": [
+    5.68,
+    3.55,
+    5.68
+   ],
+   "facing": [
+    0.0,
+    1.0,
+    -0.0
+   ],
+   "quaternion": [
+    0.0,
+    -0.457582,
+    0.0,
+    0.889168
+   ],
+   "mouth": null,
+   "openSides": 0
+  },
+  {
+   "id": "forge.fire.furnace.0",
+   "kind": "furnace",
+   "area": "forge",
+   "chunk": "forge",
+   "position": [
+    134.961,
+    97.4,
+    -349.258
+   ],
+   "normal": [
+    -0.8137,
+    0.0,
+    0.5812
+   ],
+   "width": 2.24,
+   "height": 2.07,
+   "depth": 1.645,
+   "radius": 0.0,
+   "foot": [
+    135.608,
+    97.55,
+    -349.72
+   ],
+   "size": [
+    1.904,
+    1.76,
+    1.32
+   ],
+   "facing": [
+    -0.8137,
+    0.0,
+    0.5812
+   ],
+   "quaternion": [
+    0.0,
+    -0.457582,
+    0.0,
+    0.889168
+   ],
+   "mouth": {
+    "center": [
+     134.53,
+     98.435,
+     -348.95
+    ],
+    "width": 2.24,
+    "height": 2.07
+   },
+   "openSides": 1
+  },
+  {
+   "id": "forge.fire.furnace.1",
+   "kind": "furnace",
+   "area": "forge",
+   "chunk": "forge",
+   "position": [
+    130.561,
+    97.32,
+    -355.332
+   ],
+   "normal": [
+    -0.8137,
+    0.0,
+    0.5812
+   ],
+   "width": 1.6,
+   "height": 1.48,
+   "depth": 1.445,
+   "radius": 0.0,
+   "foot": [
+    131.126,
+    97.47,
+    -355.736
+   ],
+   "size": [
+    1.36,
+    1.258,
+    1.16
+   ],
+   "facing": [
+    -0.8137,
+    0.0,
+    0.5812
+   ],
+   "quaternion": [
+    0.0,
+    -0.457582,
+    0.0,
+    0.889168
+   ],
+   "mouth": {
+    "center": [
+     130.17,
+     98.06,
+     -355.053
+    ],
+    "width": 1.6,
+    "height": 1.48
+   },
+   "openSides": 1
+  },
+  {
+   "id": "forge.fire.furnace.2",
+   "kind": "furnace",
+   "area": "forge",
+   "chunk": "forge",
+   "position": [
+    139.279,
+    97.32,
+    -343.126
+   ],
+   "normal": [
+    -0.8137,
+    0.0,
+    0.5812
+   ],
+   "width": 1.6,
+   "height": 1.48,
+   "depth": 1.445,
+   "radius": 0.0,
+   "foot": [
+    139.845,
+    97.47,
+    -343.53
+   ],
+   "size": [
+    1.36,
+    1.258,
+    1.16
+   ],
+   "facing": [
+    -0.8137,
+    0.0,
+    0.5812
+   ],
+   "quaternion": [
+    0.0,
+    -0.457582,
+    0.0,
+    0.889168
+   ],
+   "mouth": {
+    "center": [
+     138.889,
+     98.06,
+     -342.847
+    ],
+    "width": 1.6,
+    "height": 1.48
+   },
+   "openSides": 1
+  }
+ ],
  "hotspots": [
   {
    "id": "project:dispatchai",
@@ -11661,12 +11933,12 @@
    "node": "hotspot.skills:1",
    "center": [
     16.92,
-    188.25,
+    188.24,
     -890.81
    ],
    "size": [
     33.46272,
-    5.52257,
+    5.53688,
     29.52185
    ],
    "area": "steles",
@@ -11984,26 +12256,23 @@
   },
   {
    "id": "fact:3",
-   "label": "Wind Chimes",
+   "label": "Qin Table",
    "node": "hotspot.fact:3",
    "center": [
-    197.74,
-    258.09,
-    -1352.97
+    193.09,
+    251.63,
+    -1344.46
    ],
    "size": [
-    20.23599,
-    3.63074,
-    7.69812
+    6.21275,
+    3.53542,
+    3.3147
    ],
    "area": "abode",
    "chunk": "abode",
    "kind": "item",
    "objects": [
-    "abode.wind_chime",
-    "abode.wind_chime.001",
-    "abode.wind_chime.002",
-    "abode.wind_chime.003"
+    "abode.duet"
    ]
   },
   {
@@ -12151,13 +12420,13 @@
    "node": "hotspot.gate-lions",
    "center": [
     0.0,
-    42.28,
-    29.9
+    42.26,
+    29.99
    ],
    "size": [
-    23.33479,
-    4.55301,
-    2.61193
+    23.04008,
+    4.56085,
+    2.62866
    ],
    "area": "gate",
    "chunk": "gate",
@@ -12767,29 +13036,50 @@
    "area": "mirror",
    "node": null,
    "objects": [
-    "mirror.flute_rock",
-    "mirror.flute_xiao",
-    "mirror.flute_bag",
-    "mirror.flute_tassel"
+    "mirror.flute"
    ],
    "boxes": [
     {
      "center": [
-      -80.82,
-      70.15,
-      -191.98
+      -102.57,
+      71.31,
+      -180.68
      ],
      "size": [
-      2.94305,
-      1.02333,
-      2.32283
+      1.80447,
+      0.64762,
+      0.42729
+     ],
+     "hotspot": "mirror-pavilion",
+     "objects": [
+      "mirror.flute"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "cliff-of-reflection",
+   "kind": "lore",
+   "area": "mirror",
+   "node": null,
+   "objects": [
+    "mirror.siguoya"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -135.22,
+      86.45,
+      -399.55
+     ],
+     "size": [
+      14.46838,
+      25.70355,
+      10.58731
      ],
      "hotspot": null,
      "objects": [
-      "mirror.flute_rock",
-      "mirror.flute_xiao",
-      "mirror.flute_bag",
-      "mirror.flute_tassel"
+      "mirror.siguoya"
      ]
     }
    ]
@@ -12805,45 +13095,18 @@
    "boxes": [
     {
      "center": [
-      88.44,
+      125.76,
       96.18,
-      -345.5
+      -326.37
      ],
      "size": [
-      4.9564,
+      4.30936,
       2.35,
-      0.74677
+      3.6297
      ],
      "hotspot": null,
      "objects": [
       "forge.five_wheels"
-     ]
-    }
-   ]
-  },
-  {
-   "id": "sword-tomb",
-   "kind": "lore",
-   "area": "forge",
-   "node": null,
-   "objects": [
-    "forge.sword_tomb"
-   ],
-   "boxes": [
-    {
-     "center": [
-      125.77,
-      96.49,
-      -322.46
-     ],
-     "size": [
-      9.02081,
-      3.57416,
-      9.31717
-     ],
-     "hotspot": null,
-     "objects": [
-      "forge.sword_tomb"
      ]
     }
    ]
@@ -12876,45 +13139,208 @@
    ]
   },
   {
-   "id": "holy-fire-altar",
+   "id": "mount-hua",
    "kind": "lore",
-   "area": "mission",
+   "area": "arena",
    "node": null,
    "objects": [
-    "mission.holy_fire",
-    "mission.holy_fire.001"
+    "arena.seat.north",
+    "arena.seat.east",
+    "arena.seat.south",
+    "arena.seat.west"
    ],
    "boxes": [
     {
      "center": [
-      -113.54,
-      142.45,
-      -620.0
+      -42.57,
+      120.02,
+      -492.57
      ],
      "size": [
-      8.44479,
-      5.00999,
-      8.44482
+      3.74767,
+      0.07999,
+      3.74768
      ],
      "hotspot": null,
      "objects": [
-      "mission.holy_fire"
+      "arena.seat.north"
      ]
     },
     {
      "center": [
-      -152.18,
-      142.45,
-      -588.27
+      -27.43,
+      120.02,
+      -492.57
      ],
      "size": [
-      8.44479,
-      5.00999,
-      8.44482
+      3.74767,
+      0.07999,
+      3.74768
      ],
      "hotspot": null,
      "objects": [
-      "mission.holy_fire.001"
+      "arena.seat.east"
+     ]
+    },
+    {
+     "center": [
+      -27.43,
+      120.02,
+      -477.43
+     ],
+     "size": [
+      3.74767,
+      0.07999,
+      3.74768
+     ],
+     "hotspot": null,
+     "objects": [
+      "arena.seat.south"
+     ]
+    },
+    {
+     "center": [
+      -42.57,
+      120.02,
+      -477.43
+     ],
+     "size": [
+      3.74767,
+      0.07999,
+      3.74768
+     ],
+     "hotspot": null,
+     "objects": [
+      "arena.seat.west"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "big-dipper-array",
+   "kind": "lore",
+   "area": "mission",
+   "node": null,
+   "objects": [
+    "mission.dipper.yaoguang",
+    "mission.dipper.kaiyang",
+    "mission.dipper.yuheng",
+    "mission.dipper.tianquan",
+    "mission.dipper.tianji",
+    "mission.dipper.tianxuan",
+    "mission.dipper.tianshu"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -113.86,
+      140.17,
+      -601.95
+     ],
+     "size": [
+      1.65111,
+      0.38,
+      1.65112
+     ],
+     "hotspot": null,
+     "objects": [
+      "mission.dipper.yaoguang"
+     ]
+    },
+    {
+     "center": [
+      -118.86,
+      140.17,
+      -600.37
+     ],
+     "size": [
+      1.76248,
+      0.38,
+      1.76245
+     ],
+     "hotspot": null,
+     "objects": [
+      "mission.dipper.kaiyang"
+     ]
+    },
+    {
+     "center": [
+      -123.48,
+      140.25,
+      -598.71
+     ],
+     "size": [
+      1.82954,
+      0.38,
+      1.82959
+     ],
+     "hotspot": null,
+     "objects": [
+      "mission.dipper.yuheng"
+     ]
+    },
+    {
+     "center": [
+      -127.84,
+      140.25,
+      -595.14
+     ],
+     "size": [
+      1.86503,
+      0.38,
+      1.86499
+     ],
+     "hotspot": null,
+     "objects": [
+      "mission.dipper.tianquan"
+     ]
+    },
+    {
+     "center": [
+      -130.39,
+      140.17,
+      -590.89
+     ],
+     "size": [
+      1.85855,
+      0.38,
+      1.85852
+     ],
+     "hotspot": null,
+     "objects": [
+      "mission.dipper.tianji"
+     ]
+    },
+    {
+     "center": [
+      -136.12,
+      140.25,
+      -588.33
+     ],
+     "size": [
+      1.81226,
+      0.38,
+      1.81226
+     ],
+     "hotspot": null,
+     "objects": [
+      "mission.dipper.tianxuan"
+     ]
+    },
+    {
+     "center": [
+      -136.04,
+      140.25,
+      -591.3
+     ],
+     "size": [
+      1.83768,
+      0.38,
+      1.83765
+     ],
+     "hotspot": null,
+     "objects": [
+      "mission.dipper.tianshu"
      ]
     }
    ]
@@ -12930,14 +13356,14 @@
    "boxes": [
     {
      "center": [
-      328.21,
-      275.12,
-      -994.23
+      331.48,
+      257.73,
+      -992.66
      ],
      "size": [
-      80.79724,
-      100.7063,
-      79.95612
+      98.9819,
+      88.67242,
+      96.78101
      ],
      "hotspot": null,
      "objects": [
@@ -12949,26 +13375,80 @@
   {
    "id": "holy-fire-tokens",
    "kind": "lore",
-   "area": "scroll",
+   "area": "steles",
    "node": null,
    "objects": [
-    "scroll.slip_stack"
+    "steles.tokens"
    ],
    "boxes": [
     {
      "center": [
-      -113.44,
-      206.95,
-      -1066.65
+      12.59,
+      186.72,
+      -880.16
      ],
      "size": [
-      4.75269,
-      4.01442,
-      4.57471
+      1.58493,
+      2.49721,
+      2.62378
+     ],
+     "hotspot": "skills:1",
+     "objects": [
+      "steles.tokens"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "dugu-nine-swords",
+   "kind": "lore",
+   "area": "steles",
+   "node": null,
+   "objects": [
+    "steles.stele_master"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -9.58,
+      191.09,
+      -922.01
+     ],
+     "size": [
+      9.15664,
+      8.03281,
+      9.39954
+     ],
+     "hotspot": "steles",
+     "objects": [
+      "steles.stele_master"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sword-tomb",
+   "kind": "lore",
+   "area": "scroll",
+   "node": null,
+   "objects": [
+    "scroll.sword_tomb"
+   ],
+   "boxes": [
+    {
+     "center": [
+      -114.41,
+      206.65,
+      -1079.67
+     ],
+     "size": [
+      5.44106,
+      5.94377,
+      5.50439
      ],
      "hotspot": null,
      "objects": [
-      "scroll.slip_stack"
+      "scroll.sword_tomb"
      ]
     }
    ]
@@ -13079,130 +13559,45 @@
    ]
   },
   {
-   "id": "big-dipper-array",
+   "id": "holy-fire-altar",
    "kind": "lore",
    "area": "formation",
    "node": null,
    "objects": [
-    "formation.dipper.yaoguang",
-    "formation.dipper.kaiyang",
-    "formation.dipper.yuheng",
-    "formation.dipper.tianquan",
-    "formation.dipper.tianji",
-    "formation.dipper.tianxuan",
-    "formation.dipper.tianshu"
+    "formation.holy_fire",
+    "formation.holy_fire.001"
    ],
    "boxes": [
     {
      "center": [
-      81.19,
-      221.19,
-      -1235.81
+      43.68,
+      222.45,
+      -1159.06
      ],
      "size": [
-      3.3756,
-      2.45685,
-      3.37549
+      8.42716,
+      5.00999,
+      8.42725
      ],
      "hotspot": null,
      "objects": [
-      "formation.dipper.yaoguang"
+      "formation.holy_fire"
      ]
     },
     {
      "center": [
-      72.78,
-      221.18,
-      -1232.1
+      25.09,
+      222.45,
+      -1182.61
      ],
      "size": [
-      3.07837,
-      2.44803,
-      3.07837
+      8.42716,
+      5.00999,
+      8.42725
      ],
      "hotspot": null,
      "objects": [
-      "formation.dipper.kaiyang"
-     ]
-    },
-    {
-     "center": [
-      66.93,
-      221.18,
-      -1230.8
-     ],
-     "size": [
-      2.73642,
-      2.4379,
-      2.73633
-     ],
-     "hotspot": null,
-     "objects": [
-      "formation.dipper.yuheng"
-     ]
-    },
-    {
-     "center": [
-      60.91,
-      221.19,
-      -1231.01
-     ],
-     "size": [
-      2.87705,
-      2.45685,
-      2.87695
-     ],
-     "hotspot": null,
-     "objects": [
-      "formation.dipper.tianquan"
-     ]
-    },
-    {
-     "center": [
-      59.1,
-      221.18,
-      -1236.85
-     ],
-     "size": [
-      2.93747,
-      2.44803,
-      2.9375
-     ],
-     "hotspot": null,
-     "objects": [
-      "formation.dipper.tianji"
-     ]
-    },
-    {
-     "center": [
-      50.78,
-      221.18,
-      -1236.9
-     ],
-     "size": [
-      3.29775,
-      2.4379,
-      3.29785
-     ],
-     "hotspot": null,
-     "objects": [
-      "formation.dipper.tianxuan"
-     ]
-    },
-    {
-     "center": [
-      49.7,
-      221.19,
-      -1229.55
-     ],
-     "size": [
-      3.43011,
-      2.45685,
-      3.43018
-     ],
-     "hotspot": null,
-     "objects": [
-      "formation.dipper.tianshu"
+      "formation.holy_fire.001"
      ]
     }
    ]
@@ -13218,16 +13613,16 @@
    "boxes": [
     {
      "center": [
-      195.06,
-      251.37,
-      -1344.67
+      193.09,
+      251.63,
+      -1344.46
      ],
      "size": [
-      5.18231,
-      2.95523,
-      3.01648
+      6.21275,
+      3.53542,
+      3.3147
      ],
-     "hotspot": null,
+     "hotspot": "fact:3",
      "objects": [
       "abode.duet"
      ]
@@ -13237,26 +13632,26 @@
   {
    "id": "golden-bell-ribbon",
    "kind": "lore",
-   "area": "abode",
+   "area": "summit",
    "node": null,
    "objects": [
-    "abode.ribbon"
+    "summit.ribbon"
    ],
    "boxes": [
     {
      "center": [
-      194.59,
-      255.63,
-      -1348.41
+      -6.31,
+      327.34,
+      -1454.08
      ],
      "size": [
-      3.77966,
-      9.67403,
-      3.73169
+      1.89541,
+      1.17413,
+      1.97192
      ],
      "hotspot": null,
      "objects": [
-      "abode.ribbon"
+      "summit.ribbon"
      ]
     }
    ]
@@ -13272,18 +13667,45 @@
    "boxes": [
     {
      "center": [
-      -26.42,
-      329.24,
-      -1462.14
+      -5.74,
+      329.91,
+      -1456.49
      ],
      "size": [
-      2.52078,
-      1.70325,
-      2.06946
+      2.32225,
+      1.44775,
+      2.21741
      ],
      "hotspot": null,
      "objects": [
       "summit.condor_bird"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "green-bamboo",
+   "kind": "lore",
+   "area": "summit",
+   "node": null,
+   "objects": [
+    "summit.blinds"
+   ],
+   "boxes": [
+    {
+     "center": [
+      0.17,
+      325.55,
+      -1497.08
+     ],
+     "size": [
+      13.02266,
+      5.32828,
+      13.07019
+     ],
+     "hotspot": "summit",
+     "objects": [
+      "summit.blinds"
      ]
     }
    ]
@@ -13501,32 +13923,6 @@
    "area": "forge"
   },
   {
-   "name": "mission.holy_fire_light",
-   "type": "POINT",
-   "position": [
-    -113.54,
-    144.0,
-    -620.0
-   ],
-   "color": "#ffc481",
-   "power": 1800.0,
-   "powerUnit": "W (Blender point light)",
-   "area": "mission"
-  },
-  {
-   "name": "mission.holy_fire_light.001",
-   "type": "POINT",
-   "position": [
-    -152.18,
-    144.0,
-    -588.27
-   ],
-   "color": "#ffc481",
-   "power": 1800.0,
-   "powerUnit": "W (Blender point light)",
-   "area": "mission"
-  },
-  {
    "name": "library.lit_light.1",
    "type": "POINT",
    "position": [
@@ -13666,6 +14062,32 @@
    ],
    "color": "#ffc481",
    "power": 750.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
+  },
+  {
+   "name": "formation.holy_fire_light",
+   "type": "POINT",
+   "position": [
+    43.68,
+    224.0,
+    -1159.06
+   ],
+   "color": "#ffc481",
+   "power": 1800.0,
+   "powerUnit": "W (Blender point light)",
+   "area": "formation"
+  },
+  {
+   "name": "formation.holy_fire_light.001",
+   "type": "POINT",
+   "position": [
+    25.09,
+    224.0,
+    -1182.61
+   ],
+   "color": "#ffc481",
+   "power": 1800.0,
    "powerUnit": "W (Blender point light)",
    "area": "formation"
   },

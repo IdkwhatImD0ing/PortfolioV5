@@ -1,7 +1,9 @@
 """Sword-Discussion Arena 论剑台 (site section 'hackathons').
 
 A floating island over a gap in the range: a 60 m circular stone dueling platform with
-concentric rings and a taiji + glowing bagua inlay in the centre, 40 banner poles around the
+concentric rings and a taiji + glowing bagua inlay in the centre (round 34: in the bagua ring at the arena's north,
+east, south and west, where four of its trigrams were, the bronze seat plates of the Mount Hua contests' Five Greats
+北丐 東邪 南帝 西毒, the taiji the Centre's; lib/refs_east.py), 40 banner poles around the
 rim (one per hackathon), a stepped spectator tier with viewing pavilions on the east (+X)
 side, the Heavy Iron Sword 玄铁重剑 (a colossal plain black iron sword, Dugu Qiubai's from Return of
 the Condor Heroes, whose iron became the gate's Dragon Saber) piercing the island at the back (+Y;
@@ -32,6 +34,7 @@ from sect.lib import materials as M
 from sect.lib import arch as A
 from sect.lib import props as P
 from sect.lib import nature as N
+from sect.lib import refs_east as RE
 
 # --- landings (local frame). The grass next to the platform is -1.35 to -1.45, so both landings
 # sit at -1.3 (not -1.5 / -1.8 as first planned, which would put their paving under the grass).
@@ -215,10 +218,14 @@ def _build_platform(coll, root):
     U.mesh_from_bmesh(U.name(K, "taiji_eye"), bm, coll, materials=["stone_dark"], parent=root)
 
     # glowing bagua ring and an outer script ring (concentric rune bands)
-    P.rune_ring(coll, 10.7, 4.2, "trigram", material="rune_cyan", seed=3,
-                name=U.name(K, "bagua"), parent=root)
+    bagua = P.rune_ring(coll, RE.SEAT_RING[0], RE.SEAT_RING[1], "trigram", material="rune_cyan", seed=3,
+                        name=U.name(K, "bagua"), parent=root)
     P.rune_ring(coll, 27.1, 1.1, "script", material="rune_gold", seed=5,
                 name=U.name(K, "script_ring"), parent=root)
+    # round 34: the seats of the Five Greats 華山論劍 in the bagua ring at north, east, south and west (the taiji is the
+    # Centre's), each bronze plate in the place of that point's trigram
+    RE.clear_seat_trigrams(bagua)
+    RE.build_seats(coll, root, K)
     return plat
 
 
@@ -294,6 +301,34 @@ def _clear_plants(rock, regions):
                 break
     at.data.foreach_set("value", vals)
     me.update()
+    return n
+
+
+PLATFORM_CLEAR_R = 33.5     # round 34: no plants on the island's top within this radius (all under the platform);
+                            # some grew taller than the 1.3 m to its floor and their tips showed through the duelling
+                            # floor, and in the seats of the Five Greats (lib/refs_east.py)
+
+
+def clear_plants_under_platform(rock, r1=PLATFORM_CLEAR_R):
+    """Zero the rock's 'nature_veg' scatter mask on every face wholly within ``r1`` of the arena's centre (root
+    frame): nothing grows under the stone platform. Works on the built object (sect/patch_r34_east.py clears a built
+    file's). Returns the number of faces cleared (0 when already clear)."""
+    me = rock.data
+    at = me.attributes.get("nature_veg")
+    if at is None:
+        return 0
+    m = rock.matrix_parent_inverse @ rock.matrix_basis
+    rr = [math.hypot(p.x, p.y) for p in (m @ v.co for v in me.vertices)]
+    vals = [0.0] * len(me.polygons)
+    at.data.foreach_get("value", vals)
+    n = 0
+    for i, poly in enumerate(me.polygons):
+        if vals[i] > 0.5 and max(rr[k] for k in poly.vertices) <= r1:
+            vals[i] = 0.0
+            n += 1
+    if n:
+        at.data.foreach_set("value", vals)
+        me.update()
     return n
 
 
@@ -1170,7 +1205,8 @@ def build(collection):
     cleared = _clear_plants(rock, [(-math.pi / 2, math.radians(11.0), 33.0, 47.5),     # bridgehead + steps
                                    (REAR_A, math.radians(9.0), 33.0, 46.5),          # rear stair, landing, pier
                                    (WEST_A, math.radians(4.5), 33.0, 37.0)])         # west stair
-    print("ARENA plants cleared from %d island faces under paving" % cleared)
+    print("ARENA plants cleared from %d island faces under paving, %d under the platform" % (
+        cleared, clear_plants_under_platform(rock)))
     rim = _rim_radius(rock)
     print("ARENA rim at +X %.1f m, tier arc min %.1f m" %
           (rim(0.0), min(rim(TIER_A * (j / 4.0 - 1.0)) for j in range(9))))

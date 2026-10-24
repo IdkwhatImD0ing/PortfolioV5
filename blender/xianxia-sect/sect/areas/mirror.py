@@ -11,6 +11,9 @@ Blocking layout (local frame, front = -Y, z = 0 walkable):
     ring on its polished face, turned 18 deg toward the low western sun; it reflects in the pond
   - one big peach blossom tree beside the dais, three Huangshan pines on the rim, two taihu
     scholar rocks, lotus, incense burner
+  - (round 34) Huang Yaoshi's jade flute 玉簫 on a black-lacquer stand in the pond pavilion, facing the mirror, and
+    思過崖 (the Cliff of Reflection) carved in three ~5 m characters on the bare cliff behind and above the mirror,
+    the range's trees cleared round it (sect/lib/refs_west.py flute_set, siguoya)
 
 Walking route (architecture-audit.md 1.2 and section 4): the stair from the gate tops out at
 the foot of three marble steps up to a 7 m arrival strip on the entry path's axis (x -5); the
@@ -618,6 +621,10 @@ def _garden(coll, root):
 
 
 # ---------------------------------------------------------------- Huang Yaoshi's jade flute 玉簫 (round 7)
+# Round 34 (r31 proposal, approved): the flute moved into the pond pavilion, on its own lacquer stand facing the
+# mirror (sect/lib/refs_west.py flute_set, built by _pavilion_flute below); the slate, the bag, the petals and the
+# small peach tree went with the old place. The round-7 set (_flute and its constants) stays for the older patches
+# (sect/patch_r7_flute.py); build() no longer makes it.
 # The Legend of the Condor Heroes: Huang Yaoshi 黄药师, the Eastern Heretic and master of Peach Blossom Island 桃花岛,
 # plays 碧海潮生曲 on his jade xiao; his island's peach maze is laid out on the eight trigrams, like the mirror's ring. Here
 # he has just put it down by the peach-garden pond: a flat dark slate 青石 at the east rim, the pale jade flute (finger
@@ -795,6 +802,47 @@ def _flute(coll, root):
     return em
 
 
+def _pavilion_flute(collection, root):
+    """Round 34: Huang Yaoshi's jade flute on its lacquer stand in the pond pavilion, facing the mirror (after the
+    pavilion and the mirror). Returns its Empty."""
+    from sect.lib import refs_west as RW
+    return RW.flute_set(collection, root, bpy.data.objects[KEY + ".ting"])
+
+
+def _assembled_matrix():
+    """mirror.root's matrix as assemble.py sets it once build() returns: at its anchor (world.ANCHORS), turned by
+    camera.area_yaws (assemble.anchors_with_yaw)."""
+    from mathutils import Matrix
+    from sect import camera as C
+    from sect import world as W
+    anchors = {k: tuple(v[:4]) for k, v in W.ANCHORS.items()}
+    a = anchors[KEY]
+    return Matrix.Translation((a[0], a[1], a[2])) @ Matrix.Rotation(C.area_yaws(anchors)[KEY], 4, 'Z')
+
+
+def _siguoya(collection, root):
+    """Round 34: 思過崖 on the cliff behind the mirror (world.range must be built), and the range's tree masks cleared
+    round it (those that exist now: world.py's; scenery.py clears its own the same way once it has made them,
+    r34/west/pending_scenery.diff). The cliff is found in world space, but assemble.py moves mirror.root to its anchor
+    only after build() returns: a root still at the origin is put there for the cut, then put back. Without
+    world.range (an area preview, look.py) there is no cliff: skipped. Returns the object or None."""
+    from mathutils import Matrix
+    from sect.lib import refs_west as RW
+    rng = bpy.data.objects.get("world.range")
+    if rng is None:
+        print("MIRROR WARN no world.range: 思過崖 skipped", flush=True)
+        return None
+    keep = root.matrix_basis.copy()
+    if root.parent is None and keep == Matrix.Identity(4):
+        root.matrix_basis = _assembled_matrix()
+    try:
+        ob = RW.siguoya(collection, root)
+        RW.siguoya_clear(rng, root, RW.local_matrix(ob, root))
+    finally:
+        root.matrix_basis = keep
+    return ob
+
+
 def build(collection):
     """Build the Heart-Mirror Terrace at the local origin. Returns 'mirror.root'."""
     root = U.empty("%s.root" % KEY, collection, display_size=4.0)
@@ -806,8 +854,10 @@ def build(collection):
     _bridge(collection, root)
     _shrine(collection, root)
     _garden(collection, root)
-    # Huang Yaoshi's jade flute on its stone at the pond's east rim (after the lawn, pond and paths it lies on)
-    _flute(collection, root)
+    # Huang Yaoshi's jade flute on its lacquer stand in the pond pavilion, facing the mirror (round 34)
+    _pavilion_flute(collection, root)
+    # 思過崖 carved on the bare cliff behind the mirror (round 34)
+    _siguoya(collection, root)
     root["area_key"] = KEY
     root["title_zh"] = AREA["title_zh"]
     return root

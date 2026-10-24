@@ -14,9 +14,9 @@
   "backdrop_water.glb.gz"
  ],
  "globalLow": null,
- "globalBytes": 8947981,
+ "globalBytes": 9106122,
  "globalBytesLow": null,
- "globalTris": 1453296,
+ "globalTris": 1491588,
  "globalTexBytes": 9087659,
  "globalTexBytesLow": null,
  "chunks": [
@@ -36,9 +36,9 @@
     1,
     676
    ],
-   "bytes": 12183122,
-   "bytesLow": 9477089,
-   "tris": 1741824,
+   "bytes": 12445923,
+   "bytesLow": 9715799,
+   "tris": 1799761,
    "texBytes": 242570582,
    "texBytesLow": 61953366,
    "core": [
@@ -67,11 +67,11 @@
     1,
     916
    ],
-   "bytes": 8417921,
-   "bytesLow": 6983618,
-   "tris": 929370,
-   "texBytes": 157461163,
-   "texBytesLow": 69380779,
+   "bytes": 8228803,
+   "bytesLow": 6793786,
+   "tris": 911388,
+   "texBytes": 156936875,
+   "texBytesLow": 68856491,
    "core": [
     67,
     580
@@ -98,9 +98,9 @@
     1,
     1060
    ],
-   "bytes": 11396053,
-   "bytesLow": 8777310,
-   "tris": 1409329,
+   "bytes": 11599834,
+   "bytesLow": 8981589,
+   "tris": 1437759,
    "texBytes": 241871531,
    "texBytesLow": 61778603,
    "core": [
@@ -129,9 +129,9 @@
     88,
     1156
    ],
-   "bytes": 7767551,
-   "bytesLow": 6537639,
-   "tris": 1584042,
+   "bytes": 8098680,
+   "bytesLow": 6870792,
+   "tris": 1476100,
    "texBytes": 154839723,
    "texBytesLow": 64662187,
    "core": [
@@ -160,9 +160,9 @@
     157,
     1383
    ],
-   "bytes": 9814513,
-   "bytesLow": 8332264,
-   "tris": 1230966,
+   "bytes": 10109634,
+   "bytesLow": 8710539,
+   "tris": 1320435,
    "texBytes": 156237824,
    "texBytesLow": 68157440,
    "core": [
@@ -191,9 +191,9 @@
     256,
     1650
    ],
-   "bytes": 12694251,
-   "bytesLow": 9724695,
-   "tris": 1899391,
+   "bytes": 13046663,
+   "bytesLow": 10126756,
+   "tris": 2035333,
    "texBytes": 237677227,
    "texBytesLow": 60730027,
    "core": [
@@ -220,9 +220,9 @@
     286,
     1684
    ],
-   "bytes": 9919382,
-   "bytesLow": 8487805,
-   "tris": 1251767,
+   "bytes": 11606485,
+   "bytesLow": 10105494,
+   "tris": 1755818,
    "texBytes": 217929046,
    "texBytesLow": 83711318,
    "core": [
@@ -251,9 +251,9 @@
     535,
     1729
    ],
-   "bytes": 7809211,
-   "bytesLow": 6885283,
-   "tris": 1163535,
+   "bytes": 8154666,
+   "bytesLow": 7270423,
+   "tris": 1286630,
    "texBytes": 148373504,
    "texBytesLow": 81264640,
    "core": [
@@ -270,19 +270,21 @@
    "id": "formation",
    "files": [
     "formation.glb.gz",
-    "formation_trees.glb.gz"
+    "formation_trees.glb.gz",
+    "formation_water.glb.gz"
    ],
    "filesLow": [
     "low/formation.glb.gz",
-    "formation_trees.glb.gz"
+    "formation_trees.glb.gz",
+    "formation_water.glb.gz"
    ],
    "need": [
     640,
     1729
    ],
-   "bytes": 6875684,
-   "bytesLow": 5672565,
-   "tris": 798608,
+   "bytes": 6806192,
+   "bytesLow": 5656512,
+   "tris": 830414,
    "texBytes": 110450005,
    "texBytesLow": 43341141,
    "core": [
@@ -311,9 +313,9 @@
     769,
     1729
    ],
-   "bytes": 10833451,
-   "bytesLow": 8607256,
-   "tris": 1519056,
+   "bytes": 10898074,
+   "bytesLow": 8706838,
+   "tris": 1523357,
    "texBytes": 185597952,
    "texBytesLow": 64487424,
    "core": [
@@ -342,9 +344,9 @@
     1009,
     1729
    ],
-   "bytes": 9234678,
-   "bytesLow": 6879273,
-   "tris": 1092194,
+   "bytes": 9295872,
+   "bytesLow": 6945688,
+   "tris": 1107257,
    "texBytes": 236803414,
    "texBytesLow": 75322710,
    "core": [
@@ -369,8 +371,8 @@
   "gate_water.glb.gz": 0,
   "mirror.glb.gz": 111848107,
   "low/mirror.glb.gz": 44739243,
-  "mirror_trees.glb.gz": 45613056,
-  "low/mirror_trees.glb.gz": 24641536,
+  "mirror_trees.glb.gz": 45088768,
+  "low/mirror_trees.glb.gz": 24117248,
   "mirror_water.glb.gz": 0,
   "forge.glb.gz": 178956971,
   "low/forge.glb.gz": 44739243,
@@ -402,6 +404,7 @@
   "formation.glb.gz": 89478485,
   "low/formation.glb.gz": 22369621,
   "formation_trees.glb.gz": 20971520,
+  "formation_water.glb.gz": 0,
   "abode.glb.gz": 111848107,
   "low/abode.glb.gz": 44739243,
   "abode_trees.glb.gz": 73749845,

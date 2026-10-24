@@ -11,19 +11,25 @@ Layout (local frame, front = -Y, z = 0 walkable top, footprint 50 m):
   way out: across the courtyard to a one-bay archway in the balustrade opening and onto an
   8 x 10 m bridgehead terrace where the chain bridge to the arena starts
 - the two-tier forge hall (double eave, charcoal tiles) at the back, its lattice front removed so
-  the glowing furnaces inside show; plaque 炼器峰 under the upper eave
-- two furnace chimneys behind the hall trailing smoke
+  the glowing furnaces inside show; plaque 炼器峰 under the upper eave. The three furnaces (fire-brick kilns with
+  arched mouths, fireboxes of embers, iron doors, bronze hoods), their bellows, tool racks and coal are
+  lib/forge_detail.py's (round 29)
+- two furnace chimney towers behind the hall trailing smoke: square kiln stacks of coursed ashlar with granite quoins,
+  string courses, bronze straps, the moon / sun medallions (月 west, 日 east), corner beasts and a fire storey of
+  arched openings under a tiled pyramid roof (lib/forge_detail.py, round 29)
+- flame anchors (forge.fire.*: the three fireboxes, the two fire storeys, the cauldron) for the page's live flames
+  (export_web meta.json fires[])
 - in front of the hall, on an octagonal dais: the colossal bronze ding (8 m) glowing molten,
   with ember sparks; around it a tilted ring of the 11 winning projects' artifacts (FORGE_RING), each
   made for its project, on a parent Empty that turns once, linearly, over frames 1-1500
 - a jade rune ring on the paving under the orbit
 - side workshops, anvils, quench troughs, weapon racks, ore piles, stone lanterns, banners
-- on the west of the yard, facing the hold camera: the Golden Wheel Lama's five wheels (金轮法王 金银铜铁铅五轮, The
-  Return of the Condor Heroes) in a graded row on a rosewood stand (_five_wheels), in place of a weapon rack
-- on the open paving right of the dais, in front of the hall's east bays: Dugu Qiubai's Sword Tomb (独孤求败 剑冢, The
-  Return of the Condor Heroes): a cairn on a natural rock outcrop, a bluestone slab with four socket stones, the keen
-  steel sword and the rotted wooden sword planted in the outer two, the soft sword's and heavy sword's sockets empty
-  (_sword_tomb)
+- the smith's corner (round 34), on the open paving right of the dais in front of the hall's east bays, square to the
+  hold camera and left of the page's voice button: the Golden Wheel Lama's five wheels (金輪法王 金銀銅鐵鉛五輪, The
+  Return of the Condor Heroes) in a graded row on a rosewood stand (_five_wheels), with an anvil and a quench trough
+  in front of it (SMITH_*). Until round 33 the rack, that anvil and that trough stood in the yard's west, where the
+  page's Projects panel covered them at the hold, and Dugu Qiubai's Sword Tomb (剑冢) stood here; the tomb now stands at
+  the Jade Slip Pavilion, built by the same _sword_tomb (kept below for it)
 """
 
 import math
@@ -35,6 +41,7 @@ import bpy
 from mathutils import Vector
 
 from sect.lib import arch as A
+from sect.lib import forge_detail as FD
 from sect.lib import materials as M
 from sect.lib import nature  # noqa: F401  (registers nature_rock_small, nature_soil_moss: the tomb's cairn)
 from sect.lib import props as P
@@ -281,14 +288,10 @@ def _box_obj(name, coll, size, center, material, parent):
 
 
 def _furnaces(root, coll, z0):
-    """Glowing brick furnaces inside the open hall (x, y local to the hall at HALL_Y)."""
-    for i, (x, w, h) in enumerate(((0.0, 5.0, 4.6), (-7.5, 3.6, 3.4), (7.5, 3.6, 3.4))):
-        y = HALL_Y + 1.6
-        _box_obj(_n("furnace", i), coll, (w, 3.2, h), (x, y, z0 + h / 2), "stone_dark", root)
-        _box_obj(_n("furnace_top", i), coll, (w * 0.55, 1.8, 1.4), (x, y, z0 + h + 0.7), "stone_dark", root)
-        mouth = _box_obj(_n("furnace_mouth", i), coll, (w * 0.55, 0.12, h * 0.42),
-                         (x, y - 1.62, z0 + h * 0.36), "molten", root)
-        mouth["glow"] = 2.5
+    """The three furnaces inside the open hall (x 0 and +-7.5, fronts at y HALL_Y, backs in the hall's back wall),
+    their bellows, tool racks, coal heap and flame anchors (lib/forge_detail.py, round 29), and the warm light in
+    front of them."""
+    FD.build_furnaces(coll, root, z0)
     light = bpy.data.lights.new(_n("furnace_light"), 'POINT')
     light.energy = 6000.0
     light.color = (1.0, 0.45, 0.15)
@@ -320,36 +323,11 @@ def _flues(root, coll, z0):
                           location=(mx, my, 0.0), rotation=(0.0, 0.0, math.atan2(dy, dx)))
 
 
-def _chimney(root, coll, i, x, y, height=26.0):
-    """Furnace kiln tower in the Chinese manner: octagonal tapered stone stack on a stepped base,
-    an open vent storey of red posts with a glowing fire inside, a small eight-sided tiled
-    pyramid roof on top, and a smoke plume rising through it and drifting sideways."""
-    bm = bmesh.new()
-    prof = [(0.0, 0.0), (3.4, 0.0), (3.4, 1.0), (3.0, 1.2), (3.0, 2.2), (2.6, 2.5), (1.9, height - 0.8),
-            (2.3, height - 0.5), (2.3, height), (0.0, height)]
-    U.bm_lathe(bm, prof, segments=8)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
-    U.mesh_from_bmesh(_n("chimney", i), bm, coll, materials=["stone_dark"], smooth=False, parent=root,
-                      location=(x, y, 0.0))
-    for k, z in enumerate((height * 0.38, height * 0.72)):     # iron hoops
-        bm = bmesh.new()
-        r = 2.6 - (2.6 - 1.9) * (z - 2.5) / (height - 3.3) + 0.1
-        U.bm_cylinder(bm, radius=r, depth=0.6, segments=8, center=(0, 0, z))
-        U.mesh_from_bmesh(_n("chimney_hoop", i, k), bm, coll, materials=["iron"], smooth=False, parent=root,
-                          location=(x, y, 0.0))
-    # vent storey: 8 red posts around a glowing fire box, then the roof
-    vent_h = 2.4
-    bm = bmesh.new()
-    for k in range(8):
-        a = 2 * math.pi * (k + 0.5) / 8
-        U.bm_cylinder(bm, radius=0.16, depth=vent_h, segments=8,
-                      center=(1.9 * math.cos(a), 1.9 * math.sin(a), height + vent_h / 2))
-    U.mesh_from_bmesh(_n("chimney_posts", i), bm, coll, materials=["lacquer_red"], smooth=False, parent=root,
-                      location=(x, y, 0.0))
-    fire = _box_obj(_n("chimney_fire", i), coll, (2.0, 2.0, 1.4), (x, y, height + 0.7), "molten", root)
-    fire["glow"] = 3.0
-    A.roof(_n("chimney_roof", i), coll, 3.8, kind="pyramid", sides=8, tile_mat="roof_tile_black",
-           detail="low", parent=root, location=(x, y, height + vent_h))
+def _chimney(root, coll, i, x, y, emblem, height=26.0):
+    """Furnace kiln tower (lib/forge_detail.build_chimney, round 29: coursed ashlar stack, quoins, string courses,
+    bronze straps, the ``emblem`` medallion, corner beasts, a fire storey of arched openings, a tiled pyramid roof),
+    and a smoke plume rising through its roof and drifting sideways."""
+    FD.build_chimney(coll, root, i, x, y, emblem)
     s = 1 if x > 0 else -1
     z0 = height + 1.0
     pts = [(x, y, z0, 0.9), (x + 0.3 * s, y + 0.3, z0 + 6, 1.4),
@@ -360,9 +338,41 @@ def _chimney(root, coll, i, x, y, height=26.0):
     U.set_visibility(sm, shadow=False)
 
 
-def _quench_trough(root, coll, i, x, y):
-    _box_obj(_n("trough", i), coll, (1.5, 4.2, 0.9), (x, y, 0.45), "stone_grey", root)
-    _box_obj(_n("trough_water", i), coll, (1.2, 3.9, 0.06), (x, y, 0.9), "water_pond", root)
+def _quench_trough(root, coll, i, x, y, rz=None):
+    """Quench trough i (a 1.5 x 4.2 x 0.9 m stone box, its long side along local y, and its water) at local (x, y).
+    rz None: the round-12 build (the boxes baked at (x, y)); else each object stands at (x, y), turned rz."""
+    if rz is None:
+        _box_obj(_n("trough", i), coll, (1.5, 4.2, 0.9), (x, y, 0.45), "stone_grey", root)
+        _box_obj(_n("trough_water", i), coll, (1.2, 3.9, 0.06), (x, y, 0.9), "water_pond", root)
+        return
+    for nm, size, z, mat in (("trough", (1.5, 4.2, 0.9), 0.45, "stone_grey"),
+                             ("trough_water", (1.2, 3.9, 0.06), 0.9, "water_pond")):
+        bm = bmesh.new()
+        U.bm_box(bm, size, center=(0.0, 0.0, z))
+        U.mesh_from_bmesh(_n(nm, i), bm, coll, materials=[mat], smooth=False, parent=root, location=(x, y, 0.0),
+                          rotation=(0.0, 0.0, rz))
+
+
+# ------------------------------------------------------------------ the smith's corner (round 34)
+# The five wheels' rack, an anvil (forge.anvil) and quench trough 0 (forge.trough.0, forge.trough_water.0) stand
+# together on the open paving right of the dais, in front of the hall's east bays (where the Sword Tomb stood until
+# round 33), in a frame SMITH_AT turned SMITH_YAW so its -y (the rack's front) faces the forge hold camera: the rack
+# at the back, the anvil and the trough in front of its two ends, low enough (their tops project below the wheels'
+# seats from the hold) not to hide a wheel. At the hold (352, 1600 x 900) the corner spans about x 1190-1420 px, y
+# 760-850 px: clear of the Projects panel (bottom left) and left of the voice button (x 1500+). Until round 33 the
+# three stood in the yard's west (the rack at (-24, -15.5) turned 0.96, the anvil at (-13, -18) turned 0.4, the trough
+# baked at (-18, -15)), 97 % under the Projects panel at the hold.
+FORGE_HOLD_CAM = (26.84, -43.71)    # chase.cam at the forge hold (352), forge-local (x, y); z 14.3
+SMITH_AT = (13.6, 2.6)
+SMITH_YAW = math.atan2(FORGE_HOLD_CAM[1] - SMITH_AT[1], FORGE_HOLD_CAM[0] - SMITH_AT[0]) + 0.5 * math.pi
+SMITH = dict(rack=(0.0, 1.2, 0.0), anvil=(-2.4, -1.4, -0.3), trough=(1.6, -2.1, 0.5 * math.pi))   # frame x, y, turn
+
+
+def smith_place(key):
+    """(x, y, rz) in the forge's frame of the smith's corner member ``key`` (SMITH)."""
+    u, v, turn = SMITH[key]
+    c, s = math.cos(SMITH_YAW), math.sin(SMITH_YAW)
+    return SMITH_AT[0] + c * u - s * v, SMITH_AT[1] + s * u + c * v, SMITH_YAW + turn
 
 
 # ------------------------------------------------------------------ the Golden Wheel Lama's five wheels
@@ -378,8 +388,9 @@ def _quench_trough(root, coll, i, x, y):
 # stays round and blunt (FW_TOOTH; all 0.0 gives the plain round edge).
 
 FW_NAME = "forge.five_wheels"
-FW_LOC = (-24.0, -15.5)            # local (x, y) of the rack it replaces
-FW_ROT_Z = 0.96                    # front (-Y) faces local -35 deg: the hold camera (352) and the pass (380-398)
+FW_LOC = smith_place("rack")[:2]   # local (x, y): the back of the smith's corner (round 34; until round 33 (-24, -15.5),
+FW_ROT_Z = smith_place("rack")[2]  # turned 0.96, in place of the weapon rack forge.weapon_rack.001); its front (-Y)
+                                   # faces the hold camera (352)
 FW_WHEELS = (("gold", "gold", 1.00), ("silver", "silver", 0.92), ("copper", "forge_copper", 0.85),   # (key,
              ("iron", "iron", 0.78), ("lead", "forge_lead", 0.71))                                    # material, diameter m)
 # the five metals must stay apart where the bake shows metals as flat base colour: the shared 'steel' baked near-white
@@ -867,6 +878,9 @@ def _five_wheels(coll, root, x, y):
 
 
 # ------------------------------------------------------------------ Dugu Qiubai's Sword Tomb
+# Round 34: the forge no longer builds it (build() does not call _sword_tomb; the smith's corner stands on its spot);
+# the builder and its materials stay here for the Jade Slip Pavilion, where the tomb now stands. ST_LOC is its old
+# place in the forge's frame.
 # 剑冢 (The Return of the Condor Heroes, ch. 26 神雕重剑). The Divine Condor leads Yang Guo to a heap of stones on a cliff
 # top; under it, on a long bluestone, lie the swords of Dugu Qiubai 独孤求败, one place for each stage of his life: a keen
 # blade flashing blue that he used before twenty; the place of the purple soft sword 紫薇软剑, empty because he threw it
@@ -1466,9 +1480,9 @@ def build(collection):
                platform_h=0.9, lit=True, roof_mat="roof_tile_black", parent=root,
                location=(x, 4.0, 0.0), rotation_z=rz)
 
-    # chimneys behind the hall
-    for i, x in enumerate((-10.0, 10.0)):
-        _chimney(root, coll, i, x, CHIMNEY_Y)
+    # chimney towers behind the hall: the moon on the west, the sun on the east (together 明)
+    for i, x, emblem in FD.CHIMNEYS:
+        _chimney(root, coll, i, x, CHIMNEY_Y, emblem)
 
     # cauldron dais + colossal ding
     A.platform(_n("dais"), coll, 17.0, height=DAIS_H, sides=8, parent=root,
@@ -1478,8 +1492,10 @@ def build(collection):
     # back stair, so the axis continues past the ding to the hall stair (audit section 4)
     A.stairs(_n("dais_stairs_back"), coll, 4.0, DAIS_H, ramp=False, balustrade=False, parent=root,
              location=(0.0, DAIS_C[1] + 17.0 * 0.5 * math.cos(math.pi / 8), 0.0), rotation_z=math.pi)
-    P.cauldron_ding(coll, DING_SIZE, lit=True, light=True, sparks=True, name=_n("ding"), parent=root,
-                    location=(DAIS_C[0], DAIS_C[1], DAIS_H))
+    ding = P.cauldron_ding(coll, DING_SIZE, lit=True, light=True, sparks=True, name=_n("ding"), parent=root,
+                           location=(DAIS_C[0], DAIS_C[1], DAIS_H))
+    bpy.context.view_layer.update()             # the anchor reads the instanced molten surface's world box
+    FD.build_ding_anchor(coll, root, ding)
 
     # jade rune ring on the paving under the orbit
     P.rune_ring(coll, RING_R, 1.2, "trigram", name=_n("rune_ring"), parent=root,
@@ -1500,13 +1516,14 @@ def build(collection):
                        samples_per_segment=1, closed=True, caps=False, parent=tilt)
     U.set_visibility(hoop, shadow=False)
 
-    # forge yard props
-    for i, (x, y, rz) in enumerate(((-13.0, -18.0, 0.4), (13.5, -17.0, -0.3), (-16.0, -24.0, 1.2))):
+    # forge yard props; the first anvil and trough 0 stand in the smith's corner with the five wheels (round 34)
+    ax, ay, arz = smith_place("anvil")
+    for i, (x, y, rz) in enumerate(((ax, ay, arz), (13.5, -17.0, -0.3), (-16.0, -24.0, 1.2))):
         P.anvil(coll, 1.5, name=_n("anvil"), parent=root, location=(x, y, 0.0), rotation=(0, 0, rz))
-    for i, (x, y) in enumerate(((-18.0, -15.0), (18.0, -9.0))):   # trough 0 off the walk to the bridge
-        _quench_trough(root, coll, i, x, y)
+    _quench_trough(root, coll, 0, *smith_place("trough"))
+    _quench_trough(root, coll, 1, 18.0, -9.0)
     for i, (x, y) in enumerate(((-21.0, -21.0), FW_LOC, (21.0, 10.0), (24.0, 15.5))):
-        if i == 1:      # the one rack readable at the hold: the Golden Wheel Lama's five wheels instead
+        if i == 1:      # the Golden Wheel Lama's five wheels (in the smith's corner) in place of a weapon rack
             _five_wheels(coll, root, x, y)
             continue
         # explicit numbers keep the other racks' names (forge.weapon_rack, .002, .003) and so their cache keys
@@ -1516,8 +1533,7 @@ def build(collection):
     for i, (x, y, s) in enumerate(((-27.0, -24.0, 2.6), (-22.0, -30.0, 1.8), (26.0, -4.0, 2.4),
                                    (-25.0, 14.0, 2.0), (20.0, 26.0, 2.2))):
         P.ore_pile(coll, s, seed=i, name=_n("ore"), parent=root, location=(x, y, 0.0))
-    # Dugu Qiubai's Sword Tomb 剑冢 on the open paving right of the dais, in front of the hall's east bays
-    _sword_tomb(coll, root, *ST_LOC)
+    # (round 34: Dugu Qiubai's Sword Tomb 剑冢 left the forge for the Jade Slip Pavilion; _sword_tomb builds it there)
 
     # approach axis: stone lanterns and banners
     for y in (-30.0, -40.0):

@@ -2708,7 +2708,8 @@ ABODE_FACTS = (                              # fact index -> (label, objects): P
     ("Waterfall", ["abode.waterfall"]),                                   # 0: 4-year degree in 2.5 years
     ("Peach Blossom", ["abode.peach"]),                                   # 1: first hackathon win at 17
     ("Cliff Inscription", ["abode.inscription"]),                         # 2: Mandarin and English
-    ("Wind Chimes", ["abode.wind_chime*"]),                               # 3: drums and piano
+    ("Qin Table", ["abode.duet"]),                                        # 3: drums and piano: the 笑傲江湖 duet set
+                                                                          # (round 34; the wind chimes before it)
     ("Tea Table", ["abode.tea_table", "abode.tea_leg*", "abode.tea_set", "abode.cushion*"]),   # 4: noodles
     ("Crane", ["abode.crane"]),                                           # 5: a personal Jarvis
     ("Koi Pool", ["abode.pool", "abode.koi", "abode.koi.0*"]),           # 6: talk to software
@@ -2827,37 +2828,80 @@ def build_hotspot_defs():
 # box's `hotspot` is the content hotspot whose subtree already holds its objects (hotspot_members), else null: the
 # page then puts the reference's name in that hotspot's own hover label (the hotspot keeps the click) instead of a
 # card. A box none of whose objects the audit saw (vis_cache 'any', >= MIN_PX) is dropped, as the bake drops them.
+#
+# Round 34 (scratchpad r31 proposal, approved by the owner): each reference stands at the stop whose story it shares,
+# so six moved (the tomb to the scroll, the Big Dipper to the mission, the altars to the formation, the tablets to the
+# steles, the ribbon to the summit; Mount Hua from the master stele to the arena) and four are new (思過崖 at the
+# mirror, the Mount Hua seats at the arena, 獨孤九劍 on the master stele, 綠竹巷's blinds at the summit): 15 -> 19.
+# The lanes that build them: west (patch_r34_west: mirror, abode, summit), east (patch_r34_east: forge, arena,
+# mission, formation), centre (patch_r39_centre: steles, scroll, and the island's turn at the library). Until a lane
+# has run on the file, its new names are missing: `meta` warns and those references simply get no box (no card).
+# The client's words are keyed by these ids (client/src/lib/sect/lore.ts); its test checks the (id, area) pairs.
 LORE_ELEMENTS = ("wood", "fire", "earth", "metal", "water")        # areas/formation.py ELEMENT_FLAGS keys
-LORE_DIPPER = ("yaoguang", "kaiyang", "yuheng", "tianquan", "tianji", "tianxuan", "tianshu")   # formation.DIPPER
+LORE_DIPPER = ("yaoguang", "kaiyang", "yuheng", "tianquan", "tianji", "tianxuan", "tianshu")   # mission.DIPPER (r34)
+LORE_SEATS = ("north", "east", "south", "west")                    # arena.seat.<side>: 北丐 東邪 南帝 西毒 (r34)
 LORE = (                                     # (id, area, [[object names] per box]), flight order; the patch script
-    ("heaven-sword", "gate", [["gate.sword_monolith"]]),                       # patch_gate_swords: west, 倚天剑
-    ("dragon-saber", "gate", [["gate.sword_monolith.001"]]),                   # east, 屠龙刀
+    ("heaven-sword", "gate", [["gate.sword_monolith"]]),                       # patch_gate_swords: west, 倚天劍
+    ("dragon-saber", "gate", [["gate.sword_monolith.001"]]),                   # east, 屠龍刀
     ("sun-moon", "gate", [["gate.sun_medallion"], ["gate.moon_medallion"],
-                          ["gate.sunmoon_finial"]]),                          # patch_r5_sunmoon: 日 + 月 = 明
-    ("jade-flute", "mirror", [["mirror.flute_rock", "mirror.flute_xiao", "mirror.flute_bag",
-                                "mirror.flute_tassel"]]),                     # patch_r7_flute: 玉箫 (no petals, no tree)
-    ("five-wheels", "forge", [["forge.five_wheels"]]),                         # patch_five_wheels: 金银铜铁铅五轮
-    ("sword-tomb", "forge", [["forge.sword_tomb"]]),                           # patch_r7_swordtomb: 剑冢
-    ("heavy-iron-sword", "arena", [["arena.sword"]]),                          # patch_heavy_iron_sword: 玄铁重剑
-    ("holy-fire-altar", "mission", [["mission.holy_fire"], ["mission.holy_fire.001"]]),   # patch_holy_fire_altar: 圣火坛
-    ("icefire-island", "library", [["scenery.island.009"]]),                   # patch_r7_icefire: 冰火岛 (library sky)
-    ("holy-fire-tokens", "scroll", [["scroll.slip_stack"]]),                   # patch_holy_fire_tokens, r5_scroll: 圣火令
+                          ["gate.sunmoon_finial"]]),                          # patch_r5_sunmoon: 日月 (神教)
+    ("jade-flute", "mirror", [["mirror.flute"]]),                              # r34 west: 玉簫 on its stand in the pond
+                                                                               # pavilion (under mirror.ting: a label line)
+    ("cliff-of-reflection", "mirror", [["mirror.siguoya"]]),                   # r34 west: 思過崖 cut in the cliff
+    ("five-wheels", "forge", [["forge.five_wheels"]]),                         # r34 east: 金銀銅鐵鉛五輪, moved to the
+                                                                               # tomb's old spot (anvil, trough not in it)
+    ("heavy-iron-sword", "arena", [["arena.sword"]]),                          # patch_heavy_iron_sword: 玄鐵重劍
+    ("mount-hua", "arena", [["arena.seat.%s" % s] for s in LORE_SEATS]),       # r34 east: 華山論劍, four bronze plates
+    ("big-dipper-array", "mission", [["mission.dipper.%s" % s] for s in LORE_DIPPER]),   # r34 east: 天罡北斗陣, seven
+                                                                               # star drums (the gold lines not boxed)
+    ("icefire-island", "library", [["scenery.island.009"]]),                   # patch_r36_icefire: 冰火島 (library sky;
+                                                                               # LORE_CHUNKS puts it in that chunk)
+    ("holy-fire-tokens", "steles", [["steles.tokens"]]),                       # r39 centre: 聖火令 on their halved
+                                                                               # stand at the agents row (skills:1)
+    ("dugu-nine-swords", "steles", [["steles.stele_master"]]),                 # r39 centre: 獨孤九劍 (LORE_WHEN)
+    ("sword-tomb", "scroll", [["scroll.sword_tomb"]]),                         # r39 centre: 劍塚 on the lawn
     ("five-element-banners", "formation",
      [["formation.flag.%s" % k, "formation.flag_base.%s" % k] for k in LORE_ELEMENTS]),   # patch_r6_formation: 五行旗
-    ("big-dipper-array", "formation", [["formation.dipper.%s" % s] for s in LORE_DIPPER]),   # 天罡北斗阵 (no floor lines)
-    ("wanderer-duet", "abode", [["abode.duet"]]),                              # patch_r5_duet: 笑傲江湖
-    ("golden-bell-ribbon", "abode", [["abode.ribbon"]]),                       # patch_r8_ribbon: 金铃索
-    ("divine-condor", "summit", [["summit.condor_bird"]]),                     # patch_r7_condor: 神雕
+    ("holy-fire-altar", "formation", [["formation.holy_fire"], ["formation.holy_fire.001"]]),   # r34 east: 聖火 at the
+                                                                               # front paifang (no box for the chant ring)
+    ("wanderer-duet", "abode", [["abode.duet"]]),                              # r34 west: 笑傲江湖, the fact:3 object
+    ("golden-bell-ribbon", "summit", [["summit.ribbon"]]),                     # r34 west: 金鈴索 coiled on the crag
+    ("divine-condor", "summit", [["summit.condor_bird"]]),                     # r34 west: 神鵰 (its crag moved)
+    ("green-bamboo", "summit", [["summit.blinds"]]),                           # r34 west: 綠竹巷 blinds, qin and lamp
+                                                                               # (under summit.pavilion: a label line)
 )
+# A reference whose box object already stands in the file but carries it only after a later patch re-carves it:
+# {id: (object, property, value)} that must hold before its boxes count; until then it is missing, as above. The
+# centre lane (patch_r39_centre) sets steles.stele_master["manual"] = "獨孤九劍" when it re-carves the master stele.
+LORE_WHEN = {
+    "dugu-nine-swords": ("steles.stele_master", "manual", "獨孤九劍"),
+}
 LORE_SKIP = ("world.cloud.",)                # volume puffs parented to a lore object (the island's steam): sprites
 LORE_DEFS = []                               # full: [{id, area, kind: "lore", metaOnly: True, boxes, names}]
 
 
+def _lore_waits(lid):
+    """Why reference `lid` has no boxes yet (LORE_WHEN not met), or None."""
+    when = LORE_WHEN.get(lid)
+    if when is None:
+        return None
+    nm, prop, want = when
+    ob = bpy.data.objects.get(nm)
+    have = None if ob is None else ob.get(prop)
+    return None if have == want else "%s[%r] is %r, not %r" % (nm, prop, have, want)
+
+
 def build_lore_defs():
-    """LORE_DEFS from LORE, the names resolved against the file (no box group without objects). Only `meta` calls it
-    (lore_meta); it never touches HOTSPOT_DEFS. Returns (defs, missing [(id, names)])."""
+    """LORE_DEFS from LORE, the names resolved against the file (no box group without objects; none at all while
+    LORE_WHEN is not met). Only `meta` calls it (lore_meta); it never touches HOTSPOT_DEFS. Returns (defs, missing
+    [(id, names or the reason)])."""
     defs, miss = [], []
     for lid, area, groups in LORE:
+        wait = _lore_waits(lid)
+        if wait:
+            miss.append((lid, wait))
+            defs.append(dict(id=lid, area=area, kind="lore", metaOnly=True, boxes=[], names=[]))
+            continue
         boxes = []
         for g in groups:
             res = _resolve(g)
@@ -2954,6 +2998,32 @@ def _is_fall(R, i):
     return any("waterfall" in m or "water_fall" in m for m in R.tinfo[R.tkey[i]][2] if m)
 
 
+# Lore pieces forced into the chunk of the stop that presents them (round 39), as hotspot members are: {object: area};
+# the object and everything parented under it (the visible pieces) go to that area's chunk. Ice-Fire Island is nearest
+# the camera in the formation's look-around views (frame 1330), so the rule put it in the formation chunk; but the
+# flight sees it only at frames 7-448 (far, 100-170 px) and 691-859 (the library, up to 370 px), where the page holds
+# the library and two areas each side, never the formation: at the library hold (772) it drew the backdrop's coarse
+# stand-in (proxy.formation, sized for frames 1-639). Its waterfall's sheets were already in the library chunk.
+LORE_CHUNKS = {"scenery.island.009": "library"}
+_LORE_CHUNK_MEMBERS = None
+
+
+def lore_chunk_members():
+    """object name -> area for LORE_CHUNKS (memoized like hotspot_members: export objects take over the names)."""
+    global _LORE_CHUNK_MEMBERS
+    if _LORE_CHUNK_MEMBERS is None:
+        m = {}
+        for nm, area in LORE_CHUNKS.items():
+            ob = bpy.data.objects.get(nm)
+            if ob is None:
+                log("WARN lore chunk: no", nm)
+                continue
+            for o in [ob] + list(ob.children_recursive):
+                m.setdefault(o.name, area)
+        _LORE_CHUNK_MEMBERS = m
+    return _LORE_CHUNK_MEMBERS
+
+
 def face_assign(me, M, cam_mats, frames, tan_v, aspect_w, band=NM_BAND, dscale=None):
     """Per face of a big mesh (local coordinates, world matrix M): (chunk index, nearest distance, first and last
     sampled frame inside the widened frustum within `band`). Chunk = the area of the frame where the face is
@@ -3006,7 +3076,8 @@ def chunk_assign(R, S, minfo):
     exported (never visible in any view, < MIN_PX, sky/FX/flyer), -3 split face by face (face_assign). Rule: the
     area whose frame range holds the frame where the piece is nearest the camera (path frames and look views, by
     their frame labels and weighted distance). Hotspot members always go to their hotspot's area (so every click
-    target sits in the chunk of the area that presents it); turning groups (TURNING_GROUPS) to the group's area.
+    target sits in the chunk of the area that presents it); turning groups (TURNING_GROUPS) to the group's area; the
+    visible pieces of a LORE_CHUNKS object (round 39) to its area.
     Size test: px_eff (the path's pxmax, or the weighted look views' when larger)."""
     n = len(R)
     ex = export_mask(R, minfo)
@@ -3043,6 +3114,19 @@ def chunk_assign(R, S, minfo):
         k = ids.index(g["area"])
         forced["turning:" + g["id"]] += int((ch[rows] != k).sum())
         ch[rows] = k
+    # (round 39) lore pieces of LORE_CHUNKS: the visible ones to the presenting area (never a hotspot's: none is)
+    lcm = lore_chunk_members()
+    for i in range(n):
+        area = lcm.get(R.owner[i])
+        if area is None or not sel[i] or area not in ids or R.owner[i] in members:
+            continue
+        k = ids.index(area)
+        if ch[i] != k:
+            forced["lore:" + area] += 1
+        ch[i] = k
+    if lcm:
+        log("chunk_assign: lore pieces forced into their stop's chunk (LORE_CHUNKS)",
+            {h: c for h, c in forced.items() if h.startswith("lore:")}, "of", len(lcm), "objects")
     ext = R.hi - R.lo
     horiz = np.maximum(ext[:, 0], ext[:, 1])
     diag = np.linalg.norm(ext, axis=1)
@@ -3358,6 +3442,60 @@ def _fall_shape(ob, M, dg):
                 flow=float(ob.get("flow", 1.0)))
 
 
+FIRE_TAG = "sect_fire"         # flame anchors: Empties tagged obj[FIRE_TAG] = kind (lib/forge_detail.fire_anchor)
+
+
+def fire_meta():
+    """meta.json fires[]: where the page draws live flames (client/src/lib/sect/forge-flames.ts fireSourcesFromAnchors,
+    parse.ts parseFires; once the forge has entries the page draws only these, not what it reads from the bake's
+    molten glow). One entry per Empty tagged obj[FIRE_TAG], sorted by name, in three.js space:
+      id, kind   the Empty's name; 'furnace' (a firebox seen through its arched mouth: the page draws it as an opening),
+                 'chimney' (a tower's fire storey: a kiln, flame cards standing on its fire tray), 'cauldron' (the
+                 ding's molten surface: flame tongues)
+      area/chunk the area chunk it belongs to
+      position   furnace: the bottom centre of the plane the page draws its fire box on (fire_opening_at: just inside
+                 the firebox, behind the stone mouth passage, so the arch hides the quad's corners); else the flame's
+                 foot on its bed
+      normal     furnace: unit vector out of the mouth (horizontal); else null
+      width, height, depth   furnace: that fire box (fire_opening); else the flame volume across, up and deep
+      radius     chimney / cauldron: half the flame's width (0 for a furnace)
+    kept for later: foot (the flame's foot on its bed), size [w, h, d] of the flame volume, facing, quaternion (the
+    anchor's frame: +X across, +Y up, +Z out of a furnace's mouth), mouth {center, width, height} of a furnace's outer
+    opening, openSides."""
+    out = []
+    for ob in sorted(bpy.context.view_layer.objects, key=lambda o: o.name):
+        kind = ob.get(FIRE_TAG)
+        if ob.type != 'EMPTY' or not kind or ob.hide_render:
+            continue
+        M = ob.matrix_world
+        loc, rot, _sc = M.decompose()
+        R3 = rot.to_matrix()
+        w, h, d = (float(v) for v in ob.get("fire_size", (1.0, 1.0, 1.0)))
+        furnace = kind == "furnace"
+        facing = (R3 @ Vector((0.0, -1.0, 0.0))).normalized() if furnace else Vector((0.0, 0.0, 1.0))
+        mouth = None
+        if ob.get("fire_mouth") is not None:
+            mw, mh = (float(v) for v in ob["fire_mouth"])
+            mc = M @ Vector(tuple(ob.get("fire_mouth_at", (0.0, 0.0, 0.0))))
+            mouth = dict(center=v3(mc, 3), width=round(mw, 3), height=round(mh, 3))
+        area = next((c.name for c in ob.users_collection if c.name in AREA_NAMES), None)
+        e = dict(id=ob.name, kind=str(kind), area=area, chunk=area)
+        if furnace:
+            if ob.get("fire_opening") is None:
+                raise RuntimeError("fire_meta: furnace anchor %s has no fire_opening (lib/forge_detail)" % ob.name)
+            ow, oh, od = (float(v) for v in ob["fire_opening"])
+            base = M @ Vector(tuple(ob.get("fire_opening_at", (0.0, 0.0, 0.0))))
+            e.update(position=v3(base, 3), normal=v3(facing, 4), width=round(ow, 3), height=round(oh, 3),
+                     depth=round(od, 3), radius=0.0)
+        else:
+            e.update(position=v3(loc, 3), normal=None, width=round(w, 3), height=round(h, 3), depth=round(d, 3),
+                     radius=round(w / 2, 3))
+        e.update(foot=v3(loc, 3), size=[round(w, 3), round(h, 3), round(d, 3)], facing=v3(facing, 4),
+                 quaternion=q_object(R3), mouth=mouth, openSides=int(ob.get("fire_open_sides", 0)))
+        out.append(e)
+    return out
+
+
 def cmd_meta_full(a):
     from sect import world as W
     from sect.lib import look as Lk
@@ -3471,6 +3609,7 @@ def cmd_meta_full(a):
                       color=sky.get("cloud_sea", "#e9c9a8"), extent=9000.0),
         waterfalls=falls,
         beams=beams,
+        fires=fire_meta(),
         hotspots=hs,
         lore=lore,
         areas=areas,
@@ -3487,7 +3626,8 @@ def cmd_meta_full(a):
     dump(os.path.join(a.out, "meta.json"), data, indent=1)
     counts = collections.Counter(h["id"].split(":")[0] if ":" in h["id"] else ("area" if h["kind"] == "area"
                                                                               else h["id"]) for h in hs)
-    log("META hotspots", len(hs), dict(counts), "waterfalls", len(falls), "beams", len(beams))
+    log("META hotspots", len(hs), dict(counts), "waterfalls", len(falls), "beams", len(beams), "fires",
+        [(f["id"], f["kind"]) for f in data["fires"]])
     log("META lore", len(lore), "of", len(LORE), "references,", sum(len(e["boxes"]) for e in lore), "boxes",
         {e["id"]: [b["hotspot"] for b in e["boxes"]] for e in lore})
     write_hotspots_md(hs, lore)

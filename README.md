@@ -153,22 +153,23 @@ flowchart LR
 
 ## 彩蛋 · Jin Yong easter eggs
 
-These 15 objects from Jin Yong's novels are hidden along the flight. Hover one (or tap it on a phone) to see what it is.
+These 19 objects from Jin Yong's novels are hidden along the flight. Hover one (or tap it on a phone) to see what it is.
 
 | Stop | Items | From |
 |---|---|---|
 | Mountain Gate | 倚天劍 Heaven-Reliant Sword · 屠龍刀 Dragon-Slaying Saber · 日月 Sun and Moon | *Heaven Sword and Dragon Saber* · the sect's name, from *The Smiling, Proud Wanderer* |
-| Heart-Mirror Terrace | 玉簫 Huang Yaoshi's Jade Flute | *Legend of the Condor Heroes* |
-| Artifact Forge Peak | 金銀銅鐵鉛五輪 Five Metal Wheels · 劍塚 Sword Tomb | *Return of the Condor Heroes* |
-| Sword-Discussion Arena | 玄鐵重劍 Black Iron Heavy Sword | *Return of the Condor Heroes* |
-| Mission Hall | 聖火 the Ming Sect's Holy Flame | *Heaven Sword and Dragon Saber* |
+| Heart-Mirror Terrace | 玉簫 Huang Yaoshi's Jade Flute · 思過崖 Cliff of Reflection | *Legend of the Condor Heroes* · *The Smiling, Proud Wanderer* |
+| Artifact Forge Peak | 金銀銅鐵鉛五輪 Five Metal Wheels | *Return of the Condor Heroes* |
+| Sword-Discussion Arena | 玄鐵重劍 Black Iron Heavy Sword · 華山論劍 the seats of the Five Greats | *Return of the Condor Heroes* · *Legend of the Condor Heroes* |
+| Mission Hall | 天罡北斗陣 Big Dipper Formation | *Legend of the Condor Heroes* |
 | Scripture Pavilion | 冰火島 Ice-Fire Island | *Heaven Sword and Dragon Saber* |
-| Jade Slip Pavilion | 聖火令 the Ming Sect's Holy Flame Tablets | *Heaven Sword and Dragon Saber* |
-| Grand Formation | 五行旗 the Ming Sect's Five Element Banners · 天罡北斗陣 Big Dipper Formation | *Heaven Sword and Dragon Saber* · *Legend of the Condor Heroes* |
-| Cave Abode | 笑傲江湖 Qu Yang and Liu Zhengfeng's duet · 金鈴索 Golden Bell Rope | *The Smiling, Proud Wanderer* · *Return of the Condor Heroes* |
-| Moon-Gazing Terrace | 神鵰 Divine Condor | *Return of the Condor Heroes* |
+| Stele Forest | 聖火令 the Ming Sect's Holy Flame Tablets · 獨孤九劍 Nine Swords of Dugu | *Heaven Sword and Dragon Saber* · *The Smiling, Proud Wanderer* |
+| Jade Slip Pavilion | 劍塚 Sword Tomb | *Return of the Condor Heroes* |
+| Grand Formation | 五行旗 the Ming Sect's Five Element Banners · 聖火 the Ming Sect's Holy Flame | *Heaven Sword and Dragon Saber* |
+| Cave Abode | 笑傲江湖 Qu Yang and Liu Zhengfeng's duet | *The Smiling, Proud Wanderer* |
+| Moon-Gazing Terrace | 神鵰 Divine Condor · 金鈴索 Golden Bell Rope · 綠竹巷 Green Bamboo Lane | *Return of the Condor Heroes* · *The Smiling, Proud Wanderer* |
 
-The stele tablets are carved with martial-arts manuals from the novels too.
+The stele rows carry martial-arts manuals from the novels too, and each role tablet in the Mission Hall takes one star of the Big Dipper.
 
 ---
 

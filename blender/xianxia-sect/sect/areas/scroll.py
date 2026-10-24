@@ -25,9 +25,12 @@ Layout (local frame, front = -Y, z = 0 walkable top):
   the paving under it, the posts standing between its two bands. Its slips carry Jin Yong
   (props.JIN_YONG_VERSES, r8): from the right end, one passage after another, each from the top
   of a new slip, then a blank slip and the verses again (sect/patch_r8_scrolltext.py);
-- the six Holy Fire Tokens of the Ming Sect (圣火令), black tablets with fire inside, standing
-  upright in a row in the slots of a black-lacquer stand on a low stone plinth, leaning on its
-  back rail, against the right rail of the terrace (they used to float in a fanned stack);
+- Dugu Qiubai's Sword Tomb 劍塚 (Return of the Condor Heroes ch. 26; round 39, from the forge) on the lawn right of
+  the pavilion and the terrace (sect/lib/refs_centre.py sword_tomb): a boulder with 劍塚 cut into its dressed face,
+  and in front of it a bluestone slab with the four places of his life: the keen sword, a long stone strip where the
+  soft sword lay, the heavy sword's place empty (it stands at the arena) and the wooden sword. Until round 39 the six
+  Holy Fire Tokens (聖火令) stood on this terrace; they now stand at the Stele Forest's agents row (their builders
+  stay here: fire_tokens, TokenSpec);
 - an ancient pine leaning over the back edge, bamboo and a blossom tree for colour, scholar rocks
   on low stone pedestals.
 The camera flies in toward the scroll's face, holds with it on the left of the picture (1103), then turns past
@@ -70,6 +73,10 @@ HOLD_CAM = (0.20, -38.11, 15.66)
 HOLD_HEADING = math.radians(77.27)  # chase.cam's view direction in plan at the hold (atan2 of its forward y, x)
 HOLD_TURN = (0.0, 0.0)              # framing.ts STOP_FRAMING.scroll: yaw (deg, + = left, about world up), pitch (deg)
 FRAMING_REACH = 48                  # framing.ts FRAMING_REACH_FRAMES
+# Round 33 gave the stop a framing again (framing.ts STOP_FRAMING.scroll, the old scripts above do not know it): the
+# camera stands back 9 frames (the film's pose at 1094) and turns 8 deg left and 2.5 down. (yaw, pitch, back frames),
+# as refs_east.site_view reads them; patch_r39_centre.py checks the Sword Tomb in this view.
+SITE_FRAMING = (8.0, -2.5, 9)
 # r15 restore (owner, 2026-10-23: "I dont like the jade strip now, way before it was good, then it was rotated to the
 # weird previous way"): back where the first build stood it (to 2026-10-21; patch_r2_compose.OLD_SCROLL_C), full size,
 # unturned. At the hold it is big and close, its slips tall with large characters, its right end 1/3 in from the left
@@ -85,9 +92,9 @@ SCROLL_SCALE = 1.0            # full size (r2 0.9, r10 0.86)
 SCROLL_YAW = 0.0              # unturned: its front faces -Y, the way the camera comes in (r2 -40 deg, r10 -6.7 deg)
 SCROLL_TEXT = P.JIN_YONG_VERSES   # what the slips say (r8): Jin Yong, each passage from the top of a new slip
 DESK = (4.0, 14.0)            # stone desk on the terrace, left of the axis walk (keeps x 12 clear)
-STAND_C = (23.2, 8.0)         # the Holy Fire Tokens' stand on the terrace: right of the axis walk, against the right
-                              # rail, faces -Y (27 deg off the 1103 hold camera); clear of the route to the side
-                              # steps (y -6 .. -1) and 3.8 m in front of the peach (r5: the stack floated at (21, -3, 6.5))
+STAND_C = (23.2, 8.0)         # where the Holy Fire Tokens' stand stood on the terrace until round 39 (they are at the
+                              # Stele Forest now): right of the axis walk, against the right rail, facing -Y (r5: the
+                              # stack floated at (21, -3, 6.5)); patch_r39_centre.py finds the old stand by it
 RING_K = 1.0                  # the rune rings' object scale in x and y: their first size (r15; r10 shrank them with the
                               # scroll to 0.956x). The frame's posts stand between the two bands (FRAME_RING_R)
 RING_BACK = 1.0               # the rings' centre lies this far (m at RING_K 1) behind the scroll's centre line
@@ -551,11 +558,11 @@ def _disc(r, n=32, cx=0.0, cy=0.0):
     return [(cx + r * math.cos(2 * math.pi * k / n), cy + r * math.sin(2 * math.pi * k / n)) for k in range(n)]
 
 
-def _sun(bm, R_disc, r_long, r_short, rays, t, M):
-    """Sun emblem in local xy (face along local z): a disc with a raised boss, ringed by ``rays`` pointed rays
-    alternately long and short."""
+def _sun(bm, R_disc, r_long, r_short, rays, t, M, boss=0.06):
+    """Sun emblem in local xy (face along local z): a disc with a raised boss (``boss`` thicker), ringed by ``rays``
+    pointed rays alternately long and short."""
     _plate(bm, _disc(R_disc, 36), t, M)
-    _plate(bm, _disc(0.62 * R_disc, 28), t + 0.06, M)          # boss, proud of both faces
+    _plate(bm, _disc(0.62 * R_disc, 28), t + boss, M)          # boss, proud of both faces
     half = math.pi / rays * 0.55
     for k in range(rays):
         th = 2 * math.pi * k / rays + math.pi / 2
@@ -595,10 +602,10 @@ def _crescent(bm, R, t, M, n=24):
         bm.faces.new((ia[k + 1], ib[k + 1], ib[k], ia[k]))
 
 
-def _finial_cap(bm, r, z, cx, cy, stem_r=0.13, h=0.62):
-    """Gold cap on a post head at height z, with a short stem: profile lathe."""
-    U.bm_lathe(bm, [(0.0, 0.0), (1.12 * r, 0.0), (1.22 * r, 0.10), (1.0 * r, 0.22), (0.55 * r, 0.36),
-                    (stem_r, 0.42), (stem_r, h), (0.0, h)], segments=20,
+def _finial_cap(bm, r, z, cx, cy, stem_r=0.13, h=0.62, k=1.0):
+    """Gold cap on a post head at height z, with a short stem: profile lathe (its heights times k)."""
+    U.bm_lathe(bm, [(0.0, 0.0), (1.12 * r, 0.0), (1.22 * r, 0.10 * k), (1.0 * r, 0.22 * k), (0.55 * r, 0.36 * k),
+                    (stem_r, 0.42 * k), (stem_r, h), (0.0, h)], segments=20,
                matrix=Matrix.Translation((cx, cy, z)))
 
 
@@ -825,25 +832,51 @@ ARAB_STEM = ((0.00, 0.10, 0.000), (0.13, 0.50, 0.012), (0.33, 0.79, 0.017), (0.5
 ARAB_SUB = 2                   # Catmull-Rom samples per stem span
 
 
-def token_row_x():
+class TokenSpec:
+    """The tokens' and their stand's sizes at scale ``k`` (round 39: the Stele Forest's half-size tablets on a
+    waist-high stand, sect/lib/refs_centre.py): every length is the constants above times k, except the inlays' depths
+    (FIRE_PROUD / SINK, CORE_PROUD, GOLD_PROUD / SINK), which stay: halved they would lie within 5 mm of the token's
+    face, where the web's depth buffer lets two faces flicker. ``plinth``: the stone plinth's layers [(x size, y size,
+    z0, z1)] (default STAND_PLINTH times k); the lacquer beam stands on its top. TokenSpec() is the r5 size (the
+    defaults below build exactly what r5 built)."""
+
+    def __init__(self, k=1.0, plinth=None):
+        self.k = float(k)
+        self.tokens = tuple((L * k, W * k) for L, W in TOKENS)
+        self.t, self.chamfer, self.gap, self.seam = TOKEN_T * k, TOKEN_CHAMFER * k, TOKEN_GAP * k, TOKEN_SEAM * k
+        self.plinth = tuple(tuple(p) for p in plinth) if plinth else \
+            tuple((a * k, b * k, z0 * k, z1 * k) for a, b, z0, z1 in STAND_PLINTH)
+        bx, by, bz0, bz1 = STAND_BEAM
+        top = self.plinth[-1][3]
+        self.beam = (bx * k, by * k, top, top + (bz1 - bz0) * k)
+        self.slot_depth, self.slot_y = SLOT_DEPTH * k, SLOT_Y * k
+        self.rail_h, self.rail = STAND_RAIL_H * k, STAND_RAIL * k
+        self.post, self.post_out = STAND_POST * k, STAND_POST_OUT * k
+        self.emblem, self.stem = STAND_EMBLEM * k, STAND_STEM * k
+
+
+FULL_TOKENS = TokenSpec()
+
+
+def token_row_x(spec=FULL_TOKENS):
     """Stand-frame x of each token's centre line (indexed like TOKENS), in TOKEN_ORDER from left to right."""
-    widths = [TOKENS[i][1] for i in TOKEN_ORDER]
-    x = -0.5 * (sum(widths) + TOKEN_GAP * (len(widths) - 1))
+    widths = [spec.tokens[i][1] for i in TOKEN_ORDER]
+    x = -0.5 * (sum(widths) + spec.gap * (len(widths) - 1))
     out = [0.0] * len(TOKENS)
     for i, w in zip(TOKEN_ORDER, widths):
         out[i] = x + w / 2.0
-        x += w + TOKEN_GAP
+        x += w + spec.gap
     return out
 
 
-def token_xf(i):
+def token_xf(i, spec=FULL_TOKENS):
     """Point map token i's frame -> the slip_stack Empty's (the stand's) frame: the token stands with its length up,
     leaning TOKEN_LEAN back, its front face toward -Y, its lower end SLOT_DEPTH deep in its slot. Token x (length) ->
     up the lean, token y (across) -> -X, token z (front) -> the front normal (right-handed)."""
-    L = TOKENS[i][0]
+    L = spec.tokens[i][0]
     cl, sl = math.cos(TOKEN_LEAN), math.sin(TOKEN_LEAN)
-    z_bot = STAND_BEAM[3] - SLOT_DEPTH
-    cx, cy, cz = token_row_x()[i], SLOT_Y + sl * L / 2.0, z_bot + cl * L / 2.0
+    z_bot = spec.beam[3] - spec.slot_depth
+    cx, cy, cz = token_row_x(spec)[i], spec.slot_y + sl * L / 2.0, z_bot + cl * L / 2.0
 
     def f(p):
         x, y, z = p
@@ -851,21 +884,21 @@ def token_xf(i):
     return f
 
 
-def stand_rail():
+def stand_rail(spec=FULL_TOKENS):
     """(y, z) of the stand's back rail centre (stand frame): its front face touches every token's back face at
     STAND_RAIL_H above the slot bottoms."""
     cl, sl = math.cos(TOKEN_LEAN), math.sin(TOKEN_LEAN)
-    z_bot = STAND_BEAM[3] - SLOT_DEPTH
+    z_bot = spec.beam[3] - spec.slot_depth
     # back face of a token, s up its length from the bottom end: (SLOT_Y + sl s + cl T/2, z_bot + cl s - sl T/2)
-    s = (STAND_RAIL_H + sl * TOKEN_T / 2.0) / cl
-    y = SLOT_Y + sl * s + cl * TOKEN_T / 2.0 + STAND_RAIL / 2.0
-    return y, z_bot + STAND_RAIL_H
+    s = (spec.rail_h + sl * spec.t / 2.0) / cl
+    y = spec.slot_y + sl * s + cl * spec.t / 2.0 + spec.rail / 2.0
+    return y, z_bot + spec.rail_h
 
 
-def token_stand_points():
-    """Root-frame layout of the stand, for checks and previews: centre (x, y), the direction it faces, top z."""
-    top = STAND_BEAM[3] - SLOT_DEPTH + max(L for L, _ in TOKENS) * math.cos(TOKEN_LEAN)
-    return dict(centre=STAND_C, front=(0.0, -1.0), top_z=top)
+def token_stand_points(spec=FULL_TOKENS):
+    """Stand-frame layout, for checks and previews: the direction it faces and the top of the longest token."""
+    top = spec.beam[3] - spec.slot_depth + max(L for L, _ in spec.tokens) * math.cos(TOKEN_LEAN)
+    return dict(front=(0.0, -1.0), top_z=top)
 
 
 class _TokGeo:
@@ -1068,19 +1101,21 @@ def token_layout(L, W):
     return lay
 
 
-def fire_token_geo(back_dots=None, back_arabesques=None):
-    """(body, gold) _TokGeo of all six tokens in the slip_stack Empty's frame. body (scroll.slips): roles iron, molten;
-    gold (scroll.slip_caps): roles gold, rune_gold (the cores)."""
+def fire_token_geo(back_dots=None, back_arabesques=None, spec=None):
+    """(body, gold) _TokGeo of all six tokens in the slip_stack Empty's frame (the stand's), at ``spec``'s size
+    (TokenSpec; default the r5 size). body (scroll.slips): roles iron, molten; gold (scroll.slip_caps): roles gold,
+    rune_gold (the cores)."""
+    spec = spec or FULL_TOKENS
     back_dots = TOKEN_BACK_DOTS if back_dots is None else back_dots
     back_arab = TOKEN_BACK_ARABESQUES if back_arabesques is None else back_arabesques
     body, gold = _TokGeo(), _TokGeo()
-    h, c, n = TOKEN_T / 2.0, TOKEN_CHAMFER, TOKEN_ARC
+    h, c, n = spec.t / 2.0, spec.chamfer, TOKEN_ARC
     long_cols = {2 * n + 1, 4 * n + 3}          # _rrect columns of the two long straight sides
-    for i, (L, W) in enumerate(TOKENS):
-        xf = token_xf(i)
+    for i, (L, W) in enumerate(spec.tokens):
+        xf = token_xf(i, spec)
         lay = token_layout(L, W)
         a, b, r = lay["a"], lay["b"], lay["r"]
-        rows = ((c, -h), (0.0, -h + c), (0.0, -TOKEN_SEAM), (0.0, TOKEN_SEAM), (0.0, h - c), (c, h))
+        rows = ((c, -h), (0.0, -h + c), (0.0, -spec.seam), (0.0, spec.seam), (0.0, h - c), (c, h))
         rings = [[xf((x, y, z)) for x, y in _rrect(a - d, b - d, r - d, n)] for d, z in rows]
         body.loft("token%d.body" % i, rings,
                   lambda row, col: "molten" if row == 2 and col in long_cols else "iron",
@@ -1138,9 +1173,10 @@ def _token_mesh(g, name, roles):
 FIRE_TOKEN_ROLES = (("iron", "molten"), ("gold", "rune_gold"))
 
 
-def fire_token_meshes(names=(K + ".slips", K + ".slip_caps"), log=None):
-    """New meshes (body, gold) of the six tokens, named ``names`` (Blender adds .001 when taken)."""
-    geos = fire_token_geo()
+def fire_token_meshes(names=(K + ".slips", K + ".slip_caps"), log=None, spec=None):
+    """New meshes (body, gold) of the six tokens at ``spec``'s size (TokenSpec; default the r5 size), named ``names``
+    (Blender adds .001 when taken)."""
+    geos = fire_token_geo(spec=spec)
     out = []
     for g, nm, roles in zip(geos, names, FIRE_TOKEN_ROLES):
         if g.tris() > TOKEN_TRI_BUDGET:
@@ -1154,75 +1190,88 @@ def fire_token_meshes(names=(K + ".slips", K + ".slip_caps"), log=None):
 STAND_ITEM = "r5_token_stand"     # obj['sect_item'] on the stand's two objects (patch_r5_scroll.py finds them by it)
 
 
-def token_stand(coll, grp):
-    """The tokens' stand under the slip_stack Empty (its frame: z 0 the terrace top, faces -Y, row along +X):
-    scroll.token_plinth (stone_grey: foot, waist, top slab) and scroll.token_stand (lacquer_black: base beam, end posts,
-    spandrels, back rail; gold: the beam's front line, slot rims, post caps, the sun; silver: the moon). Returns both."""
-    xs = token_row_x()
-    half = max(abs(x) + TOKENS[i][1] / 2.0 for i, x in enumerate(xs))
-    px = half + STAND_POST_OUT
-    ry, rz = stand_rail()
-    bx, by, bz0, bz1 = STAND_BEAM
+def token_stand(coll, grp, spec=None, names=(K + ".token_plinth", K + ".token_stand")):
+    """The tokens' stand under the slip_stack Empty (its frame: z 0 the ground, faces -Y, row along +X), at ``spec``'s
+    size (TokenSpec; default the r5 size): ``names`` = the plinth (stone_grey: foot, waist, top slab: spec.plinth) and
+    the stand (lacquer_black: base beam, end posts, spandrels, back rail; gold: the beam's front line, slot rims, post
+    caps, the sun; silver: the moon). Returns both."""
+    spec = spec or FULL_TOKENS
+    k = spec.k
+    xs = token_row_x(spec)
+    half = max(abs(x) + spec.tokens[i][1] / 2.0 for i, x in enumerate(xs))
+    px = half + spec.post_out
+    ry, rz = stand_rail(spec)
+    bx, by, bz0, bz1 = spec.beam
     cl, sl = math.cos(TOKEN_LEAN), math.sin(TOKEN_LEAN)
+    post = spec.post
     # plinth
     bm = bmesh.new()
-    for sx_, sy_, z0, z1 in STAND_PLINTH:
+    for sx_, sy_, z0, z1 in spec.plinth:
         U.bm_box(bm, (sx_, sy_, z1 - z0), (0.0, 0.0, 0.5 * (z0 + z1)))
-    plinth = U.mesh_from_bmesh(_n("token_plinth"), bm, coll, materials=["stone_grey"], smooth=False, parent=grp)
-    U.bevel_mesh(plinth, 0.02, 2)
+    plinth = U.mesh_from_bmesh(U.unique_name(names[0]), bm, coll, materials=["stone_grey"], smooth=False, parent=grp)
+    U.bevel_mesh(plinth, 0.02 * k, 2)
     plinth["sect_item"] = STAND_ITEM
     # lacquer stand (slot 0), gold (1), silver (2)
     bm = bmesh.new()
     U.bm_box(bm, (bx, by, bz1 - bz0), (0.0, 0.0, 0.5 * (bz0 + bz1)))                     # base beam
-    post_h = rz + 0.30 - bz1
+    post_h = rz + 0.30 * k - bz1
     for s in (-1, 1):
-        U.bm_box(bm, (STAND_POST, STAND_POST, post_h + 0.02), (s * px, ry, bz1 - 0.02 + post_h / 2.0))   # end post
-        # spandrel in front of the post's foot: a cove-curved bracket 0.30 deep, 0.42 tall, 5 cm thick
-        y0 = ry - STAND_POST / 2.0 + 0.01
-        prof = [(y0, bz1 - 0.005)] + [(y0 - 0.30 * (1.0 - math.sin(math.radians(15.0 * k))),
-                                       bz1 - 0.005 + 0.42 * (1.0 - math.cos(math.radians(15.0 * k)))) for k in range(7)]
-        _prism_yz(bm, prof, s * px - 0.025, s * px + 0.025, Matrix.Identity(4))
-    U.bm_box(bm, (2.0 * px, STAND_RAIL, STAND_RAIL), (0.0, ry, rz))                        # back rail
+        U.bm_box(bm, (post, post, post_h + 0.02 * k), (s * px, ry, bz1 - 0.02 * k + post_h / 2.0))   # end post
+        # spandrel in front of the post's foot: a cove-curved bracket 0.30 deep, 0.42 tall, 5 cm thick (times k)
+        y0 = ry - post / 2.0 + 0.01 * k
+        prof = [(y0, bz1 - 0.005 * k)] + [(y0 - 0.30 * k * (1.0 - math.sin(math.radians(15.0 * j))),
+                                           bz1 - 0.005 * k + 0.42 * k * (1.0 - math.cos(math.radians(15.0 * j))))
+                                          for j in range(7)]
+        _prism_yz(bm, prof, s * px - 0.025 * k, s * px + 0.025 * k, Matrix.Identity(4))
+    U.bm_box(bm, (2.0 * px, spec.rail, spec.rail), (0.0, ry, rz))                          # back rail
     _faces_mat(bm, 0, 0)
     n0 = len(bm.faces)
-    U.bm_box(bm, (bx + 0.012, 0.024, 0.035), (0.0, -by / 2.0, bz1 - 0.07))                # gold line on the front
-    U.bm_box(bm, (bx + 0.012, 0.024, 0.035), (0.0, -by / 2.0, bz0 + 0.06))
+    U.bm_box(bm, (bx + 0.012 * k, 0.024 * k, 0.035 * k), (0.0, -by / 2.0, bz1 - 0.07 * k))  # gold line on the front
+    U.bm_box(bm, (bx + 0.012 * k, 0.024 * k, 0.035 * k), (0.0, -by / 2.0, bz0 + 0.06 * k))
     for i, x in enumerate(xs):                                                           # slot rims (gilt frames)
-        W = TOKENS[i][1]
-        yc = SLOT_Y + sl * SLOT_DEPTH / cl
-        dy = TOKEN_T / cl
-        for (w_, d_, ox, oy) in ((W + 0.12, 0.05, 0.0, -(dy / 2 + 0.035)), (W + 0.12, 0.05, 0.0, dy / 2 + 0.035),
-                                 (0.05, dy + 0.02, -(W / 2 + 0.035), 0.0), (0.05, dy + 0.02, W / 2 + 0.035, 0.0)):
-            U.bm_box(bm, (w_, d_, 0.02), (x + ox, yc + oy, bz1 + 0.006))
-    zc = rz + 0.30
+        W = spec.tokens[i][1]
+        yc = spec.slot_y + sl * spec.slot_depth / cl
+        dy = spec.t / cl
+        for (w_, d_, ox, oy) in ((W + 0.12 * k, 0.05 * k, 0.0, -(dy / 2 + 0.035 * k)),
+                                 (W + 0.12 * k, 0.05 * k, 0.0, dy / 2 + 0.035 * k),
+                                 (0.05 * k, dy + 0.02 * k, -(W / 2 + 0.035 * k), 0.0),
+                                 (0.05 * k, dy + 0.02 * k, W / 2 + 0.035 * k, 0.0)):
+            U.bm_box(bm, (w_, d_, 0.02 * k), (x + ox, yc + oy, bz1 + 0.006 * k))
+    zc = rz + 0.30 * k
     for s in (-1, 1):
-        _finial_cap(bm, STAND_POST * 0.62, zc, s * px, ry, stem_r=0.035, h=STAND_STEM)
-    E = STAND_EMBLEM
-    Ms = _basis((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), (-px, ry, zc + STAND_STEM + 1.75 * E - 0.01))
-    _sun(bm, E, 1.75 * E, 1.42 * E, 12, 0.045, Ms)
+        _finial_cap(bm, post * 0.62, zc, s * px, ry, stem_r=0.035 * k, h=spec.stem, k=k)
+    E = spec.emblem
+    Ms = _basis((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), (-px, ry, zc + spec.stem + 1.75 * E - 0.01 * k))
+    _sun(bm, E, 1.75 * E, 1.42 * E, 12, 0.045 * k, Ms, boss=0.06 * k)
     _faces_mat(bm, n0, 1)
     n0 = len(bm.faces)
-    Mm = _basis((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), (px, ry, zc + STAND_STEM + 1.5 * E - 0.01))
-    _crescent(bm, 1.5 * E, 0.045, Mm)
+    Mm = _basis((1.0, 0.0, 0.0), (0.0, 0.0, 1.0), (0.0, -1.0, 0.0), (px, ry, zc + spec.stem + 1.5 * E - 0.01 * k))
+    _crescent(bm, 1.5 * E, 0.045 * k, Mm)
     _faces_mat(bm, n0, 2)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
-    stand = U.mesh_from_bmesh(_n("token_stand"), bm, coll, materials=["lacquer_black", "gold", "silver"], smooth=False,
-                              parent=grp)
-    U.bevel_mesh(stand, 0.012, 2)
+    stand = U.mesh_from_bmesh(U.unique_name(names[1]), bm, coll, materials=["lacquer_black", "gold", "silver"],
+                              smooth=False, parent=grp)
+    U.bevel_mesh(stand, 0.012 * k, 2)
     stand["sect_item"] = STAND_ITEM
     return plinth, stand
 
 
-def _fire_tokens(coll, root):
-    """The six Holy Fire Tokens standing in a row on their lacquer stand at STAND_C (the Empty scroll.slip_stack keeps
-    the old stack's name)."""
-    grp = U.empty(_n("slip_stack"), coll, location=(STAND_C[0], STAND_C[1], 0.0), parent=root)
-    me_body, me_gold = fire_token_meshes()
-    slips = U.object_from_mesh(_n("slips"), me_body, coll, parent=grp)
-    slips["glow"] = TOKEN_GLOW
-    caps = U.object_from_mesh(_n("slip_caps"), me_gold, coll, parent=grp)
-    caps["glow"] = CORE_GLOW
-    token_stand(coll, grp)
+TOKEN_NAMES = (K + ".slip_stack", K + ".slips", K + ".slip_caps", K + ".token_plinth", K + ".token_stand")
+
+
+def fire_tokens(coll, parent, names=TOKEN_NAMES, spec=None, location=(0.0, 0.0, 0.0), matrix=None):
+    """The six Holy Fire Tokens standing in a row on their lacquer stand, at ``spec``'s size (TokenSpec; default the r5
+    size): an Empty names[0] under ``parent`` (at ``location``, or placed by ``matrix``, in the parent's frame) holding
+    names[1] (the iron and fire), names[2] (the gold), names[3] (the plinth) and names[4] (the stand). Until round 39
+    they stood on this terrace at STAND_C (TOKEN_NAMES: the Empty scroll.slip_stack kept the old jade-slip stack's
+    name); now the Stele Forest keeps them at half size (sect/lib/refs_centre.py). Returns the Empty."""
+    grp = U.empty(U.unique_name(names[0]), coll, location=location, parent=parent, matrix=matrix)
+    me_body, me_gold = fire_token_meshes(names[1:3], spec=spec)
+    body = U.object_from_mesh(U.unique_name(names[1]), me_body, coll, parent=grp)
+    body["glow"] = TOKEN_GLOW
+    gold = U.object_from_mesh(U.unique_name(names[2]), me_gold, coll, parent=grp)
+    gold["glow"] = CORE_GLOW
+    token_stand(coll, grp, spec, names[3:5])
     return grp
 
 
@@ -1276,8 +1325,9 @@ def build(collection):
     _pavilion(collection, root)
     _desk(collection, root)
     _scroll(collection, root)
-    _fire_tokens(collection, root)
     _nature(collection, root)
+    from sect.lib import refs_centre as RC        # (refs_centre imports this module)
+    RC.sword_tomb(collection, root)
     return root
 
 

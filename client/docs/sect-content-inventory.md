@@ -242,13 +242,13 @@ Reader: Cave Abode (洞府). Scroll (or use the area rail) to the Cave Abode and
 - [ ] **C-141** Eyebrow "OFF THE CLOCK" and heading "A few true things." *not carried.* Not in the sect. The reader's title already says Off the clock.
 - [ ] **C-142** Watermark lines behind the section. *not carried.* Not in the sect. Decoration.
 - [x] **C-143** Photo (/profile-joshua-tree.webp, alt "Bill Zhang") with caption "SHOT · 2025 · LA". *carried.* Cave Abode reader. The moon gate (hotspot abode) opens the reader.
-- [x] **C-144** Fact 1: Finished a 4-year CS degree in 2.5 years. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:0.
-- [x] **C-145** Fact 2: Won my first hackathon at 17. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:1.
-- [x] **C-146** Fact 3: Speaks Mandarin and English; building agents in both. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:2.
-- [x] **C-147** Fact 4: Plays drums and piano when the laptop is closed. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:3.
-- [x] **C-148** Fact 5: Still chasing the best bowl of noodles in San Francisco. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:4.
-- [x] **C-149** Fact 6: Convinced everyone gets a personal Jarvis eventually: an AI you just talk to, in real time. Building toward it. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:5.
-- [x] **C-150** Fact 7: Would rather talk to software than tap through it. Hence this site. *carried.* Cave Abode reader. Its object in the abode is hotspot fact:6.
+- [x] **C-144** Fact 1: Finished a 4-year CS degree in 2.5 years. *carried.* Cave Abode reader. Its object in the abode is the waterfall (hotspot fact:0).
+- [x] **C-145** Fact 2: Won my first hackathon at 17. *carried.* Cave Abode reader. Its object in the abode is the peach tree (hotspot fact:1).
+- [x] **C-146** Fact 3: Speaks Mandarin and English; building agents in both. *carried.* Cave Abode reader. Its object in the abode is the cliff inscription (hotspot fact:2).
+- [x] **C-147** Fact 4: Plays drums and piano when the laptop is closed. *carried.* Cave Abode reader. Its object in the abode is the qin table of the 笑傲江湖 duet (hotspot fact:3).
+- [x] **C-148** Fact 5: Still chasing the best bowl of noodles in San Francisco. *carried.* Cave Abode reader. Its object in the abode is the tea table (hotspot fact:4).
+- [x] **C-149** Fact 6: Convinced everyone gets a personal Jarvis eventually: an AI you just talk to, in real time. Building toward it. *carried.* Cave Abode reader. Its object in the abode is the crane (hotspot fact:5).
+- [x] **C-150** Fact 7: Would rather talk to software than tap through it. Hence this site. *carried.* Cave Abode reader. Its object in the abode is the koi pool (hotspot fact:6).
 - [ ] **C-151** Tip "Try asking the orb: “What does Bill do for fun?”". *not carried.* Not in the sect. The Ask the portfolio button does the same.
 
 ## Footer / contact (11)

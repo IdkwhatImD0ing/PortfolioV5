@@ -2174,33 +2174,187 @@ def rock_rings(me):
     return dict(segs=segs, bands=nb, ring=ring)
 
 
-def tidy_rock(ob, rings=ROCK_TIP_RINGS):
-    """Round 12: close the bottom of a nature.floating_rock's cone in one point. floating_rock ends the cone in a ring
-    of radius 0 whose vertices keep their own heights (up to 0.15 x depth apart), so the last bands stood as vertical
-    fins round one line, folded onto each other, and the rings just over it crumpled the same way: faces within 5 mm
-    of each other on every island, islet and stepping stone (75 m2 in the last band, 16 m2 in the two over it, of 117
-    m2 within 12 mm on the 151 rocks). The last ``rings`` rings (the bottom line and the ones over it) move into one
-    point, under the middle of the last ring kept and as low as the lowest of them: the band over them becomes one cone
-    of triangles to that point (the moved bands' faces stay, with no area). Only vertices move: the
-    faces, their order and the top (where the plants grow) stay as they are. Returns the vertices moved (0 when it was
-    already done, -1 when the mesh is not a floating_rock)."""
+ROCK_TIP_PROP = "rock_tip"  # (round 39) tidy_rock: mesh property, ROCK_TIP_MERGED once the tip is one vertex
+ROCK_TIP_MERGED = "merged"
+
+
+def tidy_rock(ob, rings=ROCK_TIP_RINGS, info=None):
+    """Close the bottom of a nature.floating_rock's cone in one vertex.
+
+    Round 12: floating_rock ends the cone in a ring of radius 0 whose vertices keep their own heights (up to 0.15 x
+    depth apart), so the last bands stood as vertical fins round one line, folded onto each other, and the rings just
+    over it crumpled the same way: faces within 5 mm of each other on every island, islet and stepping stone (75 m2 in
+    the last band, 16 m2 in the two over it, of 117 m2 within 12 mm on the 151 rocks). The last ``rings`` rings (the
+    bottom line and the ones over it) move into one point, under the middle of the last ring kept and as low as the
+    lowest of them: the band over them becomes one cone of triangles to that point.
+
+    Round 39: round 12 left the moved vertices stacked on that point (538 on Ice-Fire Island) and the moved bands'
+    faces in place with no area. The web bake's collapse decimation cannot take such a tip below about 6 %: it threw
+    the rock's top away instead (r36: 148 of the 151 rocks lost their tops at 3 %, 33 of the 43 in the area
+    stand-ins). Now the moved vertices merge into one tip vertex (_merge_tip): the moved bands' faces go and the band
+    over them is a fan of triangles round the tip. The plants stay where they stood: nature.scatter's Distribute
+    Points on Faces seeds each triangle by its index, so the faces before the grassy top keep their triangle count
+    (the fan's radial edges get evenly spaced vertices and each fan triangle is cut into strips in its own plane: the
+    same surface) and the top and the spurs keep their faces, their order and their corners exactly.
+    Returns the vertices moved or merged (0 when it was already done, -1 when the mesh is not a floating_rock);
+    ``info`` (a dict) gets the merge's counts."""
     me = ob.data
-    L = rock_rings(me)
-    if L is None:
+    if me.get(ROCK_TIP_PROP) == ROCK_TIP_MERGED:
+        return 0
+    lay = rock_rings(me)
+    if lay is None:
         return -1
-    idx = np.concatenate([L["ring"](k) for k in range(L["bands"] - rings + 1, L["bands"] + 1)])
+    idx = np.concatenate([lay["ring"](k) for k in range(lay["bands"] - rings + 1, lay["bands"] + 1)])
     co = np.empty(len(me.vertices) * 3)
     me.vertices.foreach_get("co", co)
     co = co.reshape(-1, 3)
     # (under the middle of the last ring kept, so the cone of triangles to it cannot fold over itself)
-    apex = np.concatenate([co[L["ring"](L["bands"] - rings)][:, :2].mean(0), [co[idx, 2].min()]])
+    apex = np.concatenate([co[lay["ring"](lay["bands"] - rings)][:, :2].mean(0), [co[idx, 2].min()]])
     apex = apex.astype(np.float32).astype(np.float64)        # as the mesh stores it: a second run finds it in place
     moved = int((np.abs(co[idx] - apex).max(axis=1) > 0.0).sum())
     if moved:
         co[idx] = apex
         me.vertices.foreach_set("co", co.ravel())
         me.update()
-    return moved
+    merged = _merge_tip(me, lay, idx, rings, info if info is not None else {})
+    me[ROCK_TIP_PROP] = ROCK_TIP_MERGED
+    return moved + merged
+
+
+def _face_corners(me, f0, f1):
+    """Corner positions (float32, as stored), loop totals and material indices of faces f0..f1-1."""
+    npl = len(me.polygons)
+    ls = np.empty(npl, np.int32)
+    me.polygons.foreach_get("loop_start", ls)
+    lt = np.empty(npl, np.int32)
+    me.polygons.foreach_get("loop_total", lt)
+    mi = np.empty(npl, np.int32)
+    me.polygons.foreach_get("material_index", mi)
+    cv = np.empty(len(me.loops), np.int32)
+    me.loops.foreach_get("vertex_index", cv)
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    if f1 <= f0:
+        return np.zeros((0, 3), np.float32), lt[:0].copy(), mi[:0].copy()
+    start, end = int(ls[f0]), int(ls[f1 - 1] + lt[f1 - 1])       # a mesh's face loops are contiguous, in order
+    return co[cv[start:end]], lt[f0:f1].copy(), mi[f0:f1].copy()
+
+
+def _merge_tip(me, lay, idx, rings, info):
+    """tidy_rock, round 39: the vertices ``idx`` (the moved rings, all on the tip point) become one vertex; the faces
+    they made (the moved bands) go; the band over them, now triangles round the tip, gets cuts on its radial edges and
+    each of its triangles is cut into strips (in its own plane) so the faces before the grassy top keep their triangle
+    count. When the count to make up is odd, one fan triangle goes to the end of the face list instead (past the
+    spurs). Checks that the top and the spurs come out exactly as they were. Returns the vertices merged."""
+    segs, nb = lay["segs"], lay["bands"]
+    first_top = nb * segs
+    npl0 = len(me.polygons)
+    lt0 = np.empty(npl0, np.int32)
+    me.polygons.foreach_get("loop_total", lt0)
+    tris0 = int((lt0[:first_top] - 2).sum())
+    rest0 = _face_corners(me, first_top, npl0)
+    ring = [int(i) for i in lay["ring"](nb - rings)]          # the last ring kept, in the build's (angular) order
+    pos = {v: j for j, v in enumerate(ring)}
+    tip_i = int(idx.min())
+    bm = bmesh.new()
+    try:
+        bm.from_mesh(me)
+        ordL = bm.faces.layers.int.new("~tip_ord")
+        subL = bm.faces.layers.int.new("~tip_sub")
+        vidL = bm.verts.layers.int.new("~tip_vid")
+        for f in bm.faces:
+            f[ordL] = f.index
+            f[subL] = 0
+        for v in bm.verts:
+            v[vidL] = v.index
+        bm.verts.ensure_lookup_table()
+        tip = bm.verts[tip_i]
+        bmesh.ops.weld_verts(bm, targetmap={bm.verts[int(i)]: tip for i in idx.tolist() if int(i) != tip_i})
+        a = {}
+        for v in bm.verts:
+            if v[vidL] in pos:
+                a[pos[v[vidL]]] = v
+        fan = [None] * segs
+        for f in tip.link_faces:
+            js = sorted(pos.get(v[vidL], -1) for v in f.verts if v != tip)
+            if len(f.verts) != 3 or len(js) != 2 or js[0] < 0:
+                raise RuntimeError("tidy_rock: a face round the tip is not a fan triangle")
+            j = js[0] if js[1] == (js[0] + 1) % segs else js[1]
+            fan[j] = f
+            f[ordL] = (nb - rings) * segs + j
+            f[subL] = 0
+        if any(f is None for f in fan) or len(a) != segs:
+            raise RuntimeError("tidy_rock: the fan round the tip is not whole")
+        tris1 = sum(len(f.verts) - 2 for f in bm.faces if f[ordL] < first_top)
+        short = tris0 - tris1                                 # triangles to make up before the top
+        if short < 0:
+            raise RuntimeError("tidy_rock: more triangles before the top after the merge (%d -> %d)" % (tris0, tris1))
+        odd = short % 2
+        free = list(range(2, segs)) if odd else list(range(segs))   # radial edges that take cuts (odd: not fan 0's)
+        cuts = (short + odd) // 2
+        k = {j: cuts // len(free) for j in range(segs)}
+        if odd:
+            k[0] = k[1] = 0
+        extra = cuts % len(free)
+        for i in range(extra):
+            k[free[(i * len(free)) // extra]] += 1
+        chain = {}
+        tip_co = tip.co.copy()
+        for j in range(segs):
+            prev, c0 = a[j], a[j].co.copy()
+            chain[j] = [prev]
+            for c in range(1, k[j] + 1):
+                e = bm.edges.get((prev, tip))
+                want = c0.lerp(tip_co, c / (k[j] + 1))
+                _e, nv = bmesh.utils.edge_split(e, prev, 1.0 / (k[j] + 2 - c))
+                if (nv.co - want).length > 1e-3:
+                    raise RuntimeError("tidy_rock: edge_split put a vertex %.4f m off" % (nv.co - want).length)
+                nv.co = want
+                chain[j].append(nv)
+                prev = nv
+        for j in range(segs):
+            face, L_, R_ = fan[j], chain[j], chain[(j + 1) % segs]
+            if odd and j == 0:
+                face[ordL] = 2 ** 30                          # past the spurs: off the count before the top
+                continue
+            p = q = sub = 0
+            while p < len(L_) - 1 or q < len(R_) - 1:
+                if q >= len(R_) - 1 or (p < len(L_) - 1 and (p + 1) * len(R_) <= (q + 1) * len(L_)):
+                    va, vb = L_[p + 1], R_[q]
+                    p += 1
+                else:
+                    va, vb = L_[p], R_[q + 1]
+                    q += 1
+                nf, _l = bmesh.utils.face_split(face, va, vb)
+                rest, cut = (face, nf) if tip in face.verts else (nf, face)
+                cut[ordL] = (nb - rings) * segs + j
+                cut[subL] = sub
+                sub += 1
+                face = rest
+            face[ordL] = (nb - rings) * segs + j
+            face[subL] = sub
+        tris2 = sum(len(f.verts) - 2 for f in bm.faces if f[ordL] < first_top)
+        if tris2 != tris0:
+            raise RuntimeError("tidy_rock: %d triangles before the top, want %d" % (tris2, tris0))
+        bm.faces.sort(key=lambda f: f[ordL] * 1024.0 + f[subL])    # (a number: BMesh sorts by float keys)
+        bm.faces.index_update()
+        n_before = sum(1 for f in bm.faces if f[ordL] < first_top)
+        n_after = sum(1 for f in bm.faces if first_top <= f[ordL] < 2 ** 30)
+        bm.faces.layers.int.remove(ordL)
+        bm.faces.layers.int.remove(subL)
+        bm.verts.layers.int.remove(vidL)
+        n_v0 = len(me.vertices)
+        bm.to_mesh(me)
+    finally:
+        bm.free()
+    me.update()
+    rest1 = _face_corners(me, n_before, n_before + n_after)
+    if n_after != npl0 - first_top or not all(np.array_equal(x, y) for x, y in zip(rest0, rest1)):
+        raise RuntimeError("tidy_rock: the top or the spurs changed")
+    info.update(segs=segs, faces=[npl0, len(me.polygons)], verts=[n_v0, len(me.vertices)], merged=len(idx) - 1,
+                cuts=cuts, odd=odd, tris_before_top=tris0)
+    return len(idx) - 1
 
 
 def _top_faces_up(ob, top_index=1):

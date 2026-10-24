@@ -90,12 +90,16 @@ RIM_BINS = 90
 # in the abode hold's open sky at 1380)
 ISLAND_NUDGES = {"scenery.island.092": (19.1, -46.2, 10.0), "scenery.island.052": (-119.0, 14.8, 70.0)}
 NUDGE_REACH = (3.0, 5.0, 40.0)  # an island's companions have their origin in its box plus this (sideways, down, up)
-# Ice-Fire Island 冰火島 (Heaven Sword and Dragon Saber, round 7): the island the flight sees largest made half glacier,
-# half volcano (sect/lib/icefire_props.py). island.009, the 70 m island with the waterfall at the library hold (772:
-# 236 x 298 px of a 1600 x 900 frame, 90 % unoccluded; the most on-screen area of any island over the whole path). Its
-# rock-local ICE_AZ puts the ice on the hold's left (the sunlit side, with the waterfall as meltwater) and the basalt
-# and lava on its right. Runs after the density and life passes (it removes the island's plants);
-# sect/patch_r7_icefire.py does the same on a finished scene.
+# Ice-Fire Island 冰火島 (Heaven Sword and Dragon Saber, round 7; rebuilt whole in round 36): the island the flight
+# sees largest made half glacier, half volcano. island.009, the 70 m island with the waterfall at the library hold (772:
+# 236 x 298 px of a 1600 x 900 frame, 90 % unoccluded; the most on-screen area of any island over the whole path).
+# Round 36 (sect/lib/icefire_island.py): its rock mesh is replaced by one closed island (a single tip vertex, the lava
+# sunk into it as faces of the rock, so the web's decimated stand-in stays whole) with a glacier cap, icicles,
+# stalactites and a volcano as its children. The halves face the hold: the fire half's centre goes to one side of the
+# hold camera's line, on the side that keeps the waterfall in the ice half, so a turned island (round 39's
+# turn_icefire) still shows its lava. Runs after the density and life passes and after turn_icefire (it removes the
+# island's plants and reads the rock's transform); sect/patch_r36_icefire.py does the same on a finished scene.
+# (lib/icefire_props.py, the round-7 build, is no longer called.)
 ICEFIRE_ISLAND = "scenery.island.009"
 
 
@@ -190,6 +194,17 @@ def forest_masks(rng_obj, kd, anchors):
     return area(forest), area(grove), area(cliff)
 
 
+def clear_round34(rng_obj):
+    """Round 34: no trees on world.range round 思過崖 on the cliff behind the mirror (sect/lib/refs_west.py
+    siguoya_clear: the masks just made are zeroed there, as sect/patch_r34_west.py zeroes them in a built file)."""
+    ob = bpy.data.objects.get("mirror.siguoya")
+    root = bpy.data.objects.get("mirror.root")
+    if ob is None or root is None:
+        return
+    from sect.lib import refs_west as RW
+    RW.siguoya_clear(rng_obj, root, RW.local_matrix(ob, root), log=lambda *a: _log(*a))
+
+
 def _blossom_protos():
     out = []
     for v in range(3):
@@ -205,6 +220,7 @@ def _blossom_protos():
 def build_forest(coll, kd, anchors):
     rng_obj = bpy.data.objects["world.range"]
     a_forest, a_grove, a_cliff = forest_masks(rng_obj, kd, anchors)
+    clear_round34(rng_obj)
     # pines only: at ~200 m the set's two shrubs were dropped or shrank to specks
     N.scatter_on(rng_obj, N.plant_prototypes("forest")[:6], density=FOREST_DENSITY, seed=31,
                  max_slope=math.radians(46), scale_range=(1.2, 2.4), mask_attribute="scenery_forest",
@@ -285,6 +301,40 @@ def nudge_islands(nudges=None):
         out[name] = sorted(o.name for o in comp)
         _log("nudged", name, off, "with", len(comp), "companions")
     return out
+
+
+# Round 39 (the r31 references plan, as approved): Ice-Fire Island is the library stop's reference (Zhang Wuji's first
+# school), but at the library hold (772) the frame's top cut it and its glacier faced the camera. It turns ICEFIRE_TURN
+# degrees about its own vertical axis (through the rock's origin), so its fire half and lava face the hold, and drops
+# ICEFIRE_DROP m, so it sits whole in the sky between the waterfall cliff and the pagoda. Its companions (its waterfall,
+# any plants standing on it) turn and drop with it; its children follow the rock. Runs after nudge_islands and the life
+# pass and before build_icefire (round 36's island reads the rock's transform); sect/patch_r39_centre.py turns it in a
+# finished scene the same way.
+ICEFIRE_TURN = 150.0
+ICEFIRE_DROP = 25.0
+
+
+def icefire_turn_matrix(rock):
+    """The world matrix that turns ``rock`` ICEFIRE_TURN deg about the vertical through its origin and drops it."""
+    from mathutils import Matrix
+    o = rock.matrix_world.translation.copy()
+    turn = Matrix.Rotation(math.radians(ICEFIRE_TURN), 4, 'Z')
+    return Matrix.Translation(o + Vector((0.0, 0.0, -ICEFIRE_DROP))) @ turn @ Matrix.Translation(-o)
+
+
+def turn_icefire(name=None):
+    """Turn and drop ICEFIRE_ISLAND and its companions (see above). Returns the companions' names, or None."""
+    rock = bpy.data.objects.get(name or ICEFIRE_ISLAND)
+    if rock is None:
+        _log("WARN icefire turn: no", name or ICEFIRE_ISLAND)
+        return None
+    comp = island_companions(rock)
+    R = icefire_turn_matrix(rock)
+    for o in [rock] + comp:
+        o.matrix_world = R @ o.matrix_world
+    bpy.context.view_layer.update()
+    _log("icefire turned", ICEFIRE_TURN, "deg, dropped", ICEFIRE_DROP, "m, with", sorted(o.name for o in comp))
+    return sorted(o.name for o in comp)
 
 
 def build_islands(coll, kd, pos, anchors):
@@ -486,6 +536,7 @@ def range_density(coll, kd, anchors):
     rng_obj = bpy.data.objects["world.range"]
     me = rng_obj.data
     masks, area, tops = density_masks(rng_obj, kd, anchors)
+    clear_round34(rng_obj)
     out = {}
     pines = N.plant_prototypes("forest")[:6]
     for (mask, _), (name, dens, seed, scale, align, slope) in zip(masks, (
@@ -665,13 +716,13 @@ def build_density(scene, coll, anchors, parts=None):
 
 
 def build_icefire(name=None):
-    """Make ICEFIRE_ISLAND Ice-Fire Island (sect/lib/icefire_props.py). Idempotent."""
-    from sect.lib import icefire_props as IF
+    """Make ICEFIRE_ISLAND Ice-Fire Island (sect/lib/icefire_island.py, round 36). Idempotent."""
+    from sect.lib import icefire_island as II
     rock = bpy.data.objects.get(name or ICEFIRE_ISLAND)
     if rock is None:
         _log("WARN icefire: no", name or ICEFIRE_ISLAND)
         return None
-    return IF.build(rock, log=_log)
+    return II.build(rock, log=_log)
 
 
 def build(scene):
@@ -684,6 +735,7 @@ def build(scene):
     build_range_falls(coll, kd, anchors)
     build_density(scene, coll, anchors)
     __import__("sect.life", fromlist=["build"]).build(scene)
+    turn_icefire()
     build_icefire()
     _log("triangles", U.evaluated_triangle_count(coll))
 

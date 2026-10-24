@@ -9,9 +9,11 @@ Blocking layout (local frame, front = -Y, z = 0 walkable):
   their glowing glyph columns face the oncoming camera. One glow colour per row = one skill
   category (cyan, blue, violet, crimson, amber); steles grow taller toward the back (5 -> 7 m).
   Each stele is a martial-arts manual from Jin Yong's four novels (STELE_MANUALS): the art's name in
-  the crown panel, its moves or mnemonic on the front, the novel and its master on the back; the
-  master stele carves the Five Greats of the Mount Hua contests (華山論劍).
-- Stone lanterns line the aisle between the rows.
+  the crown panel, its moves or mnemonic on the front, the novel and its master on the back. Each
+  row's front stele carries a manual that fits the row's skill; the master stele carves the Nine
+  Swords of Dugu (獨孤九劍) with its rule 只要有招 便有破綻 at the foot (round 39).
+- Stone lanterns line the aisle between the rows. At the head of the agents row (row 1) the Ming
+  Sect's six Holy Flame Tokens (聖火令) stand halved on a waist-high stand (steles.tokens).
 - At the far end, a xumizuo terrace (top z = 1.5) carries a square double-eave stele pavilion
   over the larger gold-glyph master stele (8 m), with the 碑林 plaque on its upper drum.
 - Covered corridors (lang, one step up) frame the courtyard on both sides: each starts at a small
@@ -106,21 +108,28 @@ ROW_GLYPHS = ("rune_cyan", "steles_rune_blue", "steles_rune_violet", "steles_run
 MASTER_GLYPH = "rune_gold"
 
 # Jin Yong manuals carved on the steles (round 9; props.JIN_YONG_MANUALS, by title). Per row, per column (inner x 12,
-# outer x 19): (west, east), a pair facing each other across the aisle that belong together. The east inner stele of
-# row 0 is the one nearest the camera at the 974 hold.
+# outer x 19): (west, east), a pair facing each other across the aisle that belong together. Round 39 (the r31 plan):
+# each row is one of the skills sentence's phrases (client content.ts skillGroups, row 0 at the front), and its front
+# stele, the west inner one (the 974 hold sees the west inner steles of rows 1-4 in a row, nothing in front of them;
+# row 0's are beside the camera), carries a manual that fits it; row 0 carries two, one each side. The client's
+# lore.ts STELE_ROW_MANUALS names them on the rows' hover labels.
 STELE_MANUALS = (
-    (("打狗棒法", "降龍十八掌"),    # Hong Qigong's two Beggar Clan arts
-     ("天罡北斗陣", "桃花島")),     # the Quanzhen array and Huang Yaoshi, who fought it
-    (("乾坤大挪移", "吸星大法"),    # two great methods of drawing and turning another's force
-     ("空明拳", "黯然銷魂掌")),     # Zhou Botong and Yang Guo traded these two
-    (("九陰真經", "九陽神功"),      # yin and yang
-     ("劍塚", "獨孤九劍")),         # Dugu Qiubai's swords and his nine swords
-    (("太極拳", "太極劍"),          # Zhang Sanfeng
-     ("七傷拳", "龍爪手")),         # both met on Bright Peak
-    (("古墓派", "玉女心經"),        # the Ancient Tomb
+    (("獅子吼", "清心普善咒"),      # voice-first: a roar that fells a crowd, a qin chant that heals
+     ("打狗棒法", "降龍十八掌")),   # Hong Qigong's two Beggar Clan arts
+    (("吸星大法", "七傷拳"),        # agents (the Holy Flame Tokens stand at this row's head); two arts that turn on
+                                    # the one who uses them
+     ("空明拳", "桃花島")),         # Zhou Botong made his fist while Huang Yaoshi's prisoner on Peach Blossom Island
+    (("天羅地網勢", "黯然銷魂掌"),  # latency; Xiaolongnu taught Yang Guo the first, he made the second waiting for her
+     ("九陰真經", "九陽神功")),     # yin and yang
+    (("玉女心經", "古墓派"),        # keeping a human in the loop; the Ancient Tomb
+     ("太極拳", "太極劍")),         # Zhang Sanfeng
+    (("乾坤大挪移", "龍爪手"),      # when the model is wrong; Zhang Wuji met Kong Xing's claws on Bright Peak
      ("沖靈劍法", "華山劍法")),     # Linghu Chong
 )
-MASTER_MANUAL = "華山論劍"          # the Five Greats of the first and third Mount Hua contests
+MASTER_MANUAL = "獨孤九劍"          # the Nine Swords of Dugu, its rule 只要有招 便有破綻 at the foot (round 39; until
+                                    # then 華山論劍, which is the arena's now)
+MANUAL_PROP = "manual"              # obj[MANUAL_PROP] on each stele: the title it carves (export_web LORE_WHEN reads the
+                                    # master's)
 
 
 def _register_materials():
@@ -237,15 +246,20 @@ def build(collection):
     # rows of steles on turtles, angled toward the aisle; one glow colour per row (category); each carves one Jin
     # Yong manual (STELE_MANUALS)
     manuals = {m["title"]: m for m in P.JIN_YONG_MANUALS}
+    agents_front = None
     for r, (y, h, glyph) in enumerate(zip(ROWS_Y, ROW_H, ROW_GLYPHS)):
         for c, x in enumerate(COLS_X):
             for side in (-1, 1):
                 seed = r * 2 + c + (0 if side < 0 else 3)
-                P.stele(coll, h, glyph, turtle_base=True, seed=seed,
-                        name=U.name(KEY, "stele", "r%d" % r), parent=root,
-                        location=(side * x, y, FIELD_H),
-                        rotation=(0, 0, -side * STELE_YAW),
-                        manual=manuals[STELE_MANUALS[r][c][0 if side < 0 else 1]])
+                title = STELE_MANUALS[r][c][0 if side < 0 else 1]
+                st = P.stele(coll, h, glyph, turtle_base=True, seed=seed,
+                             name=U.name(KEY, "stele", "r%d" % r), parent=root,
+                             location=(side * x, y, FIELD_H),
+                             rotation=(0, 0, -side * STELE_YAW),
+                             manual=manuals[title])
+                st[MANUAL_PROP] = title
+                if (r, c, side) == (1, 0, -1):
+                    agents_front = st
 
     # stone lanterns between rows 0/1 and 2/3, at the aisle edge of each field (each lantern is
     # about 22 k triangles, so only two pairs line the aisle itself)
@@ -254,6 +268,10 @@ def build(collection):
         for side in (-1, 1):
             P.lantern_stone(coll, 2.4, name=U.name(KEY, "lantern"), parent=root,
                             location=(side * (FIELD_X0 + 0.9), y, FIELD_H))
+    # the Ming Sect's Holy Flame Tokens 聖火令 at the head of the agents row, halved, on a waist-high stand (round 39,
+    # from the Jade Slip Pavilion's terrace: sect/lib/refs_centre.py), under that row's front stele (hotspot skills:1)
+    from sect.lib import refs_centre as RC
+    RC.steles_tokens(coll, root, agents_front)
     # three-step flights from the aisle (top 0.06) up into each stele field (top 0.5), between
     # rows; they take 1 m off each side, so the aisle stays 13 m clear (audit 4)
     for k, y in enumerate(FLIGHT_YS):
@@ -286,9 +304,10 @@ def build(collection):
     floor_z = TERRACE_H + PAV_PLAT_H
     # the larger master stele under it, gold glyphs (all skills)
     # (widened 1.3x so it reads as the larger monument; height stays 8 m)
-    P.stele(coll, MASTER_H, MASTER_GLYPH, turtle_base=True, seed=5, name=U.name(KEY, "stele_master"),
-            parent=root, location=(0, PAV_Y + 0.4, floor_z), scale=(1.3, 1.1, 1.0),
-            manual=manuals[MASTER_MANUAL])
+    master = P.stele(coll, MASTER_H, MASTER_GLYPH, turtle_base=True, seed=5, name=U.name(KEY, "stele_master"),
+                     parent=root, location=(0, PAV_Y + 0.4, floor_z), scale=(1.3, 1.1, 1.0),
+                     manual=manuals[MASTER_MANUAL])
+    master[MANUAL_PROP] = MASTER_MANUAL
 
     # plaque 碑林 centred on the upper drum, under the upper eave (classic double-eave spot)
     drum = _drum_front(pav)

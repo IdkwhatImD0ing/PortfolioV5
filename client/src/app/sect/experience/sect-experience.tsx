@@ -1870,9 +1870,9 @@ export default function SectExperience() {
   // The hover label: the name, its Chinese name and a line about it (lib/sect/content.ts), plus the
   // Jin Yong reference the hotspot holds under the pointer, or its fixed note (lib/sect/lore.ts).
   const hoverLabel = useMemo(() => (hovered ? hotspotLabel(hovered, ctx?.hotspotMap.get(hovered)?.label) : null), [hovered, ctx]);
-  // Nothing of it before meta.json has the references (today's files show the page as it was).
-  const hasLore = (data?.meta.lore?.length ?? 0) > 0;
-  const hoverLabelNote = useMemo(() => hoverNote(hovered, lore.hosted, hasLore), [hovered, lore.hosted, hasLore]);
+  // The fixed notes go by meta.json's reference boxes: none before a file has references, and a
+  // note that needs one (the role tablets' stars, the stele rows' manuals) only once its box is there.
+  const hoverLabelNote = useMemo(() => hoverNote(hovered, lore.hosted, data?.meta.lore ?? false), [hovered, lore.hosted, data]);
   // The references at each stop, named for screen readers on its panel (only those meta.json has).
   const loreAt = useMemo(() => loreByArea(data?.meta.lore), [data]);
 

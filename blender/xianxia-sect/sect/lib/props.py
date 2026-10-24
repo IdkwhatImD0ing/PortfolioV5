@@ -70,10 +70,10 @@ CLASSICS_ALL = "".join(CLASSICS)
 # new slip column. Sources and where they point in the sect:
 JIN_YONG_VERSES = [
     "武林至尊寶刀屠龍號令天下莫敢不從倚天不出誰與爭鋒",                       # Heaven Sword and Dragon Saber: the swords at the gate
-    "焚我殘軀熊熊聖火生亦何歡死亦何苦為善除惡惟光明故喜樂悲愁皆歸塵土憐我世人憂患實多",   # the Ming Sect's holy-fire chant: the altars, the tokens
+    "焚我殘軀熊熊聖火生亦何歡死亦何苦為善除惡惟光明故喜樂悲愁皆歸塵土憐我世人憂患實多",   # the Ming Sect's holy-fire chant: the altars, the tokens (steles)
     "他強由他強清風拂山岡他橫由他橫明月照大江",                               # Nine Yang Manual
     "重劍無鋒大巧不工",                                                       # Yang Guo's Heavy Iron Sword (the arena)
-    "劍魔獨孤求敗既無敵於天下乃埋劍於斯嗚呼群雄束手長劍空利不亦悲夫",           # Dugu Qiubai's Sword Tomb (the forge)
+    "劍魔獨孤求敗既無敵於天下乃埋劍於斯嗚呼群雄束手長劍空利不亦悲夫",           # Dugu Qiubai's Sword Tomb (on this lawn)
     "問世間情是何物直教生死相許",                                             # Return of the Condor Heroes
     "天之道損有餘而補不足是故虛勝實不足勝有餘",                               # Nine Yin Manual
     "歸妹趨無妄無妄趨同人同人趨大有",                                         # Dugu Nine Swords (Smiling Proud Wanderer)
@@ -82,9 +82,13 @@ JIN_YONG_VERSES = [
 
 # Jin Yong martial-arts manuals for the Stele Forest of Techniques (areas/steles.py, round 9): stele(manual=...) carves
 # 'title' in the crown panel, 'cols' on the front (each string one column, read top to bottom, the first column on the
-# right) and 'back' on the back (the novel, then who wields or wrote it). Traditional characters, no punctuation; every
+# right) and 'back' on the back (the novel, then who wields or wrote it); an optional 'foot' (columns, the first on the
+# right) is carved smaller at the foot of the front, under 'cols'. Traditional characters, no punctuation; every
 # character is in simkai.ttf. Move names and mnemonics as the novels give them (where editions differ, the widely
-# cited list); where a novel gives no move names the stele carries a line of the text itself.
+# cited list); where a novel gives no move names the stele carries a line of the text itself, or what the art did.
+# Round 39 (the r31 references plan): 天罡北斗陣 now stands at the Mission Hall (its star drums), 劍塚 on the Jade Slip
+# Pavilion's lawn and 華山論劍 at the arena (its seats), so their steles are gone; 獅子吼, 清心普善咒 and 天羅地網勢 are
+# new, and 獨孤九劍 moved to the master stele with its rule at the foot.
 JIN_YONG_MANUALS = [
     # ---- The Legend of the Condor Heroes 射鵰英雄傳
     dict(title="降龍十八掌",          # Eighteen Dragon-Subduing Palms: the eighteen moves (Yi Jing names)
@@ -103,11 +107,6 @@ JIN_YONG_MANUALS = [
     dict(title="桃花島",              # Peach Blossom Island: Huang Yaoshi's arts
          cols=("落英神劍掌旋風掃葉腿", "蘭花拂穴手彈指神通", "玉簫劍法碧海潮生曲"),
          back=("射鵰英雄傳", "東邪黃藥師")),
-    # Quanzhen Big Dipper array: each star and the Quanzhen master who takes it (ch. 25), not the bare star names the
-    # formation area's star-stones already carry
-    dict(title="天罡北斗陣",
-         cols=("天樞馬鈺天璇譚處端", "天璣劉處玄天權丘處機", "玉衡王處一開陽郝大通", "搖光孫不二"),
-         back=("射鵰英雄傳", "全真七子")),
     # ---- The Return of the Condor Heroes 神鵰俠侶
     dict(title="黯然銷魂掌",          # Yang Guo's Melancholic Palms: the seventeen moves
          cols=("心驚肉跳杞人憂天無中生有", "拖泥帶水徘徊空谷力不從心", "行屍走肉庸人自擾倒行逆施",
@@ -119,11 +118,13 @@ JIN_YONG_MANUALS = [
     dict(title="玉女心經",            # Jade Maiden Heart Sutra: the paired-sword moves of its last chapter
          cols=("浪跡天涯花前月下", "清飲小酌撫琴按簫", "掃雪烹茶松下對弈", "池邊調鶴"),
          back=("神鵰俠侶", "林朝英")),
-    dict(title="劍塚",                # Dugu Qiubai's Sword Tomb: the words under his four swords
-         cols=("凌厲剛猛無堅不摧", "弱冠前以之與河朔群雄爭鋒", "紫薇軟劍三十歲前所用", "誤傷義士不祥悔恨無已乃棄之深谷",
-               "重劍無鋒大巧不工", "四十歲前恃之橫行天下", "四十歲後不滯於物草木竹石均可為劍", "自此精修漸進於無劍勝有劍之境"),
-         back=("神鵰俠侶", "劍魔獨孤求敗")),
+    dict(title="天羅地網勢",          # Heaven-and-Earth Net: Xiaolongnu teaches Yang Guo to keep 81 sparrows in reach
+         cols=("雙掌回環", "八十一雀", "不得飛去"),
+         back=("神鵰俠侶", "小龍女")),
     # ---- The Heaven Sword and Dragon Saber 倚天屠龍記
+    dict(title="獅子吼",              # Lion's Roar: Xie Xun's roar at the Dragon Saber's gathering on Wang Pan Island
+         cols=("王盤山島揚刀立威", "長嘯一聲群豪皆倒"),
+         back=("倚天屠龍記", "金毛獅王謝遜")),
     dict(title="九陽神功",            # Nine Yang Manual: the line after the scroll's 他強由他強
          cols=("他自狠來他自惡", "我自一口真氣足"),
          back=("倚天屠龍記", "張無忌")),
@@ -144,9 +145,13 @@ JIN_YONG_MANUALS = [
          cols=("捕風式捉影式", "撫琴式鼓瑟式", "批亢式搗虛式", "拿雲式搶珠式", "抱殘式守缺式"),
          back=("倚天屠龍記", "少林空性")),
     # ---- The Smiling, Proud Wanderer 笑傲江湖
-    dict(title="獨孤九劍",            # Nine Swords of Dugu: the nine stances
+    dict(title="獨孤九劍",            # Nine Swords of Dugu (the master stele): the nine stances, and at the foot its rule
          cols=("總訣式破劍式破刀式", "破槍式破鞭式破索式", "破掌式破箭式破氣式"),
+         foot=("只要有招", "便有破綻"),
          back=("笑傲江湖", "風清揚")),
+    dict(title="清心普善咒",          # Pure Heart Chant: the twelve pitches and five notes Lüzhu Weng teaches with the qin
+         cols=("黃鐘大呂太簇夾鐘", "姑洗仲呂蕤賓林鐘", "夷則南呂無射應鐘", "宮商角徵羽"),
+         back=("笑傲江湖", "任盈盈")),
     dict(title="華山劍法",            # Huashan swordplay as Feng Qingyang strings it, and its eight-word secret
          cols=("白虹貫日有鳳來儀", "金雁橫空截劍式", "金玉滿堂鐘鼓齊鳴", "行雲流水任意所至"),
          back=("笑傲江湖", "令狐沖")),
@@ -156,11 +161,6 @@ JIN_YONG_MANUALS = [
     dict(title="吸星大法",            # Star-Sucking Great Method: the words on Ren Woxing's iron bed
          cols=("當令丹田常如空箱恆似深谷", "空箱可貯物深谷可容水", "若有內息散之於任脈諸穴"),
          back=("笑傲江湖", "任我行")),
-    # ---- the master stele: the Five Greats of the first and third Mount Hua contests
-    dict(title="華山論劍",
-         cols=("東邪黃藥師西毒歐陽鋒", "南帝段智興北丐洪七公", "中神通王重陽", "東邪黃藥師西狂楊過", "南僧一燈北俠郭靖",
-               "中頑童周伯通"),
-         back=("射鵰英雄傳", "神鵰俠侶")),
 ]
 
 TABLET_TEXTS = ["道法自然", "上善若水", "天道酬勤", "厚德載物", "寧靜致遠", "抱元守一", "清靜無為",
@@ -1121,6 +1121,8 @@ LANTERN_UNION = True           # _build_stone_lantern: the chamber's walls, corn
                                # bars overlapped at 0 mm and stood 5-15 mm over faces left under them)
 LION_UNION = True              # _build_lion: the body, curls, eyes, ball and ribbons joined into one solid (layers 1-4 mm
                                # apart where a curl or a ribbon lay on the body)
+LION_SCAN = True               # guardian_lion: the photogrammetry lions of sect/lib/lion_props.py (round 28: the owner found
+                               # the procedural lion "really weird"); False: the procedural _build_lion as before
 
 
 def _union(me):
@@ -3644,12 +3646,21 @@ def _build_lion(pc, s, female, material, plinth_material):
 def guardian_lion(collection, size=1.0, mirror=False, material="marble_white", plinth_material=None,
                   name=None, parent=None, location=(0, 0, 0), rotation=(0, 0, 0), scale=1.0):
     """Chinese guardian lion (shi shi) seated on a xumizuo plinth with a draped brocade, facing -Y.
-    Stylised from blended forms: big round head with heavy brows, bulging eyes, broad snub nose,
-    open grin with fangs, rows of snail-curl mane down the nape, collar with a bell, flame tail.
-    mirror=False: the male, right paw on an embroidered ball (on the -X side).
-    mirror=True: its partner, the female, left paw on a cub (on the +X side).
-    About 2.2*size m tall (plinth 0.63*size), 1.0*size wide, 1.2*size deep. Origin at the ground
-    centre. Collection instance."""
+    LION_SCAN (round 28): a photogrammetry scan of a Qing white-marble lion ("Stone Big Lion 01" by Game industry
+    veteran, CC-BY 4.0, assets/CREDITS.md) prepared by sect/lib/lion_props.py: real carving, curled mane, collar and
+    bell, the brocade's diamond lattice; 28k triangles, a baked normal map, a clean weathered-marble colour map.
+    mirror=False: the male, right forepaw on a carved embroidered ball (on the -X side).
+    mirror=True: its partner, the female, left forepaw on a cub (on the +X side).
+    By custom (左雄右雌 seen walking out of the gate) a pair facing out (-Y) has the male on the +X side.
+    About 2.27*size m tall (the brocade at 0.85*size), 0.98*size wide, 1.31*size deep; the plinth's sole is sunk
+    0.012*size under the origin (the ground centre). A ``material`` / ``plinth_material`` other than 'marble_white'
+    tints the scan by that material's colour (lion_props.lion_material). Collection instance (one object a lion).
+    LION_SCAN False: the procedural lion (_build_lion: stylised from blended forms, big round head, snail-curl mane,
+    flame tail; about 2.2*size m tall, plinth 0.63*size, 1.0*size wide, 1.2*size deep)."""
+    if LION_SCAN:
+        from . import lion_props
+        pc, res = lion_props.lion_proto(size, mirror, material, plinth_material)
+        return _place(pc, collection, name, "lion", parent, location, rotation, tuple(res * c for c in _v3(scale)))
     b, res = _bucket(size, 1.0)
     pm = plinth_material or material
     key = "lion.%s.%d.%s.%s" % (_k(b), mirror, material, pm)
@@ -3821,16 +3832,30 @@ def _stele_frame(s, z0):
                 crown=Vector((-0.15 * s, -0.19 * s - 0.004 * s, zc + 0.48 * s)))
 
 
+FOOT_CELL = 0.8                # a manual's 'foot' lines: their cell, times the front grid's
+FOOT_GAP = 0.5                 # between the columns above and the foot block, times the grid's cell
+
+
 def _manual_blocks(manual, s, f):
     """[(face, _block_plan arguments)] of a manual stele (front, back, crown) in the frame ``f`` (_stele_frame): each
-    block inside its classics grid, inset 0.1 cell (crown 0.12 of its 0.15 s cell)."""
+    block inside its classics grid, inset 0.1 cell (crown 0.12 of its 0.15 s cell). A manual with a 'foot' gets a
+    second front block at the bottom of the grid (FOOT_CELL cells, FOOT_GAP under the columns above it)."""
     cols, rows, cell = f["cols"], f["rows"], f["cell"]
     m = 0.1 * cell
-    return [("front", (manual["cols"], f["front"], cols * cell, rows * cell, 1.6 * cell, None, "top", m)),
-            ("back", (manual.get("back", ()), f["back"], (cols - 2) * cell, (rows - 3) * cell, 1.6 * cell,
-                      f["basis_back"], "top", m)),
-            ("crown", (title_lines(manual["title"]), f["crown"], 0.3 * s, 0.3 * s, 0.15 * s, None, "center",
-                       0.018 * s))]
+    H = rows * cell
+    foot = list(manual.get("foot", ()))
+    if not foot:
+        front = [("front", (manual["cols"], f["front"], cols * cell, H, 1.6 * cell, None, "top", m))]
+    else:
+        fh = max(len(t) for t in foot) * FOOT_CELL * cell + 2 * m
+        top_h = H - fh - FOOT_GAP * cell
+        front = [("front", (manual["cols"], f["front"], cols * cell, top_h, 1.6 * cell, None, "top", m)),
+                 ("front", (foot, f["front"] + Vector((0.0, 0.0, -(H - fh))), cols * cell, fh, FOOT_CELL * cell,
+                            None, "top", m))]
+    return front + [("back", (manual.get("back", ()), f["back"], (cols - 2) * cell, (rows - 3) * cell, 1.6 * cell,
+                              f["basis_back"], "top", m)),
+                    ("crown", (title_lines(manual["title"]), f["crown"], 0.3 * s, 0.3 * s, 0.15 * s, None, "center",
+                               0.018 * s))]
 
 
 def stele_glyph_plan(height=4.0, turtle_base=True, manual=None):
@@ -3852,6 +3877,8 @@ def _manual_key(manual):
     if not manual.get("title") or not manual.get("cols"):
         raise ValueError("stele manual needs a 'title' and 'cols': %r" % (manual,))
     sig = "|".join([manual["title"]] + list(manual["cols"]) + ["/"] + list(manual.get("back", ())))
+    if manual.get("foot"):
+        sig += "|_|" + "|".join(manual["foot"])
     return "m%08x" % (zlib.crc32(sig.encode("utf-8")) & 0xFFFFFFFF)
 
 
@@ -3881,9 +3908,10 @@ def stele(collection, height=4.0, glyph_mat="rune_cyan", turtle_base=True, seed=
     columns on the back, an arched crown with two coiling relief dragons holding a pearl and a
     four-character title panel. turtle_base=True: it stands on a bixi dragon-turtle (scute shell,
     raised dragon head, clawed feet) on a ground slab, 3.6/4*height long; else on a xumizuo base.
-    ``seed`` picks the text. ``manual`` (a dict like those in JIN_YONG_MANUALS: title, cols, back) carves that
-    manual instead: its title in the crown, its columns on the front, its back lines on the back (one prototype per
-    manual; seed then plays no part). Origin at the ground centre, front faces -Y. Collection instance."""
+    ``seed`` picks the text. ``manual`` (a dict like those in JIN_YONG_MANUALS: title, cols, back, optional foot)
+    carves that manual instead: its title in the crown, its columns on the front (its foot lines smaller under them),
+    its back lines on the back (one prototype per manual; seed then plays no part). Origin at the ground centre, front
+    faces -Y. Collection instance."""
     b, res = _bucket(height, 4.0)
     gm = glyph_mat if isinstance(glyph_mat, str) else glyph_mat.name
     if manual is None:

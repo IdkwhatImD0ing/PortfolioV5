@@ -1,4 +1,4 @@
-# The Ming Sect (明教) — xianxia fly-through proof of concept
+# The Sun Moon Divine Cult (日月神教) — xianxia fly-through proof of concept
 
 The portfolio site at art3m1s.me is one long scroll. This scene turns that scroll into a
 flight through a cultivation sect on floating karst peaks. Every website section maps to one
@@ -6,11 +6,14 @@ sect area, in scroll order. The camera flies a single continuous path past all o
 starting in the sea of clouds and ending at the summit under a colossal moon
 (art3m1s → Artemis → moon).
 
-The sect is the Ming Sect (明教) of Jin Yong's *Heaven Sword and Dragon Saber*. Three reasons:
-明 is 日 (sun) + 月 (moon), so the moon is still inside the name; the orthodox sects of the
-novel call the Ming Sect unorthodox, a nod to the owner's own unorthodox education; and the
-gate's two blade monoliths are the Heaven Sword 倚天剑 and the Dragon Saber 屠龙刀 from the
-same novel.
+The sect is the Sun Moon Divine Cult (日月神教) of Jin Yong's *The Smiling, Proud Wanderer*.
+Until round 32 (October 2026) it was the Ming Sect (明教) of *Heaven Sword and Dragon Saber*;
+the owner renamed it. The reasons: 日月 is sun and moon and 神 is divine, so the moon and a
+goddess (Artemis) are in the name; the English name reads plainly to visitors who don't know
+Chinese; and the orthodox sects of the novel call it unorthodox, a nod to the owner's own
+unorthodox education. The gate's two blade monoliths stay the Heaven Sword 倚天剑 and the
+Dragon Saber 屠龙刀 of *Heaven Sword and Dragon Saber*, and the novel's Ming Sect still lends
+the scene its holy fire, Holy Fire Tokens and Five Element Banners, as the Ming Sect's.
 
 This file is the contract every module author follows. Read all of it before writing code.
 
@@ -171,7 +174,7 @@ procedural (the only external asset is the font).
 
 | # | Site section id | Area key | Sect area | Plaque | Anchor (x, y, z) | Footprint |
 |---|---|---|---|---|---|---|
-| 1 | `hero` | `gate` | Mountain Gate | 明教 | (0, 0, 40) | 40 (stairs may extend south past it) |
+| 1 | `hero` | `gate` | Mountain Gate | 日月神教 | (0, 0, 40) | 40 (stairs may extend south past it) |
 | 2 | `about` | `mirror` | Heart-Mirror Terrace | 心镜台 | (−95, 185, 70) | 45 |
 | 3 | `projects` | `forge` | Artifact Forge Peak | 炼器峰 | (115, 335, 95) | 50 |
 | 4 | `hackathons` | `arena` | Sword-Discussion Arena (floating) | 论剑台 | (−35, 485, 120) | 48 |
@@ -193,7 +196,7 @@ The camera is the audience. Put the most detail where it looks.
 
 1. **gate — Mountain Gate 山门 (hero).** A colossal five-bay paifang gate (about 34 m wide,
    24 m tall) with stepped glazed teal roofs over each bay, red columns on white marble
-   bases, gold plaque 明教 above the centre bay. In front (south, −Y) a grand white
+   bases, gold plaque 日月神教 above the centre bay. In front (south, −Y) a grand white
    marble stairway descends steeply about 60 m down the cliff into the cloud sea
    (it may extend to y ≈ −130, z ≈ −60 local), with landings every ~20 steps, balustrades,
    and paired stone lanterns. A pair of guardian beasts (stylised qilin or lions on plinths)

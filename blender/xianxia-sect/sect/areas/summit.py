@@ -301,23 +301,38 @@ def _rim_points(radius, z, a0, a1, step_deg=4.0):
 #
 # Round 7: the procedural bird read as fake, and it stood on the terrace. The bird is now a prepared, real-looking
 # vulture (sect/lib/condor_props.py: Pigcraft's "Dark Vulture" on Sketchfab, CC-BY 4.0, credited in
-# assets/CREDITS.md), 1.7 m tall, standing with folded wings on a rock crag that rises out of the summit cliff just
-# beyond the west rail (local r 46, 4 m outside the balustrade). The contact hold (frame 1647) sees it in profile
-# 34 m away, about 80 px tall, against the evening sky left of the pine, beak toward the pavilion and the moon. The
-# crag is a small karst column (nature.rock_pillar, dome top, leaning 6 deg outward) whose foot runs 45 m down into
-# the summit cliff, with a flat capstone boulder (the bird's perch) and two small boulders. Static; not a hotspot.
+# assets/CREDITS.md), standing with folded wings on a rock crag that rises out of the summit cliff beyond the rail: a
+# small karst column (nature.rock_pillar, dome top, leaning a little outward) whose foot runs down into the summit
+# cliff, with a flat capstone boulder (the bird's perch) and two small boulders. Static; not a hotspot.
+#
+# Round 34 (r31 proposal, approved): the crag stood west of the terrace, 100% under the Contact panel at the hold
+# (frame 1647), so its card could not be reached there. It now rises right of the pavilion, below the moon: at
+# CONDOR_SITE (local r 43.8, outside the terrace's 39 m rim off the south-west rail), the bird at about x 1350-1450,
+# y 650-730 of 1600 x 900 at the hold, 31 m off, at CONDOR_SCALE of the model (1.45 m: ~60 px tall), clear of the
+# voice button and 12 m from the camera path at its nearest (sect/patch_r34_west.py checks it). A slimmer column
+# than round 7's (CONDOR_CRAG top_r 2.7), so on the approach (frame 1625), where it stands in front of the pavilion's
+# lower half, it hides as little of it as it can. The bird faces CONDOR_HEADING (local atan2): in profile at the hold,
+# beak toward the pavilion and the moon (收翅凝立, ch. 40). Xiaolongnü's golden-bell ribbon lies coiled on the
+# capstone beside it (sect/lib/refs_west.py coil).
 #
 # Model frame of the bird ('summit.condor_bird'): origin between the feet, beak toward -Y, z up.
 
-CONDOR_SITE = (46.0, math.radians(-173.0))   # crag centre, local polar (r, atan2 angle): the west rim, off the rail
-CONDOR_CRAG = dict(top=6.5, top_r=3.6, bottom_r=6.5, depth=45.0, seed=31, lean=math.radians(6.0))
-CONDOR_CAP = dict(size=3.2, seed=4, sink=0.35)   # boulder variant 4 (the flattest top); its yaw is searched so the
+CONDOR_SITE = (43.8, math.radians(-146.0))   # crag centre, local polar (r, atan2 angle): right of the pavilion at 1647
+CONDOR_CRAG = dict(top=7.6, top_r=2.7, bottom_r=3.9, depth=40.0, seed=31, lean=math.radians(4.0))
+CONDOR_CAP = dict(size=2.8, seed=4, sink=0.3)    # boulder variant 4 (the flattest top); its yaw is searched so the
                                                  # rock under the toes is as level as it gets
 CONDOR_ROCKS = 2                             # small boulders on the crag's dome beside the capstone
-CONDOR_HEADING = math.radians(-35.0)         # beak direction (local atan2): screen-right at the hold, to the pavilion
-CONDOR_TAG = "sect_item"                     # object property; sect/patch_r7_condor.py removes what carries it
+CONDOR_HEADING = math.radians(95.0)          # beak direction (local atan2): in profile at the hold, toward the pavilion
+CONDOR_SCALE = 0.85                          # of the prepared bird (condor_props.BIRD_HEIGHT 1.7 m -> 1.45 m)
+CONDOR_TAG = "sect_item"                     # object property; sect/patch_r34_west.py moves what carries it
 CONDOR_ITEM = "divine_condor"
 CONDOR_MAX_TOE_GAP = 0.06                    # m: no toe may stand higher than this above the capstone
+# round 7's place (sect/patch_r34_west.py recognises the old crag by it)
+CONDOR_SITE_R7 = (46.0, math.radians(-173.0))
+CONDOR_CRAG_R7 = dict(top=6.5, top_r=3.6, bottom_r=6.5, depth=45.0, seed=31, lean=math.radians(6.0))
+CONDOR_CAP_R7 = dict(size=3.2, seed=4, sink=0.35)
+CONDOR_HEADING_R7 = math.radians(-35.0)
+CONDOR_SCALE_R7 = 1.0
 
 
 def _local_tree(ob):
@@ -333,23 +348,29 @@ def _down(tree, x, y, z0):
     return None if h[0] is None else h[0].z
 
 
-def divine_condor(collection, root, log=None):
+def divine_condor(collection, root, log=None, nm=None, site=None, crag=None, cap=None, heading=None, scale=None):
     """The Divine Condor on its crag (see the block comment above): 'summit.condor_crag' (karst column),
     'summit.condor_crag_rock' x CONDOR_ROCKS and 'summit.condor_cap' (boulders), and the bird 'summit.condor_bird'
-    (sect/lib/condor_props.py; raises when its prepared files are missing from assets/web). Every object carries
-    obj[CONDOR_TAG] = CONDOR_ITEM. Returns the bird."""
+    (sect/lib/condor_props.py, scaled CONDOR_SCALE; raises when its prepared files are missing from assets/web). Every
+    object carries obj[CONDOR_TAG] = CONDOR_ITEM. nm(base) -> object name (default U.name(KEY, base));
+    site / crag / cap / heading / scale default to the CONDOR_* constants (sect/patch_r34_west.py rebuilds round 7's
+    with the _R7 ones to recognise it). Returns the bird."""
     from sect.lib import condor_props as CP
     say = log or (lambda *a: print("SUMMIT condor", *a, flush=True))
-    r0, a0 = CONDOR_SITE
+    nm = nm or (lambda base: U.name(KEY, base))
+    r0, a0 = site or CONDOR_SITE
+    cg = crag or CONDOR_CRAG
+    cp = cap or CONDOR_CAP
+    head = CONDOR_HEADING if heading is None else heading
+    s = CONDOR_SCALE if scale is None else scale
     cx, cy = r0 * math.cos(a0), r0 * math.sin(a0)
-    cg = CONDOR_CRAG
-    lean = (-cg["lean"] * math.sin(a0), cg["lean"] * math.cos(a0), 0.0)     # the top leans outward, off the cliff
-    crag = N.rock_pillar(collection, height=cg["top"] + cg["depth"], top_radius=cg["top_r"],
-                         bottom_radius=cg["bottom_r"], seed=cg["seed"], top_flat=False, top_z=cg["top"], lod="hero",
-                         pines=False, vegetation=False, name=U.name(KEY, "condor_crag"), parent=root,
-                         location=(cx, cy, 0.0), rotation=lean)
-    made = [crag]
-    ctree = _local_tree(crag)
+    lean = (-cg["lean"] * math.sin(a0), cg["lean"] * math.cos(a0), cg.get("yaw", 0.0))   # the top leans outward
+    crag_ob = N.rock_pillar(collection, height=cg["top"] + cg["depth"], top_radius=cg["top_r"],
+                            bottom_radius=cg["bottom_r"], seed=cg["seed"], top_flat=False, top_z=cg["top"], lod="hero",
+                            pines=False, vegetation=False, name=nm("condor_crag"), parent=root,
+                            location=(cx, cy, 0.0), rotation=lean)
+    made = [crag_ob]
+    ctree = _local_tree(crag_ob)
     z_top = _down(ctree, cx, cy, cg["top"] + 30.0)
     if z_top is None:
         raise RuntimeError("condor crag: no top found under its centre")
@@ -359,7 +380,7 @@ def divine_condor(collection, root, log=None):
     for i in range(CONDOR_ROCKS):
         th = 2.0 * math.pi * i / CONDOR_ROCKS + r.uniform(-0.5, 0.5)
         d0 = cg["top_r"] * r.uniform(0.45, 0.75)
-        size = r.uniform(1.4, 2.2)
+        size = r.uniform(1.4, 2.2) * (cg["top_r"] / 3.6)
         seed = r.randint(0, 7)
         rot = r.uniform(0.0, 2.0 * math.pi)
         while True:
@@ -371,20 +392,19 @@ def divine_condor(collection, root, log=None):
                 break
             d0 -= 0.2
         hs = [h for h in hs if h is not None]
-        made.append(N.rock(collection, size, seed=seed, kind="boulder", name=U.name(KEY, "condor_crag_rock"),
+        made.append(N.rock(collection, size, seed=seed, kind="boulder", name=nm("condor_crag_rock"),
                            parent=root, location=(px, py, min(hs) - 0.1), rotation=rot))
     # the capstone: the yaw (of 24) with the most level rock under the toes
-    cp = CONDOR_CAP
-    cap = N.rock(collection, cp["size"], seed=cp["seed"], kind="boulder", name=U.name(KEY, "condor_cap"),
-                 parent=root, location=(cx, cy, z_top - cp["sink"]), rotation=0.0)
-    made.append(cap)
-    yaw = CONDOR_HEADING + math.pi / 2                        # the model faces -Y
+    cap_ob = N.rock(collection, cp["size"], seed=cp["seed"], kind="boulder", name=nm("condor_cap"),
+                    parent=root, location=(cx, cy, z_top - cp["sink"]), rotation=0.0)
+    made.append(cap_ob)
+    yaw = head + math.pi / 2                                  # the model faces -Y
     C = Matrix.Translation((cx, cy, 0.0)) @ Matrix.Rotation(yaw, 4, 'Z')
-    toes = [C @ Vector((x, y, 0.0)) for x, y in CP.toe_points()]
+    toes = [C @ Vector((x * s, y * s, 0.0)) for x, y in CP.toe_points()]
     best = None
     for k in range(24):
-        cap.rotation_euler = (0.0, 0.0, 2.0 * math.pi * k / 24)
-        tree = _local_tree(cap)
+        cap_ob.rotation_euler = (0.0, 0.0, 2.0 * math.pi * k / 24)
+        tree = _local_tree(cap_ob)
         hs = [_down(tree, p.x, p.y, z_top + 10.0) for p in toes]
         if any(h is None for h in hs):
             continue
@@ -394,21 +414,31 @@ def divine_condor(collection, root, log=None):
             best = (spread, k, hs[len(hs) // 2], hs[0], hs[-1])
     if best is None:
         raise RuntimeError("condor capstone: the toes overhang every capstone yaw")
-    cap.rotation_euler = (0.0, 0.0, 2.0 * math.pi * best[1] / 24)
+    cap_ob.rotation_euler = (0.0, 0.0, 2.0 * math.pi * best[1] / 24)
     z_bird = best[2]                                          # median: toes over higher rock sink in a little
     if z_bird - best[3] > CONDOR_MAX_TOE_GAP:
         say("WARN a toe stands %.3f m above the capstone" % (z_bird - best[3]))
-    bird = CP.bird(collection, U.name(KEY, "condor_bird"), location=(cx, cy, z_bird), rotation=(0.0, 0.0, yaw),
+    bird = CP.bird(collection, nm("condor_bird"), location=(cx, cy, z_bird), rotation=(0.0, 0.0, yaw),
                    parent=root)
+    if abs(s - 1.0) > 1e-9:
+        bird.scale = (s, s, s)
     made.append(bird)
     for ob in made:
         ob[CONDOR_TAG] = CONDOR_ITEM
-    say("crag", crag.name, "centre (%.2f, %.2f) top %.2f" % (cx, cy, z_top), "capstone yaw %d/24" % best[1],
+    say("crag", crag_ob.name, "centre (%.2f, %.2f) top %.2f" % (cx, cy, z_top), "capstone yaw %d/24" % best[1],
         "toe rock spread %.3f m, highest toe gap %.3f m, deepest toe %.3f m" % (best[0], z_bird - best[3],
                                                                             best[4] - z_bird),
-        "bird at z %.3f yaw %.1f deg" % (z_bird, math.degrees(yaw)),
+        "bird at z %.3f yaw %.1f deg scale %.2f" % (z_bird, math.degrees(yaw), s),
         "triangles", {o.name: sum(len(p.vertices) - 2 for p in o.data.polygons) for o in made})
     return bird
+
+
+def condor_rocks(bird):
+    """The crag's pieces the ribbon may lie on, found by the bird's own name: [capstone, crag, its boulders]."""
+    base = bird.name[:-len("condor_bird")]
+    obs = [bpy.data.objects.get(base + n) for n in ("condor_cap", "condor_crag", "condor_crag_rock",
+                                                     "condor_crag_rock.001")]
+    return [o for o in obs if o is not None]
 
 
 # --------------------------------------------------------------------------------------
@@ -458,6 +488,13 @@ def build(collection):
     # stone table for moon-gazing inside
     P.stone_table(collection, 1.3, stools=4, name=U.name(KEY, "table"), parent=root,
                   location=(0, 0.6, z2 + 0.7))
+    # 綠竹巷 (round 34): bamboo blinds on the bays the hold faces, the middle one rolled up over a qin and a lamp
+    # (sect/lib/refs_west.py blinds); that bay's bench makes way for them
+    from sect.lib import refs_west as RW
+    bench = RW.bench_on(pav, RW.BLIND_OPEN)
+    if bench is not None:
+        bpy.data.objects.remove(bench, do_unlink=True)
+    RW.blinds(collection, pav)
 
     # 4. crescent-moon arch: the entry gate with the plaque. Balustrade wings run from each
     #    horn's plinth to the rim rail, so the path goes through the arch, not round it.
@@ -483,8 +520,12 @@ def build(collection):
     N.pine(collection, height=19.0, seed=1, style="ancient", lod="hero", name=U.name(KEY, "pine"),
            parent=root, location=(px, py, 0.6), lean_toward=PINE_AZ + math.radians(8))
 
-    # 6b. the Divine Condor 神雕 on its crag beyond the west rail, in profile to the hold, facing the pavilion
-    divine_condor(collection, root)
+    # 6b. the Divine Condor 神雕 on its crag right of the pavilion below the moon, in profile to the hold, and
+    #     Xiaolongnü's golden-bell ribbon 金鈴索 coiled on its rock beside it (round 34, sect/lib/refs_west.py coil)
+    from sect.lib import refs_west as RW
+    bird = divine_condor(collection, root)
+    rocks = condor_rocks(bird)
+    RW.coil(collection, root, rocks[0], bird, rocks)
 
     # 7. stone lanterns: flanking the arch and the tier stairs
     for sx in (-1, 1):

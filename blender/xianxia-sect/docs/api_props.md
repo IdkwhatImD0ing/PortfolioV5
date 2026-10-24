@@ -12,7 +12,7 @@ from sect.lib import props
 root = U.empty("gate.root", coll)
 props.guardian_lion(coll, 2.0, name="gate.lion_l", parent=root, location=(-9, -14, 0))
 props.guardian_lion(coll, 2.0, mirror=True, name="gate.lion_r", parent=root, location=(9, -14, 0))
-props.plaque(coll, "明教", 6.0, name="gate.plaque", parent=root, location=(0, -1.2, 17.5))
+props.plaque(coll, "日月神教", 6.0, name="gate.plaque", parent=root, location=(0, -1.2, 17.5))
 ```
 
 Preview (look.py CLI, run from the project root):
@@ -84,7 +84,7 @@ for i in range(40):   # arena: one per hackathon
 | `incense_burner(collection, size=1.0, smoke=True, ...)` | Hexagonal stone pedestal, bronze tripod censer with elephant-trunk legs, crown ears, ridges, taotie masks, ash, three sticks with glowing tips, three thin curling smoke ribbons (to about 2.7 m). | 0.95 m wide, sticks at 1.1 m; 8.7 k |
 | `bell(collection, size=1.6, material='bronze_verdigris', frame=False, ...)` | Chinese temple bell: eight-lobed scalloped lip, relief bands, four lotus striking seats, relief inscription, pu-lao dragon hanger. `frame=False`: **origin at the hanger top**. `frame=True`: on a red post-and-beam frame with a striking log on ropes in front; origin on the ground. | 1.28 x 1.75 m, 18 k; with frame 2.5 x 2.3 m, 20 k |
 | `drum(collection, size=1.2, stand=True, ...)` | Red lacquer barrel drum, heads face -Y/+Y, gold bands, two rows of brass studs per head, ring pulls; rosewood stand with two sticks. `stand=False`: origin at the drum centre. | 1.68 x 1.08 x 1.70 m, 14 k |
-| `guardian_lion(collection, size=1.0, mirror=False, material='marble_white', plinth_material=None, ...)` | Seated guardian lion on a xumizuo plinth with a brocade drape: big head, bulging eyes, curled brows, grin with teeth and fangs, mane of rows of snail curls down the nape, chin beard, bell collar, hip spirals, toes, flame tail. `mirror=False`: male, right paw on an embroidered ball (-X side). `mirror=True`: the female partner, left paw on a cub (+X side). Bronze lions: `material='props_lion_bronze'`. | 1.07 x 1.31 x 2.28 m (x size), 77 k |
+| `guardian_lion(collection, size=1.0, mirror=False, material='marble_white', plinth_material=None, ...)` | Seated guardian lion on a xumizuo plinth with a brocade drape. Round 28 (`LION_SCAN`): a photogrammetry scan of a Qing white-marble lion ("Stone Big Lion 01", CC-BY 4.0; `sect/lib/lion_props.py`, its maps in `assets/web/lion_*`): carved curled mane, collar and bell, brocade lattice, clean weathered-marble colour, baked normal map. `mirror=False`: male, right forepaw on a carved embroidered ball (-X side). `mirror=True`: the female partner, left forepaw on a cub (+X side). Another `material` tints the scan by that material's colour. `LION_SCAN = False`: the earlier procedural lion (1.07 x 1.31 x 2.28 m, 77 k; bronze: `material='props_lion_bronze'`). | 0.98 x 1.31 x 2.27 m (x size), 28 k |
 
 ```python
 props.cauldron_ding(coll, 8.0, lit=True, light=True, name="forge.ding", parent=root, location=(0, 4, 0))

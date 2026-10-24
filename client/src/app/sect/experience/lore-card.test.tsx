@@ -48,13 +48,22 @@ describe("LoreCard", () => {
     expect(textOf(none)).toBe("");
   });
 
-  it("says the line alone when there is no novel, or when the novel's title is the name", () => {
+  it("says the line alone when the novel's title is the name, and names the novel otherwise", () => {
     expect(textOf(renderToStaticMarkup(<LoreCard id="sun-moon" visible />))).toBe(
-      "日月 Sun and Moon The sect's emblem, and the first half of its name, 日月神教",
+      "日月 Sun and Moon This sect's name and emblem, 日月神教, from The Smiling, Proud Wanderer",
     );
     const sword = renderToStaticMarkup(<LoreCard id="heaven-sword" visible />);
-    expect(textOf(sword)).toBe("倚天劍 Heaven-Reliant Sword The Dragon-Slaying Saber's only rival");
+    expect(textOf(sword)).toBe("倚天劍 Heaven-Reliant Sword The Dragon-Slaying Saber's only rival: 倚天不出，誰與爭鋒");
     expect(sword).not.toContain("<cite");
+  });
+
+  it("names round 34's new references", () => {
+    expect(textOf(renderToStaticMarkup(<LoreCard id="cliff-of-reflection" visible />))).toBe(
+      "思過崖 Cliff of Reflection Linghu Chong's year of reflection, from The Smiling, Proud Wanderer",
+    );
+    expect(textOf(renderToStaticMarkup(<LoreCard id="mount-hua" visible />))).toBe(
+      "華山論劍 Sword Contest of Mount Hua The seats of the Five Greats, from Legend of the Condor Heroes",
+    );
   });
 });
 
@@ -130,8 +139,18 @@ describe("the hover label's quiet line", () => {
 
   it("names the sword under the pointer on the gate's swords", () => {
     const html = label("gate-swords", { id: "heaven-sword", host: "gate-swords" });
-    expect(textOf(html)).toContain("倚天劍 Heaven-Reliant Sword, the Dragon-Slaying Saber's only rival");
+    expect(textOf(html)).toContain("倚天劍 Heaven-Reliant Sword, the Dragon-Slaying Saber's only rival: 倚天不出，誰與爭鋒");
     expect(html).toContain("data-sect-note");
+  });
+
+  it("names the duet on the music fact, which round 34 made its object", () => {
+    expect(textOf(label("fact:3", { id: "wanderer-duet", host: "fact:3" }))).toContain(
+      "笑傲江湖 Laughing Proudly in the Jianghu, from The Smiling, Proud Wanderer",
+    );
+  });
+
+  it("gives the Stack pillar the five banners' brigades", () => {
+    expect(textOf(label("arch:6", null))).toContain("五行旗 洪水 Voice · 烈火 Brain · 巨木 Frame · 銳金 State · 厚土 the core");
   });
 
   it("names the Black Iron Heavy Sword on the arena's landmark", () => {
@@ -157,8 +176,8 @@ describe("the stop's panel", () => {
     const html = renderToStaticMarkup(<AreaPanel area="gate" onOpen={() => {}} references={["heaven-sword", "dragon-saber", "sun-moon"]} />);
     const list = html.slice(html.indexOf("<ul"));
     expect(list).toMatch(/^<ul class="sr-only" aria-label="Jin Yong references in this place">/);
-    expect(textOf(list)).toContain("Heaven-Reliant Sword (倚天劍): The Dragon-Slaying Saber's only rival.");
-    expect(textOf(list)).toContain("Dragon-Slaying Saber (屠龍刀): The blade whose holder rules the martial world.");
+    expect(textOf(list)).toContain("Heaven-Reliant Sword (倚天劍): The Dragon-Slaying Saber's only rival: 倚天不出，誰與爭鋒.");
+    expect(textOf(list)).toContain("Dragon-Slaying Saber (屠龍刀): The blade whose holder rules the martial world: 武林至尊，寶刀屠龍.");
   });
 
   it("is unchanged without references (today's meta.json)", () => {

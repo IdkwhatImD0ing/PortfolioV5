@@ -7,7 +7,8 @@
  * - the flying cranes over the abode and the summit glide in a loop, beating their wings;
  * - glow rhythms on clickable things: a light running along the mission tablets, the stele rows,
  *   the library floors and the formation pillars; breathing runes at the gate, the mirror, the jade
- *   scroll and the summit arch; the censer's ember and the abode's wind chimes flicker;
+ *   scroll and the summit arch; the censer's ember flickers (round 34 put the duet's qin table,
+ *   which has no light, where the abode's wind chimes were);
  * - cloth and branches: the arena's hackathon banners flutter, and so do the sect's other pole
  *   banners, at the gate, the forge, the arena and the mission hall, and the formation's Five
  *   Element flags (cut out of the merged scenery where they hang or fly); the mirror's and the
@@ -154,7 +155,6 @@ const GLOWS: Record<string, GlowSpec[]> = {
     { ids: range("arch", 8), kind: "wave", period: 8, gain: 0.9 },
     { ids: ["formation"], kind: "breathe", period: 4, gain: 0.45 },
   ],
-  abode: [{ ids: ["fact:3"], kind: "flicker", period: 1, gain: 0.6 }],
   summit: [{ ids: ["summit-arch"], kind: "breathe", period: 6, gain: 0.5 }],
 };
 

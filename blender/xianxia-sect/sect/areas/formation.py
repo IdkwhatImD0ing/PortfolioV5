@@ -5,8 +5,9 @@ the world. A 100 m round plaza of weathered bluestone with bronze and jade set i
 
 - the floor: aged bluestone slabs; round the dais a polished ink-stone band with the eight trigrams cast in bronze
   (a warm glow leaks from under each bar); a recessed jade channel ring; from it a short glowing channel between
-  stone curbs runs to each brazier; the Ming Sect's chant 焚我残躯，熊熊圣火... carved in gold round a black band;
-  moss at the rim, round the plinths and in the cracks;
+  stone curbs runs to each brazier; the Ming Sect's chant 焚我殘軀，熊熊聖火... set in gold into a black band (round 34:
+  in traditional characters, as the novel's text and the scene's other carvings, and inlaid: the band is cut away
+  under every character); moss at the rim, round the plinths and in the cracks;
 - eight array-eye stations 陣眼 (formation.pillar.0-7, prototype formation.p.station; the page's arch:k hotspots):
   huabiao columns with a coiling stone dragon, a cloud plate, a lotus dew plate and a jade eye held in bronze claws
   (sect/lib/array_props.py), each with its trigram on a bronze plaque;
@@ -18,8 +19,10 @@ the world. A 100 m round plaza of weathered bluestone with bronze and jade set i
 - the Ming Sect's Five Element Banners 五行旗 on the east rim (formation.flag.<wood|fire|earth|metal|water>, front to
   back in the generating order 木火土金水) on carved stone drums with the sect's emblem, each in its element's colour
   (round 30: its own cloth, sect/lib/element_flags.py);
-- the Quanzhen Big Dipper array 天罡北斗阵: seven star-stones on the west side (formation.dipper.<star>) joined by
-  inlaid silver lines;
+- the Ming Sect's two holy-fire altars 聖火壇 (round 34, moved from the Mission Hall: mission.holy_fire) flanking the
+  front paifang inside the plaza (formation.holy_fire, .001: ALTARS), each with its warm light, both in the hold's
+  frame. Until round 33 the Quanzhen Big Dipper array stood on the west side (seven star-stones, formation.dipper.*);
+  it went to the Mission Hall, and the west rim stays open;
 - stone lanterns along the axis walk, a censer before the front dais stair, a marble balustrade round the rim, a
   three-bay paifang with the 护宗大阵 plaque at the front (-Y) and a one-bay rear gate.
 The protective barrier and the soft light shafts are drawn by the page (the bake leaves the dome out); no light
@@ -41,7 +44,6 @@ import math
 
 import bmesh
 import bpy
-from mathutils import Vector
 
 from sect.lib import util as U
 from sect.lib import materials as M
@@ -49,6 +51,8 @@ from sect.lib import arch as A
 from sect.lib import props as P
 from sect.lib import array_props as AP
 from sect.lib import element_flags as EF
+from sect.lib import refs_east as RE
+from sect.areas import mission as MI
 
 # arrival / depart: where the incoming and outgoing connector stairs meet this area, as
 # (x, y, z, heading) in the local frame. z is the stair's end step level (terrace grass, -0.4);
@@ -99,7 +103,10 @@ STATION_ANGLES = [math.radians(22.5 + 45.0 * k) for k in range(8)]
 TRIGRAMS = ["兑", "乾", "巽", "坎", "艮", "坤", "震", "离"]
 PILLAR_ANGLES = STATION_ANGLES                       # older name (export docs)
 
-CHANT = "焚我残躯，熊熊圣火。生亦何欢，死亦何苦？为善除恶，惟光明故。喜乐悲愁，皆归尘土。怜我世人，忧患实多！"
+# the Ming Sect's chant 明教聖火經文 (Heaven Sword and Dragon Saber), in traditional characters as the novel prints it
+# (round 34; until round 33 simplified: 焚我残躯，熊熊圣火…); the punctuation is not carved (array_props.chant_layout)
+CHANT = "焚我殘軀，熊熊聖火。生亦何歡，死亦何苦？為善除惡，惟光明故。喜樂悲愁，皆歸塵土。憐我世人，憂患實多！"
+CHANT_GOLD = (0.042, 0.012)   # the gold's walls and how much of them is under the band (its face 3 cm proud, as before)
 
 # The Ming Sect's Five Element Banners 五行旗 (倚天屠龙记): (element, flag character, angle on the rim in degrees,
 # cloth material, brigade name). Front to back in the generating order 木 -> 火 -> 土 -> 金 -> 水; the angles keep
@@ -116,19 +123,20 @@ ELEMENT_FLAGS = [
     ("water", "水", 66.0, "flag_water", "洪水旗"),   # 黑 ink black, indigo flame teeth, gold character
 ]
 
-# The Quanzhen Big Dipper array 天罡北斗阵 (射雕英雄传): seven star-stones on the west side, (pinyin, name, x, y);
-# the ladle's bowl on the left, its handle rising toward the rear gate (layout search: every star at least 7.8 m
-# from any station, nothing covers a star at the hold).
-DIPPER = [
-    ("yaoguang", "摇光", -22.0, 38.0),     # Alkaid, the handle tip
-    ("kaiyang", "开阳", -24.3, 29.1),      # Mizar
-    ("yuheng", "玉衡", -26.9, 23.7),       # Alioth
-    ("tianquan", "天权", -30.8, 19.1),     # Megrez
-    ("tianji", "天玑", -36.5, 21.3),       # Phecda
-    ("tianxuan", "天璇", -41.7, 14.8),     # Merak
-    ("tianshu", "天枢", -36.6, 9.4),       # Dubhe
-]
-DIPPER_LINKS = [(0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 3)]
+# Until round 33 the Quanzhen Big Dipper array 天罡北斗阵 stood here: seven star-stones on the west side at these
+# (x, y) (Alkaid, Mizar, Alioth, Megrez, Phecda, Merak, Dubhe). It went to the Mission Hall (lib/refs_east.py
+# DIPPER); the positions stay only to keep the moss layout's random stream (_moss_spots), so every other patch keeps its
+# place.
+MOSS_STARS_R6 = ((-22.0, 38.0), (-24.3, 29.1), (-26.9, 23.7), (-30.8, 19.1), (-36.5, 21.3), (-41.7, 14.8), (-36.6, 9.4))
+
+# The Ming Sect's holy-fire altars 聖火壇 (round 34, from the Mission Hall: mission.holy_fire): a pair flanking the front
+# paifang inside the plaza, 3.3 m outside its columns' line and 7.5 m behind it, east first (the bare names); each
+# octagonal plinth (3.25 m to its corners) stays inside the ink-stone floor's gold ring (R_DARK) and clear of the
+# stations, braziers and axis lanterns. ALTAR_FRONT turns the east flame's broad side to the hold camera (1208:
+# formation-local (3.95, -141.5, 54.2); the west altar is its mirror image, each within 2.2 deg of facing it).
+ALTARS = ((15.0, -39.0), (-15.0, -39.0))
+ALTAR_FRONT = math.radians(-8.3)
+ALTAR_MOSS_CLEAR = 3.35        # m from an altar's centre: no moss patch reaches nearer (the plinth's corners at 3.25)
 
 # stone lanterns along the axis walk: two pairs behind the dais, one pair in front (the apron has its own pair)
 AXIS_LANTERNS = [(sx * 3.6, y) for y in (-33.0, 26.0, 37.0) for sx in (-1.0, 1.0)]
@@ -252,19 +260,36 @@ def _floor_band_bm():
 def _floor(coll, root):
     """Bluestone plaza, the polished ink-stone bands (trigrams, chant) and the recessed jade channel ring, which
     stops either side of the axis walk (plain ink stone there, beside the walk). Both are cut away under the white
-    axis strip, which lies flush in them (_route)."""
+    axis strip, which lies flush in them (_route). Returns the ink band's object (the chant is set into it)."""
     AP.mk(U.name(KEY, "floor"), _floor_bm(), coll, [AP.M_BLUE], parent=root, smooth=False)
-    AP.mk(U.name(KEY, "floor_band"), _floor_band_bm(), coll, [AP.M_INK], parent=root, smooth=False)
+    band = AP.mk(U.name(KEY, "floor_band"), _floor_band_bm(), coll, [AP.M_INK], parent=root, smooth=False)
     g = _axis_gap(0.5 * sum(R_CHANNEL))
     arcs =[(math.pi / 2 + g, 1.5 * math.pi - g), (-math.pi / 2 + g, math.pi / 2 - g)]
     bm_glow, bm_wall = bmesh.new(), bmesh.new()
     AP.jade_channel(bm_glow, bm_wall, R_CHANNEL[0], R_CHANNEL[1], CHANNEL_DEPTH, arcs)
     AP.mk(U.name(KEY, "channel"), bm_glow, coll, [AP.M_JADE], parent=root, smooth=False, glow=0.22, shadow=False)
     AP.mk(U.name(KEY, "channel_walls"), bm_wall, coll, [AP.M_INK], parent=root, smooth=False)
+    return band
 
 
-def _inlays(coll, root):
-    """Bronze trigrams with their gold leak, diamond studs, radial channels, the chant ring and the moss."""
+def chant_bm(band_me):
+    """The chant's gold (CHANT clockwise from the rear axis, tops of the glyphs outward, skipping the channels and the
+    walk) set into the ink band ``band_me`` (cut away under every character: refs_east.chant_inlay), and the pause dots'
+    angles. Returns (bm of the gold, dot angles)."""
+    gaps = [(t, math.radians(3.8)) for t in STATION_ANGLES] + \
+           [(math.pi / 2, math.radians(7.7)), (1.5 * math.pi, math.radians(7.7))]
+    placed, dots, _pitch = AP.chant_layout(CHANT, gaps, start=math.pi / 2 - math.radians(7.7))
+    depth, sink = CHANT_GOLD
+    bm = RE.glyphs_bm([c for _a, c in placed], CHANT_H,
+                      lambda i: (CHANT_R * math.cos(placed[i][0]), CHANT_R * math.sin(placed[i][0]), 0.0,
+                                 placed[i][0] - math.pi / 2), depth, sink)
+    RE.chant_inlay(band_me, bm, 0.0, depth - sink, R_CHANT)
+    return bm, dots
+
+
+def _inlays(coll, root, band):
+    """Bronze trigrams with their gold leak, diamond studs, radial channels, the chant ring (set into the ink band
+    ``band``) and the moss."""
     bm_bar, bm_leak = bmesh.new(), bmesh.new()
     AP.bagua(bm_bar, bm_leak, STATION_ANGLES, TRIGRAMS)
     AP.studs(bm_bar, [math.radians(45.0 * k) for k in range(8) if k not in (2, 6)])
@@ -281,11 +306,7 @@ def _inlays(coll, root):
     AP.mk(U.name(KEY, "radial_collars"), bm_collar, coll, [AP.M_BRONZE], parent=root, smooth=False, bevel=0.015)
 
     # the chant, clockwise from the rear axis, tops of the glyphs outward; it skips the channels and the walk
-    gaps = [(t, math.radians(3.8)) for t in STATION_ANGLES] + \
-           [(math.pi / 2, math.radians(7.7)), (1.5 * math.pi, math.radians(7.7))]
-    placed, dots, _pitch = AP.chant_layout(CHANT, gaps, start=math.pi / 2 - math.radians(7.7))
-    bm = bmesh.new()
-    AP.chant_glyphs(bm, placed, CHANT_R, CHANT_H)
+    bm, dots = chant_bm(band.data)
     AP.mk(U.name(KEY, "chant"), bm, coll, [AP.M_GOLD], parent=root, smooth=False)
     bm = bmesh.new()
     AP.dots(bm, dots, CHANT_R)
@@ -297,8 +318,8 @@ def _inlays(coll, root):
 
 
 def _moss_spots():
-    """Moss patches (x, y, size): thick at the rim foot and the balustrade foot, round every plinth, star-stone and
-    flag drum, a few in the paving cracks; never on the axis walk, the channels or the bands."""
+    """Moss patches (x, y, size): thick at the rim foot and the balustrade foot, round every plinth and flag drum,
+    a few in the paving cracks; never on the axis walk, the channels or the bands."""
     r = U.rng("formation_moss_r6")
     spots = []
 
@@ -317,8 +338,11 @@ def _moss_spots():
             t = math.radians(deg)
             if math.hypot(x - R_FLAGS * math.cos(t), y - R_FLAGS * math.sin(t)) < 1.0 + 0.4 * s:
                 return False
-        for _p, _n, sx, sy in DIPPER:
+        for sx, sy in MOSS_STARS_R6:                     # (where the star-stones stood until round 33)
             if math.hypot(x - sx, y - sy) < 1.25:
+                return False
+        for ax, ay in ALTARS:                            # round 34: none under the holy-fire altars' plinths
+            if math.hypot(x - ax, y - ay) < ALTAR_MOSS_CLEAR + 0.56 * s:
                 return False
         for lx, ly in AXIS_LANTERNS:
             if math.hypot(x - lx, y - ly) < 0.6:
@@ -339,11 +363,11 @@ def _moss_spots():
             rr = r.uniform(25.95, 26.6) if abs(a - t) < 0.12 else R_STATION + r.uniform(3.3, 3.9) * \
                 (1 if r.random() < 0.6 else -1)
             add(rr * math.cos(a), rr * math.sin(a), r.uniform(0.4, 1.3))
-    for _p, _n, sx, sy in DIPPER:                        # round the star platforms
-        for _ in range(3):
-            a = r.uniform(0, 2 * math.pi)
-            d = r.uniform(1.4, 1.8)
-            add(sx + d * math.cos(a), sy + d * math.sin(a), r.uniform(0.3, 0.8))
+    for _sx, _sy in MOSS_STARS_R6:                       # round the star platforms until round 33: the stones went to
+        for _ in range(3):                               # the Mission Hall and their rings of moss with them; the draws
+            r.uniform(0, 2 * math.pi)                    # stay, so every other patch keeps its place
+            r.uniform(1.4, 1.8)
+            r.uniform(0.3, 0.8)
     for _ in range(26):                                  # in the paving cracks
         a = r.uniform(0, 2 * math.pi)
         rr = r.uniform(24.5, 43.5)
@@ -582,21 +606,16 @@ def _flags(coll, root):
         AP.tag_tree(b)
 
 
-def _dipper(coll, root):
-    """The Quanzhen Big Dipper: seven star-stones joined by inlaid silver lines on the floor."""
-    bm = bmesh.new()
-    for a, b in DIPPER_LINKS:
-        pa = Vector((DIPPER[a][2], DIPPER[a][3], 0.0))
-        pb = Vector((DIPPER[b][2], DIPPER[b][3], 0.0))
-        d = (pb - pa).normalized()
-        n = Vector((-d.y, d.x, 0.0)) * 0.225
-        p0, p1 = pa + d * 1.3, pb - d * 1.3
-        z = Vector((0.0, 0.0, 0.02))
-        bm.faces.new([bm.verts.new(v + z) for v in (p0 - n, p1 - n, p1 + n, p0 + n)])
-    AP.mk(U.name(KEY, "dipper.lines"), bm, coll, [AP.M_STAR], parent=root, smooth=False, glow=0.35, shadow=False)
-    for i, (py, zh, x, y) in enumerate(DIPPER):
-        L = math.hypot(x, y)
-        AP.star_stone(coll, "%s.dipper.%s" % (KEY, py), root, (x, y, 0.0), (-x / L, -y / L), zh, variant=i % 3)
+def _altars(coll, root):
+    """The Ming Sect's two holy-fire altars (mission.holy_fire, their flames turned ALTAR_FRONT) flanking the front
+    paifang: 'formation.holy_fire' (east) and 'formation.holy_fire.001' (west), each with its light. Returns them."""
+    out = []
+    for x, y in ALTARS:
+        hf = MI.holy_fire(coll, root, x, y, key=KEY, front=ALTAR_FRONT)
+        for ob in [hf] + list(hf.children_recursive):
+            RE.tag(ob, "formation")
+        out.append(hf)
+    return out
 
 
 # ---------------------------------------------------------------------------- rim, gates, ritual details
@@ -645,13 +664,14 @@ def _ritual(coll, root):
 
 
 def build_array(coll, root, dais_top):
-    """Everything round-6 adds (sect/patch_r6_formation.py calls this on an existing formation)."""
-    _floor(coll, root)
-    _inlays(coll, root)
+    """Everything round-6 adds (sect/patch_r6_formation.py called this on an existing formation), with round 34's
+    holy-fire altars in place of the Big Dipper."""
+    band = _floor(coll, root)
+    _inlays(coll, root, band)
     _core(coll, root, dais_top)
     _stations(coll, root)
     _flags(coll, root)
-    _dipper(coll, root)
+    _altars(coll, root)
     _ritual(coll, root)
 
 
