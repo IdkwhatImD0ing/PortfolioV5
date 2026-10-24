@@ -76,6 +76,8 @@ changed before the range-wide build:
 - The streams that fed the range falls are hidden where they now hang in the air (a cut peak) or their fall is gone.
   One was the long diagonal "beam" at f870 turned 30 degrees.
 - The abode's fern strips grow in runs of 2-3 plants abreast with bare joint between, not one plant every 1.8 m.
+- Scrub and lip shrubs thin out within 110 m of the camera path (the bake turns near bushes into 3D meshes; the
+  first tree plan put six chunks over the triangle stop rule).
 - A culled islet's own top pines are hidden with it, and so are island pines with no rock under them (three
   stood in the sky at f150).
 - On the page: the canopy tint gain drops from 2.0 to 1.0 (the new crowns bake brighter than the old pine pads); near

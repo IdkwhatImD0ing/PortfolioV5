@@ -805,6 +805,11 @@ RIM_LIP_CLUMP = (8.0, 2.2)
 RIM_APRON = (6.0, 110.0, 12.0)  # the apron: from this far past the terrace's flat to this far, at least this far under it
 RIM_APRON_SCRUB = 2.6          # scrub factor on the apron (in-patch value everywhere)
 RIM_APRON_CROWN = 0.012        # small crowns (4-7 m) per m2 of apron (rule 1: 85-100 % green from beyond 50 m)
+# F10 (the budget): the bake turns a bush within 25 m of the path, or one 20 px or bigger, into a 3D mesh (about 540
+# triangles). Phase C's tree plan counted 5,353 range scrub and 1,351 lip shrubs as 3D, and six chunks over the stop
+# rule (+0.3M triangles). So scrub and lip shrubs thin out near the path (on top of CANOPY_NEAR_K): the far slopes
+# keep their patches, the near ones (seen briefly, as 3D bushes) carry fewer
+SCRUB_NEAR = (110.0, 0.3)      # m from the path, and the scrub / lip factor nearer than that
 CAP_DENSITY = 0.06             # broadleaf per m2 of pillar cap (a closed canopy cap from 50 m, rule 3)
 CAP_RIM_SPIRE = 0.012          # spires per m2 on the cap's outer quarter
 CAP_RIM_BROADLEAF = 0.03       # broadleaf per m2 on the cap's outer quarter, leaning out: 1-2 crowns spill over the rim
@@ -1078,6 +1083,7 @@ def r48_canopy_masks(rng_obj, scene, anchors, hold_views, star, scope=None):
     lip, apron = _cake_bands(cw, nz, top, anchors)
     apr = slope & apron
     patch = np.where(apr, RIM_APRON_SCRUB, patch)
+    patch = patch * np.where(path_d < SCRUB_NEAR[0], SCRUB_NEAR[1], 1.0)
     R.face_attr(rng_obj, "r48_f_scrub", np.where(slope, f * patch, 0.0).astype(np.float32))
     R.face_attr(rng_obj, "r48_apron", apr.astype(np.float32))
     out["r48_apron"] = round(float(area[apr].sum()))
@@ -1115,7 +1121,8 @@ def r48_canopy_masks(rng_obj, scene, anchors, hold_views, star, scope=None):
                 len(bp), int(lip.sum()), int(near_b.sum())))
     lclump = RIM_LIP_CLUMP[1] * W._smooth(0.0, 0.2, noise(cw[:, 0], cw[:, 1], 1.0 / RIM_LIP_CLUMP[0], o=17))
     R.face_attr(rng_obj, "r48_lip", lip.astype(np.float32))
-    R.face_attr(rng_obj, "r48_f_lip", np.where(lip, lclump * np.where(lip_d < CANOPY_NEAR, CANOPY_NEAR_K, 1.0), 0.0)
+    R.face_attr(rng_obj, "r48_f_lip", np.where(lip, lclump * np.where(lip_d < CANOPY_NEAR, CANOPY_NEAR_K, 1.0) *
+                                               np.where(lip_d < SCRUB_NEAR[0], SCRUB_NEAR[1] * 1.5, 1.0), 0.0)
                 .astype(np.float32))
     out["r48_lip"] = round(float(area[lip].sum()))
     _log("r48 masks (m2)", json.dumps(out), "forest mode", FOREST_MODE)
