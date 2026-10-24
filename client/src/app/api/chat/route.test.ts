@@ -79,7 +79,7 @@ describe("POST /api/chat", () => {
     expect(sent).toEqual([{ messages: MESSAGES, supports_replace: true }, { messages: MESSAGES }]);
   });
 
-  it("asks for the sect persona for a chat from the /sect page", async () => {
+  it("asks for the sect persona for a chat from the sect (/ or /sect)", async () => {
     const fetchMock = mockUpstream(200, SSE);
     const fromPage = (referer: string, body: unknown) =>
       new NextRequest("http://localhost:3000/api/chat", {
@@ -91,14 +91,14 @@ describe("POST /api/chat", () => {
     await POST(fromPage("http://localhost:3000/sect", { messages: MESSAGES, supports_replace: true }));
     await POST(fromPage("http://localhost:3000/", { messages: MESSAGES, supports_replace: true }));
     // The persona comes from the page, never from the body.
-    await POST(fromPage("http://localhost:3000/", { messages: MESSAGES, persona: "ming-sect" }));
+    await POST(fromPage("http://localhost:3000/other", { messages: MESSAGES, persona: "ming-sect" }));
 
     const sent = fetchMock.mock.calls.map(
       (call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string),
     );
     expect(sent).toEqual([
       { messages: MESSAGES, supports_replace: true, persona: "ming-sect" },
-      { messages: MESSAGES, supports_replace: true },
+      { messages: MESSAGES, supports_replace: true, persona: "ming-sect" },
       { messages: MESSAGES },
     ]);
   });

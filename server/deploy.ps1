@@ -1,5 +1,12 @@
 #Requires -Version 5.1
 
+# Older than deploy.sh: it never sets the secrets (PUSHER_SECRET included), and its default service,
+# fastapi-ws, is the live V4 site's backend. Use deploy.sh. Set ALLOW_OLD_PS_DEPLOY=1 to run it anyway.
+if ($env:ALLOW_OLD_PS_DEPLOY -ne "1") {
+    Write-Host "deploy.ps1 is retired: use deploy.sh (it mounts the secrets and defaults to fastapi-ws-v5)." -ForegroundColor Yellow
+    exit 1
+}
+
 # gcloud writes warnings to stderr which PowerShell treats as errors,
 # so we use Continue and check $LASTEXITCODE manually for real failures.
 $ErrorActionPreference = "Continue"
@@ -21,7 +28,7 @@ function Invoke-Gcloud {
 ### ====== Config (edit these) ======
 $PROJECT_ID    = if ($env:PROJECT_ID)    { $env:PROJECT_ID }    else { "spiritual-storm-469704-n2" }
 $REGION        = if ($env:REGION)        { $env:REGION }        else { "us-west1" }
-$SERVICE_NAME  = if ($env:SERVICE_NAME)  { $env:SERVICE_NAME }  else { "fastapi-ws" }
+$SERVICE_NAME  = if ($env:SERVICE_NAME)  { $env:SERVICE_NAME }  else { "fastapi-ws-v5" }
 $MAX_INSTANCES = if ($env:MAX_INSTANCES) { $env:MAX_INSTANCES } else { "10" }
 $CONCURRENCY   = if ($env:CONCURRENCY)  { $env:CONCURRENCY }  else { "200" }
 $TIMEOUT       = if ($env:TIMEOUT)       { $env:TIMEOUT }       else { "3600" }

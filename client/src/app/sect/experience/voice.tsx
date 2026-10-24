@@ -4,8 +4,8 @@
  * The site's voice agent in the sect: VoiceOrb and BackendWarmup (src/components), dressed as a 传音符
  * (the sound-transmission talisman) by CSS under .sect-orb in sect.css, plus the bridge the sect
  * needs:
- * - the orb's requests name /sect as their page (lib/sect/persona.ts SECT_REFERRER), so the API
- *   routes ask the backend for the sect's persona now that the sect is the home page;
+ * - nothing for the persona: the orb's requests come from the home page, which the API routes read
+ *   as the sect (lib/sect/persona.ts), so they ask the backend for the sect's persona;
  * - the talisman's state (lib/sect/talisman.ts), read from what the orb shows and set on the
  *   wrapper as data-talisman, so the talisman and its panel glow while it listens and speaks (and
  *   the music, ./music.tsx, ducks under the call);
@@ -18,7 +18,6 @@ import { useEffect, useRef } from "react";
 import { BackendWarmup } from "@/components/backend-warmup";
 import { VoiceOrb } from "@/components/voice-orb";
 import { VoiceBus, applyNavigation, type VoiceCommand } from "@/lib/voice-bus";
-import { SECT_REFERRER } from "@/lib/sect/persona";
 import { talismanState, type OrbView } from "@/lib/sect/talisman";
 
 /** What the orb shows: its panel's label, status line, hint and typing bubble (see OrbView). */
@@ -54,7 +53,7 @@ export function SectVoice() {
   return (
     <div ref={ref} className="sect-orb">
       <BackendWarmup />
-      <VoiceOrb referrer={SECT_REFERRER} />
+      <VoiceOrb />
     </div>
   );
 }

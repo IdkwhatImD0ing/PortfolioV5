@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   // existed doesn't, and the backend then appends its refusal the old way.
   const supportsReplace = (body as { supports_replace?: unknown }).supports_replace === true;
 
-  // A chat from /sect gets the sect's persona (server/personas.py). Decided
+  // A chat from the sect (/ or /sect) gets the sect's persona (server/personas.py). Decided
   // here from the page, never taken from the body, like every other field.
   const persona = personaForReferer(request.headers.get("referer"));
 

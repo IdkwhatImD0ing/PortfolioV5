@@ -22,14 +22,18 @@ export const VoiceBus = {
   },
 };
 
-/** Navigation metadata shape emitted by the server via Retell's metadata
- *  event. Each `page` value here MUST be in PAGE_TO_SECTION below. */
+/** Navigation payload the server emits: a `navigation` event on the voice
+ *  call's Pusher channel, or a `metadata` chunk in text chat. Each `page`
+ *  value here MUST be in PAGE_TO_SECTION below. */
 export interface NavigationMeta {
   type: string;
   page?:
     | "landing"
+    | "about"
+    | "experience"
     | "education"
     | "project"
+    | "skills"
     | "personal"
     | "resume"
     | "hackathon"
@@ -43,9 +47,12 @@ export interface NavigationMeta {
  *  the site's section hashes (/#projects). */
 export const PAGE_TO_SECTION: Record<NonNullable<NavigationMeta["page"]>, string> = {
   landing: "hero",
+  about: "about",
+  experience: "experience",
   personal: "personal",
   education: "education",
   project: "projects",
+  skills: "skills",
   resume: "resume",
   hackathon: "hackathons",
   architecture: "architecture",
@@ -72,8 +79,8 @@ export function metaToNavigationAction(
 
 /** Apply a server navigation payload: emit its VoiceBus command, which the
  *  sect turns into a flight (app/sect/experience/voice.tsx useVoiceRouting).
- *  No-op for anything that isn't navigation metadata. The voice path (Retell
- *  `metadata` events) and the text path (`/chat` SSE chunks) both go through
+ *  No-op for anything that isn't navigation metadata. The voice path (Pusher
+ *  `navigation` events) and the text path (`/chat` SSE chunks) both go through
  *  here. */
 export function applyNavigation(meta: NavigationMeta | null | undefined): void {
   const command = metaToNavigationAction(meta);

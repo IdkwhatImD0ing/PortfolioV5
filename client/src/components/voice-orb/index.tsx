@@ -14,10 +14,16 @@ import type { RetellWebClient as RetellWebClientType } from "retell-client-js-sd
 import {
   VoiceBus,
   applyNavigation,
-  type NavigationMeta,
   type VoiceCommand,
 } from "@/lib/voice-bus";
-import { mergeTranscript, type TranscriptEntry } from "@/lib/transcript";
+import { mergeVoiceLines, withVoiceLines, type TranscriptEntry } from "@/lib/transcript";
+import {
+  newEventsChannelId,
+  subscribeToVoiceEvents,
+  webCallBody,
+  type VoiceEventsSubscription,
+} from "@/lib/voice-events";
+import { createTalkDetector } from "@/lib/talk-detector";
 import { PROD_AGENT_ID, resolveAgentId } from "@/lib/retell-agent";
 import { waitForBackend, warmBackend } from "@/lib/backend-warmup";
 import {
@@ -40,6 +46,10 @@ const CLOSE_FALLBACK_MS = 400;
  *  Reset on every chunk, so a slow but steady reply is never cut off; it
  *  mainly covers a cold start that never answers or a stalled connection. */
 const CHAT_IDLE_TIMEOUT_MS = 30_000;
+
+/** Keep a call's event channel open this long after it ends: the last
+ *  captions reach the page a moment after the hang-up. */
+const EVENTS_LINGER_MS = 2000;
 
 /** A failure whose message is fit to show the visitor as-is (the backend's
  *  own error text, or a stream that ended without its `done` event). */
@@ -141,14 +151,7 @@ function TypingBubble({ label }: { label: string | null }) {
   );
 }
 
-export function VoiceOrb({
-  referrer,
-}: {
-  /** The page the API routes should take this orb's requests as coming from
-   *  (fetch's `referrer`, a same-origin path). They pick the agent's persona
-   *  from the Referer (lib/sect/persona.ts); unset, it is this page's URL. */
-  referrer?: string;
-} = {}) {
+export function VoiceOrb() {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
   const [mode, setMode] = useState<Mode>("voice");
@@ -176,6 +179,23 @@ export function VoiceOrb({
   const shortcutTimerRef = useRef(0);
   const closeTimerRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  // The current call's page moves and captions (lib/voice-events.ts).
+  const eventsRef = useRef<VoiceEventsSubscription | null>(null);
+  // A start's subscription before it becomes eventsRef, so abandoning the
+  // start can close it without waiting for the start to notice.
+  const pendingEventsRef = useRef<Promise<VoiceEventsSubscription> | null>(null);
+  // Bumped when a call starts or is abandoned. Events carry the number they
+  // were subscribed under, so a late one from an earlier call is ignored.
+  const callGenRef = useRef(0);
+  // Feeds the agent's audio level to the Speaking/Listening line.
+  const talkRef = useRef<((samples: Float32Array, now: number) => void) | null>(null);
+  // The current call's captions, keyed by each line's index in Retell's
+  // transcript, and what the panel showed before the call started. The panel
+  // during a call is the one followed by the other (lib/transcript.ts).
+  const voiceLinesRef = useRef<Map<number, TranscriptEntry>>(new Map());
+  const preCallRef = useRef<TranscriptEntry[]>([]);
+  // Mirror of fullTranscript, read when a call starts.
+  const transcriptRef = useRef<TranscriptEntry[]>([]);
 
   // Auto-scroll transcript to bottom on new turn, status, or while pulsing.
   useEffect(() => {
@@ -183,12 +203,20 @@ export function VoiceOrb({
     if (el) el.scrollTop = el.scrollHeight;
   }, [fullTranscript, pulsing, status]);
 
+  useEffect(() => {
+    transcriptRef.current = fullTranscript;
+  }, [fullTranscript]);
+
   // Move focus into the dialog when it opens so Escape and tabbing work.
   useEffect(() => {
     if (open && !closing) panelRef.current?.focus({ preventScroll: true });
   }, [open, closing]);
 
   const fireShortcut = useCallback((item: Suggestion) => {
+    // Only runs with no call live. A caption from the call that just ended
+    // could still land in its linger window and rebuild the panel without
+    // these turns, so retire that call's events first.
+    callGenRef.current++;
     setFullTranscript((prev) => [...prev, { role: "user", content: item.you }]);
     setPulsing(true);
     window.clearTimeout(shortcutTimerRef.current);
@@ -198,6 +226,32 @@ export function VoiceOrb({
       setPulsing(false);
     }, 380);
   }, []);
+
+  /** Stop listening to the call's events. `lingerMs` keeps the channel open a
+   *  little longer for captions still on their way. */
+  const stopEvents = useCallback((lingerMs = 0) => {
+    const sub = eventsRef.current;
+    if (!sub) return;
+    eventsRef.current = null;
+    if (lingerMs > 0) window.setTimeout(sub.close, lingerMs);
+    else sub.close();
+  }, []);
+
+  /** Leave the current call behind: its events stop and any late ones are
+   *  ignored. For a close or a switch to text, not for a call that ended.
+   *  A start still in progress gives up too, so reopening the panel or
+   *  switching back to voice can dial straight away. */
+  const abandonCall = useCallback(() => {
+    callGenRef.current++;
+    talkRef.current = null;
+    stopEvents();
+    // A start parked in a cold-start wait holds a live Pusher connection
+    // that isn't in eventsRef yet. Close it now, not when the wait ends.
+    const pending = pendingEventsRef.current;
+    pendingEventsRef.current = null;
+    void pending?.then((sub) => sub.close());
+    setIsStarting(false);
+  }, [stopEvents]);
 
   const setupListeners = useCallback((client: RetellWebClientType) => {
     if (listenersBoundRef.current) return;
@@ -215,19 +269,17 @@ export function VoiceOrb({
     client.on("call_ended", () => {
       setIsCalling(false);
       setIsAgentTalking(false);
+      talkRef.current = null;
+      stopEvents(EVENTS_LINGER_MS);
       if (modeRef.current === "voice") setHint("Call ended. Start again, or switch to text.");
     });
-    client.on("agent_start_talking", () => setIsAgentTalking(true));
-    client.on("agent_stop_talking", () => setIsAgentTalking(false));
 
-    client.on("update", (update: { transcript?: TranscriptEntry[] }) => {
-      const t = update?.transcript;
-      if (!t || t.length === 0) return;
-      setFullTranscript((prev) => mergeTranscript(prev, t));
-    });
-
-    client.on("metadata", (metadata: { metadata?: NavigationMeta }) => {
-      applyNavigation(metadata?.metadata);
+    // Retell's v3 calls send no agent_start_talking/agent_stop_talking,
+    // `update` or `metadata` events. Captions and page moves come over the
+    // call's event channel instead (see startCall), and whether the agent is
+    // speaking comes from its audio level.
+    client.on("audio", (samples: Float32Array) => {
+      talkRef.current?.(samples, performance.now());
     });
 
     client.on("error", (error) => {
@@ -235,11 +287,13 @@ export function VoiceOrb({
       client.stopCall();
       setIsCalling(false);
       setIsAgentTalking(false);
+      talkRef.current = null;
+      stopEvents();
       if (modeRef.current === "voice") setHint("Hit a snag. Please try again.");
     });
 
     listenersBoundRef.current = true;
-  }, []);
+  }, [stopEvents]);
 
   /** Dial the voice agent. A fresh call clears the transcript; switching back
    *  from text passes `keepTranscript` so the typed conversation stays on
@@ -248,7 +302,30 @@ export function VoiceOrb({
     if (isCalling || isStarting) return;
     setIsStarting(true);
     if (!keepTranscript) setFullTranscript([]);
+    // The call's captions go after whatever stays on screen.
+    preCallRef.current = keepTranscript ? transcriptRef.current : [];
+    voiceLinesRef.current = new Map();
     setHint("Connecting…");
+
+    // Each call gets its own event channel. The backend publishes the call's
+    // page moves and captions there, since Retell's v3 calls don't pass them
+    // through. Subscribing runs alongside the setup below and finishes before
+    // the call is created, so nothing is published before anyone listens.
+    stopEvents();
+    const gen = ++callGenRef.current;
+    const channelId = newEventsChannelId();
+    const eventsReady = subscribeToVoiceEvents(channelId, {
+      onNavigation: (meta) => {
+        if (callGenRef.current === gen) applyNavigation(meta);
+      },
+      onTranscript: (lines) => {
+        if (callGenRef.current !== gen) return;
+        voiceLinesRef.current = mergeVoiceLines(voiceLinesRef.current, lines);
+        setFullTranscript(withVoiceLines(preCallRef.current, voiceLinesRef.current));
+      },
+    });
+    pendingEventsRef.current = eventsReady;
+    let dialed = false;
     try {
       // In dev this prefers the dev agent when the local backend is reachable,
       // otherwise the prod agent. Production builds go straight to prod.
@@ -261,24 +338,30 @@ export function VoiceOrb({
       // Hold the call under "Connecting…" until it answers, so a cold start
       // costs a longer spinner instead of a silent call. Capped; never throws.
       if (agentId === PROD_AGENT_ID) await waitForBackend();
+      // Closed, or switched to text, during a cold start.
+      if (callGenRef.current !== gen) return;
 
       if (!retellRef.current) {
         const { RetellWebClient } = await import("retell-client-js-sdk");
-        retellRef.current = new RetellWebClient();
-        setupListeners(retellRef.current);
+        // Checked again: an abandoned start and a newer one can both be
+        // waiting on this import, and the listeners bind to one client only.
+        if (!retellRef.current) {
+          retellRef.current = new RetellWebClient();
+          setupListeners(retellRef.current);
+        }
       }
+
+      const events = await eventsReady;
+      // Closed, or switched to text, while subscribing.
+      if (callGenRef.current !== gen) return;
+      pendingEventsRef.current = null;
+      eventsRef.current = events;
 
       const response = await fetch("/api/create-web-call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        referrer,
-        body: JSON.stringify({
-          agent_id: agentId,
-          metadata: {
-            session_started: new Date().toISOString(),
-            platform: "web",
-          },
-        }),
+        // Its metadata tells the backend where to publish.
+        body: JSON.stringify(webCallBody(agentId, channelId)),
       });
       if (!response.ok) {
         throw new Error(`Server error (${response.status})`);
@@ -287,15 +370,39 @@ export function VoiceOrb({
       if (!data.access_token) throw new Error("No access token");
 
       // Closed or switched to text while the token was in flight.
-      if (!openRef.current || modeRef.current !== "voice") return;
-      await retellRef.current.startCall({ accessToken: data.access_token });
+      if (callGenRef.current !== gen || !openRef.current || modeRef.current !== "voice") return;
+      talkRef.current = createTalkDetector(setIsAgentTalking);
+      dialed = true;
+      // v3 calls need the call id, transport and ICE servers, not just the
+      // token. emitRawAudioSamples feeds the `audio` listener above.
+      await retellRef.current.startCall({
+        accessToken: data.access_token,
+        callId: data.call_id,
+        transport: data.transport,
+        iceServers: data.ice_servers,
+        emitRawAudioSamples: true,
+      });
     } catch (err) {
       console.error("Failed to start call:", err);
-      setHint("Couldn't start the call. Tap a suggestion, or switch to text chat.");
+      // An abandoned start must not overwrite a newer call's status.
+      if (callGenRef.current === gen) {
+        setHint("Couldn't start the call. Tap a suggestion, or switch to text chat.");
+      }
     } finally {
-      setIsStarting(false);
+      if (!dialed) {
+        // No call to listen to: drop the channel, now or once it lands.
+        void eventsReady.then((sub) => {
+          if (eventsRef.current === sub) eventsRef.current = null;
+          sub.close();
+        });
+      }
+      // abandonCall already cleared these, and a newer start may own them now.
+      if (callGenRef.current === gen) {
+        if (pendingEventsRef.current === eventsReady) pendingEventsRef.current = null;
+        setIsStarting(false);
+      }
     }
-  }, [isCalling, isStarting, setupListeners, referrer]);
+  }, [isCalling, isStarting, setupListeners, stopEvents]);
 
   const endCall = useCallback(() => {
     retellRef.current?.stopCall();
@@ -347,7 +454,6 @@ export function VoiceOrb({
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          referrer,
           // supports_replace: this page handles `replace` (see the loop below).
           body: JSON.stringify({ messages: toChatMessages(next), supports_replace: true }),
           signal: controller.signal,
@@ -402,7 +508,7 @@ export function VoiceOrb({
         }
       }
     },
-    [fullTranscript, isSending, referrer],
+    [fullTranscript, isSending],
   );
 
   const finishClose = useCallback(() => {
@@ -423,6 +529,7 @@ export function VoiceOrb({
     openRef.current = false;
     abortRef.current?.abort();
     abortRef.current = null;
+    abandonCall();
     retellRef.current?.stopCall();
     setIsCalling(false);
     setIsAgentTalking(false);
@@ -431,7 +538,7 @@ export function VoiceOrb({
     setClosing(true);
     window.clearTimeout(closeTimerRef.current);
     closeTimerRef.current = window.setTimeout(finishClose, CLOSE_FALLBACK_MS);
-  }, [open, closing, finishClose]);
+  }, [open, closing, finishClose, abandonCall]);
 
   /** The orb tap: open the panel and dial in one go. */
   const openAndStart = useCallback(() => {
@@ -451,13 +558,14 @@ export function VoiceOrb({
 
   const switchToText = useCallback(() => {
     modeRef.current = "text";
+    abandonCall();
     retellRef.current?.stopCall();
     setIsCalling(false);
     setIsAgentTalking(false);
     setMode("text");
     setHint("Ask your own question, or tap a suggestion below. The page rearranges as I answer.");
     requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
+  }, [abandonCall]);
 
   const switchToVoice = useCallback(() => {
     abortRef.current?.abort();
@@ -478,8 +586,8 @@ export function VoiceOrb({
         void sendText(s.you);
       } else if (isCalling || isStarting) {
         // The agent can't hear a tap, and turns written into the transcript
-        // here would break mergeTranscript's alignment with Retell's window.
-        // Just move the page.
+        // here would vanish at the next caption update, which rebuilds the
+        // panel from the call's own lines. Just move the page.
         runCommand(s.cmd);
       } else {
         fireShortcut(s);
@@ -508,15 +616,18 @@ export function VoiceOrb({
 
   // Unmount-only teardown. Keying this on `isCalling` made the cleanup fire
   // every time the flag flipped, so ending a call ran stopCall() a second time
-  // on an already-closed client.
+  // on an already-closed client. abandonCall is stable, so this still runs
+  // once; it also stops a start parked in a cold-start wait from dialing
+  // after the panel that could end the call is gone.
   useEffect(() => {
     return () => {
       window.clearTimeout(shortcutTimerRef.current);
       window.clearTimeout(closeTimerRef.current);
       abortRef.current?.abort();
+      abandonCall();
       retellRef.current?.stopCall();
     };
-  }, []);
+  }, [abandonCall]);
 
   const userHasSpoken = fullTranscript.some((e) => e.role === "user");
   const showSuggestions = !userHasSpoken && !isSending;

@@ -129,6 +129,11 @@ class TextChatRequest(BaseModel):
     # Set by clients that handle `replace` chunks. Defaults off, so a page
     # loaded before `replace` existed still gets a refusal it can show.
     supports_replace: bool = False
+    # Who the agent speaks as (personas.py), e.g. "ming-sect" for the sect
+    # page. Absent, blank or unknown means the classic persona; a free string
+    # rather than a fixed set, so a client never gets a 422 for a persona this
+    # server doesn't know yet.
+    persona: Optional[str] = Field(default=None, max_length=32)
 
 
 class TextChatStreamChunk(BaseModel):

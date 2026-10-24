@@ -426,6 +426,107 @@
 }
 
 /*
+ * The music's volume slider (experience/sound-toggle.tsx VolumeSlider): a thin line on ink, gold up
+ * to the level (--v, set inline), with a small gold bead ringed in ink. It runs left to right on
+ * wider screens and bottom to top on phones, where it stands under the toggle. A drag on it must not
+ * scroll the flight underneath (touch-action). The bead grows under a finger. The keyboard's focus
+ * ring goes round the whole plate.
+ */
+.sect-volume-range {
+  --sect-volume-dir: to right;
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  touch-action: none;
+  cursor: pointer;
+}
+.sect-volume-range::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(var(--sect-volume-dir), var(--sect-gold) 0 var(--v, 100%), rgba(245, 236, 220, 0.24) var(--v, 100%) 100%);
+}
+.sect-volume-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -4.5px;
+  border-radius: 50%;
+  background: var(--sect-gold);
+  border: 2px solid var(--sect-ink);
+  box-shadow: 0 0 0 1px var(--sect-gold-soft);
+}
+.sect-volume-range::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(245, 236, 220, 0.24);
+}
+.sect-volume-range::-moz-range-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--sect-gold);
+}
+.sect-volume-range::-moz-range-thumb {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sect-gold);
+  border: 2px solid var(--sect-ink);
+  box-shadow: 0 0 0 1px var(--sect-gold-soft);
+}
+.sect-volume-range:focus-visible {
+  outline: none;
+}
+.sect-root [data-sect-volume]:has(.sect-volume-range:focus-visible) {
+  outline: 2px solid var(--sect-gold);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(14, 12, 20, 0.88);
+}
+@media (pointer: coarse) {
+  .sect-volume-range::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+    margin-top: -6.5px;
+  }
+  .sect-volume-range::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+  }
+}
+/* Phones: upright, bottom to top. */
+@media (max-width: 767.98px) {
+  .sect-volume-range {
+    --sect-volume-dir: to top;
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 24px;
+    height: auto;
+  }
+  .sect-volume-range::-webkit-slider-runnable-track {
+    width: 3px;
+    height: 100%;
+  }
+  .sect-volume-range::-webkit-slider-thumb {
+    margin-top: 0;
+    margin-left: -4.5px;
+  }
+  .sect-volume-range::-moz-range-track,
+  .sect-volume-range::-moz-range-progress {
+    width: 3px;
+    height: auto;
+  }
+}
+@media (max-width: 767.98px) and (pointer: coarse) {
+  .sect-volume-range::-webkit-slider-thumb {
+    margin-top: 0;
+    margin-left: -6.5px;
+  }
+}
+
+/*
  * The loading screen's "Turn on sound" (experience/sound-toggle.tsx SoundCall): a round seal with the
  * speaker, a gold rim on ink like the map's stops and the talisman, its words beside it. With the
  * sound on the speaker turns gold and one slow ripple leaves the seal (still with reduced motion).

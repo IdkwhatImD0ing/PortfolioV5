@@ -13,13 +13,20 @@
  * floats over the screen only where that column runs past the bottom edge and hides the prompt (a
  * phone on its side, a short window).
  *
+ * While the music plays, its volume slider (VolumeSlider) sits beside the toggle: "Music" and the
+ * level written on a small plate with a gold line. Left of the toggle on wider screens; on phones
+ * under it, standing upright, so it stays clear of the intro's title in the middle. It is the master
+ * the voice call's ducking takes a share of (lib/sect/volume.ts), and it is remembered per visitor.
+ * Muted, it steps away and the toggle stands alone, as before.
+ *
  * `extra` (the graphics button) shares its place once the loading screen is gone: under the toggle,
  * or left of it in the top row beside the Map button. It shows without Web Audio too.
  */
-import { type ReactNode, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useId, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { VOLUME_STEP, volumeFromPercent, volumePercent, volumeText } from "@/lib/sect/volume";
 import type { MusicEngine, MusicUi } from "./music-engine";
 
-const OFF: MusicUi = { available: false, on: false, muted: false };
+const OFF: MusicUi = { available: false, on: false, muted: false, volume: 1 };
 const serverSnapshot = () => OFF;
 
 /**
@@ -93,18 +100,65 @@ export function SoundToggle({ engine, loading, extra }: { engine: MusicEngine; l
       className={`pointer-events-none fixed right-[0.625rem] top-[7.25rem] flex gap-2 md:right-6 md:top-[4.25rem] ${inRow ? "flex-row-reverse items-start" : "flex-col items-end"} ${loading ? "z-[51]" : "z-[25]"}`}
       style={inRow ? { right: beside.right, top: beside.top } : undefined}
     >
-      {ui.available && (
-        <button
-          type="button"
-          data-sect-sound
-          onClick={() => engine.toggle()}
-          aria-label={ui.on ? "Sound off" : "Sound on"}
-          className="sect-panel sect-plate sect-ctl pointer-events-auto relative grid h-11 w-11 place-items-center rounded-[3px] text-[var(--sect-paper-soft)] transition-colors hover:text-[var(--sect-gold)] md:h-10 md:w-10"
-        >
-          <SpeakerIcon on={ui.on} />
-        </button>
-      )}
+      {ui.available && <SoundControls ui={ui} onToggle={() => engine.toggle()} onVolume={(v) => engine.setVolume(v)} />}
       {more}
+    </div>
+  );
+}
+
+/** The toggle, and the volume slider beside it while the music plays (under it on phones). */
+export function SoundControls({ ui, onToggle, onVolume }: { ui: MusicUi; onToggle: () => void; onVolume: (volume: number) => void }) {
+  return (
+    <div className="flex flex-col items-end gap-2 md:flex-row-reverse md:items-start">
+      <button
+        type="button"
+        data-sect-sound
+        onClick={onToggle}
+        aria-label={ui.on ? "Sound off" : "Sound on"}
+        className="sect-panel sect-plate sect-ctl pointer-events-auto relative grid h-11 w-11 place-items-center rounded-[3px] text-[var(--sect-paper-soft)] transition-colors hover:text-[var(--sect-gold)] md:h-10 md:w-10"
+      >
+        <SpeakerIcon on={ui.on} />
+      </button>
+      {ui.on && <VolumeSlider volume={ui.volume} onVolume={onVolume} />}
+    </div>
+  );
+}
+
+/**
+ * The music's volume: a native range input (so the arrow keys, Page Up/Down, Home and End, touch and
+ * screen readers all work as they do anywhere), 0 to 100% in VOLUME_STEP steps, with a visible label
+ * and readout. On wider screens its plate is the toggle's height and the line runs left to right; on
+ * phones the plate is the toggle's width and the line runs bottom to top (sect.css). A drag must not
+ * scroll the flight under it (touch-action: none).
+ */
+export function VolumeSlider({ volume, onVolume }: { volume: number; onVolume: (volume: number) => void }) {
+  const id = useId();
+  const pct = volumePercent(volume);
+  return (
+    <div
+      data-sect-volume
+      className="sect-panel sect-plate pointer-events-auto relative flex h-[8.75rem] w-11 flex-col items-center gap-1.5 rounded-[3px] py-2 md:h-10 md:w-[7.75rem] md:items-stretch md:justify-center md:gap-[3px] md:px-2.5 md:py-0"
+    >
+      <div className="flex flex-col items-center gap-1 text-[0.5rem] uppercase leading-none tracking-[0.1em] md:flex-row md:items-baseline md:justify-between md:text-[0.625rem] md:tracking-[0.2em]">
+        <label htmlFor={id} className="text-[var(--sect-paper-soft)]">
+          Music<span className="sr-only"> volume</span>
+        </label>
+        <span aria-hidden className="tabular-nums tracking-[0.08em] text-[var(--sect-gold)]">
+          {pct}%
+        </span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        min={0}
+        max={100}
+        step={VOLUME_STEP}
+        value={pct}
+        aria-valuetext={volumeText(volume)}
+        onChange={(e) => onVolume(volumeFromPercent(e.currentTarget.value))}
+        className="sect-volume-range min-h-0 flex-1 md:w-full md:flex-none"
+        style={{ "--v": `${pct}%` } as CSSProperties}
+      />
     </div>
   );
 }

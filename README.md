@@ -138,7 +138,7 @@ flowchart LR
   R -- "transcript" --> WS(["FastAPI<br/>WebSocket"])
   WS -- "stream" --> A[["OpenAI<br/>Agents SDK"]]
   A <-- "search_projects" --> P[("Pinecone<br/>vector DB")]
-  A -- "display_* tools" --> N["Next.js client<br/>(via Retell metadata)"]
+  A -- "display_* tools" --> N["Next.js client<br/>(via a Pusher event)"]
   A -- "tokens" --> WS --> R --> U
   N -. "fly to the stop" .-> U
 ```
@@ -241,6 +241,7 @@ RETELL_API_KEY=...
 OPENAI_API_KEY=...
 PINECONE_API_KEY=...
 FIRETRACE_API_KEY=...            # optional: records every agent run
+PUSHER_SECRET=...                # voice page moves + live captions (server/README.md, "Voice events")
 
 # client/.env.local (see client/.env.local.example)
 RETELLAI_API_KEY=...             # server-side only, used by the create-web-call proxy

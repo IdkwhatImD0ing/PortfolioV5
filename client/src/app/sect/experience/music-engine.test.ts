@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MASTER_GAIN, VOICE_DUCK, parseMusicManifest, type MusicKey } from "@/lib/sect/music";
+import { MASTER_GAIN, VOICE_DUCK, VOLUME_TIME_CONSTANT, parseMusicManifest, type MusicKey } from "@/lib/sect/music";
 import { MusicEngine } from "./music-engine";
 
 // --- a small fake of the Web Audio API ------------------------------------------------------------------
 
-type ParamEvent = { type: "set" | "ramp" | "target"; v: number; t: number };
+type ParamEvent = { type: "set" | "ramp" | "target"; v: number; t: number; tc?: number };
 
 class FakeParam {
   events: ParamEvent[] = [];
@@ -18,8 +18,8 @@ class FakeParam {
   linearRampToValueAtTime(v: number, t: number) {
     this.events.push({ type: "ramp", v, t });
   }
-  setTargetAtTime(v: number, t: number) {
-    this.events.push({ type: "target", v, t });
+  setTargetAtTime(v: number, t: number, tc?: number) {
+    this.events.push({ type: "target", v, t, tc });
     this.value = v;
   }
   /** Where the last scheduled event leaves the param. */
@@ -120,13 +120,23 @@ interface Rig {
   ctx: FakeContext | null;
   fetched: string[];
   saved: boolean[];
+  /** The volume shares saved, in order. */
+  savedVolume: number[];
   /** Files that fail to download. */
   missing: Set<string>;
   aborted: string[];
 }
 
-function rig(opts: { muted?: boolean; noAudio?: boolean } = {}): Rig {
-  const r: Rig = { engine: null as unknown as MusicEngine, ctx: null, fetched: [], saved: [], missing: new Set(), aborted: [] };
+function rig(opts: { muted?: boolean; noAudio?: boolean; volume?: number } = {}): Rig {
+  const r: Rig = {
+    engine: null as unknown as MusicEngine,
+    ctx: null,
+    fetched: [],
+    saved: [],
+    savedVolume: [],
+    missing: new Set(),
+    aborted: [],
+  };
   r.engine = new MusicEngine(
     {
       createContext: () => {
@@ -142,8 +152,9 @@ function rig(opts: { muted?: boolean; noAudio?: boolean } = {}): Rig {
         return Promise.resolve(new TextEncoder().encode(key).buffer as ArrayBuffer);
       },
       saveMuted: (m) => r.saved.push(m),
+      saveVolume: (v) => r.savedVolume.push(v),
     },
-    { supported: !opts.noAudio, muted: opts.muted ?? false },
+    { supported: !opts.noAudio, muted: opts.muted ?? false, volume: opts.volume },
   );
   return r;
 }
@@ -166,7 +177,7 @@ describe("MusicEngine", () => {
     const r = rig();
     r.engine.setManifest(MANIFEST);
     plan(r.engine, "gate", ["gate", "mirror"]);
-    expect(r.engine.snapshot()).toEqual({ available: true, on: false, muted: false });
+    expect(r.engine.snapshot()).toEqual({ available: true, on: false, muted: false, volume: 1 });
     expect(r.ctx).toBeNull();
     expect(r.fetched).toEqual([]);
 
@@ -241,6 +252,70 @@ describe("MusicEngine", () => {
     expect(gate.gain).toBeCloseTo(Math.SQRT1_2, 3);
     expect(gate.fadeSeconds).toBeCloseTo(1.25, 3);
     expect(mirror).toMatchObject({ key: "mirror", fadingTo: 0 });
+  });
+
+  it("plays at the visitor's saved volume, and the slider moves the master quickly", () => {
+    const r = rig({ volume: 0.5 });
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "gate");
+    expect(r.engine.snapshot().volume).toBe(0.5);
+    r.engine.gesture();
+    // The square of the share: half way is a quarter of the level.
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN * 0.25);
+
+    r.ctx!.currentTime = 3;
+    r.engine.setVolume(0.8);
+    const last = r.ctx!.master.gain.events.at(-1)!;
+    expect(last).toMatchObject({ type: "target", t: 3, tc: VOLUME_TIME_CONSTANT });
+    expect(last.v).toBeCloseTo(MASTER_GAIN * 0.64);
+    expect(r.engine.snapshot().volume).toBe(0.8);
+    expect(r.savedVolume).toEqual([0.8]);
+    // The same value again saves nothing and schedules nothing.
+    const n = r.ctx!.master.gain.events.length;
+    r.engine.setVolume(0.8);
+    expect(r.ctx!.master.gain.events.length).toBe(n);
+    expect(r.savedVolume).toEqual([0.8]);
+    // Out-of-range values are clamped.
+    r.engine.setVolume(7);
+    expect(r.engine.snapshot().volume).toBe(1);
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN);
+  });
+
+  it("is the master: the ducking takes its share of the slider's level", () => {
+    const r = rig({ volume: 0.6 });
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "gate");
+    r.engine.gesture();
+    r.engine.setVoice("call");
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN * 0.36 * VOICE_DUCK.call);
+    r.engine.setVolume(0.3);
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN * 0.09 * VOICE_DUCK.call);
+    r.engine.setVoice("speaking");
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN * 0.09 * VOICE_DUCK.speaking);
+    // A ducking move keeps its own pace; only the slider's moves are quick.
+    expect(r.ctx!.master.gain.events.at(-1)!.tc).not.toBe(VOLUME_TIME_CONSTANT);
+    r.engine.setVoice("none");
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN * 0.09);
+  });
+
+  it("stays silent at any volume under a video or muted, and keeps the volume for later", () => {
+    const r = rig();
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "gate");
+    r.engine.gesture();
+    r.engine.setVideo(true);
+    r.engine.setVolume(0.4);
+    expect(r.ctx!.master.gain.aim).toBe(0);
+    r.engine.setVideo(false);
+    expect(r.ctx!.master.gain.aim).toBeCloseTo(MASTER_GAIN * 0.16);
+    r.engine.toggle();
+    expect(r.engine.snapshot()).toMatchObject({ on: false, muted: true, volume: 0.4 });
+    expect(r.ctx!.master.gain.aim).toBe(0);
+    // Volume 0 is silence too, without muting.
+    r.engine.toggle();
+    r.engine.setVolume(0);
+    expect(r.engine.snapshot()).toMatchObject({ on: true, muted: false, volume: 0 });
+    expect(r.ctx!.master.gain.aim).toBe(0);
   });
 
   it("ducks under a voice call, lower while the agent speaks, and comes back", async () => {
@@ -331,7 +406,7 @@ describe("MusicEngine", () => {
     r.engine.gesture();
     expect(r.ctx).toBeNull();
     expect(r.fetched).toEqual([]);
-    expect(r.engine.snapshot()).toEqual({ available: true, on: false, muted: true });
+    expect(r.engine.snapshot()).toEqual({ available: true, on: false, muted: true, volume: 1 });
     r.engine.toggle();
     expect(r.saved).toEqual([false]);
     expect(r.engine.snapshot().on).toBe(true);

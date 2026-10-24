@@ -1,34 +1,34 @@
 import { describe, expect, it } from "vitest";
-import { isSectPath, personaForReferer, SECT_PERSONA, SECT_REFERRER } from "./persona";
+import { isSectPath, personaForReferer, SECT_PERSONA } from "./persona";
 
 describe("isSectPath", () => {
-  it.each(["/sect", "/sect/", "/sect/full/manifest.json"])("is the sect: %s", (path) => {
+  it.each(["/", "/sect", "/sect/", "/sect/full/manifest.json"])("is the sect: %s", (path) => {
     expect(isSectPath(path)).toBe(true);
   });
 
-  it.each(["/", "", "/sectarian", "/api/sect", "/Sect"])("is not the sect: %j", (path) => {
+  it.each(["", "/sectarian", "/api/sect", "/Sect", "/other"])("is not the sect: %j", (path) => {
     expect(isSectPath(path)).toBe(false);
   });
 });
 
 describe("personaForReferer", () => {
-  it("asks for the sect persona from the /sect page, query and hash or not", () => {
+  it("asks for the sect persona from the home page, which is the sect, on any host", () => {
+    for (const origin of ["https://art3m1s.me", "http://localhost:3000", "https://portfolio-v5-lake.vercel.app"]) {
+      expect(personaForReferer(`${origin}/`), origin).toBe(SECT_PERSONA);
+    }
+    expect(personaForReferer("https://art3m1s.me/?view=page")).toBe(SECT_PERSONA);
+    expect(personaForReferer("https://art3m1s.me/#project/dispatchai")).toBe(SECT_PERSONA);
+  });
+
+  it("asks for the sect persona from the sect's old address, query and hash or not", () => {
     expect(personaForReferer("https://portfolio-v5-lake.vercel.app/sect")).toBe(SECT_PERSONA);
     expect(personaForReferer("http://localhost:3000/sect?debug=1")).toBe(SECT_PERSONA);
     expect(personaForReferer("https://art3m1s.me/sect/#forge")).toBe(SECT_PERSONA);
   });
 
-  it("asks for the sect persona from the address the sect's orb names, on any host", () => {
-    // fetch() sends a same-origin `referrer` path as the full URL.
-    for (const origin of ["https://art3m1s.me", "http://localhost:3000", "https://portfolio-v5-25hr.vercel.app"]) {
-      expect(personaForReferer(new URL(SECT_REFERRER, origin).href), origin).toBe(SECT_PERSONA);
-    }
-  });
-
-  it("asks for nothing from the root path or anywhere else", () => {
-    expect(personaForReferer("https://art3m1s.me/")).toBeNull();
-    expect(personaForReferer("https://art3m1s.me/#projects")).toBeNull();
+  it("asks for nothing from any other path", () => {
     expect(personaForReferer("https://art3m1s.me/sectarian")).toBeNull();
+    expect(personaForReferer("https://art3m1s.me/other/page")).toBeNull();
   });
 
   it("asks for nothing without a usable Referer", () => {

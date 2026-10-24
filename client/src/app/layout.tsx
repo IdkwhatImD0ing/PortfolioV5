@@ -23,7 +23,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#07060d",
+  // The sect's ink (app/sect/sect.css --sect-ink), as in public/manifest.json.
+  themeColor: "#0e0c14",
 };
 
 // The site is one page, the sect (app/page.tsx), so its title, description and share cards are here.

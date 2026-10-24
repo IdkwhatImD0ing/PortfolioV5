@@ -2,8 +2,8 @@
  * The Web Audio side of /sect's music (the choices are lib/sect/music.ts; the page wiring
  * ./music.tsx). One AudioContext, made on the visitor's first gesture; per track a fetched and
  * decoded AudioBuffer played by a looping AudioBufferSourceNode through its own gain (the
- * crossfade), all into one master gain (volume, mute, ducking under a voice call, silence under a
- * YouTube demo).
+ * crossfade), all into one master gain (the visitor's volume slider, mute, ducking under a voice
+ * call, silence under a YouTube demo).
  *
  * Nothing here throws: without Web Audio, without music.json, or when a file fails, the page simply
  * has no music. Nothing is downloaded until the visitor's first gesture with sound on, and then only
@@ -18,11 +18,13 @@ import {
   loopPosition,
   masterTarget,
   masterTimeConstant,
+  VOLUME_TIME_CONSTANT,
   type Fade,
   type MusicKey,
   type MusicManifest,
   type VoiceDuck,
 } from "@/lib/sect/music";
+import { DEFAULT_VOLUME, clampVolume } from "@/lib/sect/volume";
 
 /** What the sound toggle shows. */
 export interface MusicUi {
@@ -31,6 +33,8 @@ export interface MusicUi {
   /** Sound is on: the visitor has given a gesture and has not muted. */
   on: boolean;
   muted: boolean;
+  /** The volume slider's share, 0 to 1 (lib/sect/volume.ts). */
+  volume: number;
 }
 
 export interface MusicDeps {
@@ -40,6 +44,8 @@ export interface MusicDeps {
   fetchBytes: (url: string, signal: AbortSignal) => Promise<ArrayBuffer>;
   /** Saves the mute choice. */
   saveMuted: (muted: boolean) => void;
+  /** Saves the volume slider's share. */
+  saveVolume?: (volume: number) => void;
 }
 
 interface Voice {
@@ -74,6 +80,9 @@ export class MusicEngine {
   private supported: boolean;
   private gestured = false;
   private muted: boolean;
+  private volume: number;
+  /** The next master move is the volume slider's: it follows quickly (VOLUME_TIME_CONSTANT). */
+  private volumeMoved = false;
   private voice: VoiceDuck = "none";
   private video = false;
   private away = false;
@@ -95,11 +104,12 @@ export class MusicEngine {
   private readonly history: { from: MusicKey | null; to: MusicKey; at: number }[] = [];
   private lastStarted: MusicKey | null = null;
 
-  constructor(deps: MusicDeps, opts: { supported: boolean; muted: boolean }) {
+  constructor(deps: MusicDeps, opts: { supported: boolean; muted: boolean; volume?: number }) {
     this.deps = deps;
     this.supported = opts.supported;
     this.muted = opts.muted;
-    this.ui = { available: false, on: false, muted: opts.muted };
+    this.volume = clampVolume(opts.volume ?? DEFAULT_VOLUME);
+    this.ui = { available: false, on: false, muted: opts.muted, volume: this.volume };
   }
 
   // --- the toggle's store (useSyncExternalStore) ---------------------------------------------------
@@ -118,8 +128,10 @@ export class MusicEngine {
       available: this.supported && this.manifest !== null,
       on: this.supported && this.ctx !== null && this.gestured && !this.muted,
       muted: this.muted,
+      volume: this.volume,
     };
-    if (next.available === this.ui.available && next.on === this.ui.on && next.muted === this.ui.muted) return;
+    const ui = this.ui;
+    if (next.available === ui.available && next.on === ui.on && next.muted === ui.muted && next.volume === ui.volume) return;
     this.ui = next;
     for (const fn of this.listeners) fn();
   }
@@ -159,6 +171,23 @@ export class MusicEngine {
     this.deps.saveMuted(this.muted);
     if (!this.muted) this.ensureContext();
     this.apply();
+    this.emit();
+  }
+
+  /**
+   * The volume slider: a share 0 to 1 of the music's level, the master the ducking multiplies. Saved
+   * for the visitor. Changes nothing else: muted stays muted (the slider shows only while sound is
+   * on), and a voice call or a video still takes its share.
+   */
+  setVolume(v: number): void {
+    if (this.disposed) return;
+    const next = clampVolume(v);
+    if (next === this.volume) return;
+    this.volume = next;
+    this.deps.saveVolume?.(next);
+    this.volumeMoved = true;
+    this.apply();
+    this.volumeMoved = false;
     this.emit();
   }
 
@@ -275,13 +304,16 @@ export class MusicEngine {
     }
 
     // The master level (a hidden tab dips to silence fast, then suspends; it comes back gently).
-    const aim = live ? masterTarget({ muted: this.muted, voice: this.voice, video: this.video, away: this.away }) : 0;
+    const aim = live
+      ? masterTarget({ muted: this.muted, volume: this.volume, voice: this.voice, video: this.video, away: this.away })
+      : 0;
     if (aim !== this.masterAim) {
       const p = this.master.gain;
       const from = this.masterAim < 0 ? 0 : this.masterAim;
+      const tc = this.hidden ? QUICK_FADE_TC : this.volumeMoved ? VOLUME_TIME_CONSTANT : masterTimeConstant(from, aim);
       try {
         p.cancelScheduledValues(now);
-        p.setTargetAtTime(aim, now, this.hidden ? QUICK_FADE_TC : masterTimeConstant(from, aim));
+        p.setTargetAtTime(aim, now, tc);
       } catch {
         p.value = aim;
       }
@@ -476,6 +508,7 @@ export class MusicEngine {
       time: now,
       gestured: this.gestured,
       muted: this.muted,
+      volume: this.volume,
       voice: this.voice,
       video: this.video,
       away: this.away,

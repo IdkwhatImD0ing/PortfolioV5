@@ -32,6 +32,8 @@ from custom_types import (
     Utterance,
 )
 
+# The classic persona's texts. LlmClient now reads them through its persona
+# (personas.py), which holds these same objects; the names stay importable here.
 from prompts import (
     begin_sentence,
     guardrail_interruption_message,
@@ -46,6 +48,7 @@ from prompts import (
 from model_config import AGENT_MODEL, REASONING_EFFORT
 from text_utils import clean_markdown
 from guardrail import security_guardrail, GuardrailVerdict
+from personas import CLASSIC, Persona, get_persona, persona_from_call
 from summary import generate_summary
 from agent_tools import (
     display_education_page,
@@ -54,6 +57,10 @@ from agent_tools import (
     display_landing_page,
     display_resume_page,
     display_architecture_page,
+    display_experience_page,
+    display_skills_page,
+    display_personal_page,
+    display_projects_page,
     display_project,
     search_projects,
     get_project_details,
@@ -72,6 +79,10 @@ __all__ = [
     "display_landing_page",
     "display_resume_page",
     "display_architecture_page",
+    "display_experience_page",
+    "display_skills_page",
+    "display_personal_page",
+    "display_projects_page",
     "display_project",
     "search_projects",
     "get_project_details",
@@ -79,6 +90,40 @@ __all__ = [
     "GuardrailTripped",
     "screened_stream",
 ]
+
+
+# One stable prompt_cache_key per chat mode. Left unset, the Agents SDK gives
+# every run its own random key, and on GPT-5.6 requests with different keys
+# never share a cache, so the ~8,000-token persona prompt was processed from
+# scratch on every turn. Measured on the voice agent over a 4-turn call
+# (2026-09-24): 0% of input served from cache before; 98-99% after, together
+# with the stable history in prepare_prompt; first word in about 0.6 s instead
+# of 1 to 2 s. The key only groups requests: the cache itself matches on the
+# prompt's exact prefix, so an edited prompt can never be served stale.
+PROMPT_CACHE_KEYS = {"voice": "portfolio-agent-voice", "text": "portfolio-agent-text"}
+
+
+def prompt_cache_key(mode: str, persona_key: str = CLASSIC) -> str:
+    """The prompt_cache_key for a mode and persona.
+
+    The classic persona keeps PROMPT_CACHE_KEYS exactly. Another persona has its
+    own prompt, so it gets its own group ("portfolio-agent-voice-ming-sect").
+    Anything but voice is text.
+    """
+    key = PROMPT_CACHE_KEYS["voice" if mode == "voice" else "text"]
+    return key if persona_key == CLASSIC else f"{key}-{persona_key}"
+
+
+def _spaced(text_parts: List[str], delta: str) -> str:
+    """The first delta of a model response that follows a tool call.
+
+    The agent says its first sentence, calls a display tool, then goes on in a
+    new model response, which starts with no leading space. Joined as is, that
+    reads "Outside work, I cook.I play piano" in the captions and text chat.
+    """
+    if text_parts and not text_parts[-1][-1:].isspace() and not delta[:1].isspace():
+        return " " + delta
+    return delta
 
 
 @dataclass(frozen=True)
@@ -93,10 +138,14 @@ class GuardrailTripped:
     verdict: GuardrailVerdict | None = None
 
 
-async def _screen(agent: Agent, messages: list) -> GuardrailFunctionOutput:
-    """Run the input guardrail once, under a guardrail span as the SDK would."""
-    with guardrail_span(security_guardrail.get_name()) as span:
-        result = await security_guardrail.run(
+async def _screen(agent: Agent, messages: list, guardrail=None) -> GuardrailFunctionOutput:
+    """Run the input guardrail once, under a guardrail span as the SDK would.
+
+    `guardrail` is the persona's (personas.Persona.guardrail); None is the classic one.
+    """
+    guardrail = guardrail or security_guardrail
+    with guardrail_span(guardrail.get_name()) as span:
+        result = await guardrail.run(
             agent, messages, RunContextWrapper(context=None)
         )
         span.span_data.triggered = result.output.tripwire_triggered
@@ -106,7 +155,7 @@ async def _screen(agent: Agent, messages: list) -> GuardrailFunctionOutput:
             span.set_error(
                 SpanError(
                     message="Guardrail tripwire triggered",
-                    data={"guardrail": security_guardrail.get_name(), "type": "input_guardrail"},
+                    data={"guardrail": guardrail.get_name(), "type": "input_guardrail"},
                 )
             )
     return result.output
@@ -128,8 +177,12 @@ def _trip_from(screening: asyncio.Task) -> GuardrailTripped | None:
 
 
 @asynccontextmanager
-async def screened_stream(agent: Agent, messages: list, *, screen_first: bool = False):
+async def screened_stream(
+    agent: Agent, messages: list, *, screen_first: bool = False, guardrail=None
+):
     """Run the agent and the input guardrail side by side on the same turn.
+
+    `guardrail` is the persona's input guardrail; None means the classic one.
 
     Use as `async with screened_stream(agent, messages) as events:`. Both start
     on entry, so an allowed visitor waits on nothing extra, and both are
@@ -152,7 +205,7 @@ async def screened_stream(agent: Agent, messages: list, *, screen_first: bool = 
     events, and never cancels the model, so a blocked answer kept streaming and
     the refusal arrived after it.
     """
-    screening = asyncio.create_task(_screen(agent, messages))
+    screening = asyncio.create_task(_screen(agent, messages, guardrail))
     try:
         if screen_first:
             await asyncio.wait({screening})
@@ -238,23 +291,37 @@ async def _merge(stream, screening: asyncio.Task):
 
 
 class LlmClient:
-    def __init__(self, call_id: str, mode: str = "voice", debug=None):
+    def __init__(self, call_id: str, mode: str = "voice", debug=None, persona=None):
         self.call_id = call_id
         self.mode = mode
         # Retell's call_details payload (agent id, call type, the metadata the
         # browser attached when it created the call). main.py fills this in on
-        # the first websocket message; every turn's trace carries it.
+        # the first websocket message (apply_call_details); every turn's trace
+        # carries it.
         self.call_details: dict = {}
 
-        # The prompt varies by mode; the model and reasoning effort do not —
-        # both come from model_config so there is one place to change them.
-        system_prompt = voice_system_prompt if mode == "voice" else text_system_prompt
+        # Who the agent speaks as (personas.py). None and unknown names are the
+        # classic persona, so every existing caller is unchanged. A voice call
+        # learns its persona from call_details, after this constructor runs.
+        self.persona: Persona = get_persona(persona)
+        self.agent = self._build_agent()
 
+        # Control verbose streaming logs via env or constructor
+        if debug is None:
+            self.debug = os.getenv("LLM_DEBUG", "0") == "1"
+        else:
+            self.debug = bool(debug)
+
+    def _build_agent(self) -> Agent:
+        # The prompt varies by persona and mode; the model and reasoning effort
+        # do not — both come from model_config so there is one place to change
+        # them. The tools are the same for every persona.
+        #
         # No `input_guardrails` here on purpose: `screened_stream` runs the
         # guardrail beside the run so a trip can stop it. See its docstring.
-        self.agent = Agent(
+        return Agent(
             name="portfolio_agent",
-            instructions=system_prompt,
+            instructions=self.persona.system_prompt(self.mode),
             model=AGENT_MODEL,
             tools=self.prepare_functions(),
             model_settings=ModelSettings(
@@ -263,14 +330,32 @@ class LlmClient:
                     effort=REASONING_EFFORT,
                     summary="auto",
                 ),
+                # A key here stops the SDK generating a random one per run.
+                # Keyed like the prompt above: by mode, and by persona.
+                extra_args={
+                    "prompt_cache_key": prompt_cache_key(self.mode, self.persona.key)
+                },
             ),
         )
 
-        # Control verbose streaming logs via env or constructor
-        if debug is None:
-            self.debug = os.getenv("LLM_DEBUG", "0") == "1"
-        else:
-            self.debug = bool(debug)
+    def apply_call_details(self, call) -> Persona:
+        """Keep Retell's call_details and switch to the persona the call asked for.
+
+        main.py calls this on the call_details message, before the greeting is
+        sent, so the first words are already the right persona's. A call that
+        asks for nothing (every call from the old site) stays classic, and the
+        agent is not rebuilt.
+        """
+        self.call_details = call if isinstance(call, dict) else {}
+        persona = persona_from_call(self.call_details)
+        if persona.key != self.persona.key:
+            self.persona = persona
+            self.agent = self._build_agent()
+        return self.persona
+
+    def _persona_metadata(self) -> dict:
+        """Trace metadata naming a non-default persona; empty for classic."""
+        return {} if self.persona.key == CLASSIC else {"persona": self.persona.key}
 
     def _log(self, *args, **kwargs):
         if self.debug:
@@ -279,7 +364,7 @@ class LlmClient:
     def draft_begin_message(self):
         response = ResponseResponse(
             response_id=0,
-            content=begin_sentence,
+            content=self.persona.begin_sentence,
             content_complete=True,
             end_call=False,
         )
@@ -295,23 +380,22 @@ class LlmClient:
         return messages
 
     def prepare_prompt(self, request: ResponseRequiredRequest):
-        # Note: System prompt is in self.agent.instructions, not here
-        # This method prepares the conversation messages from the transcript
-        transcript_messages = self.convert_transcript_to_openai_messages(
-            request.transcript
-        )
-        prompt = list(transcript_messages)
+        """The transcript as agent input, every visitor turn in voice_turn.
 
-        last_user_message = ""
-        last_user_message_index = -1
-        for i, message in enumerate(reversed(transcript_messages)):
-            if message.get("role") == "user":
-                last_user_message = message.get("content", "")
-                last_user_message_index = len(transcript_messages) - i - 1
-                break
+        The system prompt is in self.agent.instructions, not here.
 
-        if last_user_message:
-            prompt[last_user_message_index]["content"] = voice_turn(last_user_message)
+        Every visitor turn is wrapped, not just the newest. GPT-5.6 caches a
+        prompt up to the end of its latest user message, and the next request
+        reuses that only if everything before it is unchanged. When only the
+        newest turn was wrapped, each wrapper came off on the next request, so
+        the conversation could never be reused from cache (see
+        PROMPT_CACHE_KEYS). The guardrail strips the wrapper from every turn
+        (guardrail.extract_turns), so what the judge reads is unchanged.
+        """
+        prompt = self.convert_transcript_to_openai_messages(request.transcript)
+        for message in prompt:
+            if message["role"] == "user" and message["content"]:
+                message["content"] = voice_turn(message["content"])
 
         if request.interaction_type == "reminder_required":
             prompt.append({"role": "user", "content": reminder_prompt})
@@ -345,8 +429,8 @@ class LlmClient:
                 (u for u in reversed(request.transcript) if u.content.strip()), None
             )
             if last is not None and last.role == "agent":
-                return reminder_checkin_message
-        return guardrail_refusal_message
+                return self.persona.reminder_checkin_message
+        return self.persona.refusal_message
 
     def prepare_functions(self) -> List[Any]:
         """Return tool functions available to the agent."""
@@ -357,6 +441,10 @@ class LlmClient:
             display_landing_page,
             display_resume_page,
             display_architecture_page,
+            display_experience_page,
+            display_skills_page,
+            display_personal_page,
+            display_projects_page,
             display_project,
             search_projects,
             get_project_details,
@@ -439,6 +527,7 @@ class LlmClient:
         text_parts: List[str] = []
         tool_calls: List[dict] = []
         refusal_parts: List[str] = []
+        new_response = False
         try:
             async with AsyncExitStack() as stack:
                 # One FireTrace trace per turn, grouped by call id so a whole
@@ -460,6 +549,7 @@ class LlmClient:
                         "mode": self.mode,
                         "response_id": str(response_id),
                         "interaction_type": request.interaction_type,
+                        **self._persona_metadata(),
                     },
                     tags=("voice", request.interaction_type),
                 ))
@@ -471,7 +561,10 @@ class LlmClient:
                 # it on reminders; see screened_stream and _screens_first.
                 events = await stack.enter_async_context(
                     screened_stream(
-                        self.agent, messages, screen_first=self._screens_first(request)
+                        self.agent,
+                        messages,
+                        screen_first=self._screens_first(request),
+                        guardrail=self.persona.guardrail,
                     )
                 )
 
@@ -482,7 +575,7 @@ class LlmClient:
                         # can't be taken back. Stop there and apologise. If
                         # nothing went out yet, give the full refusal instead.
                         refusal_text = (
-                            guardrail_interruption_message
+                            self.persona.interruption_message
                             if spoke
                             else self._refusal_for(request)
                         )
@@ -494,7 +587,9 @@ class LlmClient:
                     if isinstance(event, RawResponsesStreamEvent):
                         data = event.data
                         event_type = getattr(data, "type", "")
-                        if event_type == "response.refusal.delta":
+                        if event_type == "response.created":
+                            new_response = True
+                        elif event_type == "response.refusal.delta":
                             # Not spoken (nothing is yielded), but recorded on
                             # the trace so an empty answer can be explained.
                             refusal_parts.append(getattr(data, "delta", "") or "")
@@ -503,6 +598,9 @@ class LlmClient:
                             # The AI has been instructed not to use markdown in the prompts
                             delta_content = getattr(data, "delta", "")
                             if delta_content:
+                                if new_response:
+                                    delta_content = _spaced(text_parts, delta_content)
+                                    new_response = False
                                 spoke = True
                                 text_parts.append(delta_content)
                                 yield ResponseResponse(
@@ -624,6 +722,7 @@ class LlmClient:
         # Set by a trip; yielded after the trace has closed (see draft_response).
         refusal_chunk: TextChatStreamChunk | None = None
         text_parts: List[str] = []
+        new_response = False
         tool_calls: List[dict] = []
         refusal_parts: List[str] = []
         try:
@@ -633,13 +732,19 @@ class LlmClient:
                     session_id=self.call_id,
                     model=AGENT_MODEL,
                     input={"messages": messages},
-                    metadata={"mode": self.mode, "message_count": str(len(processed_messages))},
+                    metadata={
+                        "mode": self.mode,
+                        "message_count": str(len(processed_messages)),
+                        **self._persona_metadata(),
+                    },
                     tags=("text",),
                 ))
                 # Starts the agent and the guardrail now, so the model request
                 # overlaps the status write below. See screened_stream.
                 events = await stack.enter_async_context(
-                    screened_stream(self.agent, processed_messages)
+                    screened_stream(
+                        self.agent, processed_messages, guardrail=self.persona.guardrail
+                    )
                 )
 
                 yield TextChatStreamChunk(type="status", content="Thinking...")
@@ -653,7 +758,7 @@ class LlmClient:
                             # left with the refusal and nothing else.
                             refusal_chunk = TextChatStreamChunk(
                                 type="replace",
-                                content=guardrail_refusal_message,
+                                content=self.persona.refusal_message,
                             )
                         else:
                             # A client from before `replace` would drop it and
@@ -661,11 +766,12 @@ class LlmClient:
                             # the refusal instead, as this endpoint used to.
                             refusal_chunk = TextChatStreamChunk(
                                 type="content",
-                                content=("\n\n" if streamed else "") + guardrail_refusal_message,
+                                content=("\n\n" if streamed else "")
+                                + self.persona.refusal_message,
                             )
                         run.mark_guardrail_blocked(
                             output=self._run_output(
-                                [guardrail_refusal_message], tool_calls, refusal_parts
+                                [self.persona.refusal_message], tool_calls, refusal_parts
                             )
                         )
                         break
@@ -673,11 +779,16 @@ class LlmClient:
                     if isinstance(event, RawResponsesStreamEvent):
                         data = event.data
                         event_type = getattr(data, "type", "")
-                        if event_type == "response.refusal.delta":
+                        if event_type == "response.created":
+                            new_response = True
+                        elif event_type == "response.refusal.delta":
                             refusal_parts.append(getattr(data, "delta", "") or "")
                         elif event_type == "response.output_text.delta":
                             delta_content = getattr(data, "delta", "")
                             if delta_content:
+                                if new_response:
+                                    delta_content = _spaced(text_parts, delta_content)
+                                    new_response = False
                                 self._log(f"text content delta: {len(delta_content)} chars")
                                 streamed = True
                                 text_parts.append(delta_content)

@@ -22,6 +22,7 @@ Runtime secrets live in **GCP Secret Manager** in project `spiritual-storm-46970
 | `PINECONE_API_KEY` | Vector search |
 | `OBFUSCATED_WS_PATH` | Hardens the public WebSocket route |
 | `FIRETRACE_API_KEY` | Optional. [FireTrace](https://tracing.art3m1s.me) ingest key; one key per environment (see below) |
+| `PUSHER_SECRET` | Optional, but voice calls need it to move the page and show captions (`voice_events.py`). The app id, key and cluster aren't secret and default in code |
 
 ### How they get loaded
 
@@ -104,6 +105,17 @@ Never reuse one key across environments, and never commit one. When the
 variable is unset the server runs exactly as before and records nothing. See
 [`docs/modules/firetrace.md`](docs/modules/firetrace.md).
 
+## Personas
+
+The agent speaks as one of two personas, picked per call (`personas.py`):
+
+| Persona | Who speaks | Prompt | Picked when |
+|---|---|---|---|
+| `classic` (default) | Bill, in the first person | `prompts.py` | nothing asks for another one |
+| `ming-sect` | the sect's sound-transmission (the site's home page), a guide who talks about Bill in the third person (the sect is now 日月神教, the Sun Moon Divine Cult; the id keeps its first name, the Ming Sect) | `prompts_sect.py` | voice: Retell call `metadata.persona` (or `retell_llm_dynamic_variables.persona`); text: the `/chat` body's `persona` |
+
+The client's `/api/create-web-call` and `/api/chat` routes set `ming-sect` for requests made from the sect (`/`, and its old `/sect` address). Unknown or missing values mean `classic`, so the old site and every existing Retell agent version are unchanged. Both personas share the tools and navigation. The sect's guardrail judge is the classic rubric plus `SECT_GUARDRAIL_NOTE` (`guardrail.py`); the classic judge's instructions are untouched and pinned by sha256 (`tests/test_personas.py`). Live checks: `uv run --env-file .env pytest tests/test_sect_persona_eval.py "tests/test_guardrail_eval.py::test_sect_judge_on_the_rubric_cases" -m integration -s`.
+
 ## Run
 
 ```bash
@@ -119,4 +131,30 @@ cd server
 bash deploy.sh
 ```
 
-`deploy.sh` builds from source via Cloud Build, deploys to Cloud Run (`us-west1`, service `fastapi-ws`), wipes any plain env vars from the prior revision, and mounts the four secrets above. Domain mapping at `portfolio-ws.art3m1s.me` is created on first deploy.
+`deploy.sh` builds from source via Cloud Build, deploys to Cloud Run (`us-west1`), wipes any plain env vars from the prior revision, and mounts the secrets above (`FIRETRACE_API_KEY` only when it exists; `PUSHER_SECRET` is required unless you pass `PUSHER=off`).
+
+- The service is `fastapi-ws-v5` unless `SERVICE_NAME` says otherwise. `fastapi-ws` (behind `portfolio-ws.art3m1s.me`) is the live V4 site's backend, so the script refuses it unless `SHARED_SERVICE_OK=1`.
+- `SERVICE_ACCOUNT=deploy-sa@...` runs a new service as the account `fastapi-ws` uses (it holds the secret access).
+- `NO_TRAFFIC=1 TAG=v5` (an existing service only) deploys a revision that gets no traffic, reachable at its tag URL, so it can be tested before `gcloud run services update-traffic`.
+- `CUSTOM_DOMAIN=...` maps a domain to the service if that domain has no mapping yet; a mapped domain is left alone.
+
+`deploy.ps1` is an older script that never sets secrets; it stops unless `ALLOW_OLD_PS_DEPLOY=1`. Use `deploy.sh`.
+
+## Voice events (Pusher)
+
+Retell's v3 web calls don't forward the backend's `metadata` events or live
+transcript to the browser, so `voice_events.py` publishes each call's page moves
+and captions to a Pusher channel the browser named (`voice-<uuid>`, sent as
+`metadata.events_channel` when the call is created). The app id, key and cluster
+aren't secret and default in code. `PUSHER_SECRET` is: anyone holding it can list
+the open voice channels and read or forge their events. Keep it in Secret
+Manager and `server/.env` only.
+
+Roll out the server before the client. The new server is safe with the old
+client (no `events_channel`, so nothing is published, and Retell still gets
+the metadata), but the new client depends on the new server:
+
+1. Create `PUSHER_SECRET` and grant `deploy-sa` access ("Add a new secret" above).
+2. From this branch, run `bash deploy.sh` and check it prints `PUSHER_SECRET found`.
+3. Merge, so Vercel ships the client.
+4. On the first real call, the server log shows `Voice events on for <call_id>`.

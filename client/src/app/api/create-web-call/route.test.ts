@@ -105,7 +105,8 @@ describe("POST /api/create-web-call", () => {
     );
 
     const { url, init } = requestInit(fetchMock);
-    expect(url).toBe("https://api.retellai.com/v2/create-web-call");
+    // v2 is deprecated on 2026-09-30.
+    expect(url).toBe("https://api.retellai.com/v3/create-web-call");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body as string)).toEqual({
       agent_id: "agent_1",
@@ -150,6 +151,26 @@ describe("POST /api/create-web-call", () => {
 
     expect(res.status).toBe(422);
     await expect(res.json()).resolves.toEqual({ error: "agent not found" });
+  });
+
+  it("reads a v3 error's message", async () => {
+    mockUpstream(422, { status: "error", message: "Cannot find requested asset under given api key." });
+
+    const res = await POST(postRequest({ agent_id: "nope" }));
+
+    expect(res.status).toBe(422);
+    await expect(res.json()).resolves.toEqual({
+      error: "Cannot find requested asset under given api key.",
+    });
+  });
+
+  it("passes the call's events channel through in its metadata", async () => {
+    const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
+    const metadata = { platform: "web", events_channel: "123e4567-e89b-42d3-a456-426614174000" };
+
+    await POST(postRequest({ agent_id: "agent_1", metadata }));
+
+    expect(JSON.parse(requestInit(fetchMock).init.body as string).metadata).toEqual(metadata);
   });
 
   it("keeps the upstream status when the error body isn't JSON", async () => {
@@ -235,7 +256,7 @@ describe("POST /api/create-web-call", () => {
   });
 });
 
-describe("POST /api/create-web-call from the /sect page", () => {
+describe("POST /api/create-web-call from the sect (the home page, and its old /sect address)", () => {
   /** The same request, placed by a page at `referer` (a same-origin fetch carries its URL). */
   function postFrom(referer: string | null, body: unknown) {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -247,20 +268,29 @@ describe("POST /api/create-web-call from the /sect page", () => {
     });
   }
 
-  /** What the orb sends from either page: the same body, word for word. */
+  /** What the orb sends (lib/voice-events.ts webCallBody). */
   const ORB_BODY = {
     agent_id: PROD_AGENT_ID,
-    metadata: { session_started: "2026-10-23T00:00:00.000Z", platform: "web" },
+    metadata: {
+      session_started: "2026-10-23T00:00:00.000Z",
+      platform: "web",
+      events_channel: "123e4567-e89b-42d3-a456-426614174000",
+    },
   };
 
   function sentBody(fetchMock: ReturnType<typeof vi.fn>) {
     return JSON.parse(requestInit(fetchMock).init.body as string);
   }
 
-  it("asks the backend for the sect persona, keeping the orb's metadata", async () => {
+  it.each([
+    ["the home page", "http://localhost:3000/"],
+    ["the home page with a hash", "https://art3m1s.me/#forge"],
+    ["the page view", "https://art3m1s.me/?view=page"],
+    ["the old /sect address", "http://localhost:3000/sect"],
+  ])("asks the backend for the sect persona, keeping the orb's metadata (%s)", async (_label, referer) => {
     const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
 
-    await POST(postFrom("http://localhost:3000/sect", ORB_BODY));
+    await POST(postFrom(referer, ORB_BODY));
 
     expect(sentBody(fetchMock)).toEqual({
       agent_id: PROD_AGENT_ID,
@@ -277,10 +307,10 @@ describe("POST /api/create-web-call from the /sect page", () => {
   });
 
   it.each([
-    ["the main page", "http://localhost:3000/"],
     ["no Referer", null],
     ["a lookalike path", "http://localhost:3000/sectarian"],
-  ])("sends the main page's call exactly as before (%s)", async (_label, referer) => {
+    ["another path", "http://localhost:3000/other"],
+  ])("asks for no persona from anywhere else (%s)", async (_label, referer) => {
     const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
 
     await POST(postFrom(referer, ORB_BODY));
@@ -323,10 +353,18 @@ describe("POST /api/create-web-call from the /sect page", () => {
       expect(sentBody(fetchMock).metadata.persona).toBe("ming-sect");
     });
 
-    it("never moves the main page's call", async () => {
+    it("moves the home page's call too, since the home page is the sect", async () => {
       const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
 
       await POST(postFrom("http://localhost:3000/", ORB_BODY));
+
+      expect(sentBody(fetchMock).agent_id).toBe("agent_sect");
+    });
+
+    it("never moves a call that asked for no persona", async () => {
+      const fetchMock = mockUpstream(201, { call_id: "c", access_token: "t" });
+
+      await POST(postFrom(null, ORB_BODY));
 
       expect(sentBody(fetchMock)).toEqual(ORB_BODY);
     });

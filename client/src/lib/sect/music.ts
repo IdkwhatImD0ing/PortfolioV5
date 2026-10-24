@@ -9,6 +9,7 @@
  * crossfade without clashing.
  */
 import { AREA_IDS, isAreaId, type AreaId } from "./areas";
+import { DEFAULT_VOLUME, volumeGain } from "./volume";
 
 export type MusicKey = "loading" | AreaId;
 
@@ -286,6 +287,11 @@ export function voiceDuck(talisman: string | null | undefined): VoiceDuck {
 
 export interface MixState {
   muted: boolean;
+  /**
+   * The visitor's volume slider, a share 0 to 1 (volume.ts); 1 (the music's own level) when not
+   * given. It is the master: the ducking below takes a share of it.
+   */
+  volume?: number;
   /** A voice call's hold on the music. */
   voice: VoiceDuck;
   /** A YouTube demo plays: the music steps aside until it pauses or ends. */
@@ -296,8 +302,14 @@ export interface MixState {
 
 export function masterTarget(m: MixState): number {
   if (m.muted || m.away || m.video) return 0;
-  return MASTER_GAIN * VOICE_DUCK[m.voice];
+  return MASTER_GAIN * volumeGain(m.volume ?? DEFAULT_VOLUME) * VOICE_DUCK[m.voice];
 }
+
+/**
+ * The time constant for a move of the volume slider: quick enough to follow a drag (about 0.1 s),
+ * smooth enough not to click.
+ */
+export const VOLUME_TIME_CONSTANT = 0.03;
 
 /**
  * setTargetAtTime's time constant (about 95% of the way after three): down in about 0.35 s (a call,

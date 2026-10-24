@@ -58,15 +58,15 @@ make pull-secrets   # pulls server/.env from GCP Secret Manager (needs gcloud au
 
 ## Architecture: the voice → navigation pipeline
 
-The non-obvious core of this project is a contract that spans the browser, the backend, and Retell's metadata channel. Reading any one file in isolation won't show it.
+The non-obvious core of this project is a contract that spans the browser, the backend, and a Pusher channel. Reading any one file in isolation won't show it.
 
-1. **Browser starts a call.** `src/components/voice-orb/` is the voice and text-chat UI, mounted by the sect (`src/app/sect/experience/voice.tsx` `SectVoice`, dressed as a 传音符 talisman by `sect.css`). It lazy-imports `retell-client-js-sdk`, POSTs to `src/app/api/create-web-call/route.ts` (a thin server-side proxy that injects `RETELLAI_API_KEY` and calls Retell's `create-web-call`), then opens the WebRTC call with the returned access token. Its requests name `/sect` as their referrer (`lib/sect/persona.ts` `SECT_REFERRER`): the API routes choose the sect's persona from the Referer path.
+1. **Browser starts a call.** `src/components/voice-orb/` is the voice and text-chat UI, mounted by the sect (`src/app/sect/experience/voice.tsx` `SectVoice`, dressed as a 传音符 talisman by `sect.css`). It makes up a random channel id and subscribes to the Pusher channel `voice-<id>` (`src/lib/voice-events.ts`), lazy-imports `retell-client-js-sdk` (3.x), POSTs to `src/app/api/create-web-call/route.ts` (a thin server-side proxy that injects `RETELLAI_API_KEY` and calls Retell's `/v3/create-web-call`) with the id in the call's `metadata.events_channel`, then opens the WebRTC call with the returned `call_id`, `access_token`, `transport` and `ice_servers`. The API routes (create-web-call and `/api/chat`) choose the sect's voice persona from the Referer path: `/` (the sect) and `/sect` get `persona: "ming-sect"` (`lib/sect/persona.ts`); the backend's default is the classic persona.
 
 2. **Server agent runs the conversation.** Retell bridges audio to the FastAPI WebSocket in `server/main.py` (`/{OBFUSCATED_WS_PATH}/{call_id}`). `server/llm.py` runs an OpenAI Agents SDK agent and, beside it, an input guardrail (`guardrail_agent`) that screens each user turn for jailbreak/off-topic. The answer streams immediately; if the guardrail trips, the run is cancelled and text chat gets a `replace` chunk that swaps the reply for a refusal (voice stops mid-answer and apologizes). Project lookups go through `server/project_search.py` (Pinecone).
 
-3. **Agent navigates by calling tools.** When the agent calls a display tool (`display_homepage`, `display_project`, etc.), `server/navigation.py:tool_call_to_metadata()` converts it into a navigation metadata dict `{type: "navigation", page, project_id?}`. This is sent back through Retell's **metadata event** to the browser.
+3. **Agent navigates by calling tools.** When the agent calls a display tool (`display_homepage`, `display_project`, etc.), `server/navigation.py:tool_call_to_metadata()` converts it into a navigation dict `{type: "navigation", page, project_id?}`. `server/main.py` sends it to Retell as a metadata event (which v3 calls no longer forward to the browser) and publishes it as a `navigation` event on the call's Pusher channel (`server/voice_events.py`, which reads the channel from the call details). Retell's live transcript updates are republished the same way, as `transcript` events holding the last few lines, each with its `index` in Retell's transcript.
 
-4. **Browser turns metadata into motion.** The voice orb's `metadata` listener passes the payload to `applyNavigation()` in `src/lib/voice-bus.ts`: `metaToNavigationAction()` maps the server's `page` value to a section (`PAGE_TO_SECTION`) and returns a `VoiceBus` command (`open` for a project, else `scroll`). `VoiceBus` is a tiny pub/sub; the sect subscribes through `useVoiceRouting()` (`src/app/sect/experience/voice.tsx`), resolves the command to a stop with `commandTarget()` (`src/lib/sect/content.ts`, via `areaForSection()` in `src/lib/sect/areas.ts`), and flies there (or opens the reader / page view).
+4. **Browser turns events into motion.** The voice orb's channel handlers pass `navigation` payloads to `applyNavigation()` in `src/lib/voice-bus.ts`, and fold `transcript` lines into the captions by index (`mergeVoiceLines()` / `withVoiceLines()` in `src/lib/transcript.ts`). The Speaking/Listening line reads the agent's audio level (`src/lib/talk-detector.ts`), since v3 calls send no talking events either. In `applyNavigation()` `metaToNavigationAction()` maps the server's `page` value to a section (`PAGE_TO_SECTION`) and returns a `VoiceBus` command (`open` for a project, else `scroll`). `VoiceBus` is a tiny pub/sub; the sect subscribes through `useVoiceRouting()` (`src/app/sect/experience/voice.tsx`), resolves the command to a stop with `commandTarget()` (`src/lib/sect/content.ts`, via `areaForSection()` in `src/lib/sect/areas.ts`), and flies there (or opens the reader / page view).
 
 ### The wire contract — keep these in sync
 
@@ -74,6 +74,8 @@ The non-obvious core of this project is a contract that spans the browser, the b
 
 - Every `page` value `navigation.py` can emit **must** exist as a key in `PAGE_TO_SECTION` in `voice-bus.ts`, and that section must be a stop's `sectionId` in `src/lib/sect/areas.ts` (the hash that opens it, e.g. `#projects`). `voice-bus.test.ts` checks every page resolves to a stop; `server/tests/test_personas.py` checks each tool flies where the sect prompt says.
 - `navigation.py`'s `NAVIGATION_PAGES` frozenset exists for parity testing.
+
+The Pusher channel is a second contract: `CHANNEL_PREFIX` (`voice-`), the event names (`navigation`, `transcript`), the transcript line shape (`{index, role, content}`) and the `metadata.events_channel` field must match between `server/voice_events.py` and `src/lib/voice-events.ts`. The server accepts only a lowercase UUID as the id.
 
 Changing a navigable destination means editing all three: the tool/page mapping in `navigation.py`, the `PAGE_TO_SECTION` + `NavigationMeta` types in `voice-bus.ts`, and the stop's `sectionId` in `areas.ts` (plus the sect prompt's place list in `server/prompts_sect.py`). There are no DOM sections to scroll to any more.
 
@@ -93,6 +95,9 @@ RETELLAI_API_KEY=...              # server-only, used by the create-web-call pro
 NEXT_PUBLIC_RETELL_AGENT_ID=...   # the Retell agent the browser dials
 NEXT_PUBLIC_API_URL=...           # optional; backend pinged on page load to wake Cloud Run, and where /api/chat proxies text chat
 NEXT_PUBLIC_APP_URL=...           # locks the proxy's CORS origin in prod
+RETELL_SECT_AGENT_ID=...          # optional, server-only; a sect call for the production agent dials this agent instead
+NEXT_PUBLIC_PUSHER_KEY=...        # optional; Pusher app key for voice events (defaults to the app in voice-events.ts)
+NEXT_PUBLIC_PUSHER_CLUSTER=...    # optional; defaults to us3
 ```
 
-The backend (`server/.env`) needs `RETELL_API_KEY`, `OPENAI_API_KEY`, `PINECONE_API_KEY` (validated at startup in `main.py`), plus optional `OBFUSCATED_WS_PATH`, `LLM_DEBUG` and `FIRETRACE_API_KEY` (records every agent run at tracing.art3m1s.me; one key per environment, see `server/README.md`).
+The backend (`server/.env`) needs `RETELL_API_KEY`, `OPENAI_API_KEY`, `PINECONE_API_KEY` (validated at startup in `main.py`), plus optional `OBFUSCATED_WS_PATH`, `LLM_DEBUG`, `FIRETRACE_API_KEY` (records every agent run at tracing.art3m1s.me; one key per environment, see `server/README.md`) and `PUSHER_SECRET` (without it, voice calls work but the page doesn't follow along and the call panel shows no captions).

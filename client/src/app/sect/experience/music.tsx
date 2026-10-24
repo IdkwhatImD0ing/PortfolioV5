@@ -9,6 +9,8 @@
  *   or the sound toggle turns it on, and the choice is remembered (localStorage "sect.music.muted").
  *   A visitor who turned it on before hears it again from their first click, tap or key (browsers
  *   allow sound only after one; a wheel does not count).
+ * - The volume slider beside the toggle sets the level (lib/sect/volume.ts, remembered as
+ *   "sect.music.volume"); the ducking and silences below take their share of it.
  * - A fast scroll through several areas plays none of the ones in between (the hysteresis); a jump
  *   plays its destination's track.
  * - Lower under a voice call (lower still while the agent speaks: the talisman's state), silent
@@ -43,6 +45,7 @@ import {
   type Direction,
   type Switcher,
 } from "@/lib/sect/music";
+import { readVolume, writeVolume } from "@/lib/sect/volume";
 import { onVideoPlaying, videoPlaying } from "../content/video-watch";
 import { MusicEngine } from "./music-engine";
 import { SoundToggle } from "./sound-toggle";
@@ -121,8 +124,9 @@ export function SectMusic({
           return r.arrayBuffer();
         },
         saveMuted: (m) => writeMuted(localStore(), m),
+        saveVolume: (v) => writeVolume(localStore(), v),
       },
-      { supported: Ctor !== null, muted: readMuted(localStore()) },
+      { supported: Ctor !== null, muted: readMuted(localStore()), volume: readVolume(localStore()) },
     );
     setEngine(e);
     onEngineRef.current?.(e);
