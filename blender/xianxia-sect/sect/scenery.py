@@ -746,12 +746,14 @@ CANOPY_NEAR_K = 0.6            # draws trees within --tree-near as 3D meshes; B0
 CANOPY_DENSITY = 0.042         # broadleaf crowns per m2 at factor 1 (slice: 0.028 left gaps between single crowns)
 SPIRE_DENSITY = 0.005          # Masson spires (10-25 % of a canopy, more on rims and crests)
 PINE_DENSITY = 0.002           # Huangshan pines on convex crests only (under 15 %)
-SCRUB_DENSITY = 0.09           # scrub on 37-60 deg slopes (slice: 0.035 read as scattered dots, rule 2)
+SCRUB_DENSITY = 0.045          # scrub on 37-60 deg slopes, in clumps (SCRUB_CLUMP; slice: 0.035 spread evenly read
+                               # as scattered dots, rule 2; 0.09 at 1.2-2.8x closed it but doubled the bake's bush meshes)
+SCRUB_CLUMP = (7.0, 2.6)       # m across a scrub patch; density factor inside one (about 40 % of a slope)
 ACCENT_DENSITY = 0.006         # spring-green accent crowns in clusters by buildings, falls and path turns
 CANOPY_SCALE = (0.7, 1.4)      # x nature.CANOPY_HEIGHT (10 m): 7-14 m crowns (plan D11: not 12-24 m), closing the canopy
 SPIRE_SCALE = (0.6, 1.4)
 PINE_SCALE = (0.6, 1.0)
-SCRUB_SCALE = (1.2, 2.8)
+SCRUB_SCALE = (0.9, 2.2)
 GROVE_SCALE = 45.0             # m: groves and clearings (2D noise)
 GROVE_FLOOR = 0.45             # density factor in a clearing (slice: 0.2 left lawn patches in the closed canopy)
 CONCAVE_BLUR = 30.0            # m: concavity (gullies x2, ridges x0.4) against the terrain smoothed this wide
@@ -775,7 +777,7 @@ SHELF_DENSITY = 0.2            # shrubs per m2 of pillar shelf top (mean; in clu
 SHELF_CLUMP = (6.0, 2.6)       # m across a shelf clump; density factor inside one (about 40 % of a shelf is in clumps)
 SHELF_CROWN = 0.05             # small broadleaf crowns (3-5.5 m) per m2 of shelf, in the same clumps: they overhang
                                # the lip, so a shelf reads as a green band from the side, not a line of dots
-CRACK_DENSITY = 0.1            # ferns per m2 of pillar crack strip (mean; in vertical runs by CRACK_RUN)
+CRACK_DENSITY = 0.06           # ferns per m2 of pillar crack strip (mean; in vertical runs by CRACK_RUN)
 CRACK_RUN = (4.0, 30.0, 3.0)   # m across and m tall a run of crack plants; density factor inside one (strips, not dots)
 CAP_DENSITY = 0.06             # broadleaf per m2 of pillar cap (a closed canopy cap from 50 m, rule 3)
 CAP_RIM_SPIRE = 0.012          # spires per m2 on the cap's outer quarter
@@ -996,6 +998,9 @@ def r48_canopy_masks(rng_obj, scene, anchors, hold_views, star, scope=None):
         out[name] = round(float(area[m].sum()))
     R.face_attr(rng_obj, "r48_f", np.where(canopy | slope, f, 0.0).astype(np.float32))
     R.face_attr(rng_obj, "r48_f_crest", np.where(crest, f_crest, 0.0).astype(np.float32))
+    # scrub in patches, not spread evenly (rule 2): the slope factor x SCRUB_CLUMP[1] inside patches, 0 between them
+    patch = SCRUB_CLUMP[1] * W._smooth(0.05, 0.25, noise(cw[:, 0], cw[:, 1], 1.0 / SCRUB_CLUMP[0], o=11))
+    R.face_attr(rng_obj, "r48_f_scrub", np.where(slope, f * patch, 0.0).astype(np.float32))
     _log("r48 masks (m2)", json.dumps(out), "forest mode", FOREST_MODE)
     return dict(area_m2=out, path_d=path_d, cw=cw, nz=nz, top=top, lap=lap, f=f, scope=insc)
 
@@ -1056,7 +1061,7 @@ def r48_range_canopy(rng_obj, coll):
          60.0, 4813),
         ("scenery.r48.pine", N.plant_prototypes("forest")[:6], PINE_DENSITY, "r48_crest", "r48_f_crest", PINE_SCALE,
          60.0, 4817),
-        ("scenery.r48.scrub", N.canopy_prototypes("scrub"), SCRUB_DENSITY, "r48_slope", "r48_f", SCRUB_SCALE,
+        ("scenery.r48.scrub", N.canopy_prototypes("scrub"), SCRUB_DENSITY, "r48_slope", "r48_f_scrub", SCRUB_SCALE,
          61.0, 4819),
         ("scenery.r48.accent", N.canopy_prototypes("accent"), ACCENT_DENSITY, "r48_accent", "r48_f", CANOPY_SCALE,
          40.0, 4823),
@@ -1143,7 +1148,7 @@ def r48_pillar_plants(coll, scope=None):
                 (".cap_spire", N.canopy_prototypes("spire"), CAP_RIM_SPIRE, "r48_rim", (0.5 * ks, 1.1 * ks), 60.0,
                  0.05),
                 (".shelf", N.canopy_prototypes("shelf"), SHELF_DENSITY, "nature_shelf", (1.2, 2.4), 60.0, 0.2),
-                (".crack", N.canopy_prototypes("fern"), CRACK_DENSITY, "nature_crack", (0.6, 1.2), 84.0, 0.5),
+                (".crack", N.canopy_prototypes("fern"), CRACK_DENSITY, "nature_crack", (0.5, 1.0), 84.0, 0.5),
                 (".cap_rim", N.canopy_prototypes("broadleaf"), CAP_RIM_BROADLEAF, "r48_rim", (0.6 * ks, 1.05 * ks),
                  75.0, 0.35),
                 (".shelf_crown", N.canopy_prototypes("broadleaf"), SHELF_CROWN, "nature_shelf", (0.3, 0.55), 60.0,

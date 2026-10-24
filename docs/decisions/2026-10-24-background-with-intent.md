@@ -48,9 +48,10 @@ a lawn). Changes before the slice:
   budget): the 185 m pillar at f870 had been cut to 1,142 triangles and its shelves were gone.
 - Shelf shrubs four times as dense, in clumps; caps twice as dense, with rim crowns leaning out; on the pillars near a
   stop, shelves stick out about 2 m; some rock beds are 2-3 times thicker, so the beds are not equal drums.
-- A denser canopy with bigger crowns (7-14 m), so it closes instead of showing single trees; denser, bigger scrub on
-  the steep slopes and fern strips in vertical runs, so neither reads as a scatter of dots; the crowns' sunlit tops are
-  a little greener and darker.
+- A denser canopy with bigger crowns (7-14 m), so it closes instead of showing single trees; scrub on the steep slopes
+  in patches and fern strips in vertical runs, so neither reads as a scatter of dots; the crowns' sunlit tops are a
+  little greener and darker. (Denser, bigger scrub everywhere closed the slopes too, but doubled the 3D bushes the
+  bake makes, so the scrub keeps its old amount, gathered into patches.)
 - The page turns far range ground (the hull clumps bake as ground) canopy green from 90-180 m (was 150-260 m).
 
 ## How it is built
