@@ -23,7 +23,7 @@ mode. Each vertex at the old height moves to the new one; one already at the new
 (the links' sinks) must lie where nothing changes, else the patch stops. Faces whose vertices moved get the
 material (rock / green) and 'world_veg' a fresh build gives them. The pillars (named world.peak.<NNN>, NNN the
 peak's index in Range.peaks, tagged r48_peak) are deleted and built again on every run. The shrine peaks
-(life.SHRINES, the objects life.shrine.* and their life_peak) stay cones.
+(life.SHRINES, the objects life.shrine.* and their life_peak) and world.PILLAR_KEEP_CONE stay cones.
 
 Checks (any failure stops the patch before saving; DRY_RUN=1 runs everything and never saves): world.range has the
 committed topology (faces equal); no vertex in a changed region off both the old and the new surface; every pillar
@@ -65,7 +65,7 @@ VARIANTS = dict(a=("benches", None), b=("pillars", "sandstone"), c=("pillars", "
 
 
 def shrine_skip(rng_):
-    s = set(W.shrine_peaks(rng_.peaks))
+    s = set(W.shrine_peaks(rng_.peaks)) | set(W.PILLAR_KEEP_CONE)
     for ob in bpy.data.objects:
         if ob.name.startswith("life.shrine.") and "life_peak" in ob.keys():
             s.add(int(ob["life_peak"]))

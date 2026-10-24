@@ -95,7 +95,7 @@ def keep_counts(hv):
     pts = collections.defaultdict(list)
     for inst in dg.object_instances:
         if inst.is_instance and inst.parent is not None and inst.parent.original.modifiers.get("NatureScatter"):
-            pts[inst.parent.original.name].append(np.round(np.array(inst.matrix_world), 3).tobytes())
+            pts[inst.parent.original.name].append(np.round(np.array(inst.matrix_world, dtype=np.float64), 3).tobytes())
     out = {}
     for k, v in pts.items():
         if k.startswith("scenery.r48") or ".r48_" in k or k.startswith("world.peak"):

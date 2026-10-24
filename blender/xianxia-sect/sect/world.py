@@ -127,6 +127,11 @@ PILLAR_MIN_H = 30.0            # m: a pillar shorter than this over its plinth i
 PILLAR_FOOT_SHARE = 0.6        # a pillar's foot radius at most this share of the old cone's radius at the plinth
 PILLAR_HERO_D = 180.0          # m: a pillar this near a hold camera is built at the "hero" level (1.25 m), else "mid"
 PILLAR_FIT_SLACK = 1.5         # m: the pillar's radius may pass the old cone's (nominal) by this much at any height
+# Peaks that stay cones in every mode, like the shrine peaks: their pillar would stand on an area's terrace (mirror 15
+# 17, forge 4 5, steles 64 66, formation 61 62 63), within patch_r48_range.PATH_CLEAR m of chase.cam (15 18 44 64) or
+# within LINK_CLEAR m of a link (15 18 44 62). Found by the patch's own checks in a dry run over the whole range with
+# both presets on the box (2026-10-24, round 48 B0).
+PILLAR_KEEP_CONE = frozenset((4, 5, 15, 17, 18, 44, 61, 62, 63, 64, 66))
 BENCH_GAP = (14.0, 30.0)       # m between benches (variant a)
 BENCH_SHARE = (0.3, 0.45)      # share of a riser a bench flattens
 
@@ -262,7 +267,7 @@ class Range:
                 notch=(ka == "library" and kb == "steles")))
         self.peaks = self._make_peaks()
         if self.peak_mode != "strata" and "skip" not in self.plan_opts:
-            self.plan_opts["skip"] = shrine_peaks(self.peaks)
+            self.plan_opts["skip"] = shrine_peaks(self.peaks) | set(PILLAR_KEEP_CONE)
 
     # ---- corridor geometry
     def seg_coords(self, s, x, y):
