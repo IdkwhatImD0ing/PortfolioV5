@@ -527,6 +527,8 @@ class Range:
                 continue                                       # a stub: the old cone stays
             top_r = float(np.clip(rc * r.uniform(0.78, 0.92), 4.5, 42.0))
             k_bot = r.uniform(1.05, 1.3) if preset == "sandstone" else r.uniform(1.6, 2.2)
+            if preset == "sandstone" and top_r < N.SLIM_R:
+                k_bot = max(k_bot * 1.3, N.SLIM_FOOT)    # (phase C, F5) a slim pillar tapers: not a chimney
 
             bot_r = float(min(top_r * k_bot, PILLAR_FOOT_SHARE * cone_radius(rc, hc, top, wall, plinth)))
             dh = float(np.min(np.linalg.norm(holds[:, :2] - np.array([cx, cy]), axis=1)))
@@ -1147,6 +1149,8 @@ def build_backdrop(coll, count=14):
     ``count`` is kept for the old signature (build_backdrop_r47 builds the 14 massifs as before)."""
     out = []
     for i, (kind, x, y, top, tr, br, preset) in enumerate(BACKDROP_R48):
+        if preset == "sandstone" and tr < N.SLIM_R:
+            br = max(br, 1.5 * tr)          # (phase C, F5: the far families read as chimneys over the cloud sea)
         ob, _info = N.peak_pillar(coll, height=top - (CLOUD_SEA_Z - 30.0), top_radius=tr, bottom_radius=br,
                                   seed=9400 + i, top_z=top, preset=preset, lod="far", name="world.backdrop",
                                   location=(x, y, 0.0), fringe=False)

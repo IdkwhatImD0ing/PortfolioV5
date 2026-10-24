@@ -54,6 +54,35 @@ a lawn). Changes before the slice:
   bake makes, so the scrub keeps its old amount, gathered into patches.)
 - The page turns far range ground (the hull clumps bake as ground) canopy green from 90-180 m (was 150-260 m).
 
+## Phase C: range-wide, after the slice critic
+
+The slice critic (standing in for the owner) said the method was right but the look was not designed yet: pillars
+like stacked drums, a forest like pale cabbages on plates, and the green on the rock as evenly spaced dots. What
+changed before the range-wide build:
+
+- Shelves are broken arcs: each one stands out over 30-60 % of the way round, in one or two arcs, and fades into the
+  wall elsewhere. Plain bed joints keep half their groove, so only real shelves read as lines. Shelf tops are a dark
+  green cushion (the canopy-mass material) instead of the soil moss, whose dry grass read as a straw line on every lip.
+- Sandstone columns under 30 m across the top taper sooner (their foot at least 1.35 times the top, and the flare in
+  the part above the mist), with stronger lobes and two or three deep clefts. A slim pillar's cap spills more crowns
+  over its rim. The far pillar families over the cloud sea get wider feet too. Before, they read as chimneys.
+- Shelf plants come in 2-4 clumps per shelf run, big, medium and small, with crowns hanging over the lip, more of
+  them on the shaded side. Crack plants come in fewer, denser vertical runs, never single dots.
+- Masson spires stand in loose groves of 3-7 through the valley canopy (about a tenth of the crowns).
+- The flat-pad pines in the ring round each area (the ridge above the jade slip) go outside the keep zones: one forest
+  style.
+- The area cakes lost their cliff pines, so their lips get shrub clumps and small crowns leaning out (clear of
+  anything built and of the hold cameras), and their 49-degree aprons get scrub all over plus small crowns.
+- The streams that fed the range falls are hidden where they now hang in the air (a cut peak) or their fall is gone.
+  One was the long diagonal "beam" at f870 turned 30 degrees.
+- The abode's fern strips grow in runs of 2-3 plants abreast with bare joint between, not one plant every 1.8 m.
+- A culled islet's own top pines are hidden with it, and so are island pines with no rock under them (three
+  stood in the sky at f150).
+- On the page: the canopy tint gain drops from 2.0 to 1.0 (the new crowns bake brighter than the old pine pads); near
+  sunlit range rock is darkened to 0.78 within 140-320 m, so the f870 wall no longer outshines the formation; patches
+  of crowns 24 m across vary in value and warmth; tree sprite cards fade their flat top quad near level and their
+  upright pair from about 22-37 degrees above, so no disc shows under a crown and no X from above.
+
 ## How it is built
 
 Patches on the finished scene, rehearsed on a copy first, each with a digest and a dry run:

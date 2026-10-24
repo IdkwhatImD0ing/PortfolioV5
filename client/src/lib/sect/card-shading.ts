@@ -45,6 +45,16 @@ export const CARD_LOOK = {
    *   needle edge ends just over 1.0 and the bloom (threshold 1.0) catches it.
    */
   rim: { power: 5, litLo: 0.008, litHi: 0.07, base: 0.3, edge: 3.6, edgePx: 1.5 },
+  /**
+   * Sprite cards are two upright quads and a flat top quad (bake_trees.card_quads). Seen nearly
+   * level, the top quad showed as a flat disc under every crown; from high above, the uprights as
+   * an X (the r48 slice critic's F2). Each fades out by the view's elevation over the card (the sine
+   * of the angle above its plane, from the face's own normal): the top quad below `top[0]`
+   * (gone) to `top[1]` (full), the uprights from `side[0]` (full) to `side[1]` (gone): about 12-25
+   * and 22-37 degrees. (Measured on the r48 slice's chunks: with the uprights kept to 55 degrees, the
+   * f1055 look-down still showed X crowns, since most of that frame looks down 25-40 degrees.)
+   */
+  viewFade: { top: [0.2, 0.42] as const, side: [0.38, 0.6] as const },
 };
 
 export type CardLook = typeof CARD_LOOK;
@@ -135,6 +145,28 @@ export function cardSpriteBoostGlsl(look: CardLook = CARD_LOOK): string {
     `    diffuseColor.a *= 1.0 + sectMip * ${glslFloat(look.mipBoost.sprite)};`,
     "  }",
     "#endif",
+  ].join("\n");
+}
+
+/**
+ * GLSL after a sprite card's map (and cardSpriteBoostGlsl): the view-angle fade of its flat top quad
+ * and its upright pair (CARD_LOOK.viewFade). The face normal comes from the screen derivatives of
+ * vSectCardWorld, so the cards need no normals. Multiplies diffuseColor.a.
+ */
+export function cardViewFadeGlsl(look: CardLook = CARD_LOOK): string {
+  const f = look.viewFade;
+  return [
+    "  {",
+    "    vec3 sectCn = cross( dFdx( vSectCardWorld ), dFdy( vSectCardWorld ) );",
+    "    float sectCl = length( sectCn );",
+    "    if ( sectCl > 1e-8 ) {",
+    "      float sectUp = abs( sectCn.y ) / sectCl;",
+    "      float sectEl = abs( normalize( cameraPosition - vSectCardWorld ).y );",
+    `      float sectTop = smoothstep( ${glslFloat(f.top[0])}, ${glslFloat(f.top[1])}, sectEl );`,
+    `      float sectSide = 1.0 - smoothstep( ${glslFloat(f.side[0])}, ${glslFloat(f.side[1])}, sectEl );`,
+    "      diffuseColor.a *= mix( sectSide, sectTop, smoothstep( 0.6, 0.9, sectUp ) );",
+    "    }",
+    "  }",
   ].join("\n");
 }
 

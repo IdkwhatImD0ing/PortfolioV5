@@ -262,6 +262,7 @@ def _fall(coll, lip, outward, height, width, seed, name):
 
 
 _ISLAND_ROCK = re.compile(r"^scenery\.island(\.\d{3})?$")
+_ISLET_ROCK = re.compile(r"^world\.islet(\.\d{3})?$")
 
 
 def island_companions(rock):
@@ -270,6 +271,8 @@ def island_companions(rock):
     and its children, widened by NUDGE_REACH."""
     pts = []
     for x in [rock] + list(rock.children_recursive):
+        if x.type == 'MESH' and (x.modifiers.get("NatureScatter") is not None or not len(x.data.vertices)):
+            continue            # (a scatter carrier's empty mesh has its box at its origin)
         if x.type in ('MESH', 'CURVE'):
             pts += [x.matrix_world @ Vector(c) for c in x.bound_box]
     lo = Vector((min(p.x for p in pts), min(p.y for p in pts), min(p.z for p in pts)))
@@ -277,9 +280,10 @@ def island_companions(rock):
     side, down, up = NUDGE_REACH
     out = []
     for o in bpy.data.objects:
-        if o.parent is not None or o == rock or _ISLAND_ROCK.match(o.name):
+        if o.parent is not None or o == rock or _ISLAND_ROCK.match(o.name) or _ISLET_ROCK.match(o.name):
             continue
-        if not (o.name.startswith("scenery.island.") or o.name.startswith("life.")):
+        # (phase C: + world.islet.*, the islets' own top pines, which stayed in the air when their islet was culled)
+        if not (o.name.startswith("scenery.island.") or o.name.startswith("life.") or o.name.startswith("world.islet.")):
             continue
         p = o.matrix_world.translation
         if lo.x - side <= p.x <= hi.x + side and lo.y - side <= p.y <= hi.y + side and lo.z - down <= p.z <= hi.z + up:
@@ -739,8 +743,10 @@ R48_COLL = "scenery.r48"
 R48_HIDDEN = "r48_hidden"          # objects a round-48 part hid (hide_render): the part's undo shows them again
 # the masks of the old range scatters (forest_masks, density_masks, world.build_forest): zeroed outside the keep zones
 # (P-2); their values before are kept once in 'r48_bak_<name>' so the undo can put them back
+# (phase C, slice critic F8: + scenery_grove, the flat-pad Huangshan pines on bare trunks in the ring round each area,
+# e.g. the ridge above the jade slip, which met the new canopy in a hard line: one forest style outside the keep zones)
 OLD_RANGE_MASKS = ("scenery_forest", "scenery_cliff", "scenery_cliff_dense", "scenery_cliff_wall", "scenery_crown",
-                   "world_veg")
+                   "world_veg", "scenery_grove")
 CANOPY_NEAR = 90.0             # m from the camera path: nearer than this the canopy thins to CANOPY_NEAR_K (the bake
 CANOPY_NEAR_K = 0.6            # draws trees within --tree-near as 3D meshes; B0 had only 66 within 70 m at 0.3)
 CANOPY_DENSITY = 0.042         # broadleaf crowns per m2 at factor 1 (slice: 0.028 left gaps between single crowns)
@@ -773,12 +779,32 @@ HULL_STEP = 11.0               # m between hull clumps (jittered HULL_JITTER x t
 HULL_JITTER = 0.45             # grid of boulders (B0: 21 m apart with radius 5-10 m covered at most 40 %)
 HULL_R = (4.0, 12.0)           # clump radius: big, medium and small (C6)
 HULL_KEEP = (0.75, 0.5)        # a cell keeps its clump with chance KEEP[0] + KEEP[1] x the grove factor (B0: 0.35 + 0.5f)
-SHELF_DENSITY = 0.2            # shrubs per m2 of pillar shelf top (mean; in clumps of 3-15 by SHELF_CLUMP)
-SHELF_CLUMP = (6.0, 2.6)       # m across a shelf clump; density factor inside one (about 40 % of a shelf is in clumps)
-SHELF_CROWN = 0.05             # small broadleaf crowns (3-5.5 m) per m2 of shelf, in the same clumps: they overhang
-                               # the lip, so a shelf reads as a green band from the side, not a line of dots
-CRACK_DENSITY = 0.06           # ferns per m2 of pillar crack strip (mean; in vertical runs by CRACK_RUN)
-CRACK_RUN = (4.0, 30.0, 3.0)   # m across and m tall a run of crack plants; density factor inside one (strips, not dots)
+SHELF_DENSITY = 0.3            # shrubs per m2 of pillar shelf top (mean; in clumps of 3-15 by SHELF_CLUMP)
+SHELF_CLUMP = (9.0, 3.4)       # m across a shelf clump; density factor inside one (phase C, F6: 2-4 clumps per shelf
+SHELF_CLUMP_COVER = 0.65       # run, big, medium and small, bare shelf between; share of the shelf top in clumps)
+SHELF_CROWN = 0.12             # small broadleaf crowns (3-7 m) per m2 of shelf, in the same clumps: they overhang
+SHELF_CROWN_SCALE = (0.3, 0.7)  # the lip 0.5-2 m, so a shelf reads as a green mass from the side, not dots
+CRACK_DENSITY = 0.2            # ferns per m2 of pillar crack strip (mean; in vertical runs by CRACK_RUN)
+CRACK_RUN = (6.0, 24.0, 3.0)   # m across and m tall a run of crack plants; density factor inside one (strips, not dots)
+CRACK_COVER = 0.35             # share of the crack faces inside runs (phase C, F6: fewer, denser runs; no single dots)
+SHADE_W = (0.75, 1.35)         # shelf / crack factor on the sunlit / the shaded side of a pillar (F6: most of the
+                               # wall's green on the shaded and fissured side)
+SLIM_RIM_K = 2.5               # cap-rim crowns x this on a slim pillar (F5: its cap spills over the rim)
+SPIRE_GROVE = (16.0, 0.15)     # F9: Masson spires in the valley canopy in loose groves of 3-7: noise scale (m) and
+SPIRE_GROVE_DENSITY = 0.03     # the share of the canopy they take (about 10 % of the crowns); spires per m2 inside one
+SPIRE_GROVE_BROAD = 0.8        # broadleaf thinned by this inside a spire grove
+# F7: the area cakes' walls lost their cliff pines with the walls step: lip shrubs along each cake's rim (outside the
+# terrace's built things: RIM_BUILT_CLEAR m off any area mesh vertex), scrub over the 49 deg apron (patches everywhere,
+# not 40 % of it) and small crowns on it, never inside the keep zones, sight cones, links or the corridor
+RIM_LIP_DEPTH = (0.25, 4.5)    # m under the terrace: the lip band's faces
+RIM_LIP_OUT = 9.0              # m past the terrace's flat (footprint + world.TERRACE_PAD) the lip band reaches
+RIM_BUILT_CLEAR = 3.5          # m: no lip plant this near a vertex of an area's own mesh (halls, rails, stairs, piers)
+RIM_HOLD_CLEAR = 90.0          # m: no lip plant this near a hold camera (the keep zone is 60 m in frame)
+RIM_LIP_DENSITY = 0.3          # lip shrubs per m2 (mean; in clumps, RIM_LIP_CLUMP; quick stills: 0.12 read as a few dots)
+RIM_LIP_CLUMP = (8.0, 2.2)
+RIM_APRON = (6.0, 110.0, 12.0)  # the apron: from this far past the terrace's flat to this far, at least this far under it
+RIM_APRON_SCRUB = 2.6          # scrub factor on the apron (in-patch value everywhere)
+RIM_APRON_CROWN = 0.012        # small crowns (4-7 m) per m2 of apron (rule 1: 85-100 % green from beyond 50 m)
 CAP_DENSITY = 0.06             # broadleaf per m2 of pillar cap (a closed canopy cap from 50 m, rule 3)
 CAP_RIM_SPIRE = 0.012          # spires per m2 on the cap's outer quarter
 CAP_RIM_BROADLEAF = 0.03       # broadleaf per m2 on the cap's outer quarter, leaning out: 1-2 crowns spill over the rim
@@ -861,16 +887,18 @@ def _kd2(pts):
     return kd
 
 
-def r48_exclusion(rng_obj, cw, anchors, hold_views, star, path_d):
+def r48_exclusion(rng_obj, cw, anchors, hold_views, star, path_d, areas=True):
     """Faces of world.range no new plant may stand on (P-0): area terraces + AREA_CLEAR, the gate stair ramp, links
     (world.LINK_TREE_CLEAR), shrine terraces + 6 m and the chain bridge, the keep zones (60 m of a hold camera in its
-    frame, + 15 m), each hold's sight cone to its star, the cleared cliff of 思過崖, the flight corridor (TREE_CLEAR)."""
+    frame, + 15 m), each hold's sight cone to its star, the cleared cliff of 思過崖, the flight corridor (TREE_CLEAR).
+    ``areas`` False leaves the area terraces out (the cake rim's lip band, which checks the built things itself)."""
     from sect.lib import r48 as R
     n = len(cw)
     ex = np.zeros(n, bool)
     why = {}
-    for a in anchors.values():
-        ex |= np.hypot(cw[:, 0] - a[0], cw[:, 1] - a[1]) < a[3] + AREA_CLEAR
+    if areas:
+        for a in anchors.values():
+            ex |= np.hypot(cw[:, 0] - a[0], cw[:, 1] - a[1]) < a[3] + AREA_CLEAR
     why["areas"] = int(ex.sum())
     if "gate" in anchors:
         g = anchors["gate"]
@@ -920,8 +948,52 @@ def r48_exclusion(rng_obj, cw, anchors, hold_views, star, path_d):
         ex[idx] = True
         why["siguoya"] = int(len(idx))
     ex |= path_d < TREE_CLEAR
-    _log("r48 exclusion", int(ex.sum()), "faces", json.dumps(why))
+    _log("r48 exclusion%s" % ("" if areas else " (rim)"), int(ex.sum()), "faces", json.dumps(why))
     return ex
+
+
+def _cake_bands(cw, nz, top, anchors):
+    """(lip, apron) face masks of the areas' cakes (world.Range.fields: a flat terrace to footprint + TERRACE_PAD
+    (+ up to 6 m bulge), a 72 deg wall 10 m out, then the 49 deg apron): lip = the wall's top RIM_LIP_DEPTH m under the
+    terrace, out to RIM_LIP_OUT m past its flat; apron = RIM_APRON. The floating arena has no cake."""
+    lip = np.zeros(len(cw), bool)
+    apron = np.zeros(len(cw), bool)
+    for k, a in anchors.items():
+        if k in W.FLOATING:
+            continue
+        ax, ay, az, fp = (float(v) for v in a[:4])
+        d = np.hypot(cw[:, 0] - ax, cw[:, 1] - ay)
+        rf = fp + W.TERRACE_PAD
+        lip |= top & (d > fp + 2.0) & (d < rf + RIM_LIP_OUT) & (cw[:, 2] < az - 0.4 - RIM_LIP_DEPTH[0]) & \
+            (cw[:, 2] > az - 0.4 - RIM_LIP_DEPTH[1]) & (nz < 0.97)
+        apron |= top & (d > rf + RIM_APRON[0]) & (d < rf + RIM_APRON[1]) & (cw[:, 2] < az - RIM_APRON[2])
+    return lip, apron
+
+
+def _built_points(anchors, lo_z=60.0):
+    """World xyz of every vertex of the areas' own meshes (objects named '<area>.*', no scatter carriers) within
+    footprint + 40 m of their anchor and lo_z m under it to 6 m over it: what the cake's lip plants keep clear of."""
+    pts = []
+    keys = tuple(k + "." for k in anchors)
+    if not keys:
+        return np.zeros((0, 3))
+    for o in bpy.data.objects:
+        if o.type != 'MESH' or not o.name.startswith(keys) or o.hide_render or o.modifiers.get("NatureScatter"):
+            continue
+        a = anchors[o.name.split(".")[0]]
+        me = o.data
+        n = len(me.vertices)
+        if not n:
+            continue
+        co = np.empty(n * 3)
+        me.vertices.foreach_get("co", co)
+        mw = np.array(o.matrix_world)
+        P = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]
+        m = (np.hypot(P[:, 0] - a[0], P[:, 1] - a[1]) < a[3] + 40.0) & (P[:, 2] > a[2] - lo_z) & \
+            (P[:, 2] < a[2] + 6.0)
+        if m.any():
+            pts.append(np.unique(np.round(P[m] / 0.5), axis=0) * 0.5)      # one point per 0.5 m cell
+    return np.unique(np.concatenate(pts), axis=0) if pts else np.zeros((0, 3))
 
 
 def _grid_concavity(cw, top):
@@ -1002,7 +1074,50 @@ def r48_canopy_masks(rng_obj, scene, anchors, hold_views, star, scope=None):
     R.face_attr(rng_obj, "r48_f_crest", np.where(crest, f_crest, 0.0).astype(np.float32))
     # scrub in patches, not spread evenly (rule 2): the slope factor x SCRUB_CLUMP[1] inside patches, 0 between them
     patch = SCRUB_CLUMP[1] * W._smooth(0.05, 0.25, noise(cw[:, 0], cw[:, 1], 1.0 / SCRUB_CLUMP[0], o=11))
+    # (F7) the cakes' 49 deg aprons: scrub everywhere on them (patches all over), small crowns among it
+    lip, apron = _cake_bands(cw, nz, top, anchors)
+    apr = slope & apron
+    patch = np.where(apr, RIM_APRON_SCRUB, patch)
     R.face_attr(rng_obj, "r48_f_scrub", np.where(slope, f * patch, 0.0).astype(np.float32))
+    R.face_attr(rng_obj, "r48_apron", apr.astype(np.float32))
+    out["r48_apron"] = round(float(area[apr].sum()))
+    # (F9) Masson spires in the valley canopy, in loose groves of 3-7 (SPIRE_GROVE[1] of the canopy), the broadleaf
+    # thinned inside them
+    sg = noise.fbm(cw[:, 0], cw[:, 1], 1.0 / SPIRE_GROVE[0], 2, o=13)
+    thr = float(np.quantile(sg[canopy], 1.0 - SPIRE_GROVE[1])) if canopy.any() else 9.0
+    g = W._smooth(thr - 0.03, thr + 0.03, sg)
+    R.face_attr(rng_obj, "r48_f_spire", np.where(canopy, f * g, 0.0).astype(np.float32))
+    R.face_attr(rng_obj, "r48_f_broad", np.where(canopy | slope, f * (1.0 - SPIRE_GROVE_BROAD * g), 0.0)
+                .astype(np.float32))
+    out["r48_spire_grove"] = round(float(area[canopy & (g > 0.5)].sum()))
+    # (F7) the lip band: no area-terrace exclusion, but RIM_BUILT_CLEAR m off every vertex of the areas' own meshes,
+    # plus the rest of the exclusion (links, keep zones, sight cones, corridor ...)
+    lip &= above & insc
+    lip_d = np.full(len(cw), 1e9)
+    if lip.any():
+        lip_d = _path_dist(kd, cw, lip)
+        exr = r48_exclusion(rng_obj, cw, anchors, hold_views, star, np.where(lip, lip_d, path_d), areas=False)
+        lip &= ~exr
+        # (q2 rehearsal: two lip plants at the frame's edge entered the mission hold's keep zone) no lip plant within
+        # RIM_HOLD_CLEAR m of any hold camera, in frame or not
+        for v in hold_views:
+            lip &= np.linalg.norm(cw - v.pos, axis=1) > RIM_HOLD_CLEAR
+        bp = _built_points(anchors)
+        if len(bp) and lip.any():
+            kdb = kdtree.KDTree(len(bp))
+            for i, p in enumerate(bp):
+                kdb.insert(tuple(p), i)
+            kdb.balance()
+            idx = np.nonzero(lip)[0]
+            near_b = np.array([kdb.find(tuple(cw[i]))[2] < RIM_BUILT_CLEAR for i in idx], bool)
+            lip[idx[near_b]] = False
+            _log("r48 rim: %d built vertices; %d lip faces, %d dropped near built things" % (
+                len(bp), int(lip.sum()), int(near_b.sum())))
+    lclump = RIM_LIP_CLUMP[1] * W._smooth(0.0, 0.2, noise(cw[:, 0], cw[:, 1], 1.0 / RIM_LIP_CLUMP[0], o=17))
+    R.face_attr(rng_obj, "r48_lip", lip.astype(np.float32))
+    R.face_attr(rng_obj, "r48_f_lip", np.where(lip, lclump * np.where(lip_d < CANOPY_NEAR, CANOPY_NEAR_K, 1.0), 0.0)
+                .astype(np.float32))
+    out["r48_lip"] = round(float(area[lip].sum()))
     _log("r48 masks (m2)", json.dumps(out), "forest mode", FOREST_MODE)
     return dict(area_m2=out, path_d=path_d, cw=cw, nz=nz, top=top, lap=lap, f=f, scope=insc)
 
@@ -1057,10 +1172,12 @@ def r48_range_canopy(rng_obj, coll):
     spring-green accents in clusters. Returns {scatter: name}."""
     made = {}
     specs = (
-        ("scenery.r48.broadleaf", N.canopy_prototypes("broadleaf"), CANOPY_DENSITY, "r48_canopy", "r48_f",
+        ("scenery.r48.broadleaf", N.canopy_prototypes("broadleaf"), CANOPY_DENSITY, "r48_canopy", "r48_f_broad",
          CANOPY_SCALE, 40.0, 4811),
         ("scenery.r48.spire", N.canopy_prototypes("spire"), SPIRE_DENSITY, "r48_crest", "r48_f_crest", SPIRE_SCALE,
          60.0, 4813),
+        ("scenery.r48.spire_grove", N.canopy_prototypes("spire"), SPIRE_GROVE_DENSITY, "r48_canopy", "r48_f_spire",
+         SPIRE_SCALE, 40.0, 4829),
         ("scenery.r48.pine", N.plant_prototypes("forest")[:6], PINE_DENSITY, "r48_crest", "r48_f_crest", PINE_SCALE,
          60.0, 4817),
         ("scenery.r48.scrub", N.canopy_prototypes("scrub"), SCRUB_DENSITY, "r48_slope", "r48_f_scrub", SCRUB_SCALE,
@@ -1073,6 +1190,28 @@ def r48_range_canopy(rng_obj, coll):
                            scale_range=scale, collection=coll, name=name, align=0.08, mask_attribute=mask,
                            factor_attribute=fac)
         ob[R48_TAG] = "canopy"
+        made[name] = ob.name
+    return made
+
+
+def r48_rim_plants(rng_obj, coll):
+    """F7 (phase C's rim part): the area cakes, which lost their cliff pines with the walls step: shrub clumps and
+    small crowns leaning out along each cake's lip ('r48_lip' x 'r48_f_lip', clear of the terrace's built things) and
+    small crowns over the 49 deg apron among its scrub ('r48_apron'). Needs r48_canopy_masks. Tagged 'rim'."""
+    made = {}
+    specs = (
+        ("scenery.r48.rim_lip", N.canopy_prototypes("shelf"), RIM_LIP_DENSITY, "r48_lip", "r48_f_lip", (1.2, 2.6),
+         80.0, 0.5, 4831),
+        ("scenery.r48.rim_crown", N.canopy_prototypes("broadleaf"), RIM_LIP_DENSITY * 0.4, "r48_lip", "r48_f_lip",
+         (0.35, 0.65), 80.0, 0.35, 4833),
+        ("scenery.r48.apron_crown", N.canopy_prototypes("broadleaf"), RIM_APRON_CROWN, "r48_apron", "r48_f",
+         (0.4, 0.7), 61.0, 0.12, 4837),
+    )
+    for name, protos, dens, mask, fac, scale, slope, align, seed in specs:
+        ob = N.rscatter_on(rng_obj, protos, density=dens, seed=seed, max_slope=math.radians(slope),
+                           scale_range=scale, collection=coll, name=name, align=align, mask_attribute=mask,
+                           factor_attribute=fac)
+        ob[R48_TAG] = "rim"
         made[name] = ob.name
     return made
 
@@ -1094,11 +1233,35 @@ def _shelf_clumps(ob):
     me.polygons.foreach_get("center", c)
     c = c.reshape(-1, 3)
     nz = W._VNoise(4903 + int(ob.get("r48_peak", 0)))
-    v = nz(c[:, 0] + 0.7 * c[:, 2], c[:, 1] - 0.45 * c[:, 2], 1.0 / SHELF_CLUMP[0], o=5)
-    f = (SHELF_CLUMP[1] * W._smooth(0.05, 0.25, v)).astype(np.float32)
+    # (phase C, F6) two scales of noise, so clumps come big, medium and small; a fixed share of the shelf top in them
+    x, y = c[:, 0] + 0.7 * c[:, 2], c[:, 1] - 0.45 * c[:, 2]
+    v = nz(x, y, 1.0 / SHELF_CLUMP[0], o=5) + 0.45 * nz(x, y, 2.4 / SHELF_CLUMP[0], o=9)
+    sh = _attr(me, "nature_shelf") > 0.5
+    thr = float(np.quantile(v[sh], 1.0 - SHELF_CLUMP_COVER)) if sh.any() else 0.1
+    f = (SHELF_CLUMP[1] * W._smooth(thr - 0.04, thr + 0.04, v) * _shade_w(c)).astype(np.float32)
     at = me.attributes.get("r48_shelf_f") or me.attributes.new("r48_shelf_f", 'FLOAT', 'FACE')
     at.data.foreach_set("value", f)
     me.update()
+
+
+def _attr(me, name):
+    """A FACE float attribute of mesh ``me`` as an array (zeros when missing)."""
+    v = np.zeros(len(me.polygons), np.float32)
+    at = me.attributes.get(name)
+    if at is not None:
+        at.data.foreach_get("value", v)
+    return v
+
+
+def _shade_w(c):
+    """Per pillar-local face centre: SHADE_W[1] on the side away from the sun, SHADE_W[0] on the sunlit side (the
+    pillar is not rotated, so its local x / y are the world's)."""
+    from sect.lib import look as L
+    s = np.array([L.SUN_DIR.x, L.SUN_DIR.y], float)
+    s /= max(1e-9, float(np.hypot(*s)))
+    r = np.hypot(c[:, 0], c[:, 1])
+    facing = (c[:, 0] * s[0] + c[:, 1] * s[1]) / np.maximum(r, 1e-6)
+    return SHADE_W[0] + (SHADE_W[1] - SHADE_W[0]) * W._smooth(0.5, -0.5, facing)
 
 
 def _crack_runs(ob):
@@ -1113,7 +1276,11 @@ def _crack_runs(ob):
     arc = np.arctan2(c[:, 1], c[:, 0]) * tr
     nz = W._VNoise(4907 + int(ob.get("r48_peak", 0)))
     v = nz(arc / CRACK_RUN[0], c[:, 2] / CRACK_RUN[1], 1.0, o=6)
-    f = (CRACK_RUN[2] * W._smooth(0.05, 0.3, v)).astype(np.float32)
+    # (phase C, F6) a fixed share of the crack faces in runs (fewer, denser runs, never single dots), more of them on
+    # the shaded side
+    ck = _attr(me, "nature_crack") > 0.5
+    thr = float(np.quantile(v[ck], 1.0 - CRACK_COVER)) if ck.any() else 0.2
+    f = (CRACK_RUN[2] * W._smooth(thr - 0.04, thr + 0.04, v) * _shade_w(c)).astype(np.float32)
     at = me.attributes.get("r48_crack_f") or me.attributes.new("r48_crack_f", 'FLOAT', 'FACE')
     at.data.foreach_set("value", f)
     me.update()
@@ -1151,10 +1318,11 @@ def r48_pillar_plants(coll, scope=None):
                  0.05),
                 (".shelf", N.canopy_prototypes("shelf"), SHELF_DENSITY, "nature_shelf", (1.2, 2.4), 60.0, 0.2),
                 (".crack", N.canopy_prototypes("fern"), CRACK_DENSITY, "nature_crack", (0.5, 1.0), 84.0, 0.5),
-                (".cap_rim", N.canopy_prototypes("broadleaf"), CAP_RIM_BROADLEAF, "r48_rim", (0.6 * ks, 1.05 * ks),
+                (".cap_rim", N.canopy_prototypes("broadleaf"),
+                 CAP_RIM_BROADLEAF * (SLIM_RIM_K if tr < N.SLIM_R else 1.0), "r48_rim", (0.6 * ks, 1.05 * ks),
                  75.0, 0.35),
-                (".shelf_crown", N.canopy_prototypes("broadleaf"), SHELF_CROWN, "nature_shelf", (0.3, 0.55), 60.0,
-                 0.3)):
+                (".shelf_crown", N.canopy_prototypes("broadleaf"), SHELF_CROWN, "nature_shelf", SHELF_CROWN_SCALE,
+                 60.0, 0.3)):
             if nm in (".shelf", ".shelf_crown", ".crack"):
                 s = N.rscatter_on(ob, protos, density=dens, seed=seed, max_slope=math.radians(slope),
                                   scale_range=scale, collection=coll, name=ob.name + nm, align=align,
@@ -1375,6 +1543,9 @@ R48_RANGE_FALL_W = (12.0, 22.0)
 def _tree_box(obs):
     pts = []
     for x in obs:
+        if x.type == 'MESH' and (x.modifiers.get("NatureScatter") is not None or not len(x.data.vertices)):
+            continue            # (phase C: a scatter carrier's empty mesh has its box at its origin: an island
+            #                     with a cap scatter measured 800-1000 m wide and showed in every frame)
         if x.type in ('MESH', 'CURVE'):
             pts += [list(x.matrix_world @ Vector(c)) for c in x.bound_box]
     return np.array(pts) if pts else None
@@ -1419,6 +1590,9 @@ def r48_isles(intent, hold_views, star, log=None):
         for comp in island_companions(rock):
             objs += [comp] + list(comp.children_recursive)
         hid += r48_hide(objs, "isles")
+    # every culled rock, from this run or an earlier one: its companions go with it (phase C: the islets' top pines
+    # floated in the sky at f150 once their islets were hidden)
+    hid += _hide_culled_companions()
     kept = [r["name"] for i, r in enumerate(recs) if i not in gone]
     per_hold = {v.name: sum(1 for x in vis.get(v.name, []) if x[0] not in gone) for v in hold_views}
     worst = max((sum(1 for x in vis.get(v.name, []) if x[0] not in gone), v.name) for v in views)
@@ -1428,6 +1602,63 @@ def r48_isles(intent, hold_views, star, log=None):
            worst[0], worst[1]))
     return dict(kept=kept, gone={recs[i]["name"]: why for i, why in gone.items()}, per_hold=per_hold,
                 worst_frame=list(worst))
+
+
+def _hide_culled_companions():
+    """Hide the top-level companions (scenery.island.*, world.islet.*: top pines, blossoms, falls) standing on any rock
+    the isles part has hidden, by the rock's own box widened by NUDGE_REACH (one pass over the objects; per rock
+    island_companions with children_recursive took minutes over 80 rocks). Not life.*: the life pass's chain bridge
+    has its origin at the world's origin, inside a culled island's box, and is a location (rule 13); a first try hid
+    it, so any life.* object hidden as 'isles' is shown again here. Returns the number hidden."""
+    for o in bpy.data.objects:
+        if o.name.startswith("life.") and o.get(R48_HIDDEN) == "isles":
+            o.hide_render = False
+            o.hide_viewport = False
+            del o[R48_HIDDEN]
+    side, down, up = NUDGE_REACH
+    boxes = []
+    for prefix in ("scenery.island", "world.islet"):
+        for rock in _rocks(prefix):
+            if rock.get(R48_HIDDEN) != "isles":
+                continue
+            bb = np.array([list(rock.matrix_world @ Vector(c)) for c in rock.bound_box])
+            lo, hi = bb.min(0), bb.max(0)
+            boxes.append((lo[0] - side, hi[0] + side, lo[1] - side, hi[1] + side, lo[2] - down, hi[2] + up))
+    B = np.array(boxes, float).reshape(-1, 6)
+    kids = {}
+    for o in bpy.data.objects:
+        if o.parent is not None:
+            kids.setdefault(o.parent.name, []).append(o)
+    out = []
+    for o in bpy.data.objects:
+        if o.parent is not None or o.hide_render or _ISLAND_ROCK.match(o.name) or _ISLET_ROCK.match(o.name):
+            continue
+        if not o.name.startswith(("scenery.island.", "world.islet.")):
+            continue
+        p = o.matrix_world.translation
+        if ((B[:, 0] <= p.x) & (p.x <= B[:, 1]) & (B[:, 2] <= p.y) & (p.y <= B[:, 3]) & (B[:, 4] <= p.z) &
+                (p.z <= B[:, 5])).any():
+            stack = [o]
+            while stack:
+                x = stack.pop()
+                out.append(x)
+                stack += kids.get(x.name, [])
+    # orphans: top pines with no visible island or islet under them (c_still f150: three world.islet pines stood in
+    # the sky 250-300 m from the nearest islet)
+    _rk, recs = r48_isle_records()
+    C = np.array([r["c"] for r in recs], float).reshape(-1, 3)
+    Sz = np.array([r["size"] for r in recs], float)
+    for o in bpy.data.objects:
+        if o.parent is not None or o.hide_render or not o.name.startswith(("world.islet.pine", "scenery.island.pine")):
+            continue
+        p = np.array(o.matrix_world.translation)
+        if not len(C) or not (np.hypot(C[:, 0] - p[0], C[:, 1] - p[1]) < np.maximum(15.0, 0.8 * Sz)).any():
+            stack = [o]
+            while stack:
+                x = stack.pop()
+                out.append(x)
+                stack += kids.get(x.name, [])
+    return r48_hide(out, "isles")
 
 
 def r48_unhide_isles():
@@ -1506,9 +1737,57 @@ def r48_falls(intent, hold_views, kept_islands, log=None):
         for p in W.fall_mist(coll, lip, yaw, h, w, U.seed_from(o.name, "mist") % 100000):
             p[R48_TAG] = "falls"
         made += 1
+    streams = r48_streams(log=log)
     log("r48 falls: %d rebuilt (shorter, arcing, spray chains), %d gone, %d objects hidden, Ice-Fire's kept"
         % (made, len(gone), hidden))
-    return dict(rebuilt=made, gone={recs[i]["name"]: why for i, why in gone.items()}, hidden=hidden)
+    return dict(rebuilt=made, gone={recs[i]["name"]: why for i, why in gone.items()}, hidden=hidden,
+                streams=streams)
+
+
+STREAM_GAP = 2.5               # m: a stream vertex this far over world.range (or the round-48 surface) is in the air
+
+
+def r48_streams(log=None):
+    """The shallow streams that feed the range falls (world.stream*, world.build_waterfalls) were draped over the
+    range as built. Where a peak's cone was cut for a pillar, or where their fall is gone, they hang in the air as a
+    straight bright ribbon (the slice critic's N4: the long diagonal 'beam' at f870 turned 30 degrees). Any stream with
+    a vertex more than STREAM_GAP m over the ground under it, or whose fall is hidden, is hidden (r48_hidden
+    'falls'). Returns the names hidden."""
+    log = log or _log
+    rng = bpy.data.objects.get("world.range")
+    if rng is None:
+        return []
+    dg = bpy.context.evaluated_depsgraph_get()
+    bvh = BVHTree.FromObject(rng, dg)
+    mwi = rng.matrix_world.inverted()
+    falls = [o for o in bpy.data.objects if re.match(r"^world\.waterfall(\.\d{3})?$", o.name) and o.type == 'EMPTY']
+    out = []
+    for o in bpy.data.objects:
+        if not re.match(r"^world\.stream(\.\d{3})?$", o.name) or o.type != 'MESH' or o.get(R48_HIDDEN):
+            continue
+        me = o.data
+        n = len(me.vertices)
+        co = np.empty(n * 3)
+        me.vertices.foreach_get("co", co)
+        mw = np.array(o.matrix_world)
+        P = co.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3]
+        worst = 0.0
+        for p in P[:-8:2]:          # (not the last 4 pairs: past the lip the ray meets the range far below)
+            hit = bvh.ray_cast(mwi @ Vector((p[0], p[1], p[2] + 0.5)), Vector((0.0, 0.0, -1.0)), 2000.0)
+            if hit[0] is None:
+                continue            # (past the range's outline at the lip: q2 rehearsal counted that as in the air)
+            worst = max(worst, (p[2] + 0.5) - (rng.matrix_world @ hit[0]).z)
+        end = P[-1]
+        fall = min(falls, key=lambda f: (f.matrix_world.translation - Vector(tuple(end))).length) if falls else None
+        fall_gone = fall is not None and fall.get(R48_HIDDEN) == "falls" and \
+            not any(c.get(R48_TAG) == "falls" and (c.matrix_world.translation - fall.matrix_world.translation).length
+                    < 1.0 for c in bpy.data.objects if c.type == 'EMPTY' and c.name.startswith("world.r48_fall"))
+        if worst > STREAM_GAP or fall_gone:
+            r48_hide([o], "falls")
+            out.append(o.name)
+            log("r48 stream hidden: %s (highest %.1f m over the ground%s)" % (
+                o.name, worst, "; its fall is gone" if fall_gone else ""))
+    return out
 
 
 def r48_horizon(scene, log=None):
@@ -1542,7 +1821,7 @@ def build(scene):
     _log("triangles", U.evaluated_triangle_count(coll))
 
 
-def build_r48(scene, parts=("isles", "walls", "canopy", "shelves", "hero", "forest"), scope=None):
+def build_r48(scene, parts=("isles", "walls", "canopy", "rim", "shelves", "hero", "forest"), scope=None):
     """Round 48 on a fresh build (sect/patch_r48_isles.py and patch_r48_green.py do the same on a finished scene):
     the islands and falls culled to the holds' intent (lib.compose), canopy caps on the kept ones, the old range
     scatters zeroed outside the keep zones, the broadleaf canopy, shelf / crack / cap plants on the pillars, hero
@@ -1568,11 +1847,14 @@ def build_r48(scene, parts=("isles", "walls", "canopy", "shelves", "hero", "fore
     if "walls" in parts:
         out["walls"] = r48_walls_out(rng_obj, hv, scope)
     masks = None
-    if any(p in parts for p in ("canopy", "forest")):
+    if any(p in parts for p in ("canopy", "forest", "rim")):
         masks = r48_canopy_masks(rng_obj, scene, an, hv, star, scope)
     if "canopy" in parts:
         r48_remove(("canopy",))
         out["canopy"] = r48_range_canopy(rng_obj, coll)
+    if "rim" in parts:
+        r48_remove(("rim",))
+        out["rim"] = r48_rim_plants(rng_obj, coll)
     if "shelves" in parts:
         r48_remove(("shelves",))
         out["shelves"] = r48_pillar_plants(coll, scope)

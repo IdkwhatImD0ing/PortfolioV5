@@ -38,7 +38,7 @@ import {
   type IUniform,
   type Object3D,
 } from "three";
-import { cardAlphaKind, cardAlphaMapGlsl, cardAlphaTestGlsl, cardRimGlsl, cardSpriteBoostGlsl, isCutoutCard } from "@/lib/sect/card-shading";
+import { cardAlphaKind, cardAlphaMapGlsl, cardAlphaTestGlsl, cardRimGlsl, cardSpriteBoostGlsl, cardViewFadeGlsl, isCutoutCard } from "@/lib/sect/card-shading";
 import { DETAIL_NOISE, detailApplyGlsl, detailClass, detailGlsl, detailProgramKey, detailVertexGlsl, type DetailClass } from "@/lib/sect/detail";
 import { domeGlsl } from "@/lib/sect/formation";
 import {
@@ -793,6 +793,8 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
           shade ? "  sectGraded = sectTreeShade( sectGraded, sectTexel );" : "",
           // Range foliage held short of lime; far trunks turned to the canopy's shade.
           foliage ? "  sectGraded = sectFoliageRange( sectGraded, sectTexel, sectRw, length( vSectWorld - cameraPosition ) );" : "",
+          // Patches of warmer, cooler, darker and lighter crowns (range-look.ts foliage.vary: mixed species, not one clone).
+          foliage ? "  sectGraded = sectCanopyVary( sectGraded, sectTexel, vSectWorld, sectRw );" : "",
           // Glow surfaces (material colour > 1) keep a little extra colour, so they read gold /
           // amber / jade rather than white once bloom and the hue-preserving clip are applied.
           "  if ( max( diffuse.r, max( diffuse.g, diffuse.b ) ) > 1.001 ) {",
@@ -939,7 +941,7 @@ export function patchCardMaterial(mat: MeshBasicMaterial, opts: { alphaToCoverag
     // the cut-out and the twig's detail; sprite cards with the map's alpha.
     fs = kind
       ? fs.replace("#include <alphamap_fragment>", cardAlphaMapGlsl(kind))
-      : fs.replace("#include <map_fragment>", `#include <map_fragment>\n${cardSpriteBoostGlsl()}`);
+      : fs.replace("#include <map_fragment>", `#include <map_fragment>\n${cardSpriteBoostGlsl()}\n${cardViewFadeGlsl()}`);
     shader.fragmentShader = fs
       .replace("#include <alphatest_fragment>", cardAlphaTestGlsl(kind))
       .replace("#include <opaque_fragment>", `${cardRimGlsl()}\n#include <opaque_fragment>`);

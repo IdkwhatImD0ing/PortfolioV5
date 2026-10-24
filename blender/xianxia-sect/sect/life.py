@@ -1214,6 +1214,8 @@ PATH_GRADE = 0.18              # rise per metre along it
 PATH_DS = 1.5                  # m between samples along it
 PATH_RISE = (0.3, 45.0)        # it climbs this share of the pillar's height over its plinth, at most this many m
 PATH_TAG = "r48path"
+PATH_AWAY = 150.0              # m: nothing of a walkway or pavilion nearer the camera path (phase C: two pavilions
+                               # stood 129 and 150 m off it; candidates now keep their whole reach this far away)
 
 
 def _pillar_objects():
@@ -1223,10 +1225,15 @@ def _pillar_objects():
 
 def path_candidates(hold_views):
     """[(score, pillar, hold, azimuth facing that hold)]: round-48 pillars a hold shows whole-ish, PATH_D m off."""
+    from sect.lib import r48 as R
     out = []
+    path = R.path_points(2)
     for ob in _pillar_objects():
         p = np.array(ob.matrix_world.translation)
         tz = float(ob["nature_top_z"])
+        reach = float(ob["nature_top_radius"]) * 1.7 + 14.0          # the foot pavilion's ring, plus its deck
+        if len(path) and float(np.hypot(path[:, 0] - p[0], path[:, 1] - p[1]).min()) < PATH_AWAY + reach:
+            continue
         best = None
         for v in hold_views:
             d = float(np.linalg.norm(p[:2] - v.pos[:2]))

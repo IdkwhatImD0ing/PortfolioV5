@@ -8,13 +8,16 @@ AFTER patch_r48_range.py (the pillars must exist for 'shelves' and 'hero'):
         --python E:/Github/PortfolioV5/blender/xianxia-sect/sect/patch_r48_green.py -- \
         PARTS=walls,canopy,shelves,hero,forest SCOPE=b0 FOREST=hull [DRY_RUN=1]
 
-PARTS (default walls,canopy,shelves,hero,forest,rock,abode):
+PARTS (default walls,canopy,rim,shelves,hero,forest,rock,abode):
   walls       P-2: the old range scatters' masks (scenery.forest, .cliffpines, .cliffpines.dense, .walls, .crowns,
               world.range.forest) zeroed outside the keep zones (60 m of a hold camera, in frame): their trees there
               stay exactly; the life.ledge trees elsewhere hidden. walls_undo puts both back.
   canopy      P-3: masks r48_* on world.range (exclusion: areas, links, shrines, bridge, keep zones, sight cones,
               思過崖, corridor) and the range-only scatters scenery.r48.broadleaf / .spire / .pine / .scrub / .accent
               (group nature.rscatter.random; the shared nature.scatter.* groups are not touched).
+  rim         phase C (slice critic F7): the area cakes' lip shrubs and small crowns (clear of the terraces' built
+              things) and small crowns on their 49 deg aprons (scenery.r48.rim_lip / .rim_crown / .apron_crown);
+              the apron's dense scrub comes with the canopy masks. Tagged 'rim'; PARTS without it leaves them out.
   shelves     P-2 on the pillars: cap canopy + rim spires, shelf shrubs, crack ferns (scatters under each pillar).
   hero        rule 7: hero pines on the rims of the pillars each hold shows (holds_intent hero_pines).
   forest      P-4 by FOREST (scenery.FOREST_MODE): cards | shell150 | shell250 | hull. Shell / hull objects
@@ -56,8 +59,8 @@ from sect.lib import materials as M  # noqa: E402
 from sect.lib import nature as N  # noqa: E402
 from sect.lib import r48 as R  # noqa: E402
 
-PARTS = ("walls", "canopy", "shelves", "hero", "forest", "rock", "abode", "abode_undo", "walls_undo")
-DEFAULT_PARTS = ("walls", "canopy", "shelves", "hero", "forest", "rock", "abode")
+PARTS = ("walls", "canopy", "rim", "shelves", "hero", "forest", "rock", "abode", "abode_undo", "walls_undo")
+DEFAULT_PARTS = ("walls", "canopy", "rim", "shelves", "hero", "forest", "rock", "abode")
 NEAR_D = 70.0                  # bake_trees --tree-near
 NEAR_MAX = 4000                # stop when more round-48 trees than this stand within NEAR_D of the path
 
@@ -170,12 +173,15 @@ def main():
     if "walls" in parts:
         res["walls"] = S.r48_walls_out(rng_obj, hv, discs)
     masks = None
-    if "canopy" in parts or "forest" in parts:
+    if "canopy" in parts or "forest" in parts or "rim" in parts:
         masks = S.r48_canopy_masks(rng_obj, scene, an, hv, star, discs)
         res["mask_m2"] = masks["area_m2"]
     if "canopy" in parts:
         S.r48_remove(("canopy",))
         res["canopy"] = S.r48_range_canopy(rng_obj, coll)
+    if "rim" in parts:
+        S.r48_remove(("rim",))
+        res["rim"] = S.r48_rim_plants(rng_obj, coll)
     if "shelves" in parts:
         S.r48_remove(("shelves",))
         res["shelves"] = S.r48_pillar_plants(coll, discs)

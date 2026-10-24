@@ -2060,6 +2060,11 @@ class _PillarShape:
     def __init__(self, seed, height, top_r, bot_r, top_z, lod, preset=None):
         r = U.rng("nature.pillar", seed)
         self.r = r
+        self.seed = seed
+        self.shelf_sp = []          # round 48 (preset shapes): per bed, the shelf's protrusion (0 on a plain bed)
+        self.shelf_t = []           # ... and the threshold of its angle window (shelf_win)
+        self.deep = []              # ... slim pillars' deep clefts: (angle, depth m, half width rad)
+        self.taper_k = (preset or {}).get("taper", 1.0)
         self.lod = lod
         self.h, self.tr, self.br, self.tz = height, top_r, bot_r, top_z
         self.off = Vector((r.uniform(-90, 90), r.uniform(-90, 90), r.uniform(-90, 90)))
@@ -2122,13 +2127,45 @@ class _PillarShape:
             if mas and i > 1 and r.random() < mas[0]:
                 t *= r.uniform(mas[1], mas[2])
             if i > 1 and r.random() < P["shelf_p"]:
-                amp = base + max(r.uniform(*P["shelf_amp"]) * R, smin)
+                sp = max(r.uniform(*P["shelf_amp"]) * R, smin)
+                amp = base + sp
             else:
                 base = r.uniform(-1.0, 1.0) * P["bed_amp"] * R
                 amp = base
+                sp = 0.0
             self.layers.append((z, z - t, amp))
+            self.shelf_sp.append(sp)
             z -= t
             i += 1
+        # Round 48, phase C (slice critic F4): a shelf is a broken arc, not a ring. Its protrusion fades into the wall
+        # outside an angle window (low-frequency noise per bed through a smoothstep) that covers SHELF_COVER of the
+        # way round, a different share per bed, in one or two arcs; shelves on neighbouring pillars never line up.
+        o = self.off
+        ths = [2 * math.pi * k / 48 for k in range(48)]
+        for i, sp in enumerate(self.shelf_sp):
+            if sp <= 0.0:
+                self.shelf_t.append(0.0)
+                continue
+            vals = sorted(self._win_noise(math.cos(t), math.sin(t), i) for t in ths)
+            u = 0.5 + 0.5 * _n(Vector((i * 1.37, 3.1, 0.7)) + o * 0.6)
+            cover = SHELF_COVER[0] + (SHELF_COVER[1] - SHELF_COVER[0]) * max(0.0, min(1.0, u))
+            self.shelf_t.append(vals[max(0, min(47, int(round((1.0 - cover) * 48))))])
+        # (F5) slim pillars: one or two deep clefts that split the column, from their own random stream
+        if P.get("deep"):
+            rd = U.rng("nature.pillar.deep", self.seed)
+            for k in range(rd.randint(*P["deep"])):
+                self.deep.append((rd.uniform(0.0, 2 * math.pi), rd.uniform(*P["deep_k"]) * R, rd.uniform(0.07, 0.12)))
+
+    def _win_noise(self, c, s, i):
+        return _n(Vector((c * SHELF_WIN_F, s * SHELF_WIN_F, i * 2.9)) + self.off * 1.9)
+
+    def shelf_win(self, c, s, i):
+        """0..1: how much of bed i's shelf stands out at angle (c, s) (1 inside its arcs, 0 where it fades into the
+        wall); 0 on a plain bed or a shape without presets."""
+        if i >= len(self.shelf_sp) or self.shelf_sp[i] <= 0.0:
+            return 0.0
+        t = self.shelf_t[i]
+        return _smoothstep(t - SHELF_WIN_EDGE, t + SHELF_WIN_EDGE, self._win_noise(c, s, i))
 
     def fissure(self, th, z):
         """Strength (0 .. ~1.4) of the major fissure term of radius() at (th, z): 1 in the middle of a cleft."""
@@ -2138,7 +2175,13 @@ class _PillarShape:
         w1 = 0.25 * _n(Vector((c * 1.5, s * 1.5, z * 0.03)) + o)
         g1 = 1.0 - abs(_n(Vector((c * fm + w1, s * fm - w1, z * 0.6 / self.R)) + o * 0.7))
         fade = 0.55 + 0.45 * _n(Vector((c * 0.7, s * 0.7, z * 0.04)) + o * 1.3)
-        return (g1 ** 9) * max(0.0, fade) * 1.4
+        f = (g1 ** 9) * max(0.0, fade) * 1.4
+        for a0, _dd, hw in self.deep:           # (phase C) a slim pillar's deep clefts are crack strips too
+            th_c = a0 + 0.12 * _n(Vector((z * 0.025, 1.7, a0)) + o)
+            d = math.atan2(math.sin(th - th_c), math.cos(th - th_c)) / (1.6 * hw)
+            if abs(d) < 1.0:
+                f = max(f, (1.0 - d * d) ** 2)
+        return f
 
     def layer_at(self, z):
         for i, (zt, zb, a) in enumerate(self.layers):
@@ -2150,7 +2193,7 @@ class _PillarShape:
     def radius(self, th, z, detail=True):
         c, s = math.cos(th), math.sin(th)
         u = max(0.0, min(1.0, (self.tz - z) / self.h))
-        R = _lerp(self.tr, self.br, u) * (1.0 + self.bulge * math.sin(math.pi * u))
+        R = _lerp(self.tr, self.br, u ** self.taper_k) * (1.0 + self.bulge * math.sin(math.pi * u))
         o = self.off
         lob = self.lobe_a * R * _fbm(Vector((c * 1.1, s * 1.1, z * 0.5 / self.R)) + o, 3)
         # major fissures: sharp narrow clefts, wandering a little and fading in and out with height
@@ -2161,12 +2204,27 @@ class _PillarShape:
         major = self.major_a * (g1 ** 9) * max(0.0, fade) * 1.4
         # bed profile: protrusion of this bed, rounded shoulder at its top, undercut at its foot
         i, zt, zb, amp = self.layer_at(z)
-        a = amp * (0.6 + 0.4 * _n(Vector((c * 1.8, s * 1.8, i * 1.7)) + o))
+        nb = 0.6 + 0.4 * _n(Vector((c * 1.8, s * 1.8, i * 1.7)) + o)
+        jk = 1.0
+        if self.shelf_sp:
+            # round 48 (F4): the shelf part stands out only inside its arcs; plain bed joints (and a shelf where it
+            # has faded) keep half the groove, so only real shelves read as lines
+            sp = self.shelf_sp[i] if i < len(self.shelf_sp) else 0.0
+            win = self.shelf_win(c, s, i) if sp > 0.0 else 0.0
+            a = (amp - sp + sp * win) * nb
+            jk = JOINT_K + (1.0 - JOINT_K) * win
+        else:
+            a = amp * nb
         dz = zt - z
         t = max(1e-3, zt - zb)
-        sh = self.shoulder * (1.0 - _smoothstep(0.0, min(0.5, 0.25 * t), dz)) if i > 0 else 0.0
-        uc = 0.3 * self.shoulder * _smoothstep(0.85, 1.0, dz / t)
+        sh = jk * self.shoulder * (1.0 - _smoothstep(0.0, min(0.5, 0.25 * t), dz)) if i > 0 else 0.0
+        uc = jk * 0.3 * self.shoulder * _smoothstep(0.85, 1.0, dz / t)
         rr = R + lob + a - major - sh - uc
+        for a0, dd, hw in self.deep:            # (F5) a slim pillar's deep clefts, wandering a little with height
+            th_c = a0 + 0.12 * _n(Vector((z * 0.025, 1.7, a0)) + o)
+            d = math.atan2(math.sin(th - th_c), math.cos(th - th_c)) / hw
+            if abs(d) < 1.0:
+                rr -= dd * (1.0 - d * d) ** 2 * (0.75 + 0.25 * _n(Vector((z * 0.06, a0, 2.3)) + o))
         if detail:
             w2 = 0.3 * _n(Vector((c * 3.0, s * 3.0, z * 0.05)) + o * 2.3)
             g2 = 1.0 - abs(_n(Vector((c * self.minor_f + w2, s * self.minor_f - w2, z * 0.035)) + o * 1.9))
@@ -3396,6 +3454,30 @@ PILLAR_PRESETS = dict(
     mesa=dict(fissures=(10, 16), fissure_k=0.03, fissure_cap=8.0, lobe=0.05, bulge=(0.0, 0.04), shoulder_k=2.5,
               bed_k=2.2, shelf_p=0.2, shelf_amp=(0.01, 0.02), bed_amp=0.006, dome=(0.04, 0.08), dip=(0.2, 0.8)),
 )
+# Round 48, phase C (the slice critic's F4, F5): shelves as broken arcs, slim pillars that are not chimneys.
+SHELF_COVER = (0.3, 0.6)    # share of the way round a shelf stands out (per bed, in one or two arcs; was all of it)
+SHELF_WIN_F = 1.15          # angular frequency of the window's noise (about 1-2 arcs round a pillar)
+SHELF_WIN_EDGE = 0.05       # noise units over which a shelf fades into the wall at an arc's end
+JOINT_K = 0.5               # groove (shoulder and undercut) kept at a plain bed joint, x today's (shelves keep all)
+SLIM_R = 30.0               # m: a sandstone pillar with a top radius under this is slim (F5): stronger lobes, deep
+SLIM = dict(lobe=0.22, deep=(2, 3), deep_k=(0.18, 0.3), taper=0.55)   # clefts (a share of R) that split it, a wider
+#                             foot reached sooner (taper: the radius goes top to foot over (depth share) ** taper, so
+#                             the flare shows in the part above the mist; quick stills: 15 m left the f1040 / f1103
+#                             columns as chimneys; q2: so did peak 99, top radius 23 m, the far pillar the steles,
+#                             1040 and the jade slip all show, so every sandstone column but the widest takes it)
+SLIM_FOOT = 1.35            # ... (world.pillar_plan: bottom radius at least this x the top)
+SHELF_GREEN_MAT = "nature_canopy_mass"   # shelf tops' cushion (was nature_soil_moss: its dry grass read as a straw
+#                             line on every lip on the web); a ground class in the bake, so never "built" on the page
+
+
+def pillar_preset(preset, top_radius):
+    """PILLAR_PRESETS[preset], with SLIM's changes for a slim sandstone pillar (top radius under SLIM_R)."""
+    P = PILLAR_PRESETS[preset]
+    if preset == "sandstone" and top_radius < SLIM_R:
+        P = dict(P, **SLIM)
+    return P
+
+
 PILLAR_SEG = dict(hero=1.25, mid=2.5, far=4.0)             # m of wall per segment round the pillar
 PILLAR_SEG_CLAMP = dict(hero=(96, 320), mid=(40, 160), far=(28, 80))
 SHELF_NZ = 0.55            # an up-facing rock face this flat (normal z) under the dome is a shelf top
@@ -3500,7 +3582,7 @@ def peak_pillar(collection, height=150.0, top_radius=18.0, bottom_radius=None, s
     attributes. Returns (object, info)."""
     t0 = time.perf_counter()
     fringe = PILLAR_FRINGE if fringe is None else fringe
-    P = PILLAR_PRESETS[preset]
+    P = pillar_preset(preset, top_radius)
     bottom_radius = top_radius * 1.15 if bottom_radius is None else bottom_radius
     shape = _PillarShape(seed, height, top_radius, bottom_radius, top_z, lod, preset=P)
     lo_, hi_ = PILLAR_SEG_CLAMP[lod]
@@ -3530,12 +3612,13 @@ def peak_pillar(collection, height=150.0, top_radius=18.0, bottom_radius=None, s
             f[shelf_l] = 1.0
             n_shelf += 1
             if green_shelves:
-                f.material_index = 1
+                f.material_index = 2            # (phase C: a dark green cushion, SHELF_GREEN_MAT)
         elif abs(nz) < CRACK_NZ and shape.fissure(math.atan2(c.y, c.x), z0) > CRACK_MIN:
             f[crack_l] = 1.0
             n_crack += 1
     nm = _name(name, "peak_pillar")
-    ob = _mesh_obj(nm, bm, collection, ["rock_cliff", "nature_soil_moss"], parent=parent, location=location)
+    ob = _mesh_obj(nm, bm, collection, ["rock_cliff", "nature_soil_moss", SHELF_GREEN_MAT], parent=parent,
+                   location=location)
     ob["nature_top_z"] = top_z
     ob["nature_top_radius"] = top_radius
     ob["nature_bottom_radius"] = bottom_radius
@@ -3562,7 +3645,8 @@ def pillar_radius_profile(height, top_radius, bottom_radius, seed, top_z, preset
                           dz=4.0):
     """[(z, largest radius round the pillar at z)] of peak_pillar's shape before its dip (for the corridor check:
     the pillar must stay inside the old peak's cone at every height)."""
-    shape = _PillarShape(seed, height, top_radius, bottom_radius, top_z, lod, preset=PILLAR_PRESETS[preset])
+    shape = _PillarShape(seed, height, top_radius, bottom_radius, top_z, lod,
+                         preset=pillar_preset(preset, top_radius))
     out = []
     z = top_z - 0.5
     detail = lod == "hero"

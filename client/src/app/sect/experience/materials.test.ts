@@ -862,7 +862,7 @@ describe("the range look (lib/sect/range-look.ts)", () => {
     const shader = compile(rock);
     expect(shader.uniforms.uSectAreas).toBe(SECT_AREAS.uSectAreas);
     expect(shader.uniforms.tSectBuilt).toBe(SECT_AREAS.tSectBuilt);
-    expect(shader.fragmentShader).toContain("sectRockRange( sectGraded, sectRw * ( 1.0 - sectMoss ) )");
+    expect(shader.fragmentShader).toContain("sectRockRange( sectGraded, sectRw * ( 1.0 - sectMoss ), length( vSectWorld - cameraPosition ) )");
     const card = cardMaterial();
     prepareBakedMaterial(card);
     const cs = compile(card);

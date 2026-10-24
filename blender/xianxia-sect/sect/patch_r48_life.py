@@ -58,13 +58,17 @@ def main():
             continue
         p = np.array(o.matrix_world.translation) if o.name.find("walkway") < 0 else None
         if p is None:
-            co = np.array([list(o.matrix_world @ v.co) for v in o.data.vertices[::25]])
+            n = len(o.data.vertices)
+            v = np.empty(n * 3)
+            o.data.vertices.foreach_get("co", v)
+            mw = np.array(o.matrix_world)
+            co = (v.reshape(-1, 3) @ mw[:3, :3].T + mw[:3, 3])[::25]
         else:
             co = p[None]
         d = np.min(np.linalg.norm(path[None, :, :] - co[:, None, :], axis=2))
         if d < PATH_MIN:
             fail.add("%s stands %.0f m from the camera path" % (o.name, d))
-    R.log("life paths", json.dumps(res))
+    R.log("life paths", json.dumps(res, default=float))
     h = hashlib.md5()
     for o in sorted((o for o in bpy.data.objects if o.get(LF.TAG) == LF.PATH_TAG), key=lambda o: o.name):
         h.update(o.name.encode())

@@ -46,13 +46,22 @@ export const RANGE_LOOK = {
    * - tint: leaf texels (green level with red or ahead, before the grade) turn `amount` of the way to
    *   `color`'s hue at `gain` x their own brightness: one canopy green (hue about 95 degrees) for the
    *   bake's olive-to-teal pads, a little lighter (the photos' canopy is value 0.2-0.3, ours 0.15).
+   *   Round 48 (the slice critic's F1): the new broadleaf sprites bake brighter than the old pine
+   *   pads, so gain 2.0 lifted the canopy to value 0.44 at saturation 0.18 (the Zhangjiajie photo:
+   *   0.21 and 0.41). Gain 1.0 at amount 0.8 and a cap of 0.45 bring the crowns back to a darker,
+   *   more saturated green. (Measured at f870: the haze, not the tint, sets the floor there: with
+   *   gain 0.3 the valley still read value 0.35, its darkest tenth 0.30.)
+   * - vary: patches of crowns `scaleM` metres across, up to `value` darker or lighter and `hue`
+   *   warmer (yellow-green) or cooler (blue-green), so the canopy reads as mixed species, not one
+   *   clone (rule 6, F9). Leaf texels only, on the range only.
    */
   foliage: {
     greenTame: 0.35,
-    satCap: 0.36,
+    satCap: 0.45,
     splitShadow: 0.4,
     shadowTint: "#9a9aa8",
-    tint: { color: "#4d6b35", amount: 0.7, gain: 2.0 },
+    tint: { color: "#4d6b35", amount: 0.8, gain: 1.0 },
+    vary: { scaleM: 24, value: 0.16, hue: 0.07 },
   },
   /**
    * Far trunks: on bark texels (red-led and not pink, before the grade), past `near` metres and full
@@ -90,12 +99,17 @@ export const RANGE_LOOK = {
    * of green's lead removed), so the ledge lines read green. Streaks (mid and high tiers, with the far rock layer): dark vertical runs of
    * 3D noise `widthM` metres across and `lengthM` long, up to `dark` darker where the noise is under
    * `lo` (fully at `hi`), with the far rock layer's distance fade.
+   * Round 48 (the slice critic's F3): sunlit range rock near the camera outshone the stops it frames
+   * (the f870 wall: value 0.80, saturation 0.28; rule 11 wants 0.55-0.7 and 0.25 at most). So the
+   * buff pull is a little stronger (`desat` 0.6 to 0.7) and, in sun, rock nearer than `near.far`
+   * metres is darkened to `near.k` (full within `near.near`).
    */
   rock: {
-    desat: 0.6,
+    desat: 0.7,
     shade: 0.45,
     color: "#cfc6ba",
     sun: [0.05, 0.35] as const,
+    near: { k: 0.78, near: 140, far: 320 },
     moss: { tame: 0.4, hue: [0.72, 0.92] as const, sat: [0.18, 0.32] as const, lit: [0.06, 0.1] as const },
     streaks: { widthM: 6, lengthM: 40, lo: 0.42, hi: 0.2, dark: 0.3 },
   },
@@ -385,11 +399,14 @@ export function mossGate(t: Vec3, look: RangeLook = RANGE_LOOK): number {
   );
 }
 
-/** Range rock from its texel `t` (before the grade) at range weight w: the moss's tame, then sectRockRange off the moss. */
-export function rockRangeLinear(t: Vec3, w: number, look: RangeLook = RANGE_LOOK, grade: SectLook["grade"] = SECT_LOOK.grade): Vec3 {
+/**
+ * Range rock from its texel `t` (before the grade) at range weight w, `dist` metres from the camera
+ * (default: far, no near darkening): the moss's tame, then sectRockRange off the moss.
+ */
+export function rockRangeLinear(t: Vec3, w: number, look: RangeLook = RANGE_LOOK, grade: SectLook["grade"] = SECT_LOOK.grade, dist = Infinity): Vec3 {
   const m = mossGate(t, look) * w;
   const c = gradeLinearWith(t, grade, grade.greenTame + (look.rock.moss.tame - grade.greenTame) * m, unitTint(grade.shadowTint), grade.splitShadow ?? grade.split);
-  return rockLinear(c, w * (1 - m), look);
+  return rockLinear(c, w * (1 - m), look, dist);
 }
 
 /** A range lawn's graded colour from its texel `t` at range weight w, `dist` metres away (before the detail). */
@@ -399,12 +416,52 @@ export function groundRangeLinear(t: Vec3, w: number, dist: number, look: RangeL
   return gradeLinearWith(t, grade, grade.greenTame + (g.tame - grade.greenTame) * k, unitTint(grade.shadowTint), grade.splitShadow ?? grade.split);
 }
 
-/** Range rock on a graded colour `c` with range weight w. Mirrors sectRockRange. */
-export function rockLinear(c: Vec3, w: number, look: RangeLook = RANGE_LOOK): Vec3 {
+/**
+ * Range rock on a graded colour `c` with range weight w, `dist` metres from the camera (default:
+ * far). Mirrors sectRockRange.
+ */
+export function rockLinear(c: Vec3, w: number, look: RangeLook = RANGE_LOOK, dist = Infinity): Vec3 {
   const r = look.rock;
   const l = luma(c);
-  const k = r.desat * (r.shade + (1 - r.shade) * smoothstep(r.sun[0], r.sun[1], l)) * w;
-  return mixv(c, unitTint(r.color).map((v) => v * l) as Vec3, k);
+  const sun = smoothstep(r.sun[0], r.sun[1], l);
+  const k = r.desat * (r.shade + (1 - r.shade) * sun) * w;
+  const out = mixv(c, unitTint(r.color).map((v) => v * l) as Vec3, k);
+  const near = 1 + (r.near.k - 1) * (1 - smoothstep(r.near.near, r.near.far, dist)) * sun * w;
+  return out.map((v) => v * near) as Vec3;
+}
+
+/** 0..1 smooth value noise at (x, z) (a cell hash, bilinear with smoothstep). Mirrors sectVNoise. */
+export function valueNoise(x: number, z: number): number {
+  const hash = (i: number, j: number) => {
+    const h = Math.sin(i * 127.1 + j * 311.7) * 43758.5453;
+    return h - Math.floor(h);
+  };
+  const i = Math.floor(x);
+  const j = Math.floor(z);
+  const fx = x - i;
+  const fz = z - j;
+  const u = fx * fx * (3 - 2 * fx);
+  const v = fz * fz * (3 - 2 * fz);
+  const a = hash(i, j);
+  const b = hash(i + 1, j);
+  const c = hash(i, j + 1);
+  const d = hash(i + 1, j + 1);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+/**
+ * The canopy's patches (RANGE_LOOK.foliage.vary) on a graded foliage colour `c` (texel `t`) at world
+ * point `p` (three's x, y, z) with range weight w. Mirrors sectCanopyVary.
+ */
+export function canopyVary(c: Vec3, t: Vec3, p: Vec3, w: number, look: RangeLook = RANGE_LOOK): Vec3 {
+  const vy = look.foliage.vary;
+  const k = leafWeight(t) * w;
+  if (k <= 0) return c;
+  const n1 = valueNoise(p[0] / vy.scaleM, p[2] / vy.scaleM) * 2 - 1;
+  const n2 = valueNoise(p[0] / vy.scaleM * 1.7 + 19.1, p[2] / vy.scaleM * 1.7 - 7.3) * 2 - 1;
+  const val = 1 + vy.value * n1 * k;
+  const h = vy.hue * n2 * k;
+  return [c[0] * val * (1 + h), c[1] * val * (1 + 0.35 * h), c[2] * val * (1 - h)];
 }
 
 /**
@@ -518,6 +575,25 @@ float sectBark( vec3 t ) {
   if ( s <= 1e-6 ) return 0.0;
   return ( 1.0 - sectLeaf( t ) ) * smoothstep( 0.0, 0.08, ( t.g - t.b ) / s );
 }
+float sectVNoise( vec2 x ) {
+  vec2 i = floor( x );
+  vec2 f = x - i;
+  vec2 u = f * f * ( 3.0 - 2.0 * f );
+  float a = fract( sin( i.x * 127.1 + i.y * 311.7 ) * 43758.5453 );
+  float b = fract( sin( ( i.x + 1.0 ) * 127.1 + i.y * 311.7 ) * 43758.5453 );
+  float c = fract( sin( i.x * 127.1 + ( i.y + 1.0 ) * 311.7 ) * 43758.5453 );
+  float d = fract( sin( ( i.x + 1.0 ) * 127.1 + ( i.y + 1.0 ) * 311.7 ) * 43758.5453 );
+  return a + ( b - a ) * u.x + ( c - a ) * u.y + ( a - b - c + d ) * u.x * u.y;
+}
+vec3 sectCanopyVary( vec3 c, vec3 t, vec3 p, float w ) {
+  float k = sectLeaf( t ) * w;
+  if ( k <= 0.0 ) return c;
+  vec2 q = p.xz / ${glslFloat(look.foliage.vary.scaleM)};
+  float n1 = sectVNoise( q ) * 2.0 - 1.0;
+  float n2 = sectVNoise( q * 1.7 + vec2( 19.1, -7.3 ) ) * 2.0 - 1.0;
+  float h = ${glslFloat(look.foliage.vary.hue)} * n2 * k;
+  return c * ( 1.0 + ${glslFloat(look.foliage.vary.value)} * n1 * k ) * vec3( 1.0 + h, 1.0 + 0.35 * h, 1.0 - h );
+}
 vec3 sectFoliageRange( vec3 c, vec3 t, float w, float dist ) {
   float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
   c = mix( c, l * ${glslFloat(ti.gain)} * ${glslVec3(unitTint(ti.color))}, sectLeaf( t ) * w * ${glslFloat(ti.amount)} );
@@ -550,7 +626,7 @@ export function rockGradeStatements(grade: SectLook["grade"] = SECT_LOOK.grade, 
   return [
     "  float sectMoss = sectMossGate( sectTexel ) * sectRw;",
     `  vec3 sectGraded = sectGradeWith( sectTexel, mix( ${glslFloat(grade.greenTame)}, ${glslFloat(look.rock.moss.tame)}, sectMoss ), ${baseTint(grade)} );`,
-    "  sectGraded = sectRockRange( sectGraded, sectRw * ( 1.0 - sectMoss ) );",
+    "  sectGraded = sectRockRange( sectGraded, sectRw * ( 1.0 - sectMoss ), length( vSectWorld - cameraPosition ) );",
   ].join("\n");
 }
 
@@ -585,10 +661,12 @@ float sectMossGate( vec3 t ) {
   return smoothstep( ${glslFloat(m.hue[0])}, ${glslFloat(m.hue[1])}, ( q.g - q.b ) / max( mx - q.b, 1e-3 ) )
     * smoothstep( ${glslFloat(m.sat[0])}, ${glslFloat(m.sat[1])}, ( mx - q.b ) / max( mx, 1e-3 ) ) * smoothstep( ${glslFloat(m.lit[0])}, ${glslFloat(m.lit[1])}, mx );
 }
-vec3 sectRockRange( vec3 c, float w ) {
+vec3 sectRockRange( vec3 c, float w, float dist ) {
   float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
-  float k = ${glslFloat(r.desat)} * mix( ${glslFloat(r.shade)}, 1.0, smoothstep( ${glslFloat(r.sun[0])}, ${glslFloat(r.sun[1])}, l ) ) * w;
-  return mix( c, l * ${glslVec3(unitTint(r.color))}, k );
+  float sun = smoothstep( ${glslFloat(r.sun[0])}, ${glslFloat(r.sun[1])}, l );
+  float k = ${glslFloat(r.desat)} * mix( ${glslFloat(r.shade)}, 1.0, sun ) * w;
+  c = mix( c, l * ${glslVec3(unitTint(r.color))}, k );
+  return c * ( 1.0 + ${glslFloat(r.near.k - 1)} * ( 1.0 - smoothstep( ${glslFloat(r.near.near)}, ${glslFloat(r.near.far)}, dist ) ) * sun * w );
 }
 `;
 }

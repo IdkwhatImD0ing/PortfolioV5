@@ -12,7 +12,9 @@ PARTS (default isles,caps,falls,horizon; *_undo puts a part back):
   isles    lib/compose.cull_islands over the eleven holds (holds_intent islets: max, zone, none near the star, none in
            quiet sky), the listed flights and chase.cam every 6 frames (at most 7 in a frame), then the totals (about
            40 islands, 12 islets). Culled rocks, their plants, falls and companions are HIDDEN (hide_render: the
-           export and the bake skip them), tagged r48_hidden 'isles'. Ice-Fire Island always stays.
+           export and the bake skip them), tagged r48_hidden 'isles'. Ice-Fire Island always stays. Every run also
+           hides the top pines of any culled rock (world.islet.pine*, scenery.island.*) and island pines with no rock
+           under them (phase C: they stood in the sky).
   caps     every visible island: the packed pine crowns hidden, a broadleaf cap and a few spires on its top.
   falls    lib/compose.cull_falls, then every fall that stays rebuilt (nature.waterfall: at most world.FALL_MAX_H m,
            exit 2.5-4 m/s, spread 40-60 %, island falls 0.3-0.5 x the island) with a spray chain of puffs

@@ -102,6 +102,8 @@ R48_SHELF_PINES = ((-0.24, 8.5, 3), (0.2, 6.6, 8))   # (along the shelf (x width
 R48_SHRUB_SHELF = (10.0, 26.0, 5.5)            # left of the fall (the hold sees +x on its right)
 R48_FERN_X = (3.0, 23.0, 37.0)                 # joints with fern and shrub strips
 R48_FERN_STEP = 1.8                            # m between strip plants (40 % gaps)
+R48_FERN_RUN = (5.0, 11.0)                     # m: a run of strip plants (phase C: strips, not dotted lines)
+R48_FERN_GAP = (5.0, 12.0)                     # m of bare joint between runs
 R48_VINE_X = (-44.0, 44.0, 6.5)                # vines from the rim: from, to, spacing (jittered)
 R48_VINE_LEN = (4.0, 8.0)
 DENSE_FACE_PINES = 25           # cliff pines out of the face (round 48: drawn, never built; see ABODE_R48)
@@ -812,17 +814,23 @@ def r48_dress(coll, root):
         tag(N.shrub(coll, r.uniform(1.4, 2.4), seed=4800 + k, kind="azalea" if k % 3 == 0 else "green",
                     name=K + ".r48_shelf_shrub", parent=root,
                     location=(sh2.location.x + c2 * lx - s2 * ly, sh2.location.y + s2 * lx + c2 * ly, z2 - 0.15)))
-    # fern and shrub strips in the joints
+    # fern and shrub strips in the joints: runs R48_FERN_RUN m long of 2-3 plants abreast, gaps between them (phase C
+    # quick stills: one plant every 1.8 m read as a dotted line up the face, not a green strip)
     for xj in R48_FERN_X:
-        z = 13.0
+        z = 13.0 + r.uniform(0.0, 6.0)
         while z < _top(xj) - 6.0:
-            x = xj + r.uniform(-0.6, 0.6)
-            if r.random() > 0.4 and _face_free(x, z, h=2.0):
-                p = _face_point(x, z)
-                ox, oy = _out_dir(x)
-                tag(N.shrub(coll, r.uniform(0.9, 1.7), seed=r.randrange(1, 10 ** 5), kind="green",
-                            name=K + ".r48_fern", parent=root, location=(p.x + ox * 0.15, p.y + oy * 0.15, z)))
-            z += R48_FERN_STEP * r.uniform(0.7, 1.3)
+            run_end = z + r.uniform(*R48_FERN_RUN)
+            while z < min(run_end, _top(xj) - 6.0):
+                for k in range(r.randint(2, 3)):
+                    x = xj + r.uniform(-1.3, 1.3)
+                    if _face_free(x, z, h=2.0):
+                        p = _face_point(x, z)
+                        ox, oy = _out_dir(x)
+                        tag(N.shrub(coll, r.uniform(1.1, 2.3), seed=r.randrange(1, 10 ** 5), kind="green",
+                                    name=K + ".r48_fern", parent=root,
+                                    location=(p.x + ox * 0.15, p.y + oy * 0.15, z + r.uniform(-0.3, 0.3))))
+                z += R48_FERN_STEP * r.uniform(0.6, 0.9)
+            z += r.uniform(*R48_FERN_GAP)
     # vines from the rim
     bm = bmesh.new()
     x = R48_VINE_X[0]

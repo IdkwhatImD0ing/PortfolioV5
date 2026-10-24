@@ -28,6 +28,8 @@ import {
   rockGlsl,
   rockGradeStatements,
   rockLinear,
+  canopyVary,
+  valueNoise,
   rockRangeLinear,
   type RangeArea,
 } from "./range-look";
@@ -203,6 +205,27 @@ describe("range rock and lawns", () => {
     rockRangeLinear(SANDSTONE, 0).forEach((v, i) => expect(v).toBeCloseTo(graded[i], 9));
   });
 
+  it("darkens sunlit range rock near the camera only (the slice critic's F3)", () => {
+    const graded = gradeLinear(SANDSTONE);
+    const n = RANGE_LOOK.rock.near;
+    const far = rockLinear(graded, 1);
+    const near = rockLinear(graded, 1, RANGE_LOOK, n.near - 10);
+    expect(luma(near) / luma(far)).toBeCloseTo(n.k, 1);
+    rockLinear(graded, 1, RANGE_LOOK, n.far + 10).forEach((v, i) => expect(v).toBeCloseTo(far[i], 12));
+    rockLinear(graded, 0, RANGE_LOOK, 10).forEach((v, i) => expect(v).toBeCloseTo(graded[i], 12));
+  });
+
+  it("varies range canopy leaves in patches, and leaves bark and the stops alone (F9)", () => {
+    const c = gradeLinear(PAD_SUN);
+    const lum = [0, 37, 91, 160, 233, 301].map((x) => luma(canopyVary(c, PAD_SUN, [x * 7.3, 100, x * 3.1], 1)));
+    expect(Math.max(...lum) / Math.min(...lum)).toBeGreaterThan(1.05);
+    expect(Math.max(...lum) / Math.min(...lum)).toBeLessThan(1.5);
+    canopyVary(c, PAD_SUN, [12, 0, 40], 0).forEach((v, i) => expect(v).toBeCloseTo(c[i], 12));
+    canopyVary(c, BARK, [12, 0, 40], 1).forEach((v, i) => expect(v).toBeCloseTo(c[i], 12));
+    for (const x of [0.3, 1.7, 5.5]) expect(valueNoise(x, x * 2)).toBeGreaterThanOrEqual(0);
+    expect(count(foliageGlsl(), "vec3 sectCanopyVary( vec3 c, vec3 t, vec3 p, float w )")).toBe(1);
+  });
+
   it("keeps mossy ledge lines green on range rock", () => {
     expect(mossGate(MOSS)).toBeGreaterThan(0.9);
     expect(mossGate(SANDSTONE)).toBe(0);
@@ -224,7 +247,7 @@ describe("range rock and lawns", () => {
   it("emits the rock and lawn GLSL", () => {
     const r = rockGlsl();
     expect(count(r, "float sectMossGate( vec3 t )")).toBe(1);
-    expect(count(r, "vec3 sectRockRange( vec3 c, float w )")).toBe(1);
+    expect(count(r, "vec3 sectRockRange( vec3 c, float w, float dist )")).toBe(1);
     const rs = rockGradeStatements();
     expect(rs.indexOf("sectMossGate( sectTexel )")).toBeLessThan(rs.indexOf("sectGradeWith("));
     expect(rs.indexOf("sectGradeWith(")).toBeLessThan(rs.indexOf("sectRockRange("));

@@ -10,6 +10,7 @@ import {
   cardMipBoost,
   cardRimGlsl,
   cardSpriteBoostGlsl,
+  cardViewFadeGlsl,
   isCutoutCard,
   rimAmount,
   twigFactor,
@@ -143,6 +144,19 @@ describe("card GLSL", () => {
     expect(g).toContain(`1.0 + sectMip * ${glslFloat(0.22)}`);
     expect(g).toContain("vAlphaMapUv * uSectTexSize");
     expect(g).toContain("vMapUv * uSectTexSize");
+  });
+
+  it("fades a sprite's flat top quad near level and its uprights from high above (r48 F2)", () => {
+    const g = cardViewFadeGlsl();
+    const f = CARD_LOOK.viewFade;
+    expect(g).toContain("cross( dFdx( vSectCardWorld ), dFdy( vSectCardWorld ) )");
+    expect(g).toContain(`smoothstep( ${glslFloat(f.top[0])}, ${glslFloat(f.top[1])}, sectEl )`);
+    expect(g).toContain(`1.0 - smoothstep( ${glslFloat(f.side[0])}, ${glslFloat(f.side[1])}, sectEl )`);
+    expect(g).toContain("diffuseColor.a *=");
+    expect(f.top[0]).toBeLessThan(f.top[1]);
+    expect(f.side[0]).toBeLessThan(f.side[1]);
+    expect(f.side[1]).toBeGreaterThan(f.top[1]);
+    expect(g).not.toMatch(/NaN|undefined/);
   });
 
   it("reads a needle card's alpha map once, coverage from G, with the small gain", () => {
