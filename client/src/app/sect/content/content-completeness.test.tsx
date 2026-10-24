@@ -238,9 +238,9 @@ describe("reader and panel structure", () => {
     const gate = textOf(renderToStaticMarkup(<AreaPanel area="gate" onOpen={noop} onTalk={noop} />));
     expect(gate).toContain(PORTFOLIO.name);
     expect(gate).toContain(PORTFOLIO.tagline);
-    expect(gate).toContain("Talk to the AI");
+    expect(gate).toContain("Ask a senior disciple");
     // Without a voice call there is nowhere to talk (the sect is the whole site): no talk action.
-    expect(textOf(renderToStaticMarkup(<AreaPanel area="gate" onOpen={noop} />))).not.toContain("Talk to the AI");
+    expect(textOf(renderToStaticMarkup(<AreaPanel area="gate" onOpen={noop} />))).not.toContain("Ask a senior disciple");
   });
 
   it("the one-page view has a navigation of all eleven areas", () => {

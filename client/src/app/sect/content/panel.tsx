@@ -61,7 +61,7 @@ export const AreaPanel = forwardRef<HTMLElement, AreaPanelProps>(function AreaPa
           </p>
         ))}
         <div className="sc-panel-actions">
-          {talkFirst && <TalkButton onTalk={onTalk} label="Talk to the AI" />}
+          {talkFirst && <TalkButton onTalk={onTalk} label="Ask a senior disciple" />}
           <button
             type="button"
             data-sect-open

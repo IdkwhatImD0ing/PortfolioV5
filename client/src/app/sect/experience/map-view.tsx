@@ -430,7 +430,7 @@ export default function MapView({
     >
       <div className="sect-map-head">
         <p className="sect-map-eyebrow">
-          Sun Moon Divine Cult{" "}
+          Sun Moon Divine Sect{" "}
           <BrushName text="日月神教全图" even={0.12} className="sect-map-zh" />
         </p>
         <h2 id={HEAD_ID} ref={titleRef} tabIndex={-1} className="sect-map-title font-serif text-[var(--sect-paper)] outline-none">

@@ -11,7 +11,7 @@ import INK from "./brush-ink.json";
 
 /**
  * Chinese the UI writes in the brush hand besides the place names: the sect (日月神教, the Sun Moon
- * Divine Cult; its 神 is the red seal's, ornaments.tsx SealStamp), the map's title, and the voice
+ * Divine Sect; its 神 is the red seal's, ornaments.tsx SealStamp), the map's title, and the voice
  * talisman (传音符, the sound-transmission talisman: sect.css writes it, and the 音 seal on it).
  */
 export const BRUSH_EXTRA = ["日月神教", "日月神教全图", "传音符"] as const;

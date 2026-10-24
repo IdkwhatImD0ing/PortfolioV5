@@ -19,7 +19,9 @@ describe("SectSummary", () => {
   it("has one h1, the owner's name, and the sect's name", () => {
     expect(html.match(/<h1/g)).toHaveLength(1);
     expect(html).toContain(`<h1>${PORTFOLIO.name}</h1>`);
-    expect(html).toContain("Sun Moon Divine Cult");
+    expect(html).toContain("Sun Moon Divine Sect");
+    expect(html).toContain("a senior disciple of the sect guides you");
+    expect(html).not.toMatch(/\bcult\b/i);
   });
 
   it("carries every project and the ways to get in touch as real links", () => {

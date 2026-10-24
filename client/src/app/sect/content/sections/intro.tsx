@@ -76,7 +76,7 @@ export function GateBody(props: BodyProps) {
       </p>
 
       <div className="sc-actions">
-        <TalkButton onTalk={onTalk} label="Talk to the portfolio" />
+        <TalkButton onTalk={onTalk} label="Ask a senior disciple" />
         <button type="button" className="sc-btn" onClick={() => onNavigate({ area: "scroll", item: null })}>
           {HERO.viewResume}
         </button>
@@ -104,7 +104,7 @@ function GateThingView({ d, id, onTalk }: { d: ItemDetail; id: string; onTalk?: 
       ) : (
         <div className="sc-related">
           <div className="sc-actions">
-            <TalkButton onTalk={onTalk} label="Talk to the portfolio" />
+            <TalkButton onTalk={onTalk} label="Ask a senior disciple" />
           </div>
           <OrbSuggestions onGo={d.go} />
         </div>

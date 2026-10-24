@@ -176,7 +176,7 @@ export function ContentFallback({ onTalk, onExit, initial, onHighlight, note }: 
         <div className="sc-page-brand">
           <BrushName text="日月神教" even={0.12} className="sc-page-seal" />
           <SealStamp />
-          <span className="sc-page-brandname">Sun Moon Divine Cult</span>
+          <span className="sc-page-brandname">Sun Moon Divine Sect</span>
           {onExit && (
             <button type="button" className="sc-btn sc-btn-gold sc-page-exit" onClick={onExit}>
               Back to the flight

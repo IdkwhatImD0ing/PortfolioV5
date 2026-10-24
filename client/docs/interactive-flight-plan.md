@@ -4,7 +4,7 @@ Status: plan, not started. Written 2026-10-10.
 
 ## The idea
 
-The site becomes a flight through the sect (then the Ming Sect, now the Sun Moon Divine Cult). Scrolling moves the camera. When the
+The site becomes a flight through the sect (then the Ming Sect, now the Sun Moon Divine Sect). Scrolling moves the camera. When the
 camera reaches an area, the things in the video become clickable: the 15 floating
 artifacts at the forge are your 15 projects, the 7 jade tablets are your 7 jobs, and so
 on. Clicking one opens the same detail view the site already has. It works in reverse

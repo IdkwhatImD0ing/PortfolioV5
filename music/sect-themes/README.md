@@ -1,6 +1,6 @@
 # Sect Theme Music: Suno prompts
 
-This folder holds ready-to-paste Suno prompts for the background music of `/sect`, the scroll-driven fly-through of the Sun Moon Divine Cult (日月神教), the sect from Jin Yong's *The Smiling, Proud Wanderer* (until October 2026 the Ming Sect 明教 of *Heaven Sword and Dragon Saber*). There is one file per area, plus one for the loading screen. Every track is instrumental and led by traditional Chinese instruments.
+This folder holds ready-to-paste Suno prompts for the background music of `/sect`, the scroll-driven fly-through of the Sun Moon Divine Sect (日月神教), the sect from Jin Yong's *The Smiling, Proud Wanderer* (until October 2026 the Ming Sect 明教 of *Heaven Sword and Dragon Saber*). There is one file per area, plus one for the loading screen. Every track is instrumental and led by traditional Chinese instruments.
 
 Nothing here plays on the site yet. These files only help you make the music.
 

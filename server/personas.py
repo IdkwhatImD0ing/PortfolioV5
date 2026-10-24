@@ -5,10 +5,10 @@ Two personas exist:
 - ``classic``: Bill speaking as himself (prompts.py). Every caller that does not
   ask for another persona gets it, so the old site and every existing Retell
   agent version behave exactly as before.
-- ``ming-sect``: the sound-transmission of the sect (the home page), a guide that talks
+- ``ming-sect``: a senior disciple of the sect (the home page), a guide that talks
   about Bill in the third person (prompts_sect.py), screened by the sect's judge
   (guardrail.sect_security_guardrail). The sect is now 日月神教, the Sun Moon
-  Divine Cult; the id keeps its first name, the Ming Sect, because the client
+  Divine Sect; the id keeps its first name, the Ming Sect, because the client
   routes send it and calls in flight carry it.
 
 How a caller asks for one:

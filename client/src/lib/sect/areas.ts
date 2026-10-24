@@ -1,5 +1,5 @@
 /**
- * The eleven areas of the Sun Moon Divine Cult in flight order, and the site section each one presents.
+ * The eleven areas of the Sun Moon Divine Sect in flight order, and the site section each one presents.
  *
  * Shared contract for the sect (the home page): camera holds (camera.json holds[].id), chunk ids in the
  * manifest, hotspot ids and the content layer all use these area ids. Hold frames come from

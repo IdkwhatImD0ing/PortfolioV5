@@ -1,4 +1,4 @@
-# The Sun Moon Divine Cult (日月神教) — xianxia fly-through proof of concept
+# The Sun Moon Divine Sect (日月神教) — xianxia fly-through proof of concept
 
 The portfolio site at art3m1s.me is one long scroll. This scene turns that scroll into a
 flight through a cultivation sect on floating karst peaks. Every website section maps to one
@@ -6,7 +6,7 @@ sect area, in scroll order. The camera flies a single continuous path past all o
 starting in the sea of clouds and ending at the summit under a colossal moon
 (art3m1s → Artemis → moon).
 
-The sect is the Sun Moon Divine Cult (日月神教) of Jin Yong's *The Smiling, Proud Wanderer*.
+The sect is the Sun Moon Divine Sect (日月神教) of Jin Yong's *The Smiling, Proud Wanderer*.
 Until round 32 (October 2026) it was the Ming Sect (明教) of *Heaven Sword and Dragon Saber*;
 the owner renamed it. The reasons: 日月 is sun and moon and 神 is divine, so the moon and a
 goddess (Artemis) are in the name; the English name reads plainly to visitors who don't know

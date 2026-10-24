@@ -1,6 +1,7 @@
 /**
- * The voice agent's persona for the sect: the Sun Moon Divine Cult's sound-transmission, a guide that
- * talks about Bill in the third person (server/personas.py, server/prompts_sect.py).
+ * The voice agent's persona for the sect: a senior disciple of the Sun Moon Divine Sect, a guide that
+ * talks about Bill in the third person and never calls itself an AI (server/personas.py,
+ * server/prompts_sect.py). The visitor reaches it through the sect's sound-transmission talisman.
  *
  * The orb sends the same create-web-call and /api/chat requests from any page, so the API routes pick
  * the persona by the request's Referer: a same-origin fetch carries the page's URL (the site sets no
@@ -14,7 +15,7 @@
 
 /**
  * The backend's name for the sect persona (server/personas.py MING_SECT). It keeps the sect's first
- * name, the Ming Sect (the sect is now 日月神教, the Sun Moon Divine Cult): the API routes and the
+ * name, the Ming Sect (the sect is now 日月神教, the Sun Moon Divine Sect): the API routes and the
  * backend agree on it, and a call already placed carries it.
  */
 export const SECT_PERSONA = "ming-sect";

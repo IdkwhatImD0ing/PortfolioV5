@@ -6,6 +6,7 @@
  * No hooks, no three.js: the loading screen renders these before the 3D code is here.
  */
 import { brushCovers, brushSpacing } from "@/lib/sect/brush";
+import { logoMarkup } from "@/lib/sect/logo";
 
 /**
  * A Chinese name in the brush hand (lib/sect/brush.ts), or in the serif when the brush font lacks a
@@ -76,6 +77,22 @@ export function SealStamp({ text = "神", className }: { text?: string; classNam
         {text}
       </text>
     </svg>
+  );
+}
+
+/**
+ * The site's logo, as the browser tab shows it (lib/sect/logo.ts, public/favicon.svg): a sun cradled
+ * in a crescent moon on the cinnabar seal. Decorative: the name beside it says whose site it is.
+ */
+export function SectLogo({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      aria-hidden
+      focusable="false"
+      className={`sect-logo${className ? ` ${className}` : ""}`}
+      dangerouslySetInnerHTML={{ __html: logoMarkup({ bold: true }) }}
+    />
   );
 }
 

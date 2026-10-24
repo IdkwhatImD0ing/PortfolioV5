@@ -29,7 +29,7 @@ Every piece of content and every interaction on the old page (the one-page portf
 
 ## Page shell (layout.tsx, page.tsx) (3)
 
-- [x] **C-001** Document title and description, Open Graph and Twitter cards. *adapted.* The root layout (src/app/layout.tsx) sets the site's title ("Bill Zhang · Sun Moon Divine Cult"), description, Open Graph and Twitter cards; the share image is a frame of the Mountain Gate (public/og-image.jpg). While a reader is open the tab names its section. The description's facts (Pinterest, 36 wins, talk to it) are in the gate reader. Same person and facts, worded for the sect. The sect is the indexed home page; under the flight the server renders the whole portfolio as text (app/sect/summary.tsx) for crawlers and for visitors without JavaScript.
+- [x] **C-001** Document title and description, Open Graph and Twitter cards. *adapted.* The root layout (src/app/layout.tsx) sets the site's title ("Bill Zhang · Sun Moon Divine Sect"), description, Open Graph and Twitter cards; the share image is a frame of the Mountain Gate (public/og-image.jpg). While a reader is open the tab names its section. The description's facts (Pinterest, 36 wins, talk to it) are in the gate reader. Same person and facts, worded for the sect. The sect is the indexed home page; under the flight the server renders the whole portfolio as text (app/sect/summary.tsx) for crawlers and for visitors without JavaScript.
 - [x] **C-002** JSON-LD Person record (Software Engineer II at Pinterest; alumni of USC and UC Santa Cruz; knows AI, ML, conversational AI, voice agents). *carried.* The root layout's application/ld+json block, now also linking GitHub, LinkedIn and Devpost (sameAs). The same facts are visible in the Mission Hall (role) and Scripture Pavilion (schools).
 - [x] **C-003** Favicons, web manifest, theme colour. *carried.* The root layout's, as before.
 
@@ -74,7 +74,7 @@ Reader: Mountain Gate (山门). Scroll (or use the area rail) to the Mountain Ga
 
 ## Voice orb (components/voice-orb) (6)
 
-- [x] **C-021** Orb button "Start a voice conversation" and pill "Tap to talk · or scroll". *3D page.* The 3D page passes onTalk; the content shows "Talk to the AI" on the gate and summit panels, "Talk to the portfolio" in the gate reader, "Tap voice orb" in the contact reader, and the moon hotspot. Without onTalk they are left out. The orb (components/voice-orb) is dressed by sect.css as a 传音符 (a sound-transmission talisman): a jade seal stamped 音, "Talk to the AI" on hover and keyboard focus, glowing while it listens and speaks; its pill shows on the intro screen only, because at the stops it covered the scene's own objects.
+- [x] **C-021** Orb button "Ask a senior disciple by voice" and pill "Ask a senior disciple · or scroll". *3D page.* The 3D page passes onTalk; the content shows "Ask a senior disciple" on the gate and summit panels, in the gate reader, in the contact reader, and on the moon hotspot. Without onTalk they are left out. The orb (components/voice-orb) is dressed by sect.css as a 传音符 (a sound-transmission talisman): a jade seal stamped 音, "Ask a senior disciple" on hover and keyboard focus, glowing while it listens and speaks; its pill shows on the intro screen only, because at the stops it covered the scene's own objects.
 - [x] **C-022** Voice call panel: Retell call, status lines, transcript, text chat mode, end call. *3D page.* Runs through onTalk on the 3D page. The content layer has no call UI of its own, but keeps the orb usable over its modals: the reader and the one-page view never pull focus out of the orb, a reader the agent opens mid-reply leaves the caret in the chat box, and Tab goes from a modal's last control to the orb.
 - [x] **C-023** Panel title "Ask anything." *3D page.* The voice orb in the sect shows it in its own panel.
 - [x] **C-024** Suggestion "Show me only the voice AI projects." with reply "Filtering by voice + AI." *3D page.* The voice orb in the sect lists it in its own panel. The gate's Sword Monoliths view also lists the question, without the reply.
@@ -249,15 +249,15 @@ Reader: Cave Abode (洞府). Scroll (or use the area rail) to the Cave Abode and
 - [x] **C-148** Fact 5: Still chasing the best bowl of noodles in San Francisco. *carried.* Cave Abode reader. Its object in the abode is the tea table (hotspot fact:4).
 - [x] **C-149** Fact 6: Convinced everyone gets a personal Jarvis eventually: an AI you just talk to, in real time. Building toward it. *carried.* Cave Abode reader. Its object in the abode is the crane (hotspot fact:5).
 - [x] **C-150** Fact 7: Would rather talk to software than tap through it. Hence this site. *carried.* Cave Abode reader. Its object in the abode is the koi pool (hotspot fact:6).
-- [ ] **C-151** Tip "Try asking the orb: “What does Bill do for fun?”". *not carried.* Not in the sect. The Ask the portfolio button does the same.
+- [ ] **C-151** Tip "Try asking the orb: “What does Bill do for fun?”". *not carried.* Not in the sect. The Ask a senior disciple button does the same.
 
 ## Footer / contact (11)
 
 Reader: Moon-Gazing Terrace (望月台). Scroll (or use the area rail) to the Moon-Gazing Terrace and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Contact" in the one-page view (#footer).
 
-- [ ] **C-152** Eyebrow "CONTACT", heading "Let's talk. (Literally.)" and "Tap the orb. Or, if you're old-school, send a normal email. I read every one." *not carried.* Not in the sect. The reader's title already says Contact; the email and the talk button follow.
+- [ ] **C-152** Eyebrow "CONTACT", heading "Let's talk. (Literally.)" and "Tap the talisman and a senior disciple of the sect will answer. Or, if you're old-school, send a normal email. I read every one." *not carried.* Not in the sect. The reader's title already says Contact; the email and the talk button follow.
 - [x] **C-153** Direct: email billzhangsc@gmail.com. *carried.* Moon-Gazing Terrace reader. The summit panel also has an Email button.
-- [x] **C-154** Direct: "Tap voice orb". *carried.* Moon-Gazing Terrace reader. Starts a call through onTalk (left out without it). Clicking the moon (hotspot moon) does the same on the 3D page.
+- [x] **C-154** Direct: "Ask a senior disciple". *carried.* Moon-Gazing Terrace reader. Starts a call through onTalk (left out without it). Clicking the moon (hotspot moon) does the same on the 3D page.
 - [x] **C-155** Elsewhere: GitHub (https://github.com/IdkwhatImD0ing). *carried.* Moon-Gazing Terrace reader.
 - [x] **C-156** Elsewhere: LinkedIn (https://www.linkedin.com/in/bill-zhang1/). *carried.* Moon-Gazing Terrace reader.
 - [x] **C-157** Elsewhere: Devpost (https://devpost.com/IdkwhatImD0ing). *carried.* Moon-Gazing Terrace reader.

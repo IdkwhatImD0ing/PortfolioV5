@@ -153,7 +153,7 @@ describe("hotspotLabel", () => {
     expect(hotspotLabel("skills:0").blurb).toBeUndefined();
     expect(hotspotLabel("fact:0").blurb).toBeUndefined();
     expect(hotspotLabel("fact:2").blurb).toBe(stripTags(PERSONAL_FACTS[2].line));
-    expect(hotspotLabel("moon")).toEqual({ title: "The moon", zh: "明月", blurb: "Talk to the AI" });
+    expect(hotspotLabel("moon")).toEqual({ title: "The moon", zh: "明月", blurb: "Ask a senior disciple" });
   });
 
   it("gives every item of every area a non-empty label and a DOM id", () => {

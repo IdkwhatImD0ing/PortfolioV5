@@ -112,7 +112,7 @@ The agent speaks as one of two personas, picked per call (`personas.py`):
 | Persona | Who speaks | Prompt | Picked when |
 |---|---|---|---|
 | `classic` (default) | Bill, in the first person | `prompts.py` | nothing asks for another one |
-| `ming-sect` | the sect's sound-transmission (the site's home page), a guide who talks about Bill in the third person (the sect is now 日月神教, the Sun Moon Divine Cult; the id keeps its first name, the Ming Sect) | `prompts_sect.py` | voice: Retell call `metadata.persona` (or `retell_llm_dynamic_variables.persona`); text: the `/chat` body's `persona` |
+| `ming-sect` | a senior disciple of the sect (the site's home page), a guide who talks about Bill in the third person and never calls itself an AI (the sect is now 日月神教, the Sun Moon Divine Sect; the id keeps its first name, the Ming Sect) | `prompts_sect.py` | voice: Retell call `metadata.persona` (or `retell_llm_dynamic_variables.persona`); text: the `/chat` body's `persona` |
 
 The client's `/api/create-web-call` and `/api/chat` routes set `ming-sect` for requests made from the sect (`/`, and its old `/sect` address). Unknown or missing values mean `classic`, so the old site and every existing Retell agent version are unchanged. Both personas share the tools and navigation. The sect's guardrail judge is the classic rubric plus `SECT_GUARDRAIL_NOTE` (`guardrail.py`); the classic judge's instructions are untouched and pinned by sha256 (`tests/test_personas.py`). Live checks: `uv run --env-file .env pytest tests/test_sect_persona_eval.py "tests/test_guardrail_eval.py::test_sect_judge_on_the_rubric_cases" -m integration -s`.
 

@@ -229,7 +229,7 @@ export function formationItems(): { id: string; title: string; blurb: string }[]
 const AREA_THINGS: Record<string, { name?: string; zh?: string; body?: string }> = {
   gate: {
     zh: "山门",
-    body: "The paifang of the Sun Moon Divine Cult. Every disciple passes beneath its three tiers of teal tile on the first climb.",
+    body: "The paifang of the Sun Moon Divine Sect. Every disciple passes beneath its three tiers of teal tile on the first climb.",
   },
   "gate-lions": { name: "Guardian Lions", zh: "石狮" },
   "gate-swords": { name: "Sword Monoliths", zh: "剑碑" },
@@ -345,7 +345,7 @@ export function hotspotLabel(hotspotId: string, fallback?: string): HotspotLabel
     case "resume":
       return { title: "Resume" };
     case "moon":
-      return { title: "The moon", zh: "明月", blurb: "Talk to the AI" };
+      return { title: "The moon", zh: "明月", blurb: "Ask a senior disciple" };
   }
   return { title: fallback ?? id };
 }

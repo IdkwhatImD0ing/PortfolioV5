@@ -1,5 +1,5 @@
 <!--
-  art3m1s.me · 日月神教 Sun Moon Divine Cult
+  art3m1s.me · 日月神教 Sun Moon Divine Sect
   A voice-driven AI portfolio, and a fly-through of a floating xianxia sect.
   Author: Bill Zhang (@IdkwhatImD0ing)
 -->
@@ -7,12 +7,12 @@
 <a id="top"></a>
 
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0e0c14,55:2c2233,100:c98a4b&height=230&section=header&text=%E6%97%A5%E6%9C%88%E7%A5%9E%E6%95%99%20%C2%B7%20Sun%20Moon%20Divine%20Cult&fontSize=46&fontColor=e9c77e&fontAlignY=36&desc=art3m1s.me%20%C2%B7%20a%20portfolio%20you%20can%20talk%20to%2C%20and%20fly%20through&descSize=20&descAlignY=58&animation=fadeIn" alt="日月神教 · Sun Moon Divine Cult · art3m1s.me"/>
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0e0c14,55:2c2233,100:c98a4b&height=230&section=header&text=%E6%97%A5%E6%9C%88%E7%A5%9E%E6%95%99%20%C2%B7%20Sun%20Moon%20Divine%20Sect&fontSize=46&fontColor=e9c77e&fontAlignY=36&desc=art3m1s.me%20%C2%B7%20a%20portfolio%20you%20can%20talk%20to%2C%20and%20fly%20through&descSize=20&descAlignY=58&animation=fadeIn" alt="日月神教 · Sun Moon Divine Sect · art3m1s.me"/>
 </p>
 
 <p align="center">
   <a href="https://art3m1s.me">
-    <img src="https://readme-typing-svg.demolab.com?font=Noto+Serif+SC&weight=600&size=22&pause=1200&color=E9C77E&center=true&vCenter=true&width=760&lines=Hi%2C+I'm+Bill.+Software+engineer+at+Pinterest.;Talk+to+my+portfolio%2C+or+fly+through+it.;%E6%97%A5+sun+%C2%B7+%E6%9C%88+moon+%C2%B7+%E7%A5%9E+divine+%C2%B7+%E6%95%99+cult;Built+in+Blender%2C+baked+on+cloud+GPUs%2C+drawn+in+three.js." alt="Hi, I'm Bill. Talk to my portfolio, or fly through it."/>
+    <img src="https://readme-typing-svg.demolab.com?font=Noto+Serif+SC&weight=600&size=22&pause=1200&color=E9C77E&center=true&vCenter=true&width=760&lines=Hi%2C+I'm+Bill.+Software+engineer+at+Pinterest.;Talk+to+my+portfolio%2C+or+fly+through+it.;%E6%97%A5+sun+%C2%B7+%E6%9C%88+moon+%C2%B7+%E7%A5%9E+divine+%C2%B7+%E6%95%99+sect;Built+in+Blender%2C+baked+on+cloud+GPUs%2C+drawn+in+three.js." alt="Hi, I'm Bill. Talk to my portfolio, or fly through it."/>
   </a>
 </p>
 
@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <img src=".github/readme/gate.jpg" alt="The Mountain Gate of the Sun Moon Divine Cult: a red and teal paifang with the 日月神教 plaque between a sun and a moon, the Heaven Sword and the Dragon Saber on either side, floating peaks and a giant moon behind" width="100%"/>
+  <img src=".github/readme/gate.jpg" alt="The Mountain Gate of the Sun Moon Divine Sect: a red and teal paifang with the 日月神教 plaque between a sun and a moon, the Heaven Sword and the Dragon Saber on either side, floating peaks and a giant moon behind" width="100%"/>
   <br/>
   <sub>山门 The Mountain Gate, the first stop. A live frame from the browser, not an offline render.</sub>
 </p>
@@ -38,9 +38,9 @@ This repo is my portfolio, [art3m1s.me](https://art3m1s.me). There are two ways 
 
 **1. Fly through it.** The home page is a flight through a floating mountain sect. Scroll, and the camera climbs from the gate to the summit. Each of the 11 stops is one section of the portfolio. You can drag to look around, open the map, and fast-travel. **Read as page** shows everything as one plain page, without the 3D.
 
-**2. Talk to it.** A voice agent lives in a jade talisman in the corner. Press it and ask a question. The agent searches my projects, answers out loud, and flies you to the stop it's talking about.
+**2. Talk to it.** Press the jade talisman in the corner and a senior disciple of the sect answers. Ask anything about my work. The disciple searches my projects, answers out loud, and takes you to the stop it's talking about by the map's ink fast travel.
 
-The sect is 日月神教, **the Sun Moon Divine Cult**, from Jin Yong's novel *The Smiling, Proud Wanderer*. I'm a big Jin Yong fan. The name also fits the site: 日月 is sun and moon, 神 is divine, and art3m1s is Artemis, goddess of the moon and the hunt. So the moon leads, and sun-and-moon marks run through the whole sect. Some treasures along the way belong to another of his sects, the Ming Sect (明教) of *Heaven Sword and Dragon Saber*.
+The sect is 日月神教, **the Sun Moon Divine Sect**, from Jin Yong's novel *The Smiling, Proud Wanderer*. I'm a big Jin Yong fan. The name also fits the site: 日月 is sun and moon, 神 is divine, and art3m1s is Artemis, goddess of the moon and the hunt. So the moon leads, and sun-and-moon marks run through the whole sect. Some treasures along the way belong to another of his sects, the Ming Sect (明教) of *Heaven Sword and Dragon Saber*.
 
 > **Status:** the sect is now the home page of this repo's site, and the old one-page portfolio is retired. The old `/sect` address redirects to the home page. `art3m1s.me` itself still points at the previous site until the domain moves over. Until then, [run it locally](#入门--quickstart).
 
@@ -62,7 +62,7 @@ The camera flies one path up a floating mountain range. It stops at each place b
 | 8 | 玉简阁 | Jade Slip Pavilion | Resume | The resume, kept the way a sect keeps its records |
 | 9 | 护宗大阵 | Grand Sect-Protecting Formation | How this site works | Eight carved pillars with holy-fire braziers around a bronze armillary sphere. Each pillar explains one part of how the site works |
 | 10 | 洞府 | Cave Abode | Off the clock | A cliff home with a waterfall, a koi pool and a tea pavilion |
-| 11 | 望月台 | Moon-Gazing Terrace | Contact | The summit under a giant moon. Click the moon to talk to the AI |
+| 11 | 望月台 | Moon-Gazing Terrace | Contact | The summit under a giant moon. Click the moon to speak with a senior disciple |
 
 ---
 
@@ -129,7 +129,7 @@ The full scene contract is in [`blender/xianxia-sect/spec.md`](./blender/xianxia
 
 ## 传音 · The voice agent
 
-传音 means "sound transmission", the way cultivators talk across a distance. The voice agent is the original heart of this portfolio. In the sect it speaks as the sect's guide, through a 传音符 (a sound-transmission talisman).
+传音 means "sound transmission", the way cultivators talk across a distance. The voice agent is the original heart of this portfolio. In the sect it speaks as one of the sect's senior disciples, who guides visitors through my work. You reach the disciple through a 传音符 (a sound-transmission talisman). When it sends you somewhere, you go the way the map's fast travel goes: under a wash of ink, and the ink clears once the place is fully drawn.
 
 ```mermaid
 %%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#15101b','primaryTextColor':'#f5ecdc','primaryBorderColor':'#e9c77e','lineColor':'#e9c77e','secondaryColor':'#2c2233','tertiaryColor':'#0e0c14','fontFamily':'Georgia, serif'}}}%%
@@ -269,7 +269,7 @@ cd server && uv run pytest tests/ -m "not integration"   # what CI runs
 | [`server/`](./server) | FastAPI WebSocket · OpenAI Agents · navigation and search tools · guardrails |
 | [`pinecone/`](./pinecone) | One-shot ingestion: `data.json` → embeddings → Pinecone index |
 | [`browserless/`](./browserless) | Deploy script for a separate headless-browser service (Browserless) on Cloud Run |
-| [`blender/xianxia-sect/`](./blender/xianxia-sect) | The Sun Moon Divine Cult: Blender Python for every stop, the light bake, and the packer for the web files |
+| [`blender/xianxia-sect/`](./blender/xianxia-sect) | The Sun Moon Divine Sect: Blender Python for every stop, the light bake, and the packer for the web files |
 | [`music/sect-themes/`](./music/sect-themes) | The prompts behind each stop's music |
 | [`research/`](./research) | Background research: fact checks, voice platform comparison, design audits |
 

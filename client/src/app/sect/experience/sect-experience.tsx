@@ -13,8 +13,10 @@
  * M: a painted map of the sect with every stop's seal, fast travel to any of them under an ink wash,
  * and the list of every place and item); PageDown/PageUp, the up and down arrows and J/K between
  * holds, Home to the start and End to the last place. Fast travel's ink stays up until the place has
- * settled (lib/sect/settle.ts), and a far jump from the rail, the list, a link, the voice agent, Home
- * or End to a place not loaded yet goes under the same ink rather than gathering it in view;
+ * settled (lib/sect/settle.ts), and a far jump from the rail, the list, a link, Home or End to a place
+ * not loaded yet goes under the same ink rather than gathering it in view; the voice agent (a senior
+ * disciple of the sect) always takes the visitor by fast travel, the ink spreading from its talisman
+ * (lib/sect/agent-travel.ts);
  * #<section> deep links (also on hashchange, and the hash follows the current hold);
  * ?open=<hotspot id>; the voice agent (VoiceBus). Free look turns the view all the way round: drag
  * the view, swipe sideways, or hold the left and right arrows; Escape or the Recentre button turns
@@ -48,6 +50,7 @@ import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState
 import type { Object3D } from "three";
 import { AREAS, areaInfo, isAreaId, type AreaId } from "@/lib/sect/areas";
 import { sampleCamera } from "@/lib/sect/camera-path";
+import { agentRoute, talismanInkOrigin } from "@/lib/sect/agent-travel";
 import { areaItemHotspots, commandTarget, isThing, parseContentHash, SECTION_NAMES } from "@/lib/sect/content";
 import { POSTER_ATTR, posterStart, startYaw, type NetworkHint } from "@/lib/sect/content-start";
 import { framingAt, framingFrame } from "@/lib/sect/framing";
@@ -145,7 +148,7 @@ import SectCanvas, { MOON_HOTSPOT } from "./scene";
 import { SoundPrompt } from "./sound-toggle";
 import { cameraStill, createStore, isMoving, recenterView, wake, type SectStore } from "./store";
 import { ChunkStreamer, streamBudget } from "./streaming";
-import { SectVoice, startTalk, useVoiceRouting } from "./voice";
+import { SectVoice, startTalk, talismanBox, useVoiceRouting } from "./voice";
 
 type Phase = "data" | "assets" | "ready" | "error" | "nowebgl";
 
@@ -379,6 +382,8 @@ export default function SectExperience() {
   const gather = useRef<{ frame: number; u: number } | null>(null);
   /** A voice command that arrived while the scene loaded: it runs once the page is ready. */
   const pendingVoice = useRef<VoiceCommand | null>(null);
+  /** The agent's latest command while fast travel's ink was up: it runs once the ink has cleared. */
+  const queuedVoice = useRef<VoiceCommand | null>(null);
   /** The load under way (the error screen stops its downloads). */
   const loadAbort = useRef<AbortController | null>(null);
   /**
@@ -868,8 +873,9 @@ export default function SectExperience() {
    * gathered first (the indicator shows; the backdrop proxies stand in meanwhile), so the camera
    * never arrives at nothing; after 12 s it goes anyway and the proxies stand in until they come. A
    * newer jump or the visitor's own scrolling cancels a waiting one. Resolves false when cancelled so.
-   * (The keys' steps between stops; the rail's, the list's, links', the voice agent's and Home and
-   * End's jumps go under the ink instead when their place is not loaded: goTo.)
+   * (The keys' steps between stops; the rail's, the list's, links' and Home and End's jumps go under
+   * the ink instead when their place is not loaded: goTo. The voice agent always goes by the ink:
+   * travelTo.)
    */
   const jumpTo = useCallback(
     async (toU: number, onArrive?: () => void): Promise<boolean> => {
@@ -1017,11 +1023,36 @@ export default function SectExperience() {
   );
 
   /**
+   * Fast travel to an area, as from the map: the ink blooms from `at` (the control that asked:
+   * inkOrigin), the camera is put at the hold underneath, and the ink clears once the place has
+   * settled; then `onArrive` runs. Without overlays (?ui=0), before the scene is ready, or for a
+   * stop that is not one of the places, it goes as goTo does. While the ink is up for another
+   * travel, that one wins and this does nothing.
+   */
+  const travelTo = useCallback(
+    (area: string, onArrive?: () => void, at?: readonly [number, number]) => {
+      if (travelRef.current) return;
+      if (!store || !params.ui || phase !== "ready" || !isAreaId(area) || !store.map.holds.some((h) => h.id === area)) {
+        goTo(area, onArrive);
+        return;
+      }
+      setMapOpen(false);
+      setTravel({ key: performance.now(), area, at: at ?? inkOrigin(), then: onArrive });
+    },
+    [store, params, phase, goTo],
+  );
+
+  /**
    * Go to a content target: fly to its area (if not there), then open the reader when asked.
-   * `after` runs on arrival (not when the visitor cancels the flight by scrolling).
+   * `after` runs on arrival (not when the visitor cancels the flight by scrolling). `travel: "ink"`:
+   * go by fast travel's ink instead (the voice agent: travelTo), spreading from `inkFrom`.
    */
   const navigate = useCallback(
-    (t: ContentTarget, open: boolean, opts: { record?: HistoryMode; after?: () => void } = {}) => {
+    (
+      t: ContentTarget,
+      open: boolean,
+      opts: { record?: HistoryMode; after?: () => void; travel?: "ink"; inkFrom?: readonly [number, number] } = {},
+    ) => {
       if (!store) return;
       const hold = store.map.holds.find((h) => h.id === t.area);
       const there = hold !== undefined && Math.abs(store.targetU - hold.uMid) < AT_HOLD_UNITS && !store.flight;
@@ -1038,9 +1069,10 @@ export default function SectExperience() {
       setReader(null);
       readerRef.current = null;
       shownItem.current = null;
-      goTo(t.area, arrive);
+      if (opts.travel === "ink") travelTo(t.area, arrive, opts.inkFrom);
+      else goTo(t.area, arrive);
     },
-    [store, goTo, openReader],
+    [store, goTo, travelTo, openReader],
   );
 
   // --- scroll and input ----------------------------------------------------------------------------
@@ -1741,8 +1773,10 @@ export default function SectExperience() {
   /** The seal of the stop the camera holds at: its reader, as the rail does. */
   const openHere = useCallback((area: AreaId) => openReader({ area, item: null }), [openReader]);
 
-  // The voice agent and the orb's chips: fly the camera, and open the forge reader for projects. A
-  // command given while the scene loads waits for it (the last one wins).
+  // The voice agent (the senior disciple, in a call or the text chat) and the orb's chips: take the
+  // visitor there by the map's fast travel, the ink spreading from the talisman (lib/sect/agent-travel.ts),
+  // then open the forge reader for projects. A command given while the scene loads waits for it, and
+  // one given while the ink is up waits for it to clear (the last one wins in both).
   const routeVoice = (cmd: VoiceCommand) => {
     const t = commandTarget(cmd);
     if (!t) return;
@@ -1752,6 +1786,17 @@ export default function SectExperience() {
     }
     if (phase !== "ready") {
       pendingVoice.current = cmd;
+      return;
+    }
+    const hold = store?.map.holds.find((h) => h.id === t.area);
+    const route = agentRoute({
+      inkUp: travelRef.current !== null,
+      atPlace: !!store && hold !== undefined && Math.abs(store.targetU - hold.uMid) < AT_HOLD_UNITS && !store.flight,
+      overlay: params.ui,
+      isArea: isAreaId(t.area),
+    });
+    if (route === "queue") {
+      queuedVoice.current = cmd;
       return;
     }
     setMapOpen(false);
@@ -1772,7 +1817,8 @@ export default function SectExperience() {
             }, 6000);
           }
         : undefined;
-    navigate(t, cmd.type !== "scroll", { after });
+    const inkFrom = route === "ink" ? talismanInkOrigin(talismanBox(), { w: window.innerWidth, h: window.innerHeight }) : undefined;
+    navigate(t, cmd.type !== "scroll", route === "ink" ? { after, travel: "ink", inkFrom } : { after });
   };
   useVoiceRouting(routeVoice, params.debug);
   const routeVoiceRef = useRef(routeVoice);
@@ -1783,6 +1829,13 @@ export default function SectExperience() {
     pendingVoice.current = null;
     routeVoiceRef.current(cmd);
   }, [phase]);
+  // The ink has cleared: the agent's command that came while it was up goes now.
+  useEffect(() => {
+    if (travel || !queuedVoice.current) return;
+    const cmd = queuedVoice.current;
+    queuedVoice.current = null;
+    routeVoiceRef.current(cmd);
+  }, [travel]);
 
   // --- derived view data -------------------------------------------------------------------------
 
@@ -1931,7 +1984,7 @@ export default function SectExperience() {
         <>
           <TopLinks onReadAsPage={readAsPage} />
           <main>
-            <h1 className="sr-only">Sun Moon Divine Cult: Bill Zhang&apos;s portfolio</h1>
+            <h1 className="sr-only">Sun Moon Divine Sect: Bill Zhang&apos;s portfolio</h1>
             <IntroTitle ref={introRef} />
             {holds.map((h) =>
               isAreaId(h.id) ? (

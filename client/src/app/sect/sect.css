@@ -126,8 +126,16 @@
  * The top bar's seal, before the owner's name. Phones under 390 px need its room: there the bar would
  * reach the Map button (at 360 px it overlapped it by 17 px).
  */
+/* The site's logo by the owner's name in the top bar (ornaments.tsx SectLogo: the favicon's drawing). */
+.sect-logo {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  transform: rotate(-3deg);
+}
 .sect-toplinks-seal {
-  font-size: 1.05rem;
+  font-size: 1.15rem;
 }
 @media (max-width: 389px) {
   .sect-toplinks-seal {
@@ -615,7 +623,7 @@
  * lib/sect/talisman.ts).
  *   the button  a jade seal in the map seals' dress (a gold rim, a ring of ink and gold), the
  *               microphone in gold on its face, 音 (sound) stamped in cinnabar at its foot and a slow
- *               ripple of qi round it; "Talk to the AI" shows over it on hover and keyboard focus
+ *               ripple of qi round it; "Ask a senior disciple" shows over it on hover and keyboard focus
  *   the panel   an ink sheet with the stop panels' rice paper, cloud corners and brush rules, headed
  *               by the talisman and its name. The talisman glows jade while it listens and gold while
  *               the agent speaks, an ink ring turns round it while a call connects or an answer is on
@@ -726,12 +734,12 @@
 }
 
 /*
- * "Talk to the AI" on an ink plate over the talisman, on hover and keyboard focus. Shown, it would be
+ * "Ask a senior disciple" on an ink plate over the talisman, on hover and keyboard focus. Shown, it would be
  * read after the button's own name, so it is given an empty alternative, like the seals' characters.
  */
 .sect-orb > div:not([role="dialog"])::after {
-  content: "Talk to the AI";
-  content: "Talk to the AI" / "";
+  content: "Ask a senior disciple";
+  content: "Ask a senior disciple" / "";
   position: absolute;
   right: -2px;
   bottom: calc(100% + 16px);
@@ -1169,7 +1177,7 @@
  * Phones: the area panel spans the bottom, so the orb moves to the top-right corner. Over a reader
  * (whose header holds its close button there) it sits at the bottom centre, in the gap the reader's
  * footer leaves between its previous and next buttons. In the page view it keeps to the corner.
- * Its "Talk to the AI" follows it: under it in the corner, over it elsewhere.
+ * Its "Ask a senior disciple" follows it: under it in the corner, over it elsewhere.
  */
 @media (max-width: 767px) {
   body:not([data-sect-modal]) .sect-orb > div:not([role="dialog"]) {

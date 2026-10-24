@@ -48,9 +48,12 @@ export const TOPBAR = {
 };
 
 // ---- src/components/voice-orb/index.tsx (the floating orb and its panel) ---------------------
+// In the sect the orb is the 传音符 talisman and a senior disciple answers through it: none of the
+// agent's labels say "AI" (the owner's wish, October 2026).
 export const VOICE_ORB = {
-  pill: "Tap to talk · or scroll",
-  button: "Start a voice conversation",
+  pill: "Ask a senior disciple · or scroll",
+  button: "Ask a senior disciple by voice",
+  panel: "Speak with a senior disciple",
   panelTitle: "Ask anything.",
 };
 
@@ -284,9 +287,9 @@ export const FOOTER = {
   eyebrow: "CONTACT",
   heading: [{ t: "Let's " }, { t: "talk.", em: true }] as Run[],
   heading2: "(Literally.)",
-  body: "Tap the orb. Or, if you're old-school, send a normal email. I read every one.",
+  body: "Tap the talisman and a senior disciple of the sect will answer. Or, if you're old-school, send a normal email. I read every one.",
   direct: "Direct",
-  tapOrb: "Tap voice orb",
+  tapOrb: "Ask a senior disciple",
   elsewhere: "Elsewhere",
   index: "Index",
   /** The footer's Index column: label and main-page section id. */

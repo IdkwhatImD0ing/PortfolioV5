@@ -1,6 +1,6 @@
 """Mountain Gate (山门) - site section 'hero', the opening of the fly-through.
 
-Blocking pass (spec section 0): a colossal five-bay paifang with the 日月神教 plaque (the Sun Moon Divine Cult; until
+Blocking pass (spec section 0): a colossal five-bay paifang with the 日月神教 plaque (the Sun Moon Divine Sect; until
 round 32 明教, the Ming Sect) on a white marble plaza at the cliff edge, guardian lions and two colossal legendary weapons (the Heaven
 Sword 倚天剑 and the Dragon Saber 屠龙刀, blade-down in carved plinths) flanking the top
 of a steep white marble stairway that dives about 56 m down the mountainside into the cloud
@@ -30,7 +30,7 @@ from sect.lib import props as P
 
 AREA = dict(key="gate", section_id="hero", title_en="Mountain Gate", title_zh="日月神教",
             footprint=40.0)            # title_zh: the plaque. Round 32 (the owner): 明教 -> 日月神教, the Sun Moon Divine
-                                       # Cult of 笑傲江湖 (patch_r32_plaque.py brings a built file up to it)
+                                       # Sect of 笑傲江湖 (patch_r32_plaque.py brings a built file up to it)
 
 K = AREA["key"]
 

@@ -71,7 +71,7 @@ export function AbodeBody(props: BodyProps) {
           </ul>
           {onTalk && (
             <div className="sc-actions">
-              <TalkButton onTalk={onTalk} label="Ask the portfolio" />
+              <TalkButton onTalk={onTalk} label="Ask a senior disciple" />
             </div>
           )}
         </div>

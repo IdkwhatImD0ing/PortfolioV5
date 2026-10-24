@@ -132,7 +132,7 @@ export function LoadingScreen({
         <BrushName text="日月神教" even={0.1} />
         <SealStamp />
       </p>
-      <p className="mt-4 text-[0.75rem] uppercase tracking-[0.42em] text-[var(--sect-gold)]">Sun Moon Divine Cult</p>
+      <p className="mt-4 text-[0.75rem] uppercase tracking-[0.42em] text-[var(--sect-gold)]">Sun Moon Divine Sect</p>
       <p className="mt-5 max-w-md text-[0.9375rem] leading-relaxed text-[var(--sect-paper-soft)]">
         <span className="font-serif text-[1.35rem] text-[var(--sect-paper)]">{PORTFOLIO.name}</span>
         <br />

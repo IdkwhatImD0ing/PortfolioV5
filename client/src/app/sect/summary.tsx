@@ -18,13 +18,13 @@ export function SectSummary() {
         <header>
           <p className="sect-summary-brand">
             <BrushName text="日月神教" even={0.1} className="sect-summary-seal" />
-            <span>Sun Moon Divine Cult</span>
+            <span>Sun Moon Divine Sect</span>
           </p>
           <h1>{s.name}</h1>
           <p className="sect-summary-tagline">{s.tagline}</p>
           <p>{s.intro}</p>
           <p className="sect-summary-note">
-            This site is a 3D flight through 日月神教, the Sun Moon Divine Cult, with a voice guide you can talk to.
+            This site is a 3D flight through 日月神教, the Sun Moon Divine Sect, where a senior disciple of the sect guides you.
             Both need JavaScript, so here is the whole portfolio as text.
           </p>
         </header>

@@ -114,7 +114,7 @@ export function contentInventory(): InventoryEntry[] {
     section: shell,
     what: "Document title and description, Open Graph and Twitter cards",
     status: "adapted",
-    where: `The root layout (src/app/layout.tsx) sets the site's title ("${PORTFOLIO.name} · Sun Moon Divine Cult"), description, Open Graph and Twitter cards; the share image is a frame of the Mountain Gate (public/og-image.jpg). While a reader is open the tab names its section. The description's facts (Pinterest, 36 wins, talk to it) are in the gate reader.`,
+    where: `The root layout (src/app/layout.tsx) sets the site's title ("${PORTFOLIO.name} · Sun Moon Divine Sect"), description, Open Graph and Twitter cards; the share image is a frame of the Mountain Gate (public/og-image.jpg). While a reader is open the tab names its section. The description's facts (Pinterest, 36 wins, talk to it) are in the gate reader.`,
     note: "Same person and facts, worded for the sect. The sect is the indexed home page; under the flight the server renders the whole portfolio as text (app/sect/summary.tsx) for crawlers and for visitors without JavaScript.",
   });
   add({
@@ -240,7 +240,7 @@ export function contentInventory(): InventoryEntry[] {
     section: orb,
     what: `Orb button "${VOICE_ORB.button}" and pill "${VOICE_ORB.pill}"`,
     status: "engine",
-    where: 'The 3D page passes onTalk; the content shows "Talk to the AI" on the gate and summit panels, "Talk to the portfolio" in the gate reader, "Tap voice orb" in the contact reader, and the moon hotspot. Without onTalk they are left out. The orb (components/voice-orb) is dressed by sect.css as a 传音符 (a sound-transmission talisman): a jade seal stamped 音, "Talk to the AI" on hover and keyboard focus, glowing while it listens and speaks; its pill shows on the intro screen only, because at the stops it covered the scene\'s own objects.',
+    where: 'The 3D page passes onTalk; the content shows "Ask a senior disciple" on the gate and summit panels, in the gate reader, in the contact reader, and on the moon hotspot. Without onTalk they are left out. The orb (components/voice-orb) is dressed by sect.css as a 传音符 (a sound-transmission talisman): a jade seal stamped 音, "Ask a senior disciple" on hover and keyboard focus, glowing while it listens and speaks; its pill shows on the intro screen only, because at the stops it covered the scene\'s own objects.',
   });
   add({
     section: orb,
@@ -670,7 +670,7 @@ export function contentInventory(): InventoryEntry[] {
     what: `Tip "${PERSONAL_HEAD.tipLead} ${PERSONAL_HEAD.tipQuote}"`,
     status: "dropped",
     where: "Not in the sect.",
-    note: "The Ask the portfolio button does the same.",
+    note: "The Ask a senior disciple button does the same.",
   });
 
   // ---- footer ----------------------------------------------------------------------------------------------------

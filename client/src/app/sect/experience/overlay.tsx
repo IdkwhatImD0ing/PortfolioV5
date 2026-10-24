@@ -14,14 +14,15 @@
  * on any background (sect.css).
  *
  * The Chinese dress stays out of the way here, as in Black Myth: Wukong's HUD: cloud curls on the
- * plates' corners, the places' names in the brush hand, the seal by the owner's name, and the rail's
+ * plates' corners, the places' names in the brush hand, the site's logo (the sun-and-moon seal) by the
+ * owner's name, and the rail's
  * stops hung on a thread of brush ink (ornaments.tsx, sect.css). The intro's title is the loud one.
  */
 import { forwardRef, memo, useEffect, useRef, useState } from "react";
 import type { HotspotLabel } from "@/lib/sect/content";
 import type { HoverNote } from "@/lib/sect/lore";
 import { TIER_LABELS, type Tier } from "@/lib/sect/runtime";
-import { BrushName, InkRing, SealStamp } from "../ornaments";
+import { BrushName, InkRing, SealStamp, SectLogo } from "../ornaments";
 import { QualityPicker } from "../quality-picker";
 
 export const IntroTitle = forwardRef<HTMLDivElement>(function IntroTitle(_, ref) {
@@ -38,7 +39,7 @@ export const IntroTitle = forwardRef<HTMLDivElement>(function IntroTitle(_, ref)
           <SealStamp />
         </p>
         <p className="sect-plate mt-4 rounded-[2px] px-3 py-1.5 text-[0.75rem] uppercase tracking-[0.34em] text-[var(--sect-gold)]">
-          Sun Moon Divine Cult
+          Sun Moon Divine Sect
         </p>
       </div>
       <div className="fixed inset-x-0 bottom-[6vh] flex justify-center px-4">
@@ -559,7 +560,7 @@ export function TopLinks({ onReadAsPage }: { onReadAsPage: () => void }) {
     <header className="fixed left-3 top-3 z-20 md:left-5 md:top-4">
       <div className="sect-panel sect-plate relative flex items-stretch rounded-[3px]">
         <p className="m-0 flex min-h-11 items-center gap-2.5 rounded-[2px] px-2.5 text-[var(--sect-paper)] md:min-h-10 md:px-4 [@media(max-width:340px)]:px-2">
-          <SealStamp className="sect-toplinks-seal" />
+          <SectLogo className="sect-toplinks-seal" />
           <span className="font-serif text-[1.05rem] leading-none tracking-[0.01em]">Bill Zhang</span>
           <span className="sr-only text-[0.68rem] uppercase tracking-[0.22em] text-[var(--sect-paper-soft)] md:not-sr-only">
             art3m1s.me

@@ -2,7 +2,8 @@
 
 /**
  * Fast travel's ink (lib/sect/travel.ts), as in Black Myth: Wukong. Ink blooms from the seal the
- * visitor picked on the map (or the control that asked for a far jump) until it covers the screen;
+ * visitor picked on the map (or the control that asked for a far jump, or the voice talisman when
+ * the senior disciple sends the visitor somewhere: lib/sect/agent-travel.ts) until it covers the screen;
  * the place's name shows on it while the camera jumps there underneath and the place is drawn until
  * it has settled (lib/sect/settle.ts: its areas streamed in and on the GPU, grass grown, reflections
  * captured). When that takes longer than the ink's own hold, a turning seal says Loading over a thin

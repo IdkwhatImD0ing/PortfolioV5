@@ -25,9 +25,9 @@ function pngSize(path: string): string {
 
 describe("manifest.json", () => {
   it("names the sect", () => {
-    expect(manifest.name).toContain("Sun Moon Divine Cult");
+    expect(manifest.name).toContain("Sun Moon Divine Sect");
     expect(manifest.short_name).toBe("日月神教");
-    expect(manifest.description).toContain("日月神教, the Sun Moon Divine Cult");
+    expect(manifest.description).toContain("日月神教, the Sun Moon Divine Sect");
   });
 
   it("takes its colours from the sect's ink, as the layout's theme-color does", () => {

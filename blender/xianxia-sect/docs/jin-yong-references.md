@@ -13,7 +13,7 @@ The first three are one family saga, the Condor Trilogy. Wanderer stands alone, 
 
 **Already in progress.** `spec.md` now makes the sect the Ming Cult 明教 (Míngjiào) from Heaven Sword. The client UI already says "The Ming Cult". Some Blender files still say 月华宗 (Yuèhuá Zōng, "Moonlit Sect"). The two stone monoliths at the gate are becoming the Heaven Sword 倚天剑 (Yǐtiān Jiàn) and the Dragon Saber 屠龙刀 (Túlóng Dāo). The formation track (`music/sect-themes/09-formation.md`) was rewritten today as "The Stone Guardian Wakes". Every idea below assumes those changes. Nothing in the repo was edited for this document.
 
-**Since then (round 32, October 2026).** The owner renamed the sect 日月神教 (Rì Yuè Shén Jiào), the Sun Moon Divine Cult of Wanderer: 日月 is sun and moon, 神 is divine (Artemis). The Heaven Sword pieces below stay, and the Ming Cult's own things (the holy fire, the Holy Fire Tokens, the Five Element Banners) are named as the Ming Cult's.
+**Since then (round 32, October 2026).** The owner renamed the sect 日月神教 (Rì Yuè Shén Jiào), the Sun Moon Divine Sect of Wanderer: 日月 is sun and moon, 神 is divine (Artemis). The Heaven Sword pieces below stay, and the Ming Cult's own things (the holy fire, the Holy Fire Tokens, the Five Element Banners) are named as the Ming Cult's.
 
 **Round 34 (October 2026): where each reference stands now.** The owner said the references felt dropped at random. The r31 plan, which the owner approved, puts each one at the stop whose story it shares, mounted where such a thing would really be kept, in the part of the frame the panel leaves open. Six moved, five were re-staged and four are new, so 15 references became 19. One change from the plan: the cards say what the thing is and which novel it is from, and nothing about why it stands at its stop. The table below is the current state. The idea menu further down is the original brainstorm, and its placement notes are older than this table.
 
@@ -404,7 +404,7 @@ Three novels want the summit. Rule: one line on the final frame (Su1). Everythin
 
 #### LS1. The first page of Heaven Sword, plus a pool of loading lines
 
-- **What the visitor sees:** under 日月神教 / Sun Moon Divine Cult, one small grey line: 冷浸溶溶月 (lěng jìn róngróng yuè, "steeped cold in the flowing moonlight"), with a few white pear petals drifting. While the scene loads, one line at a time:
+- **What the visitor sees:** under 日月神教 / Sun Moon Divine Sect, one small grey line: 冷浸溶溶月 (lěng jìn róngróng yuè, "steeped cold in the flowing moonlight"), with a few white pear petals drifting. While the scene loads, one line at a time:
   - "Learning the palms one at a time, the way Guo Jing did."
   - "Counting sparrows: 81…"
   - "Cooling the jade bed…"

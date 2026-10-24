@@ -1,4 +1,4 @@
-"""Round 32, lane 'plaque': the gate plaque says 日月神教 (the Sun Moon Divine Cult) instead of 明教, in an existing
+"""Round 32, lane 'plaque': the gate plaque says 日月神教 (the Sun Moon Divine Sect) instead of 明教, in an existing
 out/sect_chase.blend, so it matches what a fresh build of sect/areas/gate.py makes. Run on the cloud box, on a copy
 first, after the round-12 and round-24 patches:
 
@@ -6,7 +6,7 @@ first, after the round-12 and round-24 patches:
         E:/Github/PortfolioV5/blender/xianxia-sect/out/sect_chase.blend --python-exit-code 1 \
         --python E:/Github/PortfolioV5/blender/xianxia-sect/sect/patch_r32_plaque.py [-- DRY_RUN=1] [SCAN=0]
 
-Why (owner, 2026-10-23): the sect is renamed 明教 / the Ming Sect -> 日月神教 / the Sun Moon Divine Cult (Ren Woxing's
+Why (owner, 2026-10-23): the sect is renamed 明教 / the Ming Sect -> 日月神教 / the Sun Moon Divine Sect (Ren Woxing's
 sect in 笑傲江湖; 日月 sun and moon, 神 divine). gate.AREA['title_zh'] is now 日月神教. Four characters, read left to
 right as before, in the same KaiTi gold on the dark lacquer board. A name longer than the three characters the plaque
 zone was designed for keeps its board gate.PLAQUE_LONG_H of the zone's height (2.0 m, as tall as the sun and moon

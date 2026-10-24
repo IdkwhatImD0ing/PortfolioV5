@@ -34,6 +34,7 @@ import {
 } from "@/lib/text-chat";
 import { cn } from "@/lib/utils";
 import type { RetellAIResponse } from "@/types/api";
+import { VOICE_ORB } from "@/lib/sect/content-copy";
 import { SUGGESTIONS, cmdBtn, type Suggestion } from "./suggestions";
 
 type Mode = "voice" | "text";
@@ -493,10 +494,10 @@ export function VoiceOrb() {
         if (controller.signal.aborted && !timedOut) return;
         console.error("Text chat failed:", err);
         const message = timedOut
-          ? "The chat backend stopped responding. Please try again."
+          ? "No answer came through the talisman. Please try again."
           : err instanceof ChatReplyError
             ? err.message
-            : "Couldn't reach the chat backend. Please try again in a moment.";
+            : "Couldn't reach the senior disciple. Please try again in a moment.";
         notify(message, reply.length > 0);
       } finally {
         window.clearTimeout(idleTimer);
@@ -522,8 +523,8 @@ export function VoiceOrb() {
     setOpen(false);
   }, []);
 
-  /** Close the panel. The conversation ends with it: the orb reads "tap to
-   *  talk", so a call quietly continuing behind it would be a surprise. */
+  /** Close the panel. The conversation ends with it: the orb reads "ask a
+   *  senior disciple", so a call quietly continuing behind it would be a surprise. */
   const closePanel = useCallback(() => {
     if (!open || closing) return;
     openRef.current = false;
@@ -563,7 +564,7 @@ export function VoiceOrb() {
     setIsCalling(false);
     setIsAgentTalking(false);
     setMode("text");
-    setHint("Ask your own question, or tap a suggestion below. The page rearranges as I answer.");
+    setHint("Ask your own question, or tap a suggestion below. I'll take you where the answer is.");
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [abandonCall]);
 
@@ -634,10 +635,10 @@ export function VoiceOrb() {
 
   // Voice-mode status line, shown above the call buttons.
   const subtitle = isStarting
-    ? "Connecting to the voice agent…"
+    ? "Connecting to a senior disciple…"
     : isCalling
       ? isAgentTalking
-        ? "Speaking. The page moves as I answer."
+        ? "Speaking. I'll take you where the answer is."
         : "Listening. Ask me anything about Bill's work."
       : "Not connected. Start a call, or switch to text.";
 
@@ -647,7 +648,7 @@ export function VoiceOrb() {
         <div
           ref={panelRef}
           role="dialog"
-          aria-label="Talk to the portfolio"
+          aria-label={VOICE_ORB.panel}
           tabIndex={-1}
           onKeyDown={onPanelKeyDown}
           onAnimationEnd={onPanelAnimationEnd}
@@ -677,7 +678,7 @@ export function VoiceOrb() {
               )}
             />
             <span className="font-mono text-[11px] text-muted">
-              {mode === "voice" ? "voice · powered by Retell" : "text chat"}
+              {mode === "voice" ? "Senior disciple · voice" : "Senior disciple · text chat"}
             </span>
             <button
               type="button"
@@ -803,7 +804,7 @@ export function VoiceOrb() {
                     ref={inputRef}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Ask about Bill's work…"
+                    placeholder="Ask the senior disciple about Bill…"
                     aria-label="Your message"
                     autoComplete="off"
                     maxLength={1000}
@@ -839,13 +840,13 @@ export function VoiceOrb() {
         <div className="fixed right-7 bottom-7 z-[300] flex items-center gap-3 max-[700px]:right-4 max-[700px]:bottom-4 animate-panel-in">
           <div className="font-mono text-[12px] px-3.5 py-2.5 rounded-full bg-[rgba(15,12,28,0.85)] backdrop-blur-md border border-line text-ink-soft flex items-center gap-2.5 max-w-[280px] max-[760px]:hidden">
             <span className="w-1.5 h-1.5 rounded-full bg-[#4ade80] shadow-[0_0_8px_#4ade80]" />
-            <span>Tap to talk · or scroll</span>
+            <span>{VOICE_ORB.pill}</span>
           </div>
           <button
             ref={orbRef}
             type="button"
             onClick={openAndStart}
-            aria-label="Start a voice conversation"
+            aria-label={VOICE_ORB.button}
             className="relative w-16 h-16 rounded-full bg-[image:var(--grad)] shadow-[0_12px_40px_rgba(162,89,255,0.55),0_0_0_1px_rgba(255,255,255,0.06)_inset] grid place-items-center cursor-pointer transition-transform duration-200 hover:scale-105 before:content-[''] before:absolute before:-inset-2 before:rounded-full before:border before:border-[rgba(232,121,249,0.4)] before:animate-orb-pulse after:content-[''] after:absolute after:-inset-4 after:rounded-full after:border after:border-[rgba(232,121,249,0.2)] after:animate-orb-pulse-delayed"
           >
             <svg

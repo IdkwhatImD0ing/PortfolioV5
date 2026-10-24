@@ -12,12 +12,17 @@
  * - startTalk() presses the orb's own button (the orb exposes no API for it), or focuses its panel
  *   when that is already open;
  * - useVoiceRouting() turns VoiceBus commands (the agent's navigation, the orb's suggestion chips)
- *   into flights and readers.
+ *   into fast travel under the map's ink (sect-experience.tsx routeVoice) and readers;
+ * - talismanBox() says where the talisman is, for the ink to spread from.
+ *
+ * In the sect the agent is a senior disciple of the sect: none of its labels say "AI"
+ * (lib/sect/content-copy.ts VOICE_ORB).
  */
 import { useEffect, useRef } from "react";
 import { BackendWarmup } from "@/components/backend-warmup";
 import { VoiceOrb } from "@/components/voice-orb";
 import { VoiceBus, applyNavigation, type VoiceCommand } from "@/lib/voice-bus";
+import { VOICE_ORB } from "@/lib/sect/content-copy";
 import { talismanState, type OrbView } from "@/lib/sect/talisman";
 
 /** What the orb shows: its panel's label, status line, hint and typing bubble (see OrbView). */
@@ -58,11 +63,24 @@ export function SectVoice() {
   );
 }
 
+/**
+ * The talisman's box on screen, where the agent's fast travel starts its ink (lib/sect/agent-travel.ts):
+ * the talisman heading its open panel, else its button in the corner. Null when neither is there.
+ */
+export function talismanBox(): DOMRect | null {
+  const root = document.querySelector(".sect-orb");
+  if (!root) return null;
+  const el =
+    root.querySelector<HTMLElement>('[role="dialog"] header > span:first-child') ??
+    root.querySelector<HTMLElement>(':scope > div:not([role="dialog"]) > button');
+  return el?.getBoundingClientRect() ?? null;
+}
+
 /** Starts a voice call through the orb. Returns false when the orb is not on the page. */
 export function startTalk(): boolean {
   const root = document.querySelector(".sect-orb");
   if (!root) return false;
-  const orb = root.querySelector<HTMLButtonElement>('button[aria-label="Start a voice conversation"]');
+  const orb = root.querySelector<HTMLButtonElement>(`button[aria-label="${VOICE_ORB.button}"]`);
   if (orb) {
     orb.click();
     return true;
@@ -76,7 +94,7 @@ export function startTalk(): boolean {
 /**
  * Calls `onCommand` for every VoiceBus command, two animation frames after it was emitted. The wait
  * once let the one-page portfolio's own section scroll (gone with that page) land first; it is kept
- * so the flights and readers start exactly as they were tuned to.
+ * so the travels and readers start exactly as they were tuned to.
  */
 export function useVoiceRouting(onCommand: (cmd: VoiceCommand) => void, debug = false): void {
   const ref = useRef(onCommand);

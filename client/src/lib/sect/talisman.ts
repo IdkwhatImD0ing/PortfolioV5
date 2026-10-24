@@ -24,7 +24,7 @@ export type TalismanState = "idle" | "connecting" | "listening" | "speaking" | "
 export interface OrbView {
   /** The orb's panel is open. */
   open: boolean;
-  /** The panel header's label: "voice · powered by Retell", or "text chat". */
+  /** The panel header's label: "Senior disciple · voice", or "Senior disciple · text chat". */
   label: string;
   /** The voice panel's status line over its call buttons ("" in text chat). */
   status: string;
