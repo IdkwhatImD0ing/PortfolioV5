@@ -5,7 +5,7 @@ Blocking layout: a tall 7-storey octagonal pagoda library (about 46 m) on a marb
 pavilions, pines, bamboo and stone lanterns. Glowing hand scrolls and books drift in a slow
 spiral around the pagoda: one parent Empty rotating with linear keyframes over frames 1-1500.
 
-Route (docs/architecture-audit.md 1.6): the stair from the Mission Hall tops out on an arrival
+Route (docs/scene/architecture-audit.md 1.6): the stair from the Mission Hall tops out on an arrival
 landing on the axis at the south rim, under a three-bay entrance gate; three low steps lead up
 to the axis walkway and the pagoda plaza. The way out to the Stele Forest is a paved path from
 the plaza's south-west face, north of the lotus pool, ending in four low steps down to the

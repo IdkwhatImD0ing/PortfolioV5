@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The sect replaced the one-page portfolio as the home page in October 2026 (its section components were archived, out of the repo). `/sect` permanently redirects to `/` (`src/app/sect/route.ts`), keeping the query string and hash. `?view=page` reads the whole portfolio as one page without 3D, and the server renders the portfolio as text under the flight for crawlers and no-JS visitors (`src/app/sect/summary.tsx`).
 
-This directory (`client/`) is the frontend. It was the `client-new/` redesign until the original frontend was retired (June 2026, see `docs/legacy-client-retirement.md`) and this package was renamed to `client/`.
+This directory (`client/`) is the frontend. It was the `client-new/` redesign until the original frontend was retired (June 2026, see `docs/history/legacy-client-retirement.md` at the repo root) and this package was renamed to `client/`.
 
 ## Monorepo layout (paths relative to repo root, one level up)
 
@@ -16,6 +16,8 @@ This directory (`client/`) is the frontend. It was the `client-new/` redesign un
 - `server/` — FastAPI WebSocket backend. The voice agent (OpenAI Agents SDK), navigation + project-search tools, and prompt-injection guardrails live here. Managed with **uv**.
 - `pinecone/` — one-shot ingestion: `data.json` → embeddings → Pinecone index.
 - `browserless/` — headless browser sidecar (resume/preview rendering on Cloud Run).
+- `blender/xianxia-sect/` — the sect's scene: Blender Python, the light bake and the packer for `public/sect/full`. `spec.md` there is the scene's contract.
+- `docs/` — every doc: the design-decisions log (`docs/decisions/`), the sect UI, the scene, the voice backend, deploy and rollback. Index: `docs/README.md`. Add a dated entry to the decisions log in the same commit as a design decision.
 - `Makefile` (root) — orchestrates all services together (server + client + ngrok).
 
 ## Commands

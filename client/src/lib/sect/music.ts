@@ -5,7 +5,7 @@
  *
  * One track per area (the area ids of ./areas.ts) plus "loading" for the loading screen, all in
  * public/sect/audio/<key>.mp3 and listed in public/sect/audio/music.json with their loop points
- * (music/sect-themes/README.md). Every track is in the same five notes, so two can overlap during a
+ * (docs/music/sect-themes/README.md). Every track is in the same five notes, so two can overlap during a
  * crossfade without clashing.
  */
 import { AREA_IDS, isAreaId, type AreaId } from "./areas";
@@ -381,7 +381,7 @@ export function musicBudget(device: { deviceMemory?: number; coarse: boolean }):
 export const MUTE_KEY = "sect.music.muted";
 
 /**
- * Whether the music starts muted. music/sect-themes/README.md: "Start muted, with a visible sound
+ * Whether the music starts muted. docs/music/sect-themes/README.md: "Start muted, with a visible sound
  * toggle", so it is muted unless this visitor turned it on before (saved "0"); they then hear it
  * again from their first click, tap or key. Muted too when storage is blocked.
  */

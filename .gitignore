@@ -65,8 +65,7 @@ node_modules
 # tools/sect_pack.py, or is a local backup or test render. The rented GPU box
 # gets its input from tools/rblender.py uploads, not from git.
 blender/xianxia-sect/out/*
-# ...except the Seedance prompt plan, which client/docs links to.
-!blender/xianxia-sect/out/seedance_prompts.md
+# (The Seedance prompt plan that used to be kept here is now docs/history/seedance_prompts.md.)
 # Tree-bake EXR cache (sect/bake_trees.py), about 1 GB.
 blender/xianxia-sect/bakecache/
 # Third-party downloads in blender/xianxia-sect/assets/ are ignored by that

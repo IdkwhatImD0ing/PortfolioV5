@@ -455,4 +455,4 @@ Local project files:
 - `blender/xianxia-sect/spec.md` (conventions, human scale, anchors, footprints, area briefs)
 - `blender/xianxia-sect/sect/world.py` (`TERRACE_PAD`, `_path_z`, `_stairway`, `_chain_bridge`, `_stepping_stones`, `build_connectors`)
 - `blender/xianxia-sect/sect/lib/arch.py` (`platform`, `stairs`, `hall`, `_facade`, `lattice_panel`)
-- `blender/xianxia-sect/docs/ai-video-consistency.md` (style-frame and Seedance prompt patterns)
+- `docs/history/ai-video-consistency.md` (style-frame and Seedance prompt patterns)

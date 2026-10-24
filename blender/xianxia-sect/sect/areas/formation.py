@@ -28,7 +28,7 @@ the world. A 100 m round plaza of weathered bluestone with bronze and jade set i
 The protective barrier and the soft light shafts are drawn by the page (the bake leaves the dome out); no light
 beams are built here.
 
-Walking route (docs/architecture-audit.md 1.9 and 4): the stair from the scroll ends at the arrival (0, -62) on the
+Walking route (docs/scene/architecture-audit.md 1.9 and 4): the stair from the scroll ends at the arrival (0, -62) on the
 terrace grass; three low steps climb onto a paved front apron flanked by two stone lanterns, which runs to the plaza
 rim and the paifang. A white paved strip on the axis, flush in the floor, crosses it to the core dais, which has three
 short flights (one per tier, the tier tops are the landings) at each compass point; on the top tier the walk goes
@@ -57,7 +57,7 @@ from sect.areas import mission as MI
 # arrival / depart: where the incoming and outgoing connector stairs meet this area, as
 # (x, y, z, heading) in the local frame. z is the stair's end step level (terrace grass, -0.4);
 # heading is the walking direction in radians, counter-clockwise from local +X (pi/2 = +Y), so
-# world heading = heading + anchor yaw. Values from docs/architecture-audit.md 1.9 (W1).
+# world heading = heading + anchor yaw. Values from docs/scene/architecture-audit.md 1.9 (W1).
 AREA = dict(key="formation", section_id="architecture", title_en="Grand Sect-Protecting Formation",
             title_zh="护宗大阵", footprint=58.0,
             arrival=(0.0, -62.0, -0.4, math.pi / 2),

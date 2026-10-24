@@ -15,7 +15,7 @@ does not. ``build(scene, anchors)`` creates
 - a geometry cloud sea (cheap, real parallax) with a fog layer the underside dissolves into,
   mid-level cloud banks between the peaks, faint high cirrus, the opening cloud bank,
 - 30 floating islets (pines, no buildings), 5 waterfalls off the range's edges,
-- connectors between consecutive areas (docs/architecture-audit.md section 2, W1-W6): each runs
+- connectors between consecutive areas (docs/scene/architecture-audit.md section 2, W1-W6): each runs
   from the area it leaves (AREA['depart']) to the area it reaches (AREA['arrival']). Marble
   stairways with 0.17 m risers, flights of at most 18 and landings between, an archway at the
   foot and a rest pavilion halfway up the long ones, on a stone footing near the ground and on
@@ -1044,7 +1044,7 @@ def build_waterfalls(rng_, coll):
 
 
 # ---- connectors --------------------------------------------------------------------------
-# docs/architecture-audit.md section 2 (W1-W6). Each link runs from the area it leaves (that
+# docs/scene/architecture-audit.md section 2 (W1-W6). Each link runs from the area it leaves (that
 # area's AREA['depart']) to the area it reaches (AREA['arrival']). Both are (x, y, z, heading)
 # in the area's own frame: x right, y forward (the front is -y), z 0 = its walk level, heading =
 # the walking direction in radians counter-clockwise from local +x (atan2(dy, dx), so +y = pi/2).

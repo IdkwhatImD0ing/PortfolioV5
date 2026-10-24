@@ -152,7 +152,7 @@ class TextChatStreamChunk(BaseModel):
 # prompted to stay under 200 words, so a question and its answer take about 30
 # seconds: roughly 240 messages in a full hour. 500 covers that twice over, or a
 # brisk hour at 15 seconds an exchange. No client calls /summary since the
-# legacy client was retired (client/docs/legacy-client-retirement.md), so there
+# legacy client was retired (docs/history/legacy-client-retirement.md), so there
 # is no client-side number to match. Oversized requests get a 422.
 MAX_SUMMARY_MESSAGES = 500
 

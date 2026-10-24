@@ -1,70 +1,242 @@
 <!--
-  art3m1s.me · 日月神教 Sun Moon Divine Sect
-  A voice-driven AI portfolio, and a fly-through of a floating xianxia sect.
+  art3m1s.me · 日月神教 · the Sun Moon Divine Sect
+  Bill Zhang's portfolio: a three.js fly-through of a floating xianxia sect, guided by a senior disciple.
   Author: Bill Zhang (@IdkwhatImD0ing)
 -->
 
 <a id="top"></a>
 
 <p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:0e0c14,55:2c2233,100:c98a4b&height=230&section=header&text=%E6%97%A5%E6%9C%88%E7%A5%9E%E6%95%99%20%C2%B7%20Sun%20Moon%20Divine%20Sect&fontSize=46&fontColor=e9c77e&fontAlignY=36&desc=art3m1s.me%20%C2%B7%20a%20portfolio%20you%20can%20talk%20to%2C%20and%20fly%20through&descSize=20&descAlignY=58&animation=fadeIn" alt="日月神教 · Sun Moon Divine Sect · art3m1s.me"/>
+  <a href="https://art3m1s.me"><img src="client/public/favicon.svg" width="88" height="88" alt="The sect's seal: a crescent moon and a sun on red"/></a>
+</p>
+
+<h1 align="center">日月神教<br/><sub>The Sun Moon Divine Sect</sub></h1>
+
+<p align="center">
+  Bill Zhang's portfolio at <a href="https://art3m1s.me"><b>art3m1s.me</b></a>: a floating mountain sect you fly through, with a senior disciple to show you around.
 </p>
 
 <p align="center">
-  <a href="https://art3m1s.me">
-    <img src="https://readme-typing-svg.demolab.com?font=Noto+Serif+SC&weight=600&size=22&pause=1200&color=E9C77E&center=true&vCenter=true&width=760&lines=Hi%2C+I'm+Bill.+Software+engineer+at+Pinterest.;Talk+to+my+portfolio%2C+or+fly+through+it.;%E6%97%A5+sun+%C2%B7+%E6%9C%88+moon+%C2%B7+%E7%A5%9E+divine+%C2%B7+%E6%95%99+sect;Built+in+Blender%2C+baked+on+cloud+GPUs%2C+drawn+in+three.js." alt="Hi, I'm Bill. Talk to my portfolio, or fly through it."/>
-  </a>
+  <a href="https://art3m1s.me"><img src="https://img.shields.io/badge/enter%20the%20gate-art3m1s.me-c9a14f?style=flat-square&labelColor=0e0c14" alt="Enter the gate: art3m1s.me"/></a>
+  <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/IdkwhatImD0ing/PortfolioV5/test.yml?branch=main&style=flat-square&label=tests&labelColor=0e0c14&color=c9a14f" alt="Tests"/></a>
+  <a href="docs/README.md"><img src="https://img.shields.io/badge/docs-scripture%20pavilion-b8412d?style=flat-square&labelColor=0e0c14" alt="Docs: the Scripture Pavilion"/></a>
 </p>
 
 <p align="center">
-  <a href="https://art3m1s.me"><img src="https://img.shields.io/badge/Live-art3m1s.me-e9c77e?style=for-the-badge&labelColor=0e0c14&logo=vercel&logoColor=e9c77e" alt="live site"/></a>
-  <a href="#入门--quickstart"><img src="https://img.shields.io/badge/%E6%97%A5%E6%9C%88%E7%A5%9E%E6%95%99-run%20it%20locally-2c2233?style=for-the-badge&labelColor=0e0c14" alt="日月神教: run it locally"/></a>
-  <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/IdkwhatImD0ing/PortfolioV5/test.yml?branch=main&style=for-the-badge&label=tests&labelColor=0e0c14&logo=githubactions&logoColor=e9c77e" alt="tests"/></a>
-  <a href="https://github.com/IdkwhatImD0ing/PortfolioV5/stargazers"><img src="https://img.shields.io/github/stars/IdkwhatImD0ing/PortfolioV5?style=for-the-badge&logo=github&color=e9c77e&labelColor=0e0c14&logoColor=e9c77e" alt="stars"/></a>
-  <img src="https://komarev.com/ghpvc/?username=IdkwhatImD0ing&style=for-the-badge&color=2c2233&label=PROFILE+VIEWS" alt="profile views"/>
+  <a href="https://art3m1s.me"><img src="client/public/og-image.jpg" width="100%" alt="The Mountain Gate of the Sun Moon Divine Sect: a red and teal gate with the 日月神教 plaque between a sun and a moon, the Heaven Sword and the Dragon Saber on either side, floating peaks and a giant moon behind. Bill Zhang, Sun Moon Divine Sect, art3m1s.me."/></a>
 </p>
 
 <p align="center">
-  <img src=".github/readme/gate.jpg" alt="The Mountain Gate of the Sun Moon Divine Sect: a red and teal paifang with the 日月神教 plaque between a sun and a moon, the Heaven Sword and the Dragon Saber on either side, floating peaks and a giant moon behind" width="100%"/>
-  <br/>
-  <sub>山门 The Mountain Gate, the first stop. A live frame from the browser, not an offline render.</sub>
+  <b>山门已开，拾级而上。</b><br/>
+  <i>The mountain gate is open. Climb.</i>
 </p>
 
----
+<p align="center">
+  <img src=".github/readme/brush-rule.svg" width="56%" alt=""/>
+</p>
 
-## 山门 · What this is
+## 山门 · The gate: what this is
 
-This repo is my portfolio, [art3m1s.me](https://art3m1s.me). There are two ways in.
+山门 (shānmén) is a sect's mountain gate, where every visitor arrives.
 
-**1. Fly through it.** The home page is a flight through a floating mountain sect. Scroll, and the camera climbs from the gate to the summit. Each of the 11 stops is one section of the portfolio. You can drag to look around, open the map, and fast-travel. **Read as page** shows everything as one plain page, without the 3D.
+This repo is my portfolio, live at **[art3m1s.me](https://art3m1s.me)**. There are two ways in.
 
-**2. Talk to it.** Press the jade talisman in the corner and a senior disciple of the sect answers. Ask anything about my work. The disciple searches my projects, answers out loud, and takes you to the stop it's talking about by the map's ink fast travel.
+**Fly through it.** The home page is a flight through 日月神教, a sect of cultivators on peaks that float above the clouds. Scroll, and the camera climbs from the gate to the summit. Each of the eleven stops holds one section of the portfolio. Drag to look around. Press <kbd>M</kbd> for the ink-wash map and pick a seal to fast-travel there. **Read as page** shows everything as one plain page, without the 3D.
 
-The sect is 日月神教, **the Sun Moon Divine Sect**, from Jin Yong's novel *The Smiling, Proud Wanderer*. I'm a big Jin Yong fan. The name also fits the site: 日月 is sun and moon, 神 is divine, and art3m1s is Artemis, goddess of the moon and the hunt. So the moon leads, and sun-and-moon marks run through the whole sect. Some treasures along the way belong to another of his sects, the Ming Sect (明教) of *Heaven Sword and Dragon Saber*.
+**Talk to it.** Press the talisman at the bottom right, or click the moon at the summit. The talisman is a 传音符 (chuányīn fú), a "sound-transmission talisman" that cultivators use to speak across a distance. A senior disciple of the sect answers, by voice or by text. Ask about my work: the disciple searches my projects, answers, and takes you to the right hall by ink fast-travel. Ink washes over the screen while the camera moves, and clears once the place is fully drawn.
 
-> **Status:** the sect is now the home page of this repo's site, and the old one-page portfolio is retired. The old `/sect` address redirects to the home page. `art3m1s.me` itself still points at the previous site until the domain moves over. Until then, [run it locally](#入门--quickstart).
+The sect is from Jin Yong's novel *The Smiling, Proud Wanderer*. 日 is sun, 月 is moon, 神 is divine, and art3m1s is Artemis, goddess of the moon, so the moon leads and sun-and-moon marks run through the sect. I'm a big Jin Yong fan, and 19 treasures from his novels hide along the way.
 
----
+The site went live on October 24, 2026. The previous site still runs at [v4.art3m1s.me](https://v4.art3m1s.me).
 
 ## 十一处 · The eleven stops
 
-The camera flies one path up a floating mountain range. It stops at each place below, in this order.
+The camera flies one path up a floating mountain range and stops at each place below, in this order.
 
-| # | 中文 | Stop | Portfolio section | What you'll find |
-|:-:|:-:|---|---|---|
-| 1 | 山门 | Mountain Gate | Welcome | A five-bay gate with the 日月神教 plaque, guarded by the Heaven Sword and the Dragon Saber |
-| 2 | 心镜台 | Heart-Mirror Terrace | About | A giant bronze mirror above a still pond. On Medium and High quality, both show live reflections |
-| 3 | 炼器峰 | Artifact Forge Peak | Projects | A cauldron circled by 11 prize-winning projects, each forged into a magic artifact |
-| 4 | 论剑台 | Sword-Discussion Arena | Hackathons | A floating duelling ring lined with banners, with a black iron sword driven through it |
-| 5 | 任务殿 | Mission Hall | Experience | A wall of seven white-jade boards, one for each role |
-| 6 | 藏经阁 | Scripture Pavilion | Education | A seven-storey pagoda with one glowing floor per school and scrolls circling it |
-| 7 | 碑林 | Stele Forest | Skills | Rows of glowing stone tablets, one colour per skill area |
-| 8 | 玉简阁 | Jade Slip Pavilion | Resume | The resume, kept the way a sect keeps its records |
-| 9 | 护宗大阵 | Grand Sect-Protecting Formation | How this site works | Eight carved pillars with holy-fire braziers around a bronze armillary sphere. Each pillar explains one part of how the site works |
-| 10 | 洞府 | Cave Abode | Off the clock | A cliff home with a waterfall, a koi pool and a tea pavilion |
-| 11 | 望月台 | Moon-Gazing Terrace | Contact | The summit under a giant moon. Click the moon to speak with a senior disciple |
+| # | Stop | Portfolio section | What you'll find |
+|:-:|---|---|---|
+| 1 | 山门 Mountain Gate | Welcome | A five-bay gate with the 日月神教 plaque, guarded by the Heaven Sword and the Dragon Saber |
+| 2 | 心镜台 Heart-Mirror Terrace | About | A giant bronze mirror above a still pond. On Medium and High quality, both show live reflections |
+| 3 | 炼器峰 Artifact Forge Peak | Projects | A cauldron circled by 11 prize-winning projects, each forged into a magic artifact |
+| 4 | 论剑台 Sword-Discussion Arena | Hackathons | A floating duelling ring lined with banners, with a black iron sword driven through it |
+| 5 | 任务殿 Mission Hall | Experience | A wall of seven white-jade boards, one for each role |
+| 6 | 藏经阁 Scripture Pavilion | Education | A seven-storey pagoda with one glowing floor per school and scrolls circling it |
+| 7 | 碑林 Stele Forest | Skills | Rows of glowing stone tablets, one colour per skill area |
+| 8 | 玉简阁 Jade Slip Pavilion | Resume | The resume, kept the way a sect keeps its records |
+| 9 | 护宗大阵 Grand Sect-Protecting Formation | How this site works | Eight carved pillars with holy-fire braziers around a bronze armillary sphere. Each pillar explains one part of how the site works |
+| 10 | 洞府 Cave Abode | Off the clock | A cliff home with a waterfall, a koi pool and a tea pavilion |
+| 11 | 望月台 Moon-Gazing Terrace | Contact | The summit under a giant moon. Click the moon to speak with a senior disciple |
 
----
+## 法器 · The stack
+
+法器 (fǎqì) are a cultivator's tools.
+
+| Layer | Tech | Why |
+|---|---|---|
+| Site | Next.js 15 (App Router), React 19, TypeScript 5, Tailwind v4 | One page that renders the sect, plus the portfolio as text under it for search engines and no-JS browsers |
+| 3D | three.js, React Three Fiber, drei, postprocessing, three-mesh-bvh | The fly-through, clicking things in the scene, and the glow |
+| Scene build | Blender 5.2 Python, Cycles on a rented cloud GPU, glTF Transform with meshopt, WebP, Git LFS | A sect built by code, with light baked once and streamed in small files |
+| Voice and chat | Retell (voice calls), FastAPI, OpenAI Agents SDK, Pusher (page moves and captions) | A streaming agent that can move the page while it talks |
+| Search | Pinecone with `text-embedding-3-large` | Finds a project by what it does, not just its name |
+| Hosting | Vercel (site), Docker on Cloud Run (backend) | A push to `main` ships the site |
+| Watching it | Vercel Analytics and Speed Insights, [FireTrace](https://tracing.art3m1s.me) | Real-visitor performance, and one trace per agent run |
+| Tests | Vitest, pytest, GitHub Actions | CI runs both suites on every push to `main` |
+
+## 宗门图 · Map of the repo
+
+宗门图 is a map of the sect's grounds.
+
+| Folder | In the sect | What lives there |
+|---|---|---|
+| [`client/`](client) | the sect itself | The Next.js site. The fly-through is `src/app/sect/`, its tested logic is `src/lib/sect/`, the talisman is `src/components/voice-orb/`, and the packed scene is `public/sect/full/` |
+| [`server/`](server) | the senior disciple | FastAPI: the voice WebSocket, text chat, the agent, its navigation and search tools, the guardrail and the two personas |
+| [`pinecone/`](pinecone) | the disciple's memory | A one-shot script: `data.json`, then embeddings, then the Pinecone index |
+| [`blender/xianxia-sect/`](blender/xianxia-sect) | the mountains and halls | Blender Python for every stop (`sect/`), the bake and export scripts, and [`spec.md`](blender/xianxia-sect/spec.md), the scene's contract |
+| [`blender/xianxia-sect/tools/`](blender/xianxia-sect/tools) | the forge's tools | The packer `sect_pack.py`, the remote Blender runner `rblender.py`, and small data fixes |
+| [`docs/`](docs/README.md) | 藏经阁, the Scripture Pavilion | Every doc: the design-decisions log, the scene, the voice agent, deploy, music and research |
+| [`browserless/`](browserless) | | Deploy script for a separate headless-browser service |
+| [`.github/`](.github) | | CI workflows and the images in this README |
+| [`Makefile`](Makefile) | | Install everything, run the server, site and tunnel together, run all tests |
+
+## 入门 · Run it locally
+
+入门 (rùmén) means "entering the gate". It is also how Chinese says "getting started".
+
+### The site
+
+The fly-through only needs the client.
+
+```bash
+git lfs install          # the scene files live in Git LFS
+git clone https://github.com/IdkwhatImD0ing/PortfolioV5.git
+cd PortfolioV5/client
+pnpm install
+pnpm dev                 # then open http://localhost:3000
+```
+
+Add `?tier=low`, `?tier=mid` or `?tier=high` to force a quality tier, or `?view=page` to read the sect as one plain page. If you cloned before installing Git LFS, run `git lfs pull` to fetch the scene files.
+
+### The senior disciple (voice and text agent)
+
+The agent needs the server, a public address so Retell can reach it, and the keys below. Install once, then run each of the last three lines in its own terminal, from the repo root.
+
+```bash
+make install-deps                                # uv, pnpm and ngrok, then each app's packages
+cd server && uv run uvicorn main:app --reload    # the server, on :8000
+ngrok http 8000                                  # a public URL for Retell to reach the server
+cd client && pnpm dev                            # the site, on :3000
+```
+
+Names only. Never commit the values.
+
+```bash
+# server/.env
+RETELL_API_KEY=...
+OPENAI_API_KEY=...
+PINECONE_API_KEY=...
+FIRETRACE_API_KEY=...            # optional: records every agent run
+PUSHER_SECRET=...                # voice page moves and live captions (server/README.md, "Voice events")
+
+# client/.env.local (see client/.env.local.example)
+RETELLAI_API_KEY=...             # server-side only, used by the create-web-call proxy
+NEXT_PUBLIC_RETELL_AGENT_ID=...
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=...          # optional: backend URL for warm-up and text chat
+```
+
+### The search index
+
+```bash
+cd pinecone
+python load_data.py      # embeds data.json and uploads it to the Pinecone index
+```
+
+It needs `OPENAI_API_KEY` and `PINECONE_API_KEY`, and it writes to the live index, so run it only when the project data changes. See [`docs/voice/pinecone/`](docs/voice/pinecone/README.md).
+
+### The scene
+
+You don't need Blender to run the site: the packed scene is already in `client/public/sect/full/`. To rebuild it, the scripts in `blender/xianxia-sect/sect/` run in Blender 5.2 in background mode (`blender --background --python <script> -- <args>`). The light bake needs a big GPU, so it runs on a rented cloud machine. Start with [`spec.md`](blender/xianxia-sect/spec.md) and [`api_look.md`](blender/xianxia-sect/docs/api_look.md), which shows how to render a preview of any module.
+
+### Tests
+
+```bash
+cd client && pnpm lint && pnpm typecheck && pnpm test
+cd server && uv run pytest tests/ -m "not integration"   # what CI runs
+```
+
+<p align="center">
+  <img src=".github/readme/brush-rule.svg" width="56%" alt=""/>
+</p>
+
+## 炼器 · How the sect is forged
+
+炼器 (liànqì) means "forging artifacts". Here is how the sect gets from code to your browser.
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#15101b','primaryTextColor':'#f5ecdc','primaryBorderColor':'#c9a14f','lineColor':'#c9a14f','secondaryColor':'#2c2233','tertiaryColor':'#0e0c14','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  A["Blender Python<br/>every stop built by code"] --> B["Cycles light bake<br/>on a rented cloud GPU"]
+  B --> C["sect_pack.py<br/>glTF, meshopt, WebP, gzip"]
+  C --> D[("Per-stop files<br/>in Git LFS")]
+  D --> E["three.js in the browser<br/>streams stops as you fly"]
+  E --> F["Live layers<br/>reflections, banners, water,<br/>clouds, birds, qi motes"]
+```
+
+1. **Built by code.** The whole sect is Python that runs inside Blender: one module per stop, plus shared libraries for buildings, props, trees, rock and water. That is about 70,000 lines, not counting one-off patch scripts. A few free photo textures and two CC BY models, the Divine Condor and the gate's guardian lions, come from outside (see [Credits](#鸣谢--credits)).
+2. **Lit once, offline.** Cycles, Blender's path tracer, bakes the lighting into textures on a rented RTX 5090. A development bake takes about an hour and a half. The browser never computes this lighting. It just reads the result.
+3. **Packed small.** [`sect_pack.py`](blender/xianxia-sect/tools/sect_pack.py) packs each stop into its own glTF files and checks every file before installing it. There are about 60 files, close to 200 MB in all: a full set, plus a lighter set for phones. A visitor downloads only one set, a few stops at a time.
+4. **Drawn live.** three.js shows the baked light and adds live layers on top: real reflections in the Heart-Mirror and its pond, banners that wave, flowing water, drifting clouds, birds, cranes, glowing qi motes and peach petals.
+5. **Fits the device.** The loading screen picks Low, Medium or High quality from your device, and you can change it. If frames run slow, it steps down. On a desktop, the stop you're at and two on each side stay at full detail.
+
+Every design choice behind this, with its date and reason, is in the [decisions log](docs/decisions/README.md).
+
+## 传音 · The talisman and the senior disciple
+
+传音 (chuányīn) means "sound transmission", the way cultivators speak across a distance. The voice agent is the original heart of this portfolio. In the sect it speaks as a senior disciple who guides visitors through my work, and it never calls itself an AI.
+
+```mermaid
+%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#15101b','primaryTextColor':'#f5ecdc','primaryBorderColor':'#c9a14f','lineColor':'#c9a14f','secondaryColor':'#2c2233','tertiaryColor':'#0e0c14','fontFamily':'Georgia, serif'}}}%%
+flowchart TB
+  U(["Visitor<br/>presses the talisman"]) --> R{{"Retell<br/>voice call"}}
+  R --> WS(["FastAPI<br/>WebSocket"])
+  WS --> A[["Agents SDK<br/>the senior disciple"]]
+  A <--> P[("Pinecone<br/>project search")]
+  A --> PU{{"Pusher<br/>page moves, captions"}}
+  PU --> B["Browser<br/>ink fast-travel to the stop"]
+```
+
+- **The voice moves the page.** The agent calls tools like `display_project`. The server turns each call into a small navigation message and publishes it on the call's Pusher channel. The browser takes you to that stop by ink fast-travel and opens the reader there.
+- **Search by meaning.** Every project is embedded into Pinecone. Ask "what did you build for emergency dispatch?" and it finds **DispatchAI**, even though you never said its name.
+- **A guardrail that doesn't slow you down.** A small classifier checks each question while the main model starts answering. If it flags the question, the answer is cancelled and replaced with a polite refusal. Normal questions get their first word with no extra wait.
+- **Two personas, one backend.** The sect gets the senior disciple. Anything that asks for nothing gets the classic persona (me, in the first person), so the old site keeps working on the same server.
+- **Readable by people and machines.** The server renders the whole portfolio as text under the flight, so search engines, language models and browsers without JavaScript can read it. JSON-LD and [`/llms.txt`](https://art3m1s.me/llms.txt) describe the site too.
+
+## 出山 · Deploy and roll back
+
+出山 (chūshān) means "leaving the mountain", going out into the world.
+
+- **Site.** A push to `main` deploys art3m1s.me on Vercel. The Vercel project needs Git LFS turned on, or visitors get pointer files instead of the scene. To roll back, promote the last good deployment in Vercel, then revert the commit.
+- **Backend.** One Cloud Run service serves every site. Ship a new revision with no traffic and a tag, test it at the tag's URL, then move the traffic. Keep the previous revision: rolling back means sending the traffic back to it.
+- **Voice agent.** Published Retell agent versions are never overwritten or deleted. A change is a new version or a new agent.
+
+The details are in [`docs/deploy/`](docs/deploy/README.md). No secrets live in this repo.
+
+## 藏经阁 · The docs
+
+藏经阁 is the Scripture Pavilion, where a sect keeps its manuals. Every doc lives in [`docs/`](docs/README.md).
+
+| Read this | To learn |
+|---|---|
+| [The index](docs/README.md) | Every doc, one line each |
+| [Design decisions](docs/decisions/README.md) | Why the site is built this way, dated, in the owner's words |
+| [The scene](docs/README.md#the-scene-blenderxianxia-sect) | The web pipeline, the walking-route audit, asset research, the Jin Yong references |
+| [The senior disciple](docs/voice/README.md) | The backend, its endpoints, the agent, the guardrail, search |
+| [Deploy and roll back](docs/deploy/README.md) | Shipping and undoing each part |
+| [Music](docs/music/sect-themes/README.md) | How each stop's music was made |
+
+<p align="center">
+  <img src=".github/readme/brush-rule.svg" width="56%" alt=""/>
+</p>
 
 ## 画卷 · Gallery
 
@@ -93,67 +265,9 @@ The camera flies one path up a floating mountain range. It stops at each place b
   <sub>日月神教全图, the map of the sect (press <kbd>M</kbd>). Pick a seal and the camera fast-travels there.</sub>
 </p>
 
----
+## 彩蛋 · Jin Yong treasures
 
-## 炼器 · How it's built
-
-炼器 means "forging artifacts". Here is how the sect gets from code to your browser.
-
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#15101b','primaryTextColor':'#f5ecdc','primaryBorderColor':'#e9c77e','lineColor':'#e9c77e','secondaryColor':'#2c2233','tertiaryColor':'#0e0c14','fontFamily':'Georgia, serif'}}}%%
-flowchart LR
-  A["Blender + Python<br/>every stop built by code"] --> B["Cycles light bake<br/>on rented cloud GPUs"]
-  B --> C["sect_pack.py<br/>glTF · meshopt · WebP · gzip"]
-  C --> D[("Per-stop chunks<br/>in Git LFS")]
-  D --> E["three.js in the browser<br/>streams chunks as you fly"]
-  E --> F["Live touches<br/>reflections · banners · water<br/>clouds · birds · qi motes"]
-```
-
-1. **Built by code.** The whole sect is Python scripts that run inside Blender: one module per stop, plus shared libraries for buildings, props, trees, rock and water. The build code is about 55,000 lines. A few CC0 photo textures and one CC BY model come from outside (see [Credits](#鸣谢--credits)).
-2. **Lit once, offline.** The lighting is baked in Cycles, Blender's path tracer, on a rented RTX 5090 in the cloud. A quick development bake takes about an hour and a half. The browser never computes this lighting. It just reads the result.
-3. **Packed small.** [`sect_pack.py`](./blender/xianxia-sect/tools/sect_pack.py) packs each stop into its own glTF files (meshopt geometry, WebP textures, gzip), then checks every file before installing it. There are 55 files, about 190 MB in all: a full set, plus a lighter set for phones. A visitor downloads only one set, a few stops at a time.
-4. **Drawn live.** The page uses three.js through React Three Fiber. It shows the baked light and adds live layers on top: real reflections in the Heart-Mirror and its pond (Medium and High quality), banners that wave, flowing water, drifting clouds, birds, cranes, glowing qi motes and peach petals.
-5. **Fits the device.** It picks a Low, Medium or High quality tier from your device, and you can change it. If frames run slow, it steps the quality down until they don't.
-
-Other things to try in the sect:
-
-- **Drag** to look around at any stop (or hold the left and right arrow keys).
-- **Hover** a Jin Yong item to see a small card about it.
-- **Press <kbd>M</kbd>** for the ink-wash world map. Click a seal to fast-travel there, Black Myth: Wukong style.
-- **Turn on the music.** Each stop has its own instrumental track. It starts muted.
-- **Read as page** shows the same content as a plain page, without the 3D.
-
-The full scene contract is in [`blender/xianxia-sect/spec.md`](./blender/xianxia-sect/spec.md).
-
----
-
-## 传音 · The voice agent
-
-传音 means "sound transmission", the way cultivators talk across a distance. The voice agent is the original heart of this portfolio. In the sect it speaks as one of the sect's senior disciples, who guides visitors through my work. You reach the disciple through a 传音符 (a sound-transmission talisman). When it sends you somewhere, you go the way the map's fast travel goes: under a wash of ink, and the ink clears once the place is fully drawn.
-
-```mermaid
-%%{init: {'theme':'base', 'themeVariables': {'primaryColor':'#15101b','primaryTextColor':'#f5ecdc','primaryBorderColor':'#e9c77e','lineColor':'#e9c77e','secondaryColor':'#2c2233','tertiaryColor':'#0e0c14','fontFamily':'Georgia, serif'}}}%%
-flowchart LR
-  U(["You"]) -- "speech" --> R{{"Retell AI<br/>(WebRTC)"}}
-  R -- "transcript" --> WS(["FastAPI<br/>WebSocket"])
-  WS -- "stream" --> A[["OpenAI<br/>Agents SDK"]]
-  A <-- "search_projects" --> P[("Pinecone<br/>vector DB")]
-  A -- "display_* tools" --> N["Next.js client<br/>(via a Pusher event)"]
-  A -- "tokens" --> WS --> R --> U
-  N -. "fly to the stop" .-> U
-```
-
-- **Voice as the router.** The agent calls tools like `display_project` and `display_hackathons_page`. The server turns each call into a small navigation message, sends it through Retell's metadata channel, and the browser flies to the stop that holds that section.
-- **Search by meaning.** Every project is embedded into Pinecone with `text-embedding-3-large`. Ask "what did you build for emergency dispatch?" and it finds **DispatchAI**, even though you never said its name.
-- **Guardrails that don't slow you down.** A small classifier checks each question while the main model starts answering. If it flags the question, the answer is cancelled and replaced with a polite refusal. Normal questions get their first word with no extra wait.
-- **Streaming end to end.** Words stream from OpenAI through FastAPI to Retell, so the agent starts speaking before its answer is finished.
-- **Findable by people and by AI.** The server renders the whole portfolio as text under the flight, so search engines, language models and browsers without JavaScript can read it. JSON-LD and [`/llms.txt`](https://art3m1s.me/llms.txt) describe the site too.
-
----
-
-## 彩蛋 · Jin Yong easter eggs
-
-These 19 objects from Jin Yong's novels are hidden along the flight. Hover one (or tap it on a phone) to see what it is.
+彩蛋 means "easter eggs". These 19 objects from Jin Yong's novels are hidden along the flight. Hover one (or tap it on a phone) to see what it is.
 
 | Stop | Items | From |
 |---|---|---|
@@ -169,178 +283,41 @@ These 19 objects from Jin Yong's novels are hidden along the flight. Hover one (
 | Cave Abode | 笑傲江湖 Qu Yang and Liu Zhengfeng's duet | *The Smiling, Proud Wanderer* |
 | Moon-Gazing Terrace | 神鵰 Divine Condor · 金鈴索 Golden Bell Rope · 綠竹巷 Green Bamboo Lane | *Return of the Condor Heroes* · *The Smiling, Proud Wanderer* |
 
-The stele rows carry martial-arts manuals from the novels too, and each role tablet in the Mission Hall takes one star of the Big Dipper.
-
----
-
-## 法器 · Tech stack
-
-<p align="center">
-  <a href="https://skillicons.dev">
-    <img src="https://skillicons.dev/icons?i=nextjs,react,typescript,tailwind,threejs,blender,python,fastapi,docker,gcp,vercel&theme=dark" alt="Next.js, React, TypeScript, Tailwind, three.js, Blender, Python, FastAPI, Docker, GCP, Vercel"/>
-  </a>
-</p>
-
-<details>
-<summary><b>Full breakdown</b> · click to expand</summary>
-
-| Layer | Tech | Why |
-|---|---|---|
-| **Frontend** | Next.js 15 (App Router) · React 19 · TypeScript 5 · Tailwind v4 · Retell web SDK | Fast, modern, voice-ready |
-| **3D** | three.js · React Three Fiber · drei · postprocessing · three-mesh-bvh | The sect fly-through, picking and post effects |
-| **Scene build** | Blender 5.2 Python · Cycles on cloud RTX 5090s · glTF Transform + meshopt · WebP · Git LFS | Procedural sect, baked light, small streamed files |
-| **Backend** | FastAPI · Uvicorn · OpenAI Agents SDK · Retell SDK · Pydantic | Streaming WebSocket and a tool-calling agent |
-| **Vector DB** | Pinecone · `text-embedding-3-large` | Semantic search across projects |
-| **Infra** | Docker · Cloud Run · Vercel · ngrok (dev) | One-command deploys |
-| **Observability** | Vercel Analytics · Speed Insights · structured logs · [FireTrace](https://tracing.art3m1s.me) | Real-user performance, plus one trace per agent run |
-| **Tests** | Vitest · pytest · GitHub Actions | 1,556 client and 365 server tests. CI runs them on every push to main, minus 10 that need real API keys |
-
-</details>
-
----
-
-## 入门 · Quickstart
-
-入门 means "entering the gate", which is also how Chinese says "getting started".
-
-The fly-through only needs the client:
-
-```bash
-git lfs install          # the sect's scene files live in Git LFS
-git clone https://github.com/IdkwhatImD0ing/PortfolioV5.git
-cd PortfolioV5/client
-pnpm install
-pnpm dev                 # then open http://localhost:3000
-```
-
-Add `?tier=low`, `?tier=mid` or `?tier=high` to force a quality tier, or `?view=page` to read the sect as a plain page. If you cloned before installing Git LFS, run `git lfs pull` to fetch the scene files.
-
-<details>
-<summary><b>Running the voice agent too</b></summary>
-
-The voice agent needs the server, a public address for Retell to reach it, and the keys below.
-
-```bash
-make install-deps                                # uv, pnpm and ngrok, then each app's packages
-cd server && uv run uvicorn main:app --reload    # :8000
-cd client && pnpm dev                            # :3000
-ngrok http 8000                                  # a public URL for Retell to reach the server
-```
-
-Then open **http://localhost:3000** for the voice portfolio.
-
-</details>
-
-### Environment variables
-
-Names only. Never commit the values.
-
-```bash
-# server/.env
-RETELL_API_KEY=...
-OPENAI_API_KEY=...
-PINECONE_API_KEY=...
-FIRETRACE_API_KEY=...            # optional: records every agent run
-PUSHER_SECRET=...                # voice page moves + live captions (server/README.md, "Voice events")
-
-# client/.env.local (see client/.env.local.example)
-RETELLAI_API_KEY=...             # server-side only, used by the create-web-call proxy
-NEXT_PUBLIC_RETELL_AGENT_ID=...
-NEXT_PUBLIC_APP_URL=http://localhost:3000
-NEXT_PUBLIC_API_URL=...          # optional: backend URL for warm-up and text chat
-```
-
-### Tests
-
-```bash
-cd client && pnpm lint && pnpm typecheck && pnpm test
-cd server && uv run pytest tests/ -m "not integration"   # what CI runs
-```
-
----
-
-## 藏经阁 · Modules and docs
-
-藏经阁 is the Scripture Pavilion, where a sect keeps its manuals.
-
-| Module | What lives there |
-|---|---|
-| [`client/`](./client) | Next.js 15 UI · the sect fly-through (the home page) · voice orb · `/api/create-web-call` and `/api/chat` proxies |
-| [`server/`](./server) | FastAPI WebSocket · OpenAI Agents · navigation and search tools · guardrails |
-| [`pinecone/`](./pinecone) | One-shot ingestion: `data.json` → embeddings → Pinecone index |
-| [`browserless/`](./browserless) | Deploy script for a separate headless-browser service (Browserless) on Cloud Run |
-| [`blender/xianxia-sect/`](./blender/xianxia-sect) | The Sun Moon Divine Sect: Blender Python for every stop, the light bake, and the packer for the web files |
-| [`music/sect-themes/`](./music/sect-themes) | The prompts behind each stop's music |
-| [`research/`](./research) | Background research: fact checks, voice platform comparison, design audits |
-
-Deeper docs: [`client/docs`](./client/docs) · [`server/docs`](./server/docs) · [`pinecone/docs`](./pinecone/docs) · [`blender/xianxia-sect/docs`](./blender/xianxia-sect/docs) (including [the Jin Yong references](./blender/xianxia-sect/docs/jin-yong-references.md))
-
----
+The stele rows carry martial-arts manuals from the novels too, and each role tablet in the Mission Hall takes one star of the Big Dipper. The research behind them is in [`docs/scene/jin-yong-references.md`](docs/scene/jin-yong-references.md).
 
 ## 法宝 · Featured projects
 
-Four of the projects the agent knows about. All four won prizes, and each one is an artifact on the forge's ring.
+法宝 (fǎbǎo) are a cultivator's treasures. Four of the projects the senior disciple knows about. All four won prizes, and each is an artifact on the forge's ring.
 
-<p align="center">
-  <a href="https://github.com/IdkwhatImD0ing/DispatchAI">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=DispatchAI&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc" alt="DispatchAI"/>
-  </a>
-  <a href="https://github.com/aurelisajuan/TalkTuahBank">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=aurelisajuan&repo=TalkTuahBank&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc" alt="TalkTuahBank"/>
-  </a>
-  <a href="https://github.com/IdkwhatImD0ing/SlugLoop">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=SlugLoop&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc" alt="SlugLoop"/>
-  </a>
-  <a href="https://github.com/IdkwhatImD0ing/AdaptEd">
-    <img src="https://github-readme-stats.vercel.app/api/pin/?username=IdkwhatImD0ing&repo=AdaptEd&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc" alt="AdaptEd"/>
-  </a>
-</p>
-
-<p align="center">
-  <a href="https://github.com/IdkwhatImD0ing">
-    <img height="160" src="https://github-readme-stats.vercel.app/api?username=IdkwhatImD0ing&show_icons=true&theme=tokyonight&hide_border=true&bg_color=0e0c14&title_color=e9c77e&icon_color=e9c77e&text_color=f5ecdc&count_private=true" alt="GitHub stats"/>
-  </a>
-</p>
-
----
+- [DispatchAI](https://github.com/IdkwhatImD0ing/DispatchAI)
+- [TalkTuahBank](https://github.com/aurelisajuan/TalkTuahBank)
+- [SlugLoop](https://github.com/IdkwhatImD0ing/SlugLoop)
+- [AdaptEd](https://github.com/IdkwhatImD0ing/AdaptEd)
 
 ## 鸣谢 · Credits
 
 - **Divine Condor** model: "Dark Vulture" by [Pigcraft](https://sketchfab.com/s8819296) on Sketchfab, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), reduced and re-textured.
+- **Guardian lions**: "Stone Big Lion 01" by [Game industry veteran](https://sketchfab.com/zhengzhangxun) on Sketchfab, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), reduced, re-textured and adapted (the male is mirrored, with an embroidered ball in place of the cub).
 - **Photo textures** from [Poly Haven](https://polyhaven.com) and [ambientCG](https://ambientcg.com). Pine twig texture: "Pine Tree 01" by Rob Tuytel and Rico Cilliers. Mist flipbooks by Thomas Iché (Unity Labs), via the Brackeys VFX Bundle. Waterfall texture by Martin Vorel (LibreShot). All CC0.
-- The full list is in [`blender/xianxia-sect/assets/CREDITS.md`](./blender/xianxia-sect/assets/CREDITS.md).
+- The full list is in [`blender/xianxia-sect/assets/CREDITS.md`](blender/xianxia-sect/assets/CREDITS.md).
 - The sect, its treasures and its martial arts come from the novels of **Jin Yong** (金庸).
-
----
 
 ## 传书 · Connect
 
-<p align="center">
-  <a href="https://art3m1s.me"><img src="https://img.shields.io/badge/Portfolio-art3m1s.me-e9c77e?style=for-the-badge&labelColor=0e0c14&logo=vercel&logoColor=e9c77e" alt="Portfolio"/></a>
-  <a href="https://www.linkedin.com/in/bill-zhang1/"><img src="https://img.shields.io/badge/LinkedIn-bill--zhang1-2c2233?style=for-the-badge&labelColor=0e0c14&logo=linkedin&logoColor=e9c77e" alt="LinkedIn"/></a>
-  <a href="https://github.com/IdkwhatImD0ing"><img src="https://img.shields.io/badge/GitHub-IdkwhatImD0ing-2c2233?style=for-the-badge&labelColor=0e0c14&logo=github&logoColor=e9c77e" alt="GitHub"/></a>
-  <a href="https://devpost.com/IdkwhatImD0ing"><img src="https://img.shields.io/badge/Devpost-36%20wins-2c2233?style=for-the-badge&labelColor=0e0c14&logo=devpost&logoColor=e9c77e" alt="Devpost"/></a>
-  <a href="mailto:billzhangsc@gmail.com"><img src="https://img.shields.io/badge/Email-say%20hello-2c2233?style=for-the-badge&labelColor=0e0c14&logo=gmail&logoColor=e9c77e" alt="Email"/></a>
-</p>
-
----
-
-## 星图 · Star history
+传书 (chuánshū) means "sending a letter".
 
 <p align="center">
-  <a href="https://star-history.com/#IdkwhatImD0ing/PortfolioV5&Date">
-    <img src="https://api.star-history.com/svg?repos=IdkwhatImD0ing/PortfolioV5&type=Date&theme=dark" alt="star history" width="720"/>
-  </a>
+  <a href="https://art3m1s.me"><b>art3m1s.me</b></a> ·
+  <a href="https://www.linkedin.com/in/bill-zhang1/">LinkedIn</a> ·
+  <a href="https://github.com/IdkwhatImD0ing">GitHub</a> ·
+  <a href="https://devpost.com/IdkwhatImD0ing">Devpost (36 hackathon wins)</a> ·
+  <a href="mailto:billzhangsc@gmail.com">Email</a>
 </p>
 
 <p align="center">
-  <sub>If this project sparks an idea, a ⭐ helps a lot.</sub>
+  <img src=".github/readme/brush-rule.svg" width="56%" alt=""/>
 </p>
 
 <p align="center">
-  <a href="#top">⬆ Back to the gate</a>
-</p>
-
-<p align="center">
-  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:c98a4b,45:2c2233,100:0e0c14&height=120&section=footer" alt="footer"/>
+  <a href="#top">回到山门 · Back to the gate</a>
 </p>

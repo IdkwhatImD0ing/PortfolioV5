@@ -103,7 +103,7 @@ The key decides the environment. FireTrace stamps `production`, `preview` or
 
 Never reuse one key across environments, and never commit one. When the
 variable is unset the server runs exactly as before and records nothing. See
-[`docs/modules/firetrace.md`](docs/modules/firetrace.md).
+[`docs/voice/modules/firetrace.md`](../docs/voice/modules/firetrace.md).
 
 ## Personas
 

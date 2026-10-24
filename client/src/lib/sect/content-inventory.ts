@@ -5,8 +5,9 @@
  * two checks:
  *   - content-completeness.test.tsx renders every reader and the one-page view and asserts that
  *     every `texts` and `urls` value of every carried entry is there;
- *   - content-inventory.test.ts checks docs/sect-content-inventory.md is inventoryMarkdown().
- * Regenerate the doc after changing this file:
+ *   - content-inventory.test.ts checks docs/sect/content-inventory.md (the repo's docs folder, one
+ *     level above client/) is inventoryMarkdown().
+ * Regenerate the doc after changing this file (from client/):
  *   SECT_WRITE_INVENTORY=1 pnpm exec vitest run src/lib/sect/content-inventory.test.ts
  */
 import { SUGGESTIONS } from "@/components/voice-orb/suggestions";
@@ -787,7 +788,7 @@ const STATUS_WORD: Record<InventoryStatus, string> = {
   dropped: "not carried",
 };
 
-/** docs/sect-content-inventory.md, generated from contentInventory(). */
+/** docs/sect/content-inventory.md (repo root), generated from contentInventory(). */
 export function inventoryMarkdown(): string {
   const items = contentInventory();
   const sections: string[] = [];
@@ -797,7 +798,7 @@ export function inventoryMarkdown(): string {
   lines.push("# Sect content inventory");
   lines.push("");
   lines.push(
-    "Generated from `src/lib/sect/content-inventory.ts`. Do not edit by hand; after changing that file run `SECT_WRITE_INVENTORY=1 pnpm exec vitest run src/lib/sect/content-inventory.test.ts`.",
+    "Generated from `client/src/lib/sect/content-inventory.ts`. Do not edit by hand; after changing that file, run `SECT_WRITE_INVENTORY=1 pnpm exec vitest run src/lib/sect/content-inventory.test.ts` in `client/`. Paths below are relative to `client/`.",
   );
   lines.push("");
   lines.push(

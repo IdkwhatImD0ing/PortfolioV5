@@ -10,7 +10,7 @@ the Condor Heroes, whose iron became the gate's Dragon Saber) piercing the islan
 its round tip pokes out of the underside), an inverted craggy rock cone with hanging roots
 underneath, small floating islets around it and massive chains running off to both sides.
 
-Circulation (docs/architecture-audit.md 1.4 and 4): the forge chain bridge lands on a bridgehead
+Circulation (docs/scene/architecture-audit.md 1.4 and 4): the forge chain bridge lands on a bridgehead
 slab on the front axis (AREA['arrival']), under a three-bay gate; a paved strip and the front
 steps climb to the banner band. Aisle stairs climb the spectator tier to its three pavilions.
 Behind the sword on the left, a short stair drops from the band to a rear landing and a short

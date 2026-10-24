@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import type { RetellAIResponse } from "@/types/api";
 import { VOICE_ORB } from "@/lib/sect/content-copy";
 import { SUGGESTIONS, cmdBtn, type Suggestion } from "./suggestions";
+import { OrbIcon } from "./talisman-icons";
 
 type Mode = "voice" | "text";
 
@@ -849,19 +850,8 @@ export function VoiceOrb() {
             aria-label={VOICE_ORB.button}
             className="relative w-16 h-16 rounded-full bg-[image:var(--grad)] shadow-[0_12px_40px_rgba(162,89,255,0.55),0_0_0_1px_rgba(255,255,255,0.06)_inset] grid place-items-center cursor-pointer transition-transform duration-200 hover:scale-105 before:content-[''] before:absolute before:-inset-2 before:rounded-full before:border before:border-[rgba(232,121,249,0.4)] before:animate-orb-pulse after:content-[''] after:absolute after:-inset-4 after:rounded-full after:border after:border-[rgba(232,121,249,0.2)] after:animate-orb-pulse-delayed"
           >
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="w-[22px] h-[22px] text-white"
-            >
-              <rect x="9" y="3" width="6" height="12" rx="3" />
-              <path d="M5 11a7 7 0 0 0 14 0" />
-              <line x1="12" y1="18" x2="12" y2="22" />
-            </svg>
+            {/* The microphone, or the candidate the owner picks (talisman-icons.tsx ORB_ICON). */}
+            <OrbIcon className="w-[22px] h-[22px] text-white" />
           </button>
         </div>
       )}

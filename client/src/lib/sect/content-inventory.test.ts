@@ -3,7 +3,8 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { contentInventory, inventoryMarkdown } from "./content-inventory";
 
-const DOC = path.resolve(__dirname, "../../../docs/sect-content-inventory.md");
+// The repo's docs folder (one level above client/): docs/sect/content-inventory.md.
+const DOC = path.resolve(__dirname, "../../../../docs/sect/content-inventory.md");
 
 describe("content inventory", () => {
   const items = contentInventory();
@@ -26,7 +27,7 @@ describe("content inventory", () => {
     expect(empty.map((e) => e.id)).toEqual([]);
   });
 
-  it("matches docs/sect-content-inventory.md", () => {
+  it("matches docs/sect/content-inventory.md", () => {
     const md = inventoryMarkdown();
     if (process.env.SECT_WRITE_INVENTORY === "1") writeFileSync(DOC, md + "\n", "utf8");
     expect(existsSync(DOC), "run with SECT_WRITE_INVENTORY=1 to write the doc").toBe(true);
