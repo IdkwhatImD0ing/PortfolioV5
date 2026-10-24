@@ -13,17 +13,34 @@
  * floats over the screen only where that column runs past the bottom edge and hides the prompt (a
  * phone on its side, a short window).
  *
- * While the music plays, its volume slider (VolumeSlider) sits beside the toggle: "Music" and the
- * level written on a small plate with a gold line. Left of the toggle on wider screens; on phones
- * under it, standing upright, so it stays clear of the intro's title in the middle. It is the master
- * the voice call's ducking takes a share of (lib/sect/volume.ts), and it is remembered per visitor.
- * Muted, it steps away and the toggle stands alone, as before.
+ * While the music plays, its volume slider (VolumeSlider) comes out beside the toggle when it is
+ * wanted: "Music" and the level written on a small plate with a gold line. Left of the toggle on
+ * wider screens; on phones under it, standing upright, so it stays clear of the intro's title in the
+ * middle. It shows for a few seconds when the music turns on, under the mouse, with the keyboard's
+ * focus, and on a tap on the speaker (which then does not mute); it goes when the mouse leaves, on a
+ * click or tap elsewhere, on Escape and after a few idle seconds (lib/sect/volume-reveal.ts has the
+ * rules). It is the master the voice call's ducking takes a share of (lib/sect/volume.ts), and it is
+ * remembered per visitor. Muted, it steps away and the toggle stands alone.
  *
  * `extra` (the graphics button) shares its place once the loading screen is gone: under the toggle,
  * or left of it in the top row beside the Map button. It shows without Web Audio too.
  */
-import { type CSSProperties, type ReactNode, useEffect, useId, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import {
+  type CSSProperties,
+  type FocusEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useReducer,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { VOLUME_STEP, volumeFromPercent, volumePercent, volumeText } from "@/lib/sect/volume";
+import { REVEAL_START, revealReducer, tapShows } from "@/lib/sect/volume-reveal";
 import type { MusicEngine, MusicUi } from "./music-engine";
 
 const OFF: MusicUi = { available: false, on: false, muted: false, volume: 1 };
@@ -106,20 +123,125 @@ export function SoundToggle({ engine, loading, extra }: { engine: MusicEngine; l
   );
 }
 
-/** The toggle, and the volume slider beside it while the music plays (under it on phones). */
+/** The keyboard put the focus on `el` (:focus-visible), not a click or a tap. */
+function keyboardFocus(el: EventTarget): boolean {
+  try {
+    return el instanceof Element && el.matches(":focus-visible");
+  } catch {
+    return false;
+  }
+}
+
+/** `node` is `box` or inside it. */
+function within(box: HTMLElement | null, node: EventTarget | null): boolean {
+  return !!box && node instanceof Node && box.contains(node);
+}
+
+/**
+ * The slider comes and goes (lib/sect/volume-reveal.ts): this runs its one timer and listens on the
+ * page for what happens away from the controls. A press anywhere else closes it (in the capture
+ * phase, so nothing that stops the press on its way keeps it open); a drag ends wherever the pointer
+ * comes up.
+ */
+function useVolumeReveal(on: boolean) {
+  const [reveal, dispatch] = useReducer(revealReducer, REVEAL_START);
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    dispatch({ type: "music", on });
+    // Muted while the slider had the focus: it has gone from the page, and the focus with it.
+    if (!within(box.current, document.activeElement)) dispatch({ type: "blur" });
+  }, [on]);
+  useEffect(() => {
+    if (reveal.closeIn === null) return;
+    const timer = reveal.timer;
+    const id = window.setTimeout(() => dispatch({ type: "timeout", timer }), reveal.closeIn);
+    return () => window.clearTimeout(id);
+  }, [reveal.closeIn, reveal.timer]);
+  useEffect(() => {
+    if (!reveal.open) return;
+    const down = (e: PointerEvent) => {
+      if (!within(box.current, e.target)) dispatch({ type: "outside" });
+    };
+    window.addEventListener("pointerdown", down, true);
+    return () => window.removeEventListener("pointerdown", down, true);
+  }, [reveal.open]);
+  useEffect(() => {
+    if (!reveal.drag) return;
+    const up = () => dispatch({ type: "drag", down: false });
+    window.addEventListener("pointerup", up, true);
+    window.addEventListener("pointercancel", up, true);
+    return () => {
+      window.removeEventListener("pointerup", up, true);
+      window.removeEventListener("pointercancel", up, true);
+    };
+  }, [reveal.drag]);
+  return { reveal, dispatch, box };
+}
+
+/**
+ * The toggle, and the volume slider beside it while the music plays (under it on phones), out while
+ * it is wanted. The toggle comes first in the page's order (drawn right of the slider on wider
+ * screens: row-reverse), so Tab goes from the toggle on into the slider. Hover counts only for a mouse.
+ */
 export function SoundControls({ ui, onToggle, onVolume }: { ui: MusicUi; onToggle: () => void; onVolume: (volume: number) => void }) {
+  const { reveal, dispatch, box } = useVolumeReveal(ui.on);
+  const toggle = useRef<HTMLButtonElement>(null);
+  /** The pointer type of the last press on the toggle: a tap may show the slider rather than mute. */
+  const press = useRef<string | null>(null);
+  const onClick = (e: MouseEvent<HTMLButtonElement>) => {
+    // A click from Enter or Space has no pointer behind it (detail 0).
+    const pointer = e.detail === 0 ? null : press.current;
+    press.current = null;
+    if (tapShows(reveal, pointer)) dispatch({ type: "show" });
+    else onToggle();
+  };
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key !== "Escape" || !reveal.open) {
+      dispatch({ type: "poke" });
+      return;
+    }
+    // One Escape, one thing: the slider closes and the view stays turned (scene.tsx keysTaken).
+    e.preventDefault();
+    dispatch({ type: "escape" });
+    toggle.current?.focus({ preventScroll: true });
+  };
   return (
-    <div className="flex flex-col items-end gap-2 md:flex-row-reverse md:items-start">
+    <div
+      ref={box}
+      className="flex flex-col items-end gap-2 md:flex-row-reverse md:items-start"
+      onPointerEnter={(e) => e.pointerType === "mouse" && dispatch({ type: "enter" })}
+      onPointerLeave={(e) => e.pointerType === "mouse" && dispatch({ type: "leave" })}
+      onPointerDown={() => dispatch({ type: "poke" })}
+      onKeyDown={onKeyDown}
+      onFocus={(e: FocusEvent) => dispatch({ type: "focus", keyboard: keyboardFocus(e.target), entering: !within(box.current, e.relatedTarget) })}
+      onBlur={(e: FocusEvent) => {
+        if (!within(box.current, e.relatedTarget)) dispatch({ type: "blur" });
+      }}
+    >
       <button
+        ref={toggle}
         type="button"
         data-sect-sound
-        onClick={onToggle}
+        onPointerDown={(e) => {
+          press.current = e.pointerType;
+        }}
+        onClick={onClick}
         aria-label={ui.on ? "Sound off" : "Sound on"}
         className="sect-panel sect-plate sect-ctl pointer-events-auto relative grid h-11 w-11 place-items-center rounded-[3px] text-[var(--sect-paper-soft)] transition-colors hover:text-[var(--sect-gold)] md:h-10 md:w-10"
       >
         <SpeakerIcon on={ui.on} />
       </button>
-      {ui.on && <VolumeSlider volume={ui.volume} onVolume={onVolume} />}
+      {ui.on && (
+        <VolumeSlider
+          volume={ui.volume}
+          open={reveal.open}
+          onVolume={(v) => {
+            onVolume(v);
+            dispatch({ type: "poke" });
+          }}
+          onDrag={() => dispatch({ type: "drag", down: true })}
+        />
+      )}
     </div>
   );
 }
@@ -129,14 +251,29 @@ export function SoundControls({ ui, onToggle, onVolume }: { ui: MusicUi; onToggl
  * screen readers all work as they do anywhere), 0 to 100% in VOLUME_STEP steps, with a visible label
  * and readout. On wider screens its plate is the toggle's height and the line runs left to right; on
  * phones the plate is the toggle's width and the line runs bottom to top (sect.css). A drag must not
- * scroll the flight under it (touch-action: none).
+ * scroll the flight under it (touch-action: none). Put away (`open` false) it fades and its room
+ * closes up (sect.css), and it is inert: out of the Tab order, the screen reader's and the pointer's.
  */
-export function VolumeSlider({ volume, onVolume }: { volume: number; onVolume: (volume: number) => void }) {
+export function VolumeSlider({
+  volume,
+  onVolume,
+  open = true,
+  onDrag,
+}: {
+  volume: number;
+  onVolume: (volume: number) => void;
+  open?: boolean;
+  /** A finger or the mouse went down on it. */
+  onDrag?: () => void;
+}) {
   const id = useId();
   const pct = volumePercent(volume);
   return (
     <div
       data-sect-volume
+      data-open={open || undefined}
+      inert={!open}
+      onPointerDown={onDrag}
       className="sect-panel sect-plate pointer-events-auto relative flex h-[8.75rem] w-11 flex-col items-center gap-1.5 rounded-[3px] py-2 md:h-10 md:w-[7.75rem] md:items-stretch md:justify-center md:gap-[3px] md:px-2.5 md:py-0"
     >
       <div className="flex flex-col items-center gap-1 text-[0.5rem] uppercase leading-none tracking-[0.1em] md:flex-row md:items-baseline md:justify-between md:text-[0.625rem] md:tracking-[0.2em]">

@@ -88,23 +88,26 @@ export const FRAMING_REACH_FRAMES = 48;
  *   cut by the bottom, the pavilion right of it ("too in my face", the owner, 2026-10-23, who wants the
  *   slip whole and the pavilion beside it; before that he turned down the slip turned 40 degrees to fit
  *   and a slip shrunk and stood back to fit, as too small with its posts cut). The slip stays where it
- *   first stood (blender scroll.py); the camera stands back 9 frames (10 m, the film's pose at 1094,
- *   43 m from the slip and square to it) and turns 8 left and 2.5 down: the whole slip on the left
- *   from its rolled end to its right one, its stand on the paving and its sun and moon in, the slips
- *   300 px tall at 1600 x 900 (the verses about 15 px a character), the pavilion whole on its right,
- *   its finial left of the panel and its left eave tips just behind the slip's end. Out of the stop
- *   the film turns right and up the stair at a degree a frame, and turning back from the framing (and
- *   catching up the 9 frames) over the 48 frames to 1151 would add half as much again (1.52 degrees a
- *   frame; 1.43 over all the 57 the formation's reach leaves). So the framing hands over to the
- *   formation's instead: it fades over the 105 frames to 1208 while the formation's fades in, the tilt
- *   down passing on into the formation's own, and the view turns at most 1.13 degrees a frame, about
- *   as round the mirror (1.10). It comes in over 64 frames, where the film turns slowly. A portrait
- *   phone sees 36 degrees across, and from 43 m the slip alone is 32 wide, so the pavilion was left
- *   past the right edge; there the camera stands 21 frames back (28 m, the film's pose at 1082, 63 m
- *   from the slip), the slip and the pavilion side by side across the phone (opening.ts
- *   PORTRAIT_TURN_DEG tilts them between the labels and the panel), the slips about 90 px tall on a
- *   390 x 844 phone. Catching up the
- *   21 frames makes the way out turn up to 1.30 degrees a frame on portrait screens.
+ *   first stood (blender scroll.py); the camera stands back and turns 8 left and 2.5 down. At first it
+ *   stood back 9 frames (44 m from the slip), the slip's rolled end 7 px from the left edge; the owner
+ *   found that "too far forward, maybe slightly back" (2026-10-24), so it stands back 12 (14 m, the
+ *   film's pose at 1091, 48 m from the slip and square to it): the whole slip on the left with room
+ *   round it (its end 111 px in from the left edge at 1600 x 900), its stand on the paving and its sun
+ *   and moon in, the slips 272 px tall (the verses about 14 px a character; 299 from 9 frames back),
+ *   the pavilion whole on its right, its finial left of the panel and its left eave tips just behind
+ *   the slip's end. Out of the stop the film turns right and up the stair at a degree a frame, and
+ *   turning back from the framing (and catching up the frames stood back) over the 48 frames to 1151
+ *   would add half as much again (over 1.4 degrees a frame, also over all the 57 the formation's reach
+ *   leaves). So the framing hands over to the formation's instead: it fades over the 105 frames to
+ *   1208 while the formation's fades in, the tilt down passing on into the formation's own, and the
+ *   view turns at most 1.17 degrees a frame (1.13 from 9 frames back), about as round the mirror
+ *   (1.10). It comes in over 76 frames, where the film turns slowly: a stop's back is kept to a third
+ *   of its reach (FRAMING_MAX_BACK), and a portrait screen stands back 24. A portrait phone sees 36
+ *   degrees across, and from 48 m the slip and the pavilion together are still wider than that; there
+ *   the camera stands 24 frames back (34 m, the film's pose at 1079, 67 m from the slip), the slip and
+ *   the pavilion side by side across the phone (opening.ts PORTRAIT_TURN_DEG tilts them between the
+ *   labels and the panel), the slips about 82 px tall on a 390 x 844 phone (89 from 21 frames back).
+ *   Catching up the 24 frames makes the way out turn up to 1.35 degrees a frame on portrait screens.
  * - formation: the plaza sat on the bottom edge, its front stations and gate cut off, under the next
  *   stop's mountain. Down: the whole array, armillary, flags and gate in, the mountain behind. It comes
  *   in over the 105 frames from the jade slip (see scroll), and goes over the default 48.
@@ -112,7 +115,7 @@ export const FRAMING_REACH_FRAMES = 48;
 export const STOP_FRAMING: Readonly<Record<string, StopFraming>> = {
   mirror: { yaw: 4, pitch: -3, back: 13, reach: 80 },
   mission: { yaw: 8, pitch: 2 },
-  scroll: { yaw: 8, pitch: -2.5, back: 9, portraitBack: 21, reach: [64, 105] },
+  scroll: { yaw: 8, pitch: -2.5, back: 12, portraitBack: 24, reach: [76, 105] },
   formation: { yaw: 0, pitch: -8, reach: [105, FRAMING_REACH_FRAMES] },
 };
 

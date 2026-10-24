@@ -535,6 +535,46 @@
 }
 
 /*
+ * The slider comes and goes beside the toggle (sound-toggle.tsx SoundControls, lib/sect/volume-reveal.ts).
+ * Put away, it fades and slides a few pixels in toward the toggle, and its room closes up behind it: a
+ * negative margin of its own size and the gap (phones: 8.75rem tall under the toggle; wider screens:
+ * 7.75rem wide left of it), so the graphics button beyond it moves up (or along) with it. Hidden only
+ * once the fade is done (visibility waits); shown at once. No motion with reduced motion.
+ */
+.sect-root [data-sect-volume] {
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s ease-out,
+    margin 0.25s ease-out,
+    visibility 0s;
+}
+.sect-root [data-sect-volume]:not([data-open]) {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px);
+  margin-bottom: -9.25rem;
+  transition:
+    opacity 0.2s ease-in,
+    transform 0.2s ease-in,
+    margin 0.25s ease-in,
+    visibility 0s 0.25s;
+}
+@media (min-width: 768px) {
+  .sect-root [data-sect-volume]:not([data-open]) {
+    transform: translateX(6px);
+    margin-bottom: 0;
+    margin-left: -8.25rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sect-root [data-sect-volume],
+  .sect-root [data-sect-volume]:not([data-open]) {
+    transition: none;
+    transform: none;
+  }
+}
+
+/*
  * The loading screen's "Turn on sound" (experience/sound-toggle.tsx SoundCall): a round seal with the
  * speaker, a gold rim on ink like the map's stops and the talisman, its words beside it. With the
  * sound on the speaker turns gold and one slow ripple leaves the seal (still with reduced motion).

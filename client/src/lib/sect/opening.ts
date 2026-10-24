@@ -176,18 +176,21 @@ export function openingMegabytes(raw: unknown, low: boolean): number | null {
  *   take the feet of the gate below it under the panel.
  * - steles: the end pavilion's finial touched the hint. 3 up puts it 15 px below.
  * - scroll: the framing turns 8 left and 2.5 down, which puts the whole jade slip and the pavilion
- *   side by side on a 16:9 screen. A phone sees 36 degrees across and the slip alone is 32 wide from
- *   where that framing stands, so on portrait screens it stands further back (framing.ts
- *   portraitBack): the slip and the pavilion side by side across the phone, but high, the moon under
- *   the hint. Half a degree left and 8 up put them 19 px in from the left edge to 17 from the right,
- *   the sun and the moon 72 px below the hint, the stand on its rune rings 160 px above the panel.
+ *   side by side on a 16:9 screen. A phone sees 36 degrees across, narrower than the slip and the
+ *   pavilion together from where that framing stands, so on portrait screens it stands further back
+ *   (framing.ts portraitBack): the slip and the pavilion side by side across the phone, but high, the
+ *   moon under the hint. Half a degree right (7.5 left in all) and 8 up put them 26 px in from the
+ *   left edge to 24 from the right, the sun and the moon about 80 px below the hint, the stand on its
+ *   rune rings about 170 px above the panel. (From 3 frames nearer, before the owner asked for the
+ *   camera "slightly back", 2026-10-24, half a degree left put them 19 px in to 17 from the right.)
  * - abode: the cliff's 洞天福地 ran down under the label and the hint. 3 right moves it left of
  *   them, 30 px from the edge, the moon gate and the waterfall still in.
  * The poster's view is the start of the flight (frame 27, scroll 0), in no hold, so it never turns.
  * Portrait tablets (820 x 1180) turn the same way; their panel sits beside the view, and the tilts
  * hide nothing there the film's view did not (the arena's hilt is behind the panel either way). At
  * the jade slip a tablet stands as far back as a phone, the slip and the pavilion whole in the middle
- * of its wider view.
+ * of its wider view. Stood 3 frames further back (2026-10-24), its empty foreground below the plaza
+ * also shows coarse rocks along its bottom edge, which the phone's panel covers.
  */
 export const PORTRAIT_TURN_DEG: Readonly<Record<string, { yaw?: number; pitch?: number }>> = {
   gate: { pitch: 7 },
@@ -196,7 +199,7 @@ export const PORTRAIT_TURN_DEG: Readonly<Record<string, { yaw?: number; pitch?: 
   mission: { yaw: 5, pitch: 7 },
   library: { pitch: 5 },
   steles: { pitch: 3 },
-  scroll: { yaw: 0.5, pitch: 8 },
+  scroll: { yaw: -0.5, pitch: 8 },
   abode: { yaw: -3 },
 };
 

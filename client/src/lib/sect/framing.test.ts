@@ -194,7 +194,7 @@ describe("framingFrame", () => {
     }
     expect(framingFrame(HOLDS, POSTER.startFrame)).toBe(POSTER.startFrame);
     // Midway between two stops, within 2 frames of the film's (the mirror's longer reach: 1.7), but
-    // half way through a hand-over (the jade slip's 9 frames back, half gone).
+    // half way through a hand-over (the jade slip's 12 frames back, half gone).
     for (let k = 0; k + 1 < HOLDS.length; k++) {
       const mid = (HOLDS[k].frame + HOLDS[k + 1].frame) / 2;
       const want = handsOver(k) ? ((STOP_FRAMING[HOLDS[k].id].back ?? 0) + (STOP_FRAMING[HOLDS[k + 1].id].back ?? 0)) / 2 : 0;
@@ -411,23 +411,27 @@ describe("the stops' framing on the baked path", () => {
     expect(before(-1, top)[0]).toBeLessThan(-2);
     expect(before(0, top)[0]).toBeLessThan(-1);
     expect(before(0.56, paving)[1]).toBeLessThan(-1);
-    // Now: both ends in (the left one 7 px in from the edge: the box's corner, a little past the slip's
-    // rolled end, which is 40 px in), the stand's feet on the paving above the bottom, the sun and the
-    // moon on the post heads below the top (140 px down).
+    // Now: both ends in with room round them (the left one 111 px in from the edge at 1600 x 900: the
+    // box's corner, a little past the slip's rolled end; 7 px when the camera stood 9 frames back, "too
+    // far forward", the owner, 2026-10-24), the stand's feet on the paving above the bottom (94 px up),
+    // the sun and the moon on the post heads below the top (150 px down).
     for (const s of [-1, 1]) for (const y of [top, bottom]) {
       const p = after(s, y);
-      expect(Math.abs(p[0]), `${s} ${y}`).toBeLessThan(1);
+      expect(Math.abs(p[0]), `${s} ${y}`).toBeLessThan(0.9);
       expect(Math.abs(p[1]), `${s} ${y}`).toBeLessThan(0.5);
     }
+    expect(after(-1, top)[0]).toBeGreaterThan(-0.88);
     for (const s of [-0.56, 0.56]) {
-      expect(after(s, paving)[1]).toBeGreaterThan(-0.97);
-      expect(after(s, paving)[1]).toBeLessThan(-0.8);
+      expect(after(s, paving)[1]).toBeGreaterThan(-0.9);
+      expect(after(s, paving)[1]).toBeLessThan(-0.7);
       expect(after(s, emblems)[1]).toBeLessThan(0.75);
     }
-    // Big: the slips 299 px tall at their middle at 1600 x 900 (the verses about 15 px a character),
-    // against 434 before; and square to the view, its two ends as far away as each other (42 m and
-    // 43 m; they were 26 m and 33 m away).
-    expect((after(0, top)[1] - after(0, bottom)[1]) * 450).toBeGreaterThan(295);
+    // Big: the slips 272 px tall at their middle at 1600 x 900 (the verses about 14 px a character;
+    // 299 from 9 frames back), against 434 in the film's own view; and square to the view, its two
+    // ends as far away as each other (they were 26 m and 33 m away).
+    const tall = (after(0, top)[1] - after(0, bottom)[1]) * 450;
+    expect(tall).toBeGreaterThan(265);
+    expect(tall).toBeLessThan(280);
     expect((before(0, top)[1] - before(0, bottom)[1]) * 450).toBeGreaterThan(430);
     const v = view("scroll", true);
     const depth = (s: number) => projectPoint(v.p, v.q, v.fovY, camera.refAspect, slipAt(s, box.center[1])).depth;
@@ -486,34 +490,36 @@ describe("the stops' framing on the baked path", () => {
     expect(far.x1).toBeLessThan(w - 5);
     expect(far.y0).toBeGreaterThan(156 + 40);
     expect(far.y1).toBeLessThan(632 - 100);
-    // The pavilion right of the slip, the slips 89 px tall at their middle (129 from where the 16:9
-    // framing stands, with the pavilion past the edge).
+    // Centred across the phone, within a few pixels.
+    expect(Math.abs(far.x0 - (w - far.x1))).toBeLessThan(10);
+    // The pavilion right of the slip, the slips 82 px tall at their middle (89 from 21 frames back,
+    // before the owner asked for the camera "slightly back", 2026-10-24).
     expect(px(pav.center, PORTRAIT_STOP_FRAMING)[0]).toBeGreaterThan(px(slipAt(1, top), PORTRAIT_STOP_FRAMING)[0]);
     const slipTall = px(slipAt(0, bottom), PORTRAIT_STOP_FRAMING)[1] - px(slipAt(0, top), PORTRAIT_STOP_FRAMING)[1];
-    expect(slipTall).toBeGreaterThan(85);
-    expect(slipTall).toBeLessThan(95);
+    expect(slipTall).toBeGreaterThan(78);
+    expect(slipTall).toBeLessThan(86);
   });
 
   it("turns the view on the way to and from the jade slip about as gently as round the mirror", () => {
     // Out of the stop the film turns right and tilts up the stair at a degree a frame (0.999). The
-    // framing's turn back the same way, and the camera catching up the 9 frames it stood back, add to
-    // it: over the default 48 frames that would be 1.52 degrees a frame, over all the 57 the
-    // formation's 48 leave 1.43. Handed over to the formation's framing over the 105 frames to its
-    // hold instead, the view turns at most 1.13 degrees a frame (26 frames out), about as round the
-    // mirror (1.10); on the formation's approach, which now carries the slip's framing in, 1.12 (its
-    // own framing alone made it 1.09).
+    // framing's turn back the same way, and the camera catching up the 12 frames it stood back, add to
+    // it: over the default 48 frames, or all the 57 the formation's 48 leave, that would be over 1.4
+    // degrees a frame. Handed over to the formation's framing over the 105 frames to its hold
+    // instead, the view turns at most 1.17 degrees a frame (1.13 from 9 frames back), about as round
+    // the mirror (1.10); the formation's approach carries the slip's framing in (its own framing alone
+    // made it 1.09).
     expect(steepest("scroll", false)).toBeLessThan(1);
     const s = STOP_FRAMING.scroll;
     const alone = (reach: number) => ({ ...STOP_FRAMING, scroll: { ...s, reach }, formation: { ...STOP_FRAMING.formation, reach: FRAMING_REACH_FRAMES } });
     expect(steepest("scroll", true, alone(48))).toBeGreaterThan(1.4);
     expect(steepest("scroll", true, alone(57))).toBeGreaterThan(1.4);
-    expect(steepest("scroll", true)).toBeLessThan(1.14);
-    expect(steepest("formation", true)).toBeLessThan(1.14);
+    expect(steepest("scroll", true)).toBeLessThan(1.18);
+    expect(steepest("formation", true)).toBeLessThan(1.18);
     expect(steepest("formation", true, alone(48))).toBeLessThan(1.1);
-    // On a portrait screen the camera catches up 21 frames instead, over the same 105: 1.30 degrees a
+    // On a portrait screen the camera catches up 24 frames instead, over the same 105: 1.35 degrees a
     // frame at the most (the turn at rest, opening.ts PORTRAIT_TURN_DEG, swings back with the free look).
-    expect(steepest("scroll", true, PORTRAIT_STOP_FRAMING)).toBeLessThan(1.31);
-    expect(steepest("formation", true, PORTRAIT_STOP_FRAMING)).toBeLessThan(1.31);
+    expect(steepest("scroll", true, PORTRAIT_STOP_FRAMING)).toBeLessThan(1.36);
+    expect(steepest("formation", true, PORTRAIT_STOP_FRAMING)).toBeLessThan(1.36);
   });
 
   it("brings the whole formation up into the picture", () => {
