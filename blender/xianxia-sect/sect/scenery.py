@@ -897,7 +897,9 @@ def r48_exclusion(rng_obj, cw, anchors, hold_views, star, path_d):
         if "r48_peak" in o.keys() and "nature_top_z" in o.keys():
             p = o.matrix_world.translation
             rb = float(o.get("nature_bottom_radius", 1.6 * float(o.get("nature_top_radius", 10.0))))
-            m = np.hypot(cw[:, 0] - p.x, cw[:, 1] - p.y) < rb * 1.1 + 3.0
+            # (slice: rb x 1.1 + 3 m left a bare lawn ring on the cut plinth round each pillar's foot, a pedestal;
+            # the canopy now grows to 1.5 m off the foot)
+            m = np.hypot(cw[:, 0] - p.x, cw[:, 1] - p.y) < rb + 1.5
             n_under += int(m.sum())
             ex |= m
     why["under_pillars"] = n_under
