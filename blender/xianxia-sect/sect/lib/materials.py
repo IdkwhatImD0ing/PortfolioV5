@@ -52,7 +52,9 @@ ROCK_SCANS = dict(   # _rock(scan=...): world triplanar; relief = bump distance 
 )
 ROCK_SCAN_MIX = 0.6          # share of the scan's colour in the rock albedo
 ROCK_SCAN_CONTRAST = 1.0     # 1 = the scan's full brightness variation, 0 = its hue only (same for LAWN_/GROUND_)
-ROCK_SCAN_HUE = 1.0          # share of the scan's own colour (below 1 the procedural hue stays; same for LAWN_/GROUND_)
+ROCK_SCAN_HUE = 0.55         # share of the scan's own colour (below 1 the procedural hue stays; same for LAWN_/GROUND_)
+#                              (round 48, P-5: 1.0 -> 0.55: the scan's warm sandstone hue made sunlit walls the most
+#                              saturated warm thing in a hold; intent rule 15 keeps that for the star)
 ROCK_SCAN_BUMP = 0.4         # bump strength of the scan height
 ROCK_SCAN_SHARP = 4.0        # triplanar blend exponent on |world normal|
 ROCK_SMALL_SCAN_SCALE = 0.5  # nature_rock_small's scan tile factor (boulders are 1-5 m, like its finer strata)
@@ -96,9 +98,10 @@ ROCK_MOSS_PATCH = 0.35        # lush and sparse regions (~30 m): how far they mo
 ROCK_MOSS_ALT = (120.0, 330.0, 0.15)   # threshold raised by the third value from z0 to z1 (m): mist-fed slopes
 #                                        lower down are lusher, the high crags drier (and richer in lichen)
 ROCK_MOSS_BARE = (0.555, 0.6)   # noise ramp of bare rock outcrops (~20 %) inside the moss, even on the flattest rock
-ROCK_MOSS_LEDGE = 0.9         # moss cushions along every ledge line, also on steep faces (0 = none)
+ROCK_MOSS_LEDGE = 0.45        # moss cushions along every ledge line, also on steep faces (0 = none). Round 48: 0.9 ->
+#                               0.45: the painted 11 m lines read as contour lines next to the pillars' real shelves
 ROCK_MOSS_LEDGE_W = (3.0, 1.0)   # m per unit of clump strength: cushion height above a ledge line, fringe below its lip
-ROCK_MOSS_DRAPE = (0.7, 4.0)  # green drapes trailing from the cushions: strength, and length (m per unit of strength)
+ROCK_MOSS_DRAPE = (0.5, 4.0)  # green drapes trailing from the cushions: strength, and length (m per unit of strength)
 ROCK_MOSS_RIM = 0.3           # dark humus fringe just outside each up-facing moss patch
 ROCK_MOSS_COLOURS = ((0.35, "#36503a"), (0.5, "#53673a"), (0.68, "#86884a"))   # jade shade, olive moss, sunlit gold
 ROCK_MOSS_SCAN_MIX = 0.7      # Moss001 photo (GROUND_SCANS["moss"], world triplanar at MOSS_TILE) in the moss colour
@@ -112,15 +115,17 @@ ROCK_MOSS_SOFTEN = 0.6        # share of the rock's own bump that moss hides
 ROCK_STREAK = 0.85            # dark damp streaks hanging from the ledge lines on steep faces, gathered in wet courses
 ROCK_STREAK_LEN = (0.3, 0.95)   # share of a layer a streak runs down (varies streak to streak)
 ROCK_STREAK_WIDTH = 0.6       # streak frequency across a face (1/m; streaks ~1 m wide, so the bake keeps them)
-ROCK_STREAK_WASH = 0.25       # faint darkening of the whole upper part of each layer, under the lip
+ROCK_STREAK_WASH = 0.3        # faint darkening of the whole upper part of each layer, under the lip (round 48: 0.25)
 ROCK_STREAK_ALGAE = 0.5       # green-black algae tint on part of the streaks
 ROCK_STREAK_JADE = 0.2        # rare jade (copper-mineral) tint on damp seeps, the xianxia accent
-ROCK_DAMP = 0.3               # albedo darkening of damp rock: overhang undersides (and recesses with ROCK_DAMP_AO)
+ROCK_DAMP = 0.42              # albedo darkening of damp rock: overhang undersides (and recesses with ROCK_DAMP_AO)
+#                               (round 48: 0.3 -> 0.42, darker undersides under shelves and caps, plan rule 12)
 ROCK_DAMP_AO = (2.5, 0)       # recess ambient occlusion (distance m, samples); 0 samples = no AO node. Ray traced:
 #                               a slower bake, and below about 16 samples its noise reaches the albedo guide (OIDN)
 ROCK_MOSS_RECESS = 0.5        # with ROCK_DAMP_AO only: dark algae-moss in recesses on steep faces
 ROCK_LICHEN = 0.45            # lichen crusts on dry rock (ochre, grey-green); fewer on damp streaks
-ROCK_LICHEN_COLOURS = ("#a8884f", "#a3a78c")   # ochre-gold crust, sage grey-green foliose (at half strength)
+ROCK_LICHEN_COLOURS = ("#9c8a64", "#a3a78c")   # ochre-gold crust, sage grey-green foliose (at half strength)
+#                                                 (round 48: the ochre less saturated, was #a8884f)
 ROCK_LIP_MOSS = dict(         # moss creeping over the lip: the top of the rock under a grass rim
     amount=0.9,               # strength (0 = none); scaled like the other moss (ROCK_MOSS, the variant's moss and lip)
     up=(0.55, 0.72),          # smooth normal z from none to full. With smooth range normals the grass/rock border
@@ -1440,7 +1445,7 @@ def _stone(g, c1="#8a8a84", c2="#6e6c66", speck="#3c3a37", rough=(0.62, 0.85), b
     g.output(g.principled(base_color=col, roughness=r, normal=nrm))
 
 
-def _rock(g, light="#938d83", mid="#76726b", dark="#54514c", warm="#9a8b76", cool="#7a7d7c",
+def _rock(g, light="#938d83", mid="#76726b", dark="#54514c", warm="#968e83", cool="#7a7d7c",
           moss="#4b6b3a", strata=2.5, moss_amt=1.0, stain=0.6, joints=1.0, scan=None, scan_scale=1.0):
     """Cliff / pillar sandstone (Zhangjiajie-like), meter-scaled on the object's axes:
     irregular sediment layers along local Z, long vertical joints, dark water-stain streaks,

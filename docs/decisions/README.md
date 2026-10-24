@@ -239,6 +239,20 @@ button, the slip read most clearly at its real size and is the 传音符 the pan
 
 ---
 
+### 2026-10-24 · The background gets intent
+
+**Decided.** The scenery around the halls is rebuilt with one rule per view: a star, one host shape, framing, and
+quiet sky, with a reason for every element. Trees leave the sheer walls; peaks become karst pillars with grassy
+shelves; a broadleaf canopy replaces the trunk carpet; islands drop to a few per view; falls break into mist; the
+horizon gets pillar families and level mesas. Every hall, prop and stair stays as it is. Details in
+[`2026-10-24-background-with-intent.md`](2026-10-24-background-with-intent.md).
+
+**Why.** The owner: "There is trees growing out of cliff faces, there is no ledges with grass. there is a lot of
+trunks, not enough grenery. In real life, people just see green, they dont see the trunk", "the overall background
+and vibe of the scene don't quite have enough intent yet", and, on the plan, "i approve of the new background".
+
+---
+
 ## Longer write-ups
 
 | Date | Change | Write-up |
@@ -246,3 +260,4 @@ button, the slip read most clearly at its real size and is the 传音符 the pan
 | 2026-10-24 | Ice-Fire Island's steam rises from the crater; the Five Element flags get three times the texture detail (needs a bake) | [`2026-10-24-icefire-steam-and-element-flags.md`](2026-10-24-icefire-steam-and-element-flags.md) |
 | 2026-10-24 | The music volume slider opens and closes on its own | [`../sect/music-volume-slider.md`](../sect/music-volume-slider.md) |
 | 2026-10-24 | The jade slip camera steps back | [`../sect/jade-slip-framing.md`](../sect/jade-slip-framing.md) |
+| 2026-10-24 | The background with intent: pillars with grassy shelves, a broadleaf canopy, fewer islands, a planned horizon (round 48; needs the final bake) | [`2026-10-24-background-with-intent.md`](2026-10-24-background-with-intent.md) |

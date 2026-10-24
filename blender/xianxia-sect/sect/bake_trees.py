@@ -1030,8 +1030,11 @@ FULL_RATIO = {"bamboo": 1.0}                              # kind -> near-mesh de
 FULL_SLOT_PX = dict(SLOT_PX, bamboo=256)                   # bamboo keeps its leaves: more surface per slot
 SMALL_KINDS = ("grass", "lotus")                           # never cards, never in the proxies
 NEEDLE_MAT = "M.nature_pine_needle"                        # needle-fan cards (nature._needle_fan, _mat_needle)
-NEEDLE_OPAQUE_TRIS = {"huangshan": 2000, "cliff": 2000, "ancient": 2400}   # pine style -> trunk + cushion tris of a
-#                                                            near mesh with needle cards (was 1000/1200/1600)
+NEEDLE_OPAQUE_TRIS = {"huangshan": 2000, "cliff": 2000, "ancient": 2400,   # pine style -> trunk + cushion tris of a
+                      "masson": 1400}                       # near mesh with needle cards (was 1000/1200/1600; round 48:
+#                                                            the Masson spire, nature.pine style 'masson'). The round-48
+#                                                            broadleaf ('pine.broadleaf') has no needle fans: its near
+#                                                            mesh is its crown blobs (leaf cards stripped, x 0.35)
 NEEDLE_TEXEL = 0.7          # needle fans' texel density in a mesh slot relative to the trunk and cushions (linear)
 NEEDLE_ALPHA_PX = 256       # needle_alpha.png: the fans' alpha in fan-UV space, shared by every trees.needle material
 NEEDLE_TAG = "nd2"          # in the mesh-bake cache names of needle meshes; bump when needle_bake_nodes, the twig cards

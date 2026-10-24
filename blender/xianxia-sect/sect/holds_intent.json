@@ -1,0 +1,565 @@
+{
+  "_doc": [
+    "Round 48: the per-hold intent of scratchpad r49/intent.md (tables 3.1 and 3.2, 2026-10-24) as data. The scene",
+    "patches (sect/lib/compose.py: patch_r48_range, patch_r48_isles, patch_r48_green) read it; mist and haze per hold",
+    "(phase A, mist.py and the client) can read mist_bands_z and beat. Screen rects are [u0, v0, u1, v1] of the 16:9",
+    "frame at the hold camera: u from the left edge, v from the TOP edge, both 0..1.",
+    "host: the one background shape the view is built around (it ranks below the star). kind 'moon' (the moon, fully",
+    "clear), 'peak' (Range.peaks index, exempt from every cap), 'object' (a scene object), 'sky' (empty sky), 'smoke'.",
+    "skyline: the star's roofline stays against sky: a peak behind the star that rises over its top is cut below it.",
+    "quiet: rects of designed quiet sky: no peak top and no islet inside them (except the host and the islet zone).",
+    "moon: 'clear' (nothing in front of the disc, 1.5 deg margin) or 'hidden' (nothing to do) or null.",
+    "islets: at most 'max' visible islands (floating rocks) in the frame, the kept ones inside 'zone'; 'min_dist' m.",
+    "falls: false = no waterfall in the frame (rule 9 / intent 3.3.7), except location falls (Ice-Fire Island, abode).",
+    "hero_pines: lone Huangshan pines on rims and crests in the frame, against sky or mist (rule 7)."
+  ],
+  "version": 1,
+  "frames_poster": 27,
+  "holds": {
+    "gate": {
+      "frame": 93,
+      "beat": "closed, one window",
+      "story": "Threshold of a hidden sect",
+      "reads": [
+        "gate and plaque",
+        "stair and pale pillars through the arch",
+        "swords, then moon"
+      ],
+      "host": {
+        "kind": "moon"
+      },
+      "framed_by": "the arch; dark, plain flanks",
+      "moon": "clear",
+      "skyline": true,
+      "quiet": [],
+      "islets": {
+        "max": 3,
+        "zone": [
+          0.0,
+          0.0,
+          0.45,
+          0.4
+        ],
+        "min_dist": 350,
+        "note": "one far group, upper left"
+      },
+      "falls": true,
+      "mist_bands_z": [
+        100
+      ],
+      "hero_pines": 2,
+      "exempt_peaks": []
+    },
+    "mirror": {
+      "frame": 217,
+      "beat": "closed, still",
+      "story": "Self-reflection under the cliff of reflection",
+      "reads": [
+        "mirror and reflection",
+        "inscription",
+        "pavilion, blossom"
+      ],
+      "host": {
+        "kind": "object",
+        "name": "mirror.siguoya"
+      },
+      "framed_by": "near-left pine",
+      "moon": null,
+      "skyline": false,
+      "quiet": [
+        [
+          0.78,
+          0.0,
+          1.0,
+          0.32
+        ]
+      ],
+      "quiet_keep": 1,
+      "islets": {
+        "max": 1,
+        "zone": [
+          0.78,
+          0.0,
+          1.0,
+          0.32
+        ],
+        "min_dist": 300,
+        "note": "top right cleared to one element"
+      },
+      "falls": true,
+      "mist_bands_z": [
+        75
+      ],
+      "hero_pines": 2,
+      "exempt_peaks": []
+    },
+    "forge": {
+      "frame": 352,
+      "beat": "dense, warm",
+      "story": "Heat and craft",
+      "reads": [
+        "fire and artifacts",
+        "furnace hall",
+        "red tower"
+      ],
+      "host": {
+        "kind": "smoke"
+      },
+      "framed_by": "left hall, red tower",
+      "moon": "hidden",
+      "skyline": false,
+      "quiet": [
+        [
+          0.48,
+          0.0,
+          0.62,
+          0.6
+        ]
+      ],
+      "islets": {
+        "max": 0
+      },
+      "falls": true,
+      "mist_bands_z": [
+        160
+      ],
+      "hero_pines": 1,
+      "exempt_peaks": []
+    },
+    "arena": {
+      "frame": 516,
+      "beat": "open",
+      "story": "A stage for duels",
+      "reads": [
+        "black sword",
+        "yin-yang floor",
+        "lit mission hall behind"
+      ],
+      "host": {
+        "kind": "object",
+        "name": "arena.sword"
+      },
+      "framed_by": "banners, plaza edge",
+      "moon": null,
+      "skyline": false,
+      "quiet": [],
+      "islets": {
+        "max": 3,
+        "zone": [
+          0.62,
+          0.0,
+          1.0,
+          0.45
+        ],
+        "min_dist": 300,
+        "note": "one group of 3, sizes 1 : 0.5 : 0.25"
+      },
+      "falls": false,
+      "mist_bands_z": [
+        140
+      ],
+      "hero_pines": 2,
+      "exempt_peaks": []
+    },
+    "mission": {
+      "frame": 619,
+      "beat": "half open",
+      "story": "The office where missions are posted",
+      "reads": [
+        "board",
+        "lit hall",
+        "banner, pavilions"
+      ],
+      "host": {
+        "kind": "peak",
+        "index": 58,
+        "note": "plain dark pillar behind, as a screen"
+      },
+      "framed_by": "banner pole, side pavilions",
+      "moon": null,
+      "skyline": false,
+      "quiet": [
+        [
+          0.62,
+          0.0,
+          1.0,
+          0.38
+        ]
+      ],
+      "islets": {
+        "max": 1,
+        "zone": [
+          0.0,
+          0.0,
+          0.2,
+          0.5
+        ],
+        "min_dist": 400,
+        "note": "one at most, far left"
+      },
+      "falls": false,
+      "mist_bands_z": [
+        150
+      ],
+      "hero_pines": 1,
+      "exempt_peaks": [
+        58
+      ]
+    },
+    "library": {
+      "frame": 772,
+      "beat": "open",
+      "story": "Learning as aspiration",
+      "reads": [
+        "pagoda",
+        "floating scriptures",
+        "Ice-Fire Island"
+      ],
+      "host": {
+        "kind": "sky"
+      },
+      "framed_by": "left pillar, Ice-Fire Island",
+      "moon": null,
+      "skyline": true,
+      "quiet": [
+        [
+          0.56,
+          0.0,
+          1.0,
+          0.6
+        ]
+      ],
+      "islets": {
+        "max": 2,
+        "zone": [
+          0.66,
+          0.45,
+          1.0,
+          0.72
+        ],
+        "min_dist": 450,
+        "note": "two low ones, none near the pagoda"
+      },
+      "falls": false,
+      "mist_bands_z": [
+        150
+      ],
+      "hero_pines": 1,
+      "exempt_peaks": []
+    },
+    "steles": {
+      "frame": 974,
+      "beat": "half open, ordered",
+      "story": "An axis of skill tablets",
+      "reads": [
+        "pavilion and great stele",
+        "stele rows",
+        "viaduct"
+      ],
+      "host": {
+        "kind": "peaks",
+        "note": "slim pillars of mixed heights that echo the steles, right"
+      },
+      "framed_by": "stele rows",
+      "moon": null,
+      "skyline": true,
+      "quiet": [
+        [
+          0.0,
+          0.0,
+          0.32,
+          0.55
+        ]
+      ],
+      "islets": {
+        "max": 2,
+        "zone": [
+          0.0,
+          0.25,
+          0.32,
+          0.55
+        ],
+        "min_dist": 400,
+        "note": "two at most"
+      },
+      "falls": false,
+      "mist_bands_z": [
+        155
+      ],
+      "hero_pines": 2,
+      "exempt_peaks": []
+    },
+    "scroll": {
+      "frame": 1103,
+      "beat": "small, closed",
+      "story": "The resume, a quiet record",
+      "reads": [
+        "jade slip",
+        "pavilion",
+        "sword tomb"
+      ],
+      "host": {
+        "kind": "canopy",
+        "note": "one closed broadleaf canopy behind"
+      },
+      "framed_by": "slip, pavilion",
+      "moon": null,
+      "skyline": false,
+      "quiet": [
+        [
+          0.0,
+          0.0,
+          0.42,
+          0.45
+        ]
+      ],
+      "islets": {
+        "max": 0
+      },
+      "falls": false,
+      "mist_bands_z": [
+        250
+      ],
+      "hero_pines": 1,
+      "exempt_peaks": []
+    },
+    "formation": {
+      "frame": 1208,
+      "beat": "open, from above",
+      "story": "The sect's shield; the abode stair is next",
+      "reads": [
+        "disc and dome",
+        "stair up the abode peak",
+        "flags"
+      ],
+      "host": {
+        "kind": "object",
+        "name": "abode.cliff",
+        "note": "abode peak hazed, its stair the one bright line"
+      },
+      "framed_by": "dome rim",
+      "moon": null,
+      "skyline": false,
+      "quiet": [
+        [
+          0.62,
+          0.0,
+          1.0,
+          0.5
+        ]
+      ],
+      "islets": {
+        "max": 1,
+        "zone": [
+          0.62,
+          0.15,
+          1.0,
+          0.55
+        ],
+        "min_dist": 350,
+        "note": "right, over the cloud sea"
+      },
+      "falls": true,
+      "mist_bands_z": [
+        205
+      ],
+      "hero_pines": 2,
+      "exempt_peaks": []
+    },
+    "abode": {
+      "frame": 1380,
+      "beat": "most closed",
+      "story": "A private grotto, the hush before the end",
+      "reads": [
+        "moon gate and pavilion",
+        "the inscription",
+        "the fall"
+      ],
+      "host": {
+        "kind": "object",
+        "name": "abode.cliff",
+        "note": "cliff as one mass; 2 pines on one ledge"
+      },
+      "framed_by": "bamboo, blossom",
+      "moon": null,
+      "skyline": false,
+      "quiet": [],
+      "islets": {
+        "max": 0
+      },
+      "falls": true,
+      "mist_bands_z": [
+        240
+      ],
+      "hero_pines": 0,
+      "exempt_peaks": []
+    },
+    "summit": {
+      "frame": 1647,
+      "beat": "most open",
+      "story": "Arrival at the moon seen from the gate",
+      "reads": [
+        "moon",
+        "pavilion",
+        "bird, cranes"
+      ],
+      "host": {
+        "kind": "moon"
+      },
+      "framed_by": "bird's rock",
+      "moon": "clear",
+      "skyline": false,
+      "quiet": [
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.64
+        ]
+      ],
+      "islets": {
+        "max": 1,
+        "zone": [
+          0.0,
+          0.3,
+          0.3,
+          0.64
+        ],
+        "min_dist": 600,
+        "note": "one far islet at most"
+      },
+      "falls": true,
+      "mist_bands_z": [
+        -40
+      ],
+      "hero_pines": 0,
+      "exempt_peaks": []
+    }
+  },
+  "flights": [
+    {
+      "frame": 27,
+      "beat": "closed, framed",
+      "pull": "gate atop the stair",
+      "moon": "clear",
+      "islets_max": 3,
+      "no_islets": [
+        [
+          0.0,
+          0.0,
+          1.0,
+          0.22
+        ]
+      ],
+      "note": "poster: cut the top islet and the left beam; free the moon"
+    },
+    {
+      "frame": 150,
+      "beat": "opening",
+      "pull": "mirror on the rim",
+      "islets_max": 2,
+      "note": "cut islets, beam"
+    },
+    {
+      "frame": 285,
+      "beat": "closed, screened",
+      "pull": "forge smoke, then forge",
+      "islets_max": 3
+    },
+    {
+      "frame": 430,
+      "beat": "darkest, quietest",
+      "pull": "arena banners",
+      "islets_max": 3
+    },
+    {
+      "frame": 570,
+      "beat": "half",
+      "pull": "mission hall on its cliff",
+      "islets_max": 2,
+      "note": "cut beams, islets"
+    },
+    {
+      "frame": 700,
+      "beat": "open",
+      "pull": "moon top centre",
+      "islets_max": 4
+    },
+    {
+      "frame": 870,
+      "beat": "closed",
+      "pull": "formation light far ahead",
+      "islets_max": 3
+    },
+    {
+      "frame": 1040,
+      "beat": "half",
+      "pull": "jade slip atop its stair",
+      "islets_max": 2,
+      "note": "cut islets"
+    },
+    {
+      "frame": 1160,
+      "beat": "open",
+      "pull": "moon behind the viaduct",
+      "moon": "clear",
+      "islets_max": 3,
+      "no_edge_cut": true,
+      "note": "no near islet cut by the frame"
+    },
+    {
+      "frame": 1300,
+      "beat": "closing",
+      "pull": "grotto and its fall",
+      "islets_max": 3
+    },
+    {
+      "frame": 1450,
+      "beat": "release",
+      "pull": "crescent arch at the top",
+      "islets_max": 3
+    },
+    {
+      "frame": 1500,
+      "beat": "release",
+      "pull": "crescent arch at the top",
+      "islets_max": 3
+    },
+    {
+      "frame": 1580,
+      "beat": "release",
+      "pull": "crescent arch at the top",
+      "islets_max": 3
+    },
+    {
+      "frame": 1729,
+      "beat": "purest void",
+      "pull": "moon centred",
+      "moon": "clear",
+      "islets_max": 1
+    }
+  ],
+  "flight_default": {
+    "islets_max": 7,
+    "groups_max": 2,
+    "every": 6,
+    "min_px": 6.0,
+    "max_dist": 2200.0
+  },
+  "no_fall_holds": [
+    "arena",
+    "mission",
+    "library",
+    "steles",
+    "scroll"
+  ],
+  "location_falls": [
+    "scenery.island.009",
+    "abode."
+  ],
+  "targets": {
+    "scenery_islands": 40,
+    "world_islets": 12,
+    "island_fall_share": 0.25
+  }
+}

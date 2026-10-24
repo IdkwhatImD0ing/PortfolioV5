@@ -1198,3 +1198,201 @@ def build(scene=None, parts=PARTS):
     ctx.counts["seconds"] = round(time.perf_counter() - t0, 1)
     _log("counts", ctx.counts)
     return ctx.counts
+
+
+# ---- round 48: life in the range (plan r45 C, critique P13: signs of the sect living out there) ---------------------
+# Two plank walkways 栈道 climbing round two of the round-48 pillars that the holds see 200-650 m off, each from the
+# forested plinth at the pillar's foot (ground the range carries: reachable) up about a third of the pillar to a deck
+# with a small pavilion tucked against the wall, and one more pavilion at the foot of a third pillar. Low-poly (seen
+# from 200 m and more), wood and the shrines' materials, all in COLL tagged TAG = 'r48path'. Each walkway's both ends
+# connect (sect-architecture: the foot stands on the plinth, the top ends on its deck). sect/patch_r48_life.py runs it.
+PATH_PILLARS = 2               # pillars with a walkway
+PATH_FOOT_ROOFS = 1            # more pavilions at a pillar's foot
+PATH_D = (200.0, 650.0)        # m from the nearest hold camera
+PATH_W = 1.8                   # walkway width (m)
+PATH_GRADE = 0.18              # rise per metre along it
+PATH_DS = 1.5                  # m between samples along it
+PATH_RISE = (0.3, 45.0)        # it climbs this share of the pillar's height over its plinth, at most this many m
+PATH_TAG = "r48path"
+
+
+def _pillar_objects():
+    return [o for o in bpy.data.objects if o.type == 'MESH' and "r48_peak" in o.keys() and "nature_top_z" in o.keys()
+            and not o.hide_render]
+
+
+def path_candidates(hold_views):
+    """[(score, pillar, hold, azimuth facing that hold)]: round-48 pillars a hold shows whole-ish, PATH_D m off."""
+    out = []
+    for ob in _pillar_objects():
+        p = np.array(ob.matrix_world.translation)
+        tz = float(ob["nature_top_z"])
+        best = None
+        for v in hold_views:
+            d = float(np.linalg.norm(p[:2] - v.pos[:2]))
+            if not PATH_D[0] <= d <= PATH_D[1]:
+                continue
+            u, vv, dd = v.project([(p[0], p[1], tz), (p[0], p[1], float(ob.get("r48_plinth", tz - 60.0)))])
+            if (dd <= 0).any() or not (0.08 < u[0] < 0.92) or vv[0] < 0.02 or vv[1] > 1.1:
+                continue
+            sc = float(v.px(2 * float(ob["nature_top_radius"]), dd[0]))
+            if best is None or sc > best[0]:
+                az = math.atan2(v.pos[1] - p[1], v.pos[0] - p[0])
+                best = (sc, ob, v.name, az)
+        if best is not None:
+            out.append(best)
+    out.sort(key=lambda b: -b[0])
+    return out
+
+
+def _wall_hit(bvh, mw, mwi, axis, th, z, reach):
+    """World point where a horizontal ray from outside toward the pillar's axis at height z, azimuth th, meets it."""
+    d = Vector((math.cos(th), math.sin(th), 0.0))
+    src = Vector((float(axis[0]), float(axis[1]), z)) + d * reach
+    hit = bvh.ray_cast(mwi @ src, (mwi.to_3x3() @ -d).normalized(), reach * 1.5)[0]
+    return None if hit is None else mw @ hit
+
+
+def _walkway_geo(g, pts, outs):
+    """Planks, outer rail posts and rail, and a brace under every other post, along samples pts (wall points) with
+    outward unit vectors outs. Geo in world coordinates; materials MI_WOOD / MI_RED."""
+    n = len(pts)
+    for i in range(n - 1):
+        a, b = pts[i], pts[i + 1]
+        oa, ob_ = outs[i], outs[i + 1]
+        base = len(g.v)
+        for p, o in ((a, oa), (b, ob_)):
+            for w in (0.15, PATH_W):
+                for dz in (0.0, -0.18):
+                    g.vert((p[0] + o[0] * w, p[1] + o[1] * w, p[2] + dz))
+        # per end: (in, top) (in, bottom) (out, top) (out, bottom); end a = base .. base+3, end b = base+4 .. base+7
+        A, B = base, base + 4
+        for q in ((A, A + 2, B + 2, B), (A + 1, B + 1, B + 3, A + 3), (A + 2, A + 3, B + 3, B + 2),
+                  (A, B, B + 1, A + 1)):
+            g.face(q, MI_WOOD)
+        if i % 2 == 0:
+            x, y = a[0] + oa[0] * (PATH_W - 0.1), a[1] + oa[1] * (PATH_W - 0.1)
+            g.box(x - 0.07, x + 0.07, y - 0.07, y + 0.07, a[2], a[2] + 1.0, MI_RED)
+            g.obox((a[0] + oa[0] * 0.2, a[1] + oa[1] * 0.2), (a[0] + oa[0] * (PATH_W - 0.2), a[1] + oa[1] * (PATH_W - 0.2)),
+                   0.14, a[2] - 1.4, a[2] - 0.2, MI_WOOD)
+    for i in range(0, n - 2, 2):
+        a, b = pts[i], pts[i + 2]
+        oa, ob_ = outs[i], outs[i + 2]
+        g.obox((a[0] + oa[0] * (PATH_W - 0.1), a[1] + oa[1] * (PATH_W - 0.1)),
+               (b[0] + ob_[0] * (PATH_W - 0.1), b[1] + ob_[1] * (PATH_W - 0.1)), 0.08,
+               (a[2] + b[2]) * 0.5 + 0.9, (a[2] + b[2]) * 0.5 + 1.0, MI_RED)
+
+
+def _pavilion_obj(coll, name, loc, yaw, s=0.55, deck=None):
+    """A small pavilion (pavilion_geo) at loc, its front (-Y) turned to yaw; deck = (depth, width) adds a wooden
+    deck under it reaching back toward the wall. Returns the object."""
+    g, _info = pavilion_geo(6, s, False)
+    if deck is not None:
+        dep, wid = deck
+        g.box(-wid / 2, wid / 2, -dep / 2, dep / 2 + 2.5, -0.5, 0.0, MI_WOOD, top_mat=MI_WOOD)
+    mats = ["roof_tile_black" if m == "ROOF" else m for m in SHRINE_MATS]
+    ob = U.mesh_from_pydata(U.unique_name(name), g.v, g.f, coll, materials=mats, smooth=False,
+                            material_indices=g.m, location=loc, rotation=(0.0, 0.0, yaw))
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+    bm.to_mesh(ob.data)
+    bm.free()
+    ob.data.update()
+    return ob
+
+
+def build_paths(scene, hold_views, log=None):
+    """Round 48 (see PATH_*): walkways round PATH_PILLARS pillars, each ending at a deck pavilion, and PATH_FOOT_ROOFS
+    pavilions at the foot of the next pillars. Removes an earlier run's first. Returns counts and per-path facts."""
+    log = log or _log
+    root = U.get_collection(PARENT_COLL, scene=scene)
+    coll = U.get_collection(COLL, parent=root, scene=scene)
+    for o in [o for o in bpy.data.objects if o.get(TAG) == PATH_TAG]:
+        bpy.data.objects.remove(o, do_unlink=True)
+    cands = path_candidates(hold_views)
+    surf = Surface(bpy.data.objects["world.range"])
+    dg = bpy.context.evaluated_depsgraph_get()
+    facts = []
+    made = 0
+    used = set()
+    for sc, ob, hold, az in cands:
+        if sum(1 for f in facts if f["kind"] == "walkway") >= PATH_PILLARS:
+            break
+        p = np.array(ob.matrix_world.translation)
+        tz = float(ob["nature_top_z"])
+        tr = float(ob["nature_top_radius"])
+        plinth = float(ob.get("r48_plinth", tz - 60.0))
+        ground = surf.down(p[0] + math.cos(az) * (tr * 1.6 + 6.0), p[1] + math.sin(az) * (tr * 1.6 + 6.0), tz + 50.0,
+                           900.0)
+        if ground is None:
+            continue
+        z0 = float(ground[0].z) + 0.35
+        rise = min(PATH_RISE[1], PATH_RISE[0] * (tz - plinth))
+        if rise < 12.0:
+            continue
+        bvh = BVHTree.FromObject(ob, dg)
+        mw = ob.matrix_world.copy()
+        mwi = mw.inverted()
+        reach = tr * 3.0 + 30.0
+        th = az - 0.6                                       # start a little left of the face the hold sees
+        z = z0
+        pts, outs = [], []
+        ok = True
+        while z < z0 + rise:
+            h = _wall_hit(bvh, mw, mwi, p, th, z + 0.6, reach)
+            if h is None:
+                ok = False
+                break
+            o = (math.cos(th), math.sin(th))
+            pts.append((h.x + o[0] * 0.1, h.y + o[1] * 0.1, z))
+            outs.append(o)
+            th += PATH_DS / max(4.0, math.hypot(h.x - p[0], h.y - p[1]))
+            z += PATH_DS * PATH_GRADE
+        if not ok or len(pts) < 8:
+            log("WARN walkway on", ob.name, "lost the wall; skipped")
+            continue
+        g = Geo()
+        _walkway_geo(g, pts, outs)
+        wk = U.mesh_from_pydata(U.unique_name("life.r48.walkway"), g.v, g.f, coll,
+                                materials=["roof_tile_black" if m == "ROOF" else m for m in SHRINE_MATS],
+                                smooth=False, material_indices=g.m)
+        bm = bmesh.new()
+        bm.from_mesh(wk.data)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces[:])
+        bm.to_mesh(wk.data)
+        bm.free()
+        wk.data.update()
+        _tag(wk, PATH_TAG)
+        top = pts[-1]
+        o = outs[-1]
+        yaw = math.atan2(o[0], -o[1])                       # the pavilion's front (-Y) faces out of the wall
+        pv = _pavilion_obj(coll, "life.r48.pavilion", (top[0] + o[0] * 3.2, top[1] + o[1] * 3.2, top[2]), yaw,
+                           deck=(6.0, 6.5))
+        _tag(pv, PATH_TAG)
+        made += 2
+        used.add(ob.name)
+        facts.append(dict(kind="walkway", pillar=ob.name, hold=hold, px=round(sc, 1),
+                          foot=[round(c, 1) for c in pts[0]], top=[round(c, 1) for c in top],
+                          length=round(len(pts) * PATH_DS, 1), tris=g.tris()))
+        log("walkway", ob.name, "seen from", hold, "%.0f px; %.0f m long, %.1f -> %.1f m" % (
+            sc, len(pts) * PATH_DS, pts[0][2], top[2]))
+    for sc, ob, hold, az in cands:
+        if sum(1 for f in facts if f["kind"] == "foot") >= PATH_FOOT_ROOFS:
+            break
+        if ob.name in used:
+            continue
+        p = np.array(ob.matrix_world.translation)
+        r0 = float(ob["nature_top_radius"]) * 1.7 + 7.0
+        q = (p[0] + math.cos(az) * r0, p[1] + math.sin(az) * r0)
+        hit = surf.down(q[0], q[1], float(ob["nature_top_z"]) + 50.0, 900.0)
+        if hit is None or hit[1].z < 0.85:
+            continue
+        pv = _pavilion_obj(coll, "life.r48.pavilion", (q[0], q[1], float(hit[0].z) - 0.05),
+                           math.atan2(math.cos(az), -math.sin(az)), s=0.6)
+        _tag(pv, PATH_TAG)
+        made += 1
+        used.add(ob.name)
+        facts.append(dict(kind="foot", pillar=ob.name, hold=hold, at=[round(q[0], 1), round(q[1], 1)]))
+        log("foot pavilion at", ob.name, "seen from", hold)
+    return dict(objects=made, paths=facts)

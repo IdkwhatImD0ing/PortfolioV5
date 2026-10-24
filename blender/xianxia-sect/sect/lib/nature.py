@@ -38,7 +38,7 @@ __all__ = [
 
 PREFIX = "nature"
 PINE_HEIGHT = 10.0          # canonical prototype height; instances are scaled to the asked height
-PINE_VARIANTS = {"huangshan": 6, "cliff": 4, "ancient": 3}
+PINE_VARIANTS = {"huangshan": 6, "cliff": 4, "ancient": 3, "masson": 4}   # masson: round 48's slim spire
 _PROTO_TAG = "nature_proto"
 _Z = Vector((0.0, 0.0, 1.0))
 
@@ -772,6 +772,8 @@ def _pine_skeleton(style, variant):
     (flag form), each carrying thin flat foliage plates with gaps between them, a flat umbrella
     crown. 'ancient' adds one very long welcoming arm low on the trunk. ``sk.lean_az`` is the
     yaw the tree leans and reaches toward (prototype space)."""
+    if style == "masson":
+        return _masson_skeleton(variant)
     r = U.rng("nature.pine", style, variant)
     H = PINE_HEIGHT
     sk = _Skel()
@@ -874,6 +876,45 @@ def _pine_skeleton(style, variant):
         a = lean_az + math.pi + r.uniform(-0.7, 0.7)
         pts = _branch_path(p0, Vector((math.cos(a), math.sin(a), 0)), H * 0.17, 0.5, r, segs=3, zig=0.15)
         sk.branch(pts, base_r * w * 0.38, 1)
+    return sk
+
+
+def _masson_skeleton(variant):
+    """Round 48: a Masson pine (Pinus massoniana) spire at PINE_HEIGHT: a nearly straight trunk, 6-8 irregular tiers
+    of short limbs all round (shorter toward the top), each carrying one small rounded plate, and a pointed leader
+    plate. The crown is 3.5-5 times taller than wide, so it pokes up through a broadleaf canopy as a slim spire
+    (critique P4: caps of round blobs alone read as broccoli). No buttress roots (it stands in the canopy)."""
+    r = U.rng("nature.pine", "masson", variant)
+    H = PINE_HEIGHT
+    sk = _Skel()
+    lean_az = r.uniform(0, 2 * math.pi)
+    lean_d = Vector((math.cos(lean_az), math.sin(lean_az), 0.0))
+    base_r = r.uniform(0.2, 0.26)
+    top = H * r.uniform(0.9, 0.96)
+    ctrl = _curve_trunk(r, top, r.uniform(0.03, 0.1), lean_d, 0.3, 0.06, n=10, w_top=0.22)
+    sk.branch(ctrl, base_r, 0)
+    ctrl = [p for p in ctrl if p[2] >= -1e-6]
+    sk.trunk, sk.base_r, sk.lean_az = ctrl, base_r, lean_az
+    tiers = r.randint(6, 8)
+    az0 = r.uniform(0, 2 * math.pi)
+    golden = math.radians(137.5)
+    k = 0
+    for i, t in enumerate(_tier_ts(r, tiers, r.uniform(0.3, 0.38), 0.9)):
+        tf = i / max(1, tiers - 1)
+        for b in range(r.randint(2, 3)):
+            az = az0 + golden * k + r.uniform(-0.3, 0.3)
+            k += 1
+            d = Vector((math.cos(az), math.sin(az), 0.0))
+            p0, w = _trunk_point(ctrl, t + r.uniform(-0.015, 0.015))
+            L = H * r.uniform(0.09, 0.14) * (1.15 - 0.62 * tf)
+            pts = _branch_path(p0, d, L, r.uniform(0.18, 0.32), r, segs=3, zig=0.05, droop=r.uniform(0.0, 0.06))
+            sk.branch(pts, base_r * w * 0.45, 1)
+            a_ = max(0.45, min(0.95, 0.42 * L + 0.4))
+            q = Vector(pts[-1][:3])
+            sk.pad(q + Vector((0, 0, 0.12)), (a_, a_ * 0.8, 0.3 + 0.04 * a_), az + r.uniform(-0.3, 0.3))
+    top_p, _w = _trunk_point(ctrl, 1.0)
+    sk.pad(top_p + Vector((0, 0, 0.1)), (0.55, 0.45, 0.42), lean_az)
+    sk.pad(top_p - Vector((0, 0, 0.75)), (0.8, 0.65, 0.34), lean_az + 1.2)
     return sk
 
 
@@ -1612,7 +1653,22 @@ def _shrub_proto(kind, variant, lod="hero"):
         bm = bmesh.new()
         env = (Vector((0, 0, 0.35)), (0.95, 0.85, 0.75), Matrix.Identity(3))
         blobs = []
-        for i in range(r.randint(5, 7) if hero else r.randint(3, 4)):
+        if kind == "scrub":
+            # round 48: mountain scrub for 37-60 deg slopes and rock shelves: taller than wide (about 1.1 m wide,
+            # 1.5 m tall at scale 1), a stack of clumps leaning a little, darker in the bake (more self-shadow)
+            env = (Vector((0, 0, 0.7)), (0.6, 0.55, 0.85), Matrix.Identity(3))
+            lean = Vector((r.uniform(-0.12, 0.12), r.uniform(-0.12, 0.12), 0.0))
+            for i in range(r.randint(5, 6) if hero else r.randint(3, 4)):
+                h = (i + 0.5) / 5.5
+                a = r.uniform(0, 6.28)
+                rr = r.uniform(0.0, 0.22) * (1.0 - 0.5 * h)
+                c = Vector((math.cos(a) * rr, math.sin(a) * rr, 0.25 + 1.05 * h)) + lean * h
+                sz = r.uniform(0.28, 0.4) * (1.15 - 0.45 * h) * (1.0 if hero else 1.2)
+                radii = (sz, sz * 0.95, sz * 0.9)
+                _bm_blob(bm, c, radii, subdiv=3 if hero else 2, seed=i + variant * 23 + 5, lump=0.16, freq=2.4,
+                         flatten=0.6, mat=0, env=env, env_w=0.7)
+                blobs.append((c, radii))
+        for i in range(0 if kind == "scrub" else (r.randint(5, 7) if hero else r.randint(3, 4))):
             a = r.uniform(0, 6.28)
             rr = math.sqrt(r.uniform(0, 1)) * 0.45
             c = Vector((math.cos(a) * rr, math.sin(a) * rr, 0.32 + (0.45 - rr) * 0.6 + r.uniform(-0.05, 0.1)))
@@ -2001,7 +2057,7 @@ class _PillarShape:
     rounded bed shoulders and undercuts, a few deep major fissures that split the pillar into
     columns, fine vertical fluting, and slow buttress lobes."""
 
-    def __init__(self, seed, height, top_r, bot_r, top_z, lod):
+    def __init__(self, seed, height, top_r, bot_r, top_z, lod, preset=None):
         r = U.rng("nature.pillar", seed)
         self.r = r
         self.lod = lod
@@ -2009,6 +2065,11 @@ class _PillarShape:
         self.off = Vector((r.uniform(-90, 90), r.uniform(-90, 90), r.uniform(-90, 90)))
         R = max(top_r, bot_r)
         self.R = R
+        self.preset = preset
+        self.dome_range = (0.12, 0.3)
+        if preset is not None:          # round 48 (peak_pillar): every draw below comes after the ones above
+            self._init_preset(r, R, preset)
+            return
         self.n_major = r.randint(5, 9)
         self.major_a = min(7.0, 0.16 * R)
         self.minor_f = max(1.6, R / 2.6)
@@ -2033,6 +2094,47 @@ class _PillarShape:
             self.layers.append((z, z - t, amp))
             z -= t
             i += 1
+
+    def _init_preset(self, r, R, P):
+        """Round 48: a PILLAR_PRESETS shape. Own bed sequence from this pillar's top down (no two pillars share bed
+        heights), shelves (beds that stick out past the one above by shelf_amp x R) on shelf_p of the beds, fissures
+        and crown per preset; 'mid' and 'far' keep hero bed thickness x bed_k (far x 1.1 more, not 1.6-1.8)."""
+        lod = self.lod
+        self.n_major = r.randint(*P["fissures"])
+        self.major_a = min(P["fissure_cap"], P["fissure_k"] * R)
+        self.minor_f = max(1.6, R / 2.6)
+        self.minor_a = min(3.0, 0.07 * R) if lod == "hero" else 0.0
+        self.lobe_a = P["lobe"]
+        self.bulge = r.uniform(*P["bulge"])
+        self.shoulder = min(1.2, (0.012 * R + 0.12) * P["shoulder_k"])
+        self.dome_range = P["dome"]
+        self.layers = []
+        lo, hi = (0.25 * R ** 0.5 + 0.8) * P["bed_k"], (1.1 * R ** 0.5 + 4.0) * P["bed_k"]
+        if lod == "far":
+            lo, hi = lo * 1.1, hi * 1.1
+        z = self.tz
+        i = 0
+        base = 0.0
+        while z > self.tz - self.h - 1:
+            t = (lo + (hi - lo) * r.random() ** 1.6) * (1.0 if i else 0.7)
+            if i > 1 and r.random() < P["shelf_p"]:
+                amp = base + r.uniform(*P["shelf_amp"]) * R
+            else:
+                base = r.uniform(-1.0, 1.0) * P["bed_amp"] * R
+                amp = base
+            self.layers.append((z, z - t, amp))
+            z -= t
+            i += 1
+
+    def fissure(self, th, z):
+        """Strength (0 .. ~1.4) of the major fissure term of radius() at (th, z): 1 in the middle of a cleft."""
+        c, s = math.cos(th), math.sin(th)
+        o = self.off
+        fm = self.n_major / (2 * math.pi) * 1.15
+        w1 = 0.25 * _n(Vector((c * 1.5, s * 1.5, z * 0.03)) + o)
+        g1 = 1.0 - abs(_n(Vector((c * fm + w1, s * fm - w1, z * 0.6 / self.R)) + o * 0.7))
+        fade = 0.55 + 0.45 * _n(Vector((c * 0.7, s * 0.7, z * 0.04)) + o * 1.3)
+        return (g1 ** 9) * max(0.0, fade) * 1.4
 
     def layer_at(self, z):
         for i, (zt, zb, a) in enumerate(self.layers):
@@ -2074,13 +2176,16 @@ def _pillar_rings(shape, lod, top_flat):
     it, sparser rings inside tall beds and toward the (cloud-hidden) bottom."""
     zs = set()
     tz, h = shape.tz, shape.h
-    step = 1.6 if lod == "hero" else 6.0
+    step = 1.6 if lod == "hero" else (2.8 if lod == "mid" else 6.0)   # (round 48: 'mid', peak_pillar)
     deep = min(h * 0.4, max(25.0, 1.2 * shape.R))       # below this, detail is mostly lost in the cloud sea
+    preset = getattr(shape, "preset", None) is not None
     for i, (zt, zb, _a) in enumerate(shape.layers):
         if zt < tz - h:
             break
         fine = lod == "hero" and (tz - zt) < deep
-        if i > 0:
+        if i > 0 and preset and not fine and abs(_a - shape.layers[i - 1][2]) < 0.03 * shape.R:
+            zs.add(round(zt, 3))        # round 48: a bed boundary with no step needs no shelf pair
+        elif i > 0:
             zs.add(round(zt + 0.04, 3))
             if fine:
                 for d in (0.04, 0.2, 0.45, 0.9):
@@ -2136,7 +2241,7 @@ def _pillar_bm(shape, lod, top_flat, segs, seed):
             f.smooth = False
     else:
         # vegetated dome: concentric rings rising to an uneven crown
-        dome = shape.tr * r.uniform(0.12, 0.3)
+        dome = shape.tr * r.uniform(*getattr(shape, "dome_range", (0.12, 0.3)))
         prev = rings[0]
         o = shape.off
         for k, rho in enumerate((0.82, 0.62, 0.42, 0.22)):
@@ -2454,17 +2559,25 @@ def ground_patch(collection, radius=20.0, seed=0, height=0.5, holes=(), material
 _SCATTER_VERSION = 3
 
 
-def _scatter_group(method="RANDOM"):
+_RSCATTER_VERSION = 1      # round 48: the range-only group 'nature.rscatter.<method>' (rscatter_on), its own version so
+                           # the shared 'nature.scatter.*' groups (every area garden and grove) are never rebuilt
+
+
+def _scatter_group(method="RANDOM", factor=False):
     """Shared GN group 'nature.scatter.<method>': distribute points on a surface object's faces
-    (slope / height / attribute mask), instance random children of a collection on them."""
-    name = "nature.scatter." + method.lower()
+    (slope / height / attribute mask), instance random children of a collection on them.
+    ``factor`` (round 48): the range-only group 'nature.rscatter.<method>' instead, with one more input "Factor":
+    the name of a FACE / POINT float attribute that multiplies the density per face (groves and clearings,
+    gullies and ridges); without that attribute on the surface the group places nothing."""
+    name = ("nature.rscatter." if factor else "nature.scatter.") + method.lower()
+    tag, version = ("nature_rscatter", _RSCATTER_VERSION) if factor else ("nature_scatter", _SCATTER_VERSION)
     ng = bpy.data.node_groups.get(name)
-    if ng is not None and ng.get("nature_scatter") == _SCATTER_VERSION:
+    if ng is not None and ng.get(tag) == version:
         return ng
     if ng is not None:
         bpy.data.node_groups.remove(ng)
     ng = bpy.data.node_groups.new(name, 'GeometryNodeTree')
-    ng["nature_scatter"] = _SCATTER_VERSION
+    ng[tag] = version
     it = ng.interface
     it.new_socket("Geometry", in_out='INPUT', socket_type='NodeSocketGeometry')
     spec = [("Surface", 'NodeSocketObject', None), ("Prototypes", 'NodeSocketCollection', None),
@@ -2473,6 +2586,8 @@ def _scatter_group(method="RANDOM"):
             ("Scale Max", 'NodeSocketFloat', 1.2), ("Align", 'NodeSocketFloat', 0.0),
             ("Mask", 'NodeSocketString', ""), ("Z Min", 'NodeSocketFloat', -1e6),
             ("Z Max", 'NodeSocketFloat', 1e6), ("Min Distance", 'NodeSocketFloat', 0.0)]
+    if factor:
+        spec.append(("Factor", 'NodeSocketString', ""))
     for nm, st, dv in spec:
         s = it.new_socket(nm, in_out='INPUT', socket_type=st)
         if dv is not None:
@@ -2530,9 +2645,21 @@ def _scatter_group(method="RANDOM"):
     dist = node("GeometryNodeDistributePointsOnFaces", distribute_method=method)
     L.new(oi.outputs["Geometry"], dist.inputs["Mesh"])
     L.new(a3.outputs[0], dist.inputs["Selection"])
+    fac = None
+    if factor:
+        fa = node("GeometryNodeInputNamedAttribute", data_type='FLOAT')
+        L.new(gi.outputs["Factor"], fa.inputs["Name"])
+        fac = fa.outputs["Attribute"]
     if method == "POISSON":
         L.new(gi.outputs["Density"], dist.inputs["Density Max"])
         L.new(gi.outputs["Min Distance"], dist.inputs["Distance Min"])
+        if fac is not None:
+            L.new(fac, dist.inputs["Density Factor"])
+    elif fac is not None:
+        dm = node("ShaderNodeMath", operation='MULTIPLY')
+        L.new(gi.outputs["Density"], dm.inputs[0])
+        L.new(fac, dm.inputs[1])
+        L.new(dm.outputs[0], dist.inputs["Density"])
     else:
         L.new(gi.outputs["Density"], dist.inputs["Density"])
     L.new(gi.outputs["Seed"], dist.inputs["Seed"])
@@ -2630,6 +2757,32 @@ def scatter_on(surface_obj, prototypes, density=0.5, seed=0, max_slope=math.radi
             "Scale Max": float(scale_range[1]), "Align": float(align), "Mask": mask_attribute or "",
             "Z Min": float(z_range[0]) if z_range else -1e6, "Z Max": float(z_range[1]) if z_range else 1e6,
             "Min Distance": float(min_distance)}
+    for k, v in vals.items():
+        _set_mod_input(mod, ids[k], v)
+    return ob
+
+
+def rscatter_on(surface_obj, prototypes, density=0.5, seed=0, max_slope=math.radians(30), scale_range=(0.8, 1.2),
+                collection=None, name=None, align=0.0, mask_attribute=None, factor_attribute="",
+                z_range=None, min_distance=0.0):
+    """Round 48: scatter_on through the range-only group 'nature.rscatter.<method>' (_scatter_group(factor=True)):
+    the same inputs plus ``factor_attribute``, a FACE float attribute of the surface that multiplies ``density`` per
+    face (0 = nothing, 1 = density, 2 = twice). The shared 'nature.scatter.*' groups are not touched, so no area
+    garden or grove re-seeds. Returns the scatter object (modifier 'NatureScatter', a child of the surface)."""
+    method = "POISSON" if min_distance > 0 else "RANDOM"
+    ng = _scatter_group(method, factor=True)
+    coll = collection or (surface_obj.users_collection[0] if surface_obj.users_collection else None)
+    me = bpy.data.meshes.new(name or (surface_obj.name + ".rscatter"))
+    ob = U.object_from_mesh(U.unique_name(name or (surface_obj.name + ".rscatter")), me, coll, parent=surface_obj)
+    mod = ob.modifiers.new("NatureScatter", 'NODES')
+    mod.node_group = ng
+    ids = {s.name: s.identifier for s in ng.interface.items_tree
+           if getattr(s, "in_out", None) == 'INPUT' and s.socket_type != 'NodeSocketGeometry'}
+    vals = {"Surface": surface_obj, "Prototypes": _proto_set(prototypes), "Density": float(density),
+            "Seed": int(seed) % 100000, "Min Normal Z": math.cos(max_slope), "Scale Min": float(scale_range[0]),
+            "Scale Max": float(scale_range[1]), "Align": float(align), "Mask": mask_attribute or "",
+            "Z Min": float(z_range[0]) if z_range else -1e6, "Z Max": float(z_range[1]) if z_range else 1e6,
+            "Min Distance": float(min_distance), "Factor": factor_attribute or ""}
     for k, v in vals.items():
         _set_mod_input(mod, ids[k], v)
     return ob
@@ -2837,7 +2990,7 @@ def _sheet_bm(width, height, seed, exit_speed, spread=0.25, behind=0.7):
 
 
 def waterfall(collection, height=20.0, width=4.0, seed=0, sheets=3, mist=True, foam=True, name=None,
-              location=(0, 0, 0), rotation=None, parent=None):
+              location=(0, 0, 0), rotation=None, parent=None, exit_speed=None, spread=None):
     """Waterfall pouring off a lip: origin = centre of the lip, water leaves toward -Y and falls
     ``height`` m. Layered transparent sheets (nature_waterfall: foam streaks flowing down, frame
     driven, a different speed per sheet via obj['flow']; roles sheet_roles(sheets) in obj['water_layer'],
@@ -2855,8 +3008,9 @@ def waterfall(collection, height=20.0, width=4.0, seed=0, sheets=3, mist=True, f
     w0 = width
     for s in range(sheets):
         w = width * (1.0 - 0.16 * s) * r.uniform(0.95, 1.05)
-        v = r.uniform(1.1, 1.6) * (1.0 + 0.12 * s)
-        bm = _sheet_bm(w, height, seed * 13 + s, v, spread=0.2 + 0.08 * s)
+        # (round 48: exit_speed / spread for falls that arc and widen: 2.5-4 m/s, 40-60 %; None = as before)
+        v = (exit_speed * r.uniform(0.9, 1.1) if exit_speed else r.uniform(1.1, 1.6)) * (1.0 + 0.12 * s)
+        bm = _sheet_bm(w, height, seed * 13 + s, v, spread=(0.2 if spread is None else spread) + 0.08 * s)
         ob = _mesh_obj(nm + ".sheet", bm, collection, ["nature_waterfall"], parent=root,
                        location=(r.uniform(-0.1, 0.1) * width, -SHEET_FRONT[roles[s]], 0.01 * s))
         ob["flow"] = (1.0, 1.22, 0.86, 1.1)[s % 4]
@@ -3205,3 +3359,356 @@ def board_clouds(collection):
 
 
 board_clouds.preview_cameras = [("front", (0, -30, 8), (0, 40, 14), 35)]
+
+
+# =====================================================================================
+# round 48: the background with intent (scratchpad r45/plan_final.md P-1 .. P-4, r49/intent.md)
+# =====================================================================================
+#
+# - peak_pillar: the range's tall peaks rebuilt as karst pillars on their own bed sequences (no shared contour
+#   heights), with real shelves, fissures, a vegetated dome cap, and a hanging green fringe and drapes on every shelf
+#   lip. Face attributes for the planting: 'nature_cap' (dome top), 'nature_shelf' (up-facing shelf tops, which also
+#   turn moss-green), 'nature_crack' (steep faces in a fissure: fern and shrub strips).
+# - canopy trees: a rounded broadleaf (6 variants in 3 greens + 2 spring-green accents), the Masson pine spire
+#   (pine style 'masson') and mountain scrub (shrub kind 'scrub'). The broadleaf is named under the bake pipeline's
+#   tree kind ('nature.proto.pine.broadleaf.v<N>.<lod>'): bake_trees treats it like any tree (near mesh within
+#   --tree-near with its leaf cards stripped, crossed cards with sprites from the '.hero' leafy crown farther out), so
+#   no export or bake script needs a new vegetation kind.
+# - hull clumps (P-4): low-poly merged crown blobs for 70-250 m, baked like terrain.
+
+PILLAR_PRESETS = dict(
+    # Zhangjiajie sandstone column: thin uneven beds, a real shelf on about a quarter of them (2-5 m deep on a main
+    # peak: shelf_amp x R past the bed above), 5-9 deep fissures, a low dome
+    sandstone=dict(fissures=(5, 9), fissure_k=0.16, fissure_cap=7.0, lobe=0.12, bulge=(-0.04, 0.06), shoulder_k=1.0,
+                   bed_k=1.4, shelf_p=0.26, shelf_amp=(0.08, 0.15), bed_amp=0.02, dome=(0.12, 0.28), dip=(1.0, 3.0)),
+    # Huangshan granite: thick beds with only small ledges, 8-12 fissures splitting it into columns, a rounded crown
+    granite=dict(fissures=(8, 12), fissure_k=0.12, fissure_cap=5.5, lobe=0.16, bulge=(0.0, 0.1), shoulder_k=1.8,
+                 bed_k=2.0, shelf_p=0.16, shelf_amp=(0.035, 0.07), bed_amp=0.02, dome=(0.26, 0.42), dip=(0.5, 2.0)),
+    # far mesa (world.BACKDROP_R48): a wide table with a low dome, so its skyline reads level from 2 km
+    mesa=dict(fissures=(10, 16), fissure_k=0.03, fissure_cap=8.0, lobe=0.05, bulge=(0.0, 0.04), shoulder_k=2.5,
+              bed_k=2.2, shelf_p=0.2, shelf_amp=(0.01, 0.02), bed_amp=0.006, dome=(0.04, 0.08), dip=(0.2, 0.8)),
+)
+PILLAR_SEG = dict(hero=1.25, mid=2.5, far=4.0)             # m of wall per segment round the pillar
+PILLAR_SEG_CLAMP = dict(hero=(96, 320), mid=(40, 160), far=(28, 80))
+SHELF_NZ = 0.55            # an up-facing rock face this flat (normal z) under the dome is a shelf top
+CRACK_MIN = 0.3            # fissure strength (_PillarShape.fissure) over which a steep face is a crack strip
+CRACK_NZ = 0.5             # ... steep: |normal z| under this (60 deg and steeper)
+FRINGE_MIN = 0.6           # m: a shelf this deep or deeper gets the hanging fringe along its lip
+FRINGE_LEN = (1.0, 2.2)    # m the fringe hangs over the lip
+DRAPE_P = 0.16             # share of a fringed lip's samples that also drop a long drape
+DRAPE_LEN = (3.0, 8.0)     # m
+DRAPE_W = (0.8, 1.6)       # m wide at the lip
+FRINGE_LOW = 0.85          # no fringe on the lowest 15 % of a pillar (mist and the plinth's forest hide it)
+
+
+def _shear(co, k_x, k_y):
+    return Vector((co.x, co.y, co.z + k_x * co.x + k_y * co.y))
+
+
+def _pillar_fringe_bm(shape, seed, kx, ky, detail):
+    """The green fringe pouring over every shelf lip of ``shape`` (a strip from just inside the lip to FRINGE_LEN
+    below it, on 60-70 % of the lip) and long drapes on DRAPE_P of the fringed samples. Pillar-local coordinates,
+    sheared like the pillar (kx, ky). Returns (bm, number of fringed shelves)."""
+    r = U.rng("nature.fringe", seed)
+    bm = bmesh.new()
+    R = shape.R
+    n = max(24, min(120, int(2 * math.pi * R / 2.5)))
+    ths = [2 * math.pi * i / n for i in range(n)]
+    o = shape.off
+    z_low = shape.tz - shape.h * FRINGE_LOW
+    shelves = 0
+    for i, (zt, _zb, amp) in enumerate(shape.layers):
+        if i < 2 or zt < z_low:
+            continue
+        if amp - shape.layers[i - 1][2] < 0.03 * R:
+            continue
+        rows = []
+        for t in ths:
+            c, s = math.cos(t), math.sin(t)
+            depth = shape.radius(t, zt - 0.5, detail) - shape.radius(t, zt + 0.3, detail)
+            cover = _n(Vector((c * 1.3, s * 1.3, i * 0.9)) + o) > -0.3
+            if depth < FRINGE_MIN or not cover:
+                rows.append(None)
+                continue
+            rl = shape.radius(t, zt - 0.15, detail)
+            L = FRINGE_LEN[0] + (FRINGE_LEN[1] - FRINGE_LEN[0]) * (0.5 + 0.5 * _n(Vector((c * 3.1, s * 3.1, i * 1.7))
+                                                                                  + o))
+            top = bm.verts.new(_shear(Vector((c * (rl - 0.3), s * (rl - 0.3), zt + 0.12)), kx, ky))
+            bot = bm.verts.new(_shear(Vector((c * (rl + 0.4), s * (rl + 0.4), zt - L)), kx, ky))
+            rows.append((top, bot, t, rl))
+        made = False
+        for j in range(n):
+            a, b = rows[j], rows[(j + 1) % n]
+            if a is None or b is None:
+                continue
+            f = bm.faces.new((a[0], b[0], b[1], a[1]))
+            f.smooth = True
+            made = True
+        shelves += 1 if made else 0
+        for row in rows:
+            if row is None or r.random() >= DRAPE_P:
+                continue
+            _top, _bot, t, _rl = row
+            c, s = math.cos(t), math.sin(t)
+            sx, sy = -s, c                                   # across the wall
+            Ld = r.uniform(*DRAPE_LEN)
+            w = r.uniform(*DRAPE_W)
+            prev = None
+            for k in range(5):
+                q = k / 4.0
+                z = zt - 0.2 - Ld * q
+                rr = shape.radius(t, z, detail) + 0.3
+                hw = 0.5 * w * (1.0 - 0.75 * q)
+                p = Vector((c * rr, s * rr, z))
+                cur = (bm.verts.new(_shear(p + Vector((sx * hw, sy * hw, 0.0)), kx, ky)),
+                       bm.verts.new(_shear(p - Vector((sx * hw, sy * hw, 0.0)), kx, ky)))
+                if prev is not None:
+                    f = bm.faces.new((prev[0], prev[1], cur[1], cur[0]))
+                    f.smooth = True
+                prev = cur
+    # face the strips out of the rock (the web draws them double-sided; the bake lights the outer side)
+    for f in bm.faces:
+        f.normal_update()
+        cc = f.calc_center_median()
+        if f.normal.x * cc.x + f.normal.y * cc.y < 0.0:
+            f.normal_flip()
+    return bm, shelves
+
+
+def peak_pillar(collection, height=150.0, top_radius=18.0, bottom_radius=None, seed=0, top_z=0.0, preset="sandstone",
+                lod="mid", name=None, location=(0, 0, 0), parent=None, dip=None, dip_az=None, fringe=True,
+                green_shelves=True):
+    """Round 48 (P-1): one of the range's peaks as a karst pillar from ``top_z`` down ``height`` m (sink its foot
+    8-10 m into the plinth), PILLAR_PRESETS[``preset``] shape at ``lod`` ('hero' 1.25 m, 'mid' 2.5 m, 'far' 4 m wall
+    resolution), tilted ``dip`` degrees (seeded 1-3 sandstone / 0.5-2 granite) toward ``dip_az`` so its beds are not
+    level lines. Vegetated dome cap (material 1). Face attributes 'nature_cap', 'nature_shelf' (shelf tops; material
+    1 when ``green_shelves``) and 'nature_crack'. ``fringe``: a child mesh '<name>.fringe' (material nature_vine)
+    hanging over every shelf lip. No plants: patch_r48_green / scenery.build_canopy plant the attributes.
+    Returns (object, info)."""
+    t0 = time.perf_counter()
+    P = PILLAR_PRESETS[preset]
+    bottom_radius = top_radius * 1.15 if bottom_radius is None else bottom_radius
+    shape = _PillarShape(seed, height, top_radius, bottom_radius, top_z, lod, preset=P)
+    lo_, hi_ = PILLAR_SEG_CLAMP[lod]
+    segs = max(lo_, min(hi_, int(2 * math.pi * max(top_radius, bottom_radius) / PILLAR_SEG[lod])))
+    bm, _rim = _pillar_bm(shape, lod, False, segs, seed)
+    r = U.rng("nature.peak_pillar", seed)
+    dip = r.uniform(*P["dip"]) if dip is None else float(dip)
+    dip_az = r.uniform(0.0, 2 * math.pi) if dip_az is None else float(dip_az)
+    k = math.tan(math.radians(dip))
+    kx, ky = k * math.cos(dip_az), k * math.sin(dip_az)
+    for v in bm.verts:
+        v.co = _shear(v.co, kx, ky)
+    bm.normal_update()
+    cap_l = bm.faces.layers.float.new("nature_cap")
+    shelf_l = bm.faces.layers.float.new("nature_shelf")
+    crack_l = bm.faces.layers.float.new("nature_crack")
+    detail = lod == "hero"
+    n_shelf = n_crack = 0
+    for f in bm.faces:
+        if f.material_index == 1:
+            f[cap_l] = 1.0
+            continue
+        c = f.calc_center_median()
+        nz = f.normal.z
+        z0 = c.z - kx * c.x - ky * c.y
+        if nz > SHELF_NZ and top_z - height * 0.97 < z0 < top_z - 1.0:
+            f[shelf_l] = 1.0
+            n_shelf += 1
+            if green_shelves:
+                f.material_index = 1
+        elif abs(nz) < CRACK_NZ and shape.fissure(math.atan2(c.y, c.x), z0) > CRACK_MIN:
+            f[crack_l] = 1.0
+            n_crack += 1
+    nm = _name(name, "peak_pillar")
+    ob = _mesh_obj(nm, bm, collection, ["rock_cliff", "nature_soil_moss"], parent=parent, location=location)
+    ob["nature_top_z"] = top_z
+    ob["nature_top_radius"] = top_radius
+    ob["nature_bottom_radius"] = bottom_radius
+    ob["nature_preset"] = preset
+    ob["nature_lod"] = lod
+    ob["nature_dip"] = (round(dip, 3), round(dip_az, 4))
+    info = dict(segments=segs, layers=len(shape.layers), shelf_faces=n_shelf, crack_faces=n_crack,
+                tris=sum(len(p.vertices) - 2 for p in ob.data.polygons), fringe_tris=0, fringe_shelves=0)
+    if fringe:
+        fb, nsh = _pillar_fringe_bm(shape, seed, kx, ky, detail)
+        if len(fb.faces):
+            fo = U.mesh_from_bmesh(nm + ".fringe", fb, collection, materials=["nature_vine"], smooth=None,
+                                   parent=ob)
+            fo["nature_fringe"] = True
+            info["fringe_tris"] = sum(len(p.vertices) - 2 for p in fo.data.polygons)
+            info["fringe_shelves"] = nsh
+        else:
+            fb.free()
+    ob["nature_build_s"] = round(time.perf_counter() - t0, 3)
+    return ob, info
+
+
+def pillar_radius_profile(height, top_radius, bottom_radius, seed, top_z, preset="sandstone", lod="mid", n_th=48,
+                          dz=4.0):
+    """[(z, largest radius round the pillar at z)] of peak_pillar's shape before its dip (for the corridor check:
+    the pillar must stay inside the old peak's cone at every height)."""
+    shape = _PillarShape(seed, height, top_radius, bottom_radius, top_z, lod, preset=PILLAR_PRESETS[preset])
+    out = []
+    z = top_z - 0.5
+    detail = lod == "hero"
+    while z > top_z - height:
+        out.append((z, max(shape.radius(2 * math.pi * i / n_th, z, detail) for i in range(n_th))))
+        z -= dz
+    return out
+
+
+# ---- canopy trees ---------------------------------------------------------------------------------------------
+
+CANOPY_VARIANTS = 6                         # broadleaf crowns in three greens (CANOPY_TONES by variant % 3)
+CANOPY_ACCENTS = (6, 7)                     # two spring-green accent variants (cool, not warm: rule 15)
+CANOPY_TONES = ("nature_canopy_a", "nature_canopy_b", "nature_canopy_c")
+CANOPY_HEIGHT = PINE_HEIGHT                 # prototype height; instances scale to 6-12 m
+
+
+def _broadleaf_proto(variant, lod="hero"):
+    """Broadleaf canopy tree (round 48, P-3) at CANOPY_HEIGHT: a short trunk the crown hides (about 15 % shows), 3-4
+    limbs, 9-13 lumpy crown blobs in a crown wider than tall (0.8-0.95 H wide, 0.6 H tall) shaded as one soft cloud,
+    and ('hero') about 190 leaf sprays breaking the outline. Tri count: hero ~4.5k (the bake's near mesh strips the
+    sprays and decimates to ~1.2k), far ~1k (no sprays). Materials: bark, a canopy green, nature_shrub_leaf."""
+    _check(lod, ("hero", "far"), "broadleaf lod")
+    key = "pine.broadleaf.v%d.%s" % (variant, lod)
+
+    def build(col):
+        r = U.rng("nature.broadleaf", variant)
+        H = CANOPY_HEIGHT
+        hero = lod == "hero"
+        bm = bmesh.new()
+        lean_az = r.uniform(0, 2 * math.pi)
+        Rz = Matrix.Rotation(lean_az, 3, 'Z')
+        cc = Vector((0.0, 0.0, H * r.uniform(0.58, 0.64)))
+        rx = H * r.uniform(0.4, 0.48)
+        ry = rx * r.uniform(0.84, 1.0)
+        rz = H * r.uniform(0.29, 0.35)
+        env = (cc, (rx, ry, rz), Rz)
+        base = cc - Vector((0.0, 0.0, rz * 0.45))
+        lean = Rz @ Vector((H * 0.04, 0.0, 0.0))
+        trunk = [(0.0, 0.0, -0.4, 1.3), (0.0, 0.0, 0.0, 1.15), (lean.x * 0.5, lean.y * 0.5, base.z * 0.5, 0.9),
+                 (lean.x, lean.y, base.z, 0.65)]
+        _bm_tube(bm, trunk, H * 0.034, sides=7 if hero else 5, sps=3 if hero else 1, cap_start=True,
+                 bumpy=0.12, seed=variant, mat=0)
+        top = Vector(trunk[-1][:3])
+        for k in range(r.randint(3, 4)):
+            a = lean_az + 2 * math.pi * k / 4 + r.uniform(-0.4, 0.4)
+            end = cc + Rz @ Vector((math.cos(a) * rx * 0.55, math.sin(a) * ry * 0.55, rz * r.uniform(0.0, 0.35)))
+            mid = top.lerp(end, 0.5) + Vector((0.0, 0.0, H * 0.04))
+            _bm_tube(bm, [tuple(top) + (1.0,), tuple(mid) + (0.7,), tuple(end) + (0.35,)], H * 0.018,
+                     sides=5 if hero else 4, sps=2 if hero else 1, seed=variant * 7 + k, mat=0)
+        blobs = []
+        for i in range(r.randint(9, 13)):
+            a = r.uniform(0, 2 * math.pi)
+            u = r.uniform(-0.35, 1.0)
+            rho = math.sqrt(max(0.0, 1.0 - u * u)) * r.uniform(0.5, 0.85)
+            c = cc + Rz @ Vector((math.cos(a) * rho * rx, math.sin(a) * rho * ry, u * rz * 0.68))
+            s = H * r.uniform(0.17, 0.26)
+            size = (s, s * r.uniform(0.85, 1.0), s * 0.76)
+            _bm_blob(bm, c, size, subdiv=2 if hero else 1, seed=variant * 31 + i, lump=0.16, freq=1.8,
+                     flatten=0.55, mat=1, env=env, env_w=0.75)
+            blobs.append((c, size))
+        if hero:
+            for i in range(190):
+                c, (sx, sy, sz) = blobs[r.randrange(len(blobs))]
+                ang = r.uniform(0, 6.28)
+                dz = r.uniform(-0.25, 0.95)
+                hh = math.sqrt(max(0.0, 1.0 - dz * dz))
+                d = Vector((math.cos(ang) * hh, math.sin(ang) * hh, dz))
+                p = c + Vector((d.x * sx, d.y * sy, d.z * sz))
+                out = Vector((d.x, d.y, 0.0))
+                _needle_fan(bm, p - d * 0.1, out if out.length > 1e-3 else Vector((1, 0, 0)), r.uniform(0.55, 0.85),
+                            2, env=env, lift=0.2 + 0.9 * max(0.0, d.z), roll=r.uniform(-0.5, 0.5), up_w=0.4,
+                            spread=r.uniform(1.8, 2.6))
+        tone = CANOPY_TONES[variant % 3] if variant < CANOPY_VARIANTS else "nature_canopy_accent"
+        _mesh_obj("nature.proto." + key, bm, col, ["nature_bark_blossom", tone, "nature_shrub_leaf"])
+        col["lean_az"] = lean_az
+    return _proto(key, build)
+
+
+def canopy_tree(collection, height=8.0, seed=0, lod="hero", accent=False, name=None, location=(0, 0, 0),
+                rotation=None, parent=None, spread=None):
+    """Broadleaf canopy tree (round 48): ``seed`` picks the variant (accent: one of CANOPY_ACCENTS) and the yaw.
+    Returns a collection-instance Empty (origin at the trunk base)."""
+    r = U.rng("nature.broadleaf.inst", seed)
+    variant = CANOPY_ACCENTS[seed % len(CANOPY_ACCENTS)] if accent else seed % CANOPY_VARIANTS
+    proto = _broadleaf_proto(variant, lod)
+    s = height / CANOPY_HEIGHT
+    sp = spread if spread is not None else r.uniform(0.9, 1.12)
+    rot = _rot(rotation) if rotation is not None else (0.0, 0.0, r.uniform(0, 2 * math.pi))
+    return U.collection_instance(proto, _name(name, "canopy_tree"), collection, location=location, rotation=rot,
+                                 scale=(s * sp, s * sp, s), parent=parent, display_size=height * 0.2)
+
+
+def canopy_prototypes(kind="broadleaf"):
+    """Prototype lists for the round-48 scatters: 'broadleaf' (6 hero crowns), 'accent' (2), 'spire' (4 Masson pines,
+    hero: their sprites need the needle fans), 'scrub' (4 low scrub; the hero ones are built too, for the bake's
+    leafy near bush), 'shelf' (2 green low shrubs + 2 low scrub), 'fern' (the 4 green low shrubs, small)."""
+    if kind == "broadleaf":
+        for v in range(CANOPY_VARIANTS):
+            _broadleaf_proto(v, "far")
+        return [_broadleaf_proto(v, "hero") for v in range(CANOPY_VARIANTS)]
+    if kind == "accent":
+        for v in CANOPY_ACCENTS:
+            _broadleaf_proto(v, "far")
+        return [_broadleaf_proto(v, "hero") for v in CANOPY_ACCENTS]
+    if kind == "spire":
+        for v in range(PINE_VARIANTS["masson"]):
+            _pine_proto("masson", v, "far")
+        return [_pine_proto("masson", v, "hero") for v in range(PINE_VARIANTS["masson"])]
+    if kind == "scrub":
+        for v in range(4):
+            _shrub_proto("scrub", v)
+        return [_shrub_proto("scrub", v, "low") for v in range(4)]
+    if kind == "shelf":
+        for v in range(2):
+            _shrub_proto("scrub", v)
+        return [_shrub_proto("green", v, "low") for v in range(2)] + [_shrub_proto("scrub", v, "low") for v in range(2)]
+    if kind == "fern":
+        return [_shrub_proto("green", v, "low") for v in range(4)]
+    raise ValueError("unknown canopy set %r" % kind)
+
+
+# ---- hull clumps (P-4) ------------------------------------------------------------------------------------------
+
+def hull_clumps_bm(clumps, seed=0):
+    """One BMesh of low-poly crown clumps for 70-250 m (round 48, P-4): per clump (x, y, z_ground, radius) 2-4 lumpy
+    icosphere blobs (80 triangles each) sitting on their own ground height, wider than tall, flat underneath. One
+    material (index 0, nature_canopy_mass). Coordinates as given (world, for an object at the origin)."""
+    r = U.rng("nature.hulls", seed)
+    bm = bmesh.new()
+    for i, (x, y, z, rad) in enumerate(clumps):
+        n = 2 if rad < 6.0 else (3 if rad < 10.0 else 4)
+        for k in range(n):
+            a = r.uniform(0, 2 * math.pi)
+            off = rad * (0.0 if k == 0 else r.uniform(0.35, 0.6))
+            s = rad * (0.75 if k == 0 else r.uniform(0.45, 0.62))
+            h = s * r.uniform(0.7, 0.9)
+            c = Vector((x + math.cos(a) * off, y + math.sin(a) * off, z + h * 0.75 + r.uniform(-0.3, 0.5)))
+            _bm_blob(bm, c, (s, s * r.uniform(0.85, 1.0), h), subdiv=1, seed=seed * 101 + i * 5 + k, lump=0.2,
+                     freq=1.5, flatten=0.35, mat=0)
+    return bm
+
+
+def _register_r48_materials():
+    R = M.register
+    pad = dict(tuft=2.0, transl=0.18, sun_mix=0.32, under_k=0.4, cells=2.2)
+    R("nature_canopy_a", _mat_pine_pad, dark="#1f3322", mid="#2f4a32", light="#4d6b35", sun="#8a9a4a",
+      under="#1b2c1f", crevice="#152519", **pad)
+    R("nature_canopy_b", _mat_pine_pad, dark="#253823", mid="#3a5530", light="#5c7639", sun="#9aa24e",
+      under="#1e301d", crevice="#18281a", **pad)
+    R("nature_canopy_c", _mat_pine_pad, dark="#1b3026", mid="#2b4637", light="#476548", sun="#82955a",
+      under="#182b22", crevice="#132219", **pad)
+    R("nature_canopy_accent", _mat_pine_pad, dark="#2c4426", mid="#4a6a32", light="#7a9a48", sun="#b0b860",
+      under="#24381f", crevice="#1e301a", **pad)
+    # shell and hull clumps: one mass at 70 m and farther, bigger tufts, no translucency (baked)
+    R("nature_canopy_mass", _mat_pine_pad, dark="#1d3122", mid="#2c4630", light="#4a6634", sun="#86964a",
+      under="#182a1d", crevice="#132218", tuft=0.45, transl=0.0, sun_mix=0.3, under_k=0.5, cells=0.32)
+    # shelf fringes and drapes
+    R("nature_vine", _mat_pine_pad, dark="#18291b", mid="#2a4329", light="#466338", sun="#7c8a48",
+      under="#15241a", crevice="#101c14", tuft=3.0, transl=0.1, sun_mix=0.25, under_k=0.4, cells=2.6)
+
+
+_register_r48_materials()

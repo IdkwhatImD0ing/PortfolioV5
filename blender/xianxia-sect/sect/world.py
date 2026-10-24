@@ -84,7 +84,8 @@ OPENING_BANK = (0.0, -260.0, 15.0)          # the film opens inside this cloud b
 MOON_VIEW = (0.0, 1500.0, 330.0)            # final shot camera: the moon is exactly 14 deg wide here
 MOON_DISTANCE = 5000.0
 MOON_GLOW = 1.25
-FOREST_DENSITY = 0.0008        # pines per m2 on the range's flatter tops (~0.7k tris each)
+FOREST_DENSITY = 0.0           # pines per m2 on the range's flatter tops (~0.7k tris each). Round 48: 0 (was 0.0008):
+                               # scenery.build_canopy's broadleaf canopy covers the tops (no trunk carpet)
 BANK_DENSITY = 2.2             # cloud_bank density (EEVEE thins distant volumes)
 HAZE = dict(density=0.0003, base_z=100.0, falloff=220.0, z_min=CLOUD_SEA_Z - 60.0)
 
@@ -110,6 +111,53 @@ def _strata(h, step):
 def _smooth(e0, e1, x):
     t = np.clip((x - e0) / (e1 - e0), 0.0, 1.0)
     return t * t * (3.0 - 2.0 * t)
+
+
+# ---- round 48: the range's tall peaks as karst pillars (scratchpad r45/plan_final.md P-1) ---------------------------
+# Range(peak_mode=...): 'strata' is the range as built until round 47; 'pillars' cuts every peak's cone flat at its
+# plinth (the highest rim over its footprint + PILLAR_RIM_CLEAR, at least its peak-free ground) and build_peak_pillars
+# stands a lib.nature.peak_pillar on it, sunk PILLAR_SINK m, inside the old cone at every height; 'benches' (B0
+# variant a, expected to lose: contour-line benches, critique P1) turns each cone's strata into irregular benches.
+# world.range keeps every vertex and face in every mode (only heights change, Range.peak_height), so the area groves
+# and gardens seeded on its faces stay where they are. The shrine peaks (life.SHRINES) stay cones.
+PEAK_MODE = "pillars"          # a fresh build makes the round-48 range
+PILLAR_RIM_CLEAR = 3.0         # m: a cut peak stays at least this far over the rim (keeps world.range's outline)
+PILLAR_SINK = 9.0              # m the pillar's foot sinks into the plinth
+PILLAR_MIN_H = 30.0            # m: a pillar shorter than this over its plinth is not built (the old cone stays)
+PILLAR_FOOT_SHARE = 0.6        # a pillar's foot radius at most this share of the old cone's radius at the plinth
+PILLAR_HERO_D = 180.0          # m: a pillar this near a hold camera is built at the "hero" level (1.25 m), else "mid"
+PILLAR_FIT_SLACK = 1.5         # m: the pillar's radius may pass the old cone's (nominal) by this much at any height
+BENCH_GAP = (14.0, 30.0)       # m between benches (variant a)
+BENCH_SHARE = (0.3, 0.45)      # share of a riser a bench flattens
+
+
+def _benches(h, levels, shares):
+    """Terrace map of heights ``h`` onto irregular bench ``levels`` (ascending): within each gap the lower
+    ``share`` stays flat, the rest rises smoothly (like _strata, but per peak and uneven)."""
+    j = np.clip(np.searchsorted(levels, h, side="right") - 1, 0, len(levels) - 2)
+    lo = levels[j]
+    gap = levels[j + 1] - lo
+    t = np.clip((h - lo) / gap, 0.0, 1.0)
+    return lo + gap * _smooth(shares[j], 1.0, t)
+
+
+def cone_radius(rc, hc, top, wall, z):
+    """Nominal radius of a world.Range peak's cone (cap radius rc, cap height hc, top, wall slope) at height z."""
+    if z > top - hc:
+        return rc * math.sqrt(max(0.0, (top - z) / hc))
+    return rc + (top - hc - z) / wall
+
+
+def shrine_peaks(peaks):
+    """Indices of the peaks life.SHRINES stand on (the nearest peak within life.PEAK_MATCH m of each shrine)."""
+    from sect import life as LF
+    out = set()
+    for s in LF.SHRINES:
+        d = [math.hypot(p[0] - s["xy"][0], p[1] - s["xy"][1]) for p in peaks]
+        k = int(np.argmin(d))
+        if d[k] <= LF.PEAK_MATCH:
+            out.add(k)
+    return out
 
 
 # =========================================================================================
@@ -192,8 +240,12 @@ class Range:
     ``fields(x, y)`` works on numpy arrays of any shape (also used to place islets, waterfalls
     and stairways on the terrain)."""
 
-    def __init__(self, anchors, yaws=None):
+    def __init__(self, anchors, yaws=None, peak_mode=None, plan_opts=None):
         self.anchors = anchors
+        self.peak_mode = PEAK_MODE if peak_mode is None else peak_mode      # round 48: 'strata', 'benches', 'pillars'
+        if self.peak_mode not in ("strata", "benches", "pillars"):
+            raise ValueError("peak_mode must be 'strata', 'benches' or 'pillars' (got %r)" % (self.peak_mode,))
+        self.plan_opts = dict(plan_opts or {})
         self.yaws = dict(yaws) if yaws else _anchor_yaws(anchors)
         self.keys = [k for k in ORDER if k in anchors] + [k for k in anchors if k not in ORDER]
         self.noise = _VNoise(1337)
@@ -209,6 +261,8 @@ class Range:
                 meander=r.uniform(10.0, 22.0) * (1 if r.random() < 0.5 else -1),
                 notch=(ka == "library" and kb == "steles")))
         self.peaks = self._make_peaks()
+        if self.peak_mode != "strata" and "skip" not in self.plan_opts:
+            self.plan_opts["skip"] = shrine_peaks(self.peaks)
 
     # ---- corridor geometry
     def seg_coords(self, s, x, y):
@@ -263,9 +317,10 @@ class Range:
         return peaks
 
     # ---- fields
-    def fields(self, x, y):
-        """Returns dict(T, F, rim, flat, dmin, zl, near): top height, F = T - rim (> 0 inside the
-        mass), rim level, flat-terrace mask, distance to the corridor and its line height."""
+    def _base(self, x, y):
+        """The range without its peaks: dict(mass (the broad base and the ridges, the gap under the floating areas),
+        rim, dmin, zl). fields() adds the peaks, the corridor cap and the terraces on top (round 48 split; the numbers
+        are the same as before)."""
         x = np.asarray(x, float)
         y = np.asarray(y, float)
         nz = self.noise
@@ -303,19 +358,37 @@ class Range:
                 a = self.anchors[k]
                 da = np.hypot(x - a[0], y - a[1])
                 mass = mass - 400.0 * _smooth(115.0, 80.0, da)
+        return dict(mass=mass, rim=rim, dmin=dmin, zl=zl)
+
+    def fields(self, x, y):
+        """Returns dict(T, F, rim, flat, dmin, zl, near, T_full, F_under): top height, F = T - rim (> 0 inside the
+        mass), rim level, flat-terrace mask, distance to the corridor and its line height. Round 48: with peak_mode
+        'benches' or 'pillars' the peaks change (peak_height); T_full / F_under are the top with every peak as built
+        until round 47 (the underside keeps its depth under a pillar, islets keep off the pillars)."""
+        x = np.asarray(x, float)
+        y = np.asarray(y, float)
+        nz = self.noise
+        b = self._base(x, y)
+        mass, rim, dmin, zl = b["mass"], b["rim"], b["dmin"], b["zl"]
+        track = self.peak_mode != "strata"            # round 48: also keep the top with the old peaks
+        mass_full = mass
         # tall peaks and their fingers (placed off the corridor)
         crag = 1.0 + 0.22 * nz(x, y, 1 / 22.0, o=5) + 0.12 * nz(x, y, 1 / 7.0, o=11)
-        for (cx, cy, top, rad, wall, cap) in self.peaks:
+        for k, (cx, cy, top, rad, wall, cap) in enumerate(self.peaks):
             d = np.hypot(x - cx, y - cy)
             if d.size > 1 and d.min() > 600.0:
                 continue
             u = d * crag
             rc, hc = cap * rad, (0.14 if wall < 5.0 else 0.09) * rad
             h = np.where(u < rc, top - hc * (u / rc) ** 2, top - hc - wall * (u - rc))
-            mass = np.maximum(mass, np.where(u < rc, h, _strata(h, 11.0)))
+            old = np.where(u < rc, h, _strata(h, 11.0))
+            mass = np.maximum(mass, self.peak_height(k, old, h, u, rc, rim) if track else old)
+            if track:
+                mass_full = np.maximum(mass_full, old)
         # nothing taller than (line - clearance) near the camera corridor
         cap = zl - CORRIDOR_CLEAR + 3000.0 * _smooth(CORRIDOR_HALF, CORRIDOR_HALF + 40.0, dmin)
         T = np.minimum(mass, cap)
+        T_full = np.minimum(mass_full, cap) if track else T
 
         flat = np.zeros(x.shape, bool)
         near = np.zeros(x.shape, bool)
@@ -332,6 +405,8 @@ class Range:
             drop = (3.2 * np.minimum(u, 10.0) + 1.15 * np.maximum(u - 10.0, 0.0)) \
                 * (1.0 + 0.25 * nz(x, y, 1 / 30.0, o=7))
             T = np.maximum(T, az - 0.4 - drop)
+            if T_full is not T:
+                T_full = np.maximum(T_full, az - 0.4 - drop)
             flat |= d <= rf
             near |= d <= fp + TERRACE_PAD + 14.0
         # slope under the gate stairway (gate.py: stair top y = -46, foot y ~ -131 at local z -56)
@@ -350,9 +425,119 @@ class Range:
             cut = (along > 0) & (lat < 15.0)
             T = np.where(cut, np.minimum(T, gz - 1.0 - 0.82 * np.minimum(along, 5.3)
                                          - 0.6 * np.maximum(along - 5.3, 0)), T)
+            if T_full is not T:
+                T_full = np.maximum(T_full, ramp)
+                T_full = np.where(cut, np.minimum(T_full, gz - 1.0 - 0.82 * np.minimum(along, 5.3)
+                                                  - 0.6 * np.maximum(along - 5.3, 0)), T_full)
             near |= (along > -12.0) & (lat < 22.0)
         F = T - rim
-        return dict(T=T, F=F, rim=rim, flat=flat, near=near, dmin=dmin, zl=zl)
+        F_under = F if T_full is T else T_full - rim
+        return dict(T=T, F=F, rim=rim, flat=flat, near=near, dmin=dmin, zl=zl, T_full=T_full, F_under=F_under)
+
+    # ---- round 48: peaks as pillars (P-1) or benched cones (B0 variant a)
+    def peak_height(self, k, old, h, u, rc, rim):
+        """Height of peak k over the field points: ``old`` (the cone with _strata(h, 11), as built until round 47) in
+        peak_mode 'strata' and for every peak the plan leaves alone; 'benches': per-peak irregular benches (B0 variant
+        a); 'pillars': the cone cut flat at the peak's plinth (a peak_pillar object stands on it). Wherever ``old`` is
+        over the rim the result stays over it by at least PILLAR_RIM_CLEAR (or ``old``), and where ``old`` is not it
+        stays ``old``: world.range keeps exactly its vertices and faces (only heights move), so every scatter seeded
+        on its faces keeps its trees where nothing moved."""
+        if self.peak_mode == "strata":
+            return old
+        spec = self.pillar_plan().get(k) if self.peak_mode == "pillars" else self.bench_plan().get(k)
+        if spec is None:
+            return old
+        if self.peak_mode == "pillars":
+            new = np.minimum(old, spec["plinth"])
+        else:
+            new = np.where(u < rc, h, _benches(h, spec["levels"], spec["shares"]))
+        over = old > rim
+        return np.where(over, np.maximum(new, np.minimum(old, rim + PILLAR_RIM_CLEAR)), old)
+
+    def _peak_base_stats(self, k, reach, foot):
+        """(highest rim out to ``reach`` m from peak k, highest peak-free ground within ``foot`` m): polar samples."""
+        cx, cy = self.peaks[k][:2]
+        out = []
+        for rmax in (reach, foot):
+            rr = np.concatenate([[0.0], np.repeat(np.linspace(rmax / 6.0, rmax, 6), 24)])
+            aa = np.concatenate([[0.0], np.tile(np.linspace(0.0, 2 * math.pi, 24, endpoint=False), 6)])
+            out.append(self._base(cx + rr * np.cos(aa), cy + rr * np.sin(aa)))
+        return float(out[0]["rim"].max()), float(out[1]["mass"].max())
+
+    def bench_plan(self):
+        """B0 variant a: {peak: dict(levels (ascending), shares)}: benches 14-30 m apart from each peak's own top down
+        (no shared heights across peaks), each flattening 30-45 % of its riser."""
+        if getattr(self, "_bench_cache", None) is None:
+            out = {}
+            only = self.plan_opts.get("only")
+            for k, (cx, cy, top, rad, wall, cap) in enumerate(self.peaks):
+                if k in self.plan_opts.get("skip", ()) or (only is not None and k not in only):
+                    continue
+                r = U.rng("world.bench", k)
+                hc = (0.14 if wall < 5.0 else 0.09) * rad
+                z = top - hc - r.uniform(4.0, 12.0)
+                lv = [top + 5.0]
+                while z > CLOUD_SEA_Z - 80.0:
+                    lv.append(z)
+                    z -= r.uniform(*BENCH_GAP)
+                lv.append(CLOUD_SEA_Z - 400.0)
+                lv = np.array(sorted(lv))
+                out[k] = dict(levels=lv, shares=np.array([r.uniform(*BENCH_SHARE) for _ in lv]))
+            self._bench_cache = out
+        return self._bench_cache
+
+    def pillar_plan(self):
+        """{peak: pillar spec} for peak_mode 'pillars' (built once): plinth z (highest rim over the footprint +
+        PILLAR_RIM_CLEAR, at least the peak-free ground there), the pillar's top (the old top less part of its rounded
+        cap; plan_opts['limits'] can lower it: the composition's skyline, quiet-sky and moon rules), radii inside the
+        old cone, preset (columns sandstone, granite cones granite, or plan_opts['preset']), LOD ('hero' within
+        PILLAR_HERO_D m of a hold camera), seed. plan_opts: skip (peak indices that stay cones: the shrine peaks),
+        only (peak indices to rebuild, the rest stay; B0 / slice scope), limits {peak: top z}, holds [xyz], preset."""
+        if getattr(self, "_pillars", None) is not None:
+            return self._pillars
+        o = self.plan_opts
+        out = {}
+        only = o.get("only")
+        holds = np.asarray(o.get("holds") or [a[:3] for a in self.anchors.values()], float).reshape(-1, 3)
+        for k, (cx, cy, top, rad, wall, cap) in enumerate(self.peaks):
+            if k in o.get("skip", ()) or (only is not None and k not in only):
+                continue
+            column = wall > 5.0
+            rc, hc = cap * rad, (0.14 if wall < 5.0 else 0.09) * rad
+            rim_c = float(self._base(np.array([cx]), np.array([cy]))["rim"][0])
+            reach = rc + max(0.0, top - hc - (rim_c - 15.0)) / wall     # where the cone meets the rim
+            rim_max, ground = self._peak_base_stats(k, min(reach * 1.5, 420.0), rc * 1.5 + 6.0)
+            plinth = max(rim_max + PILLAR_RIM_CLEAR, min(ground + 2.0, top - PILLAR_MIN_H))
+            preset = o.get("preset") or "auto"
+            if preset == "auto":
+                preset = "sandstone" if column else "granite"
+            r = U.rng("world.pillar", k)
+            top_z = top - hc * 0.6
+            lim = (o.get("limits") or {}).get(k)
+            if lim is not None and lim < top_z:
+                top_z = max(float(lim), plinth + PILLAR_MIN_H)
+            if top_z - plinth < PILLAR_MIN_H - 1e-3:
+                continue                                       # a stub: the old cone stays
+            top_r = float(np.clip(rc * r.uniform(0.78, 0.92), 4.5, 42.0))
+            k_bot = r.uniform(1.05, 1.3) if preset == "sandstone" else r.uniform(1.6, 2.2)
+
+            bot_r = float(min(top_r * k_bot, PILLAR_FOOT_SHARE * cone_radius(rc, hc, top, wall, plinth)))
+            dh = float(np.min(np.linalg.norm(holds[:, :2] - np.array([cx, cy]), axis=1)))
+            lod = "hero" if dh < PILLAR_HERO_D else "mid"
+            out[k] = dict(k=k, x=float(cx), y=float(cy), plinth=float(plinth), top_z=float(top_z), top_r=top_r,
+                          bot_r=max(bot_r, top_r * 0.9), height=float(top_z - plinth + PILLAR_SINK), preset=preset,
+                          lod=lod, seed=int(4800 + k), column=bool(column), old_top=float(top), rc=float(rc),
+                          hc=float(hc), wall=float(wall), limited=bool(lim is not None and lim < top - hc * 0.6))
+        self._pillars = out
+        # the foot: PILLAR_SINK m under the lowest ground round it (the plinth disc can be narrower than the cone
+        # where the crag noise pinches it); needs the finished plan, so it runs after it is stored
+        a = np.linspace(0.0, 2 * math.pi, 32, endpoint=False)
+        for s in out.values():
+            g = self.fields(s["x"] + 1.05 * s["bot_r"] * np.cos(a), s["y"] + 1.05 * s["bot_r"] * np.sin(a))["T"]
+            foot = min(s["plinth"], float(g.min())) - PILLAR_SINK
+            s["height"] = float(s["top_z"] - foot)
+            s["foot"] = float(foot)
+        return out
 
     def underside(self, x, y, F, rim):
         """Inverted craggy underside: deeper under taller ground, cellular stalactite spikes,
@@ -636,7 +821,7 @@ def terrain_data(rng_, grid=None, lip=RIM_LIP):
     ny, nx = X.shape
     f = rng_.fields(X, Y)
     T, F, rim = f["T"], f["F"], f["rim"]
-    B = rng_.underside(X, Y, F, rim)
+    B = rng_.underside(X, Y, f.get("F_under", F), rim)      # (round 48: a pillar's plinth keeps the old underside)
     if lip is not None:
         B = np.minimum(B, rim - lip)
     inside = F > 0.0
@@ -864,9 +1049,106 @@ def build_clouds(rng_, coll):
     return objs
 
 
+# ---- round 48: pillars on the peaks' plinths --------------------------------------------------------------------
+
+def pillar_fit(spec, profile):
+    """Worst excess (m) of a pillar's radius over its old peak's nominal cone over ``profile`` [(z, radius)]
+    (nature.pillar_radius_profile; the pillar's own z), and the z where it is. Under PILLAR_FIT_SLACK: the pillar
+    stays inside the space the old peak took, so it keeps the corridor clearance the peaks were placed for."""
+    worst, wz = -1e9, None
+    for z, rr in profile:
+        c = cone_radius(spec["rc"], spec["hc"], spec["old_top"], spec["wall"], z)
+        if z > spec["old_top"]:
+            c = 0.0
+        e = rr - c
+        if e > worst:
+            worst, wz = e, z
+    return worst, wz
+
+
+def fit_pillar(spec, tries=6):
+    """Shrink the pillar's radii (8 % a try) until pillar_fit passes. Returns (spec, excess, tries used); spec None
+    when it never fits (the old cone stays)."""
+    s = dict(spec)
+    for t in range(tries + 1):
+        prof = N.pillar_radius_profile(s["height"], s["top_r"], s["bot_r"], s["seed"], s["top_z"], s["preset"],
+                                       s["lod"])
+        e, _z = pillar_fit(s, prof)
+        if e <= PILLAR_FIT_SLACK:
+            return s, e, t
+        s["top_r"] *= 0.92
+        s["bot_r"] *= 0.92
+    return None, e, tries
+
+
+def build_peak_pillars(rng_, coll, plan=None, log=None):
+    """One lib.nature.peak_pillar per entry of rng_.pillar_plan() (``plan``), named 'world.peak.<NNN>' (NNN = the
+    peak's index in Range.peaks), tagged 'r48_peak', each fitted inside its old cone (fit_pillar). Returns
+    [(peak, object, info)]."""
+    log = log or _log
+    plan = rng_.pillar_plan() if plan is None else plan
+    out = []
+    for k in sorted(plan):
+        s, excess, tries = fit_pillar(plan[k])
+        if s is None:
+            log("WARN pillar", k, "does not fit inside its old cone (excess %.1f m): the cone stays" % excess)
+            continue
+        ob, info = N.peak_pillar(coll, height=s["height"], top_radius=s["top_r"], bottom_radius=s["bot_r"],
+                                 seed=s["seed"], top_z=s["top_z"], preset=s["preset"], lod=s["lod"],
+                                 name="world.peak.%03d" % k, location=(s["x"], s["y"], 0.0))
+        ob["r48_peak"] = int(k)
+        ob["r48_plinth"] = round(s["plinth"], 3)
+        for ch in ob.children:
+            ch["r48_peak"] = int(k)
+        info.update(fit_excess=round(excess, 2), fit_tries=tries, top_r=round(s["top_r"], 2),
+                    bot_r=round(s["bot_r"], 2), lod=s["lod"], preset=s["preset"], top_z=round(s["top_z"], 1),
+                    plinth=round(s["plinth"], 1), limited=s["limited"])
+        out.append((k, ob, info))
+    return out
+
+
 # ---- backdrop -----------------------------------------------------------------------------
 
+# Round 48 (plan D9, intent 3.1): the horizon as 3 pillar families (one tall, three slimmer; far level, beds about
+# hero thickness) and 2 low dome-capped mesas whose tops make level skylines, placed from the hold cameras
+# (scratchpad r48 tools/horizon.py): family 1 is the pale pillars seen through the gate's arch (and behind the abode),
+# family 2 the cool pillars right of the forge's smoke, family 3 the slim far pillars right of the steles; mesa A is
+# the library's low level ridge under its empty right half, mesa B the level plateau left of the steles and the arena.
+# None stands in the moon (from the gate, the poster, 1160 and the summit) or in a hold's quiet sky.
+# (kind, x, y, top z, top radius, bottom radius, preset)
+BACKDROP_R48 = (
+    ("family1", 77.0, 3358.0, 290.0, 34.0, 44.0, "sandstone"),
+    ("family1", -150.0, 3300.0, 230.0, 20.0, 26.0, "sandstone"),
+    ("family1", 230.0, 3420.0, 205.0, 17.0, 23.0, "sandstone"),
+    ("family1", -20.0, 3520.0, 175.0, 15.0, 21.0, "granite"),
+    ("family2", 1712.0, 2705.0, 300.0, 38.0, 50.0, "granite"),
+    ("family2", 1850.0, 2560.0, 240.0, 22.0, 30.0, "sandstone"),
+    ("family2", 1580.0, 2860.0, 210.0, 19.0, 25.0, "sandstone"),
+    ("family2", 1950.0, 2800.0, 180.0, 16.0, 22.0, "sandstone"),
+    ("family3", -1037.0, 3501.0, 280.0, 30.0, 38.0, "sandstone"),
+    ("family3", -1180.0, 3420.0, 220.0, 18.0, 24.0, "sandstone"),
+    ("family3", -900.0, 3600.0, 195.0, 16.0, 21.0, "granite"),
+    ("family3", -1250.0, 3600.0, 170.0, 15.0, 20.0, "sandstone"),
+    ("mesaA", 2209.0, 851.0, 70.0, 360.0, 420.0, "mesa"),
+    ("mesaB", -1801.0, 1887.0, 55.0, 330.0, 390.0, "mesa"),
+)
+
+
 def build_backdrop(coll, count=14):
+    """Round 48: the BACKDROP_R48 horizon (lib.nature.peak_pillar at the far level, no fringe, rising out of the
+    cloud sea), named 'world.backdrop' like the massifs before it (export_web counts them as backdrop massifs).
+    ``count`` is kept for the old signature (build_backdrop_r47 builds the 14 massifs as before)."""
+    out = []
+    for i, (kind, x, y, top, tr, br, preset) in enumerate(BACKDROP_R48):
+        ob, _info = N.peak_pillar(coll, height=top - (CLOUD_SEA_Z - 30.0), top_radius=tr, bottom_radius=br,
+                                  seed=9400 + i, top_z=top, preset=preset, lod="far", name="world.backdrop",
+                                  location=(x, y, 0.0), fringe=False)
+        ob["r48_backdrop"] = kind
+        out.append(ob)
+    return out
+
+
+def build_backdrop_r47(coll, count=14):
     """Distant karst massifs on a 1.3-3.5 km ring around the range, rising out of the cloud sea
     (cheap far-LOD rock_pillar without vegetation, flared toward the clouds; ~17k tris each).
     Depth for every wide shot, silhouettes on the horizon under the moon."""
@@ -916,7 +1198,8 @@ def build_islets(rng_, coll, count=30):
         ring = [(x, y)] + [(x + math.cos(a) * (size * 0.6 + 6.0), y + math.sin(a) * (size * 0.6 + 6.0))
                            for a in np.linspace(0, 2 * math.pi, 7)[:-1]]
         ff = rng_.fields(np.array([p[0] for p in ring]), np.array([p[1] for p in ring]))
-        if (ff["F"] > -2.0).any() and (ff["T"] > z - size * 1.4 - 15.0).any():
+        # (round 48: T_full, the peaks before they became pillars, so an islet keeps off a pillar too)
+        if (ff["F"] > -2.0).any() and (ff.get("T_full", ff["T"]) > z - size * 1.4 - 15.0).any():
             continue                                   # over the mass and not clearly above it
         # floating areas (arena island) and other islets
         bad = False
@@ -996,8 +1279,38 @@ def _fall_sheet(name, coll, width, height, seed, material="nature_waterfall"):
     return ob
 
 
+# Round 48 (rule 9, intent C13): a fall leaves a cleft or shelf, widens and arcs, and breaks into mist part way down;
+# never a 300 m light beam into the cloud sea. FALL_MAX_H caps its sheets, fall_mist hangs a chain of flattened puffs
+# from about halfway down to its end ('world.cloud.fallmist', exported with the other volume puffs by export_web
+# clouds).
+FALL_MAX_H = 120.0             # m: tallest sheet
+FALL_MIST_N = (3, 5)           # puffs in the chain
+FALL_EXIT = (2.5, 4.0)         # m/s over the lip (nature.waterfall exit_speed)
+FALL_SPREAD = (0.4, 0.6)       # sheet widening over its height
+
+
+def fall_mist(coll, lip, yaw, height, width, seed, name="world.cloud.fallmist"):
+    """The spray chain of a fall pouring from ``lip`` (xyz) toward yaw (local -Y turned by ``yaw``) for ``height``
+    m: FALL_MIST_N flattened cloud puffs from 0.5 x height below the lip to its foot, growing and drifting out.
+    Returns the puffs."""
+    r = U.rng("world.fallmist", seed)
+    dx, dy = math.sin(yaw), -math.cos(yaw)
+    out = []
+    n = r.randint(*FALL_MIST_N)
+    for i in range(n):
+        q = 0.5 + 0.5 * (i + 0.5) / n
+        d = height * q
+        s = max(14.0, width * r.uniform(2.2, 3.4)) * (0.8 + 0.5 * q)
+        p = (lip[0] + dx * (3.0 + 0.1 * d) + r.uniform(-0.3, 0.3) * width,
+             lip[1] + dy * (3.0 + 0.1 * d) + r.uniform(-0.3, 0.3) * width, lip[2] - d)
+        out.append(N.cloud_puff(coll, size=s, seed=int(seed) * 7 + i, density=1.3, flatten=0.55, name=name,
+                                location=p))
+    return out
+
+
 def build_waterfalls(rng_, coll):
-    """Waterfalls pouring off the range's edges into the void (they dissolve into the fog)."""
+    """Waterfalls pouring off the range's edges into the void (they dissolve into the fog). Round 48: at most
+    FALL_MAX_H m of sheet, then the spray chain (fall_mist)."""
     specs = [("mirror", (-1.0, 0.25)), ("library", (1.0, 0.1)), ("abode", (1.0, -0.2)),
              ("scroll", (-1.0, 0.15)), ("forge", (0.7, -0.7))]
     out = []
@@ -1012,8 +1325,9 @@ def build_waterfalls(rng_, coll):
             continue
         T, _ = rng_.top_at(*e)
         lip = (e[0], e[1], T + 0.2)
-        h = lip[2] - (CLOUD_SEA_Z - 15.0)
+        h = min(lip[2] - (CLOUD_SEA_Z - 15.0), FALL_MAX_H)
         yaw = math.atan2(dx, -dy)
+        fall_mist(coll, lip, yaw, h, 12.0 + 3.0 * (i % 3), 7000 + i)
         root = U.empty("world.waterfall", coll, location=lip, rotation=(0, 0, yaw), display_size=4.0)
         w = 12.0 + 3.0 * (i % 3)
         roles = N.sheet_roles(2)                  # core, front veil (nature.SHEET_FRONT m in front; was 0.3 m)
@@ -2656,6 +2970,8 @@ def build(scene=None, anchors=None):
     t = lap("sky", t)
     rng_ = Range(anchors, yaws)
     terrain, grid = build_terrain(rng_, cols["range"])
+    if rng_.peak_mode == "pillars":         # round 48: a karst pillar on every cut peak
+        _log("peak pillars", len(build_peak_pillars(rng_, cols["range"])))
     t = lap("terrain", t)
     build_forest(terrain, cols["range"])
     build_roots(grid, cols["range"])

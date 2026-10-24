@@ -90,7 +90,21 @@ PINNACLES = ((-21.0, 38.0, 90.0, 11.0, 55.0), (29.0, 34.0, 79.0, 8.5, 44.0))   #
 # every other piece of the abode stays exactly where it was; sect/patch_density.py adds the same to a
 # finished out/sect_chase.blend (objects tagged DENSE_TAG, replaced on a re-run).
 DENSE_TAG = "sect_density"      # = scenery.DENSITY_TAG
-DENSE_FACE_PINES = 25           # cliff pines out of the face
+# Round 48 (plan r45 D1 + the abode variant; the main session applied it for the sleeping owner, 2026-10-24): no pine
+# grows out of the cliff face any more (the 25 dense face pines, the 4 FACE_PINES and the pinnacles' wall pines). In
+# their place (r48_dress): two hero pines on one rock shelf right of the inscription, fern and shrub strips in three
+# joints, vines hanging from the rim and a shrub shelf left of the fall. A finished scene gets the same through
+# sect/patch_r48_green.py PARTS=abode (the old pines hidden, not deleted: PARTS=abode_undo shows them again).
+ABODE_R48 = True
+R48_TAG = "sect_r48"            # = scenery.R48_TAG
+R48_SHELF = (INSC_X + 9.5, 31.0, 9.0)          # hero-pine shelf: x, z (its top), width
+R48_SHELF_PINES = ((-0.24, 8.5, 3), (0.2, 6.6, 8))   # (along the shelf (x width), height m, seed)
+R48_SHRUB_SHELF = (10.0, 26.0, 5.5)            # left of the fall (the hold sees +x on its right)
+R48_FERN_X = (3.0, 23.0, 37.0)                 # joints with fern and shrub strips
+R48_FERN_STEP = 1.8                            # m between strip plants (40 % gaps)
+R48_VINE_X = (-44.0, 44.0, 6.5)                # vines from the rim: from, to, spacing (jittered)
+R48_VINE_LEN = (4.0, 8.0)
+DENSE_FACE_PINES = 25           # cliff pines out of the face (round 48: drawn, never built; see ABODE_R48)
 DENSE_FACE_H = (10.0, 16.0)
 DENSE_TOP_DENSITY = 0.025       # Huangshan pines per m2 of the cliff top rows the pinnacles leave free
 DENSE_TOP_H = (9.0, 14.0)
@@ -707,9 +721,10 @@ def dense_pines(coll, root):
             continue
         taken.append((x, z))
         p = _face_point(x, z)
-        ob = N.pine(coll, h, seed=seed, style="cliff", name=K + ".dense_cliff_pine", parent=root,
-                    location=(p.x, p.y + 0.6, p.z), rotation=_face_yaw(x))
-        ob[DENSE_TAG] = "abode"
+        if not ABODE_R48:           # (round 48: the draws stay, so the top pines below stand where they stood)
+            ob = N.pine(coll, h, seed=seed, style="cliff", name=K + ".dense_cliff_pine", parent=root,
+                        location=(p.x, p.y + 0.6, p.z), rotation=_face_yaw(x))
+            ob[DENSE_TAG] = "abode"
         face += 1
     # the top rows: the free part of their area (1 m strips, s 0.1-0.9) sets the count
     xs = [x + 0.5 for x in range(-int(CLIFF_X) + 7, int(CLIFF_X) - 7)]
@@ -735,6 +750,112 @@ def dense_pines(coll, root):
     return face, top
 
 
+def _out_dir(x):
+    """Unit (x, y) out of the cliff face at x (abode.root's frame): the direction _face_yaw turns -Y to."""
+    a = _face_yaw(x)
+    return math.sin(a), -math.cos(a)
+
+
+def r48_old_face_pines():
+    """The objects round 48 takes off the cliff face (sect/patch_r48_green.py PARTS=abode hides them): the dense face
+    pines, the hand-placed FACE_PINES and the pinnacles' wall pines."""
+    out = []
+    for o in bpy.data.objects:
+        nm = o.name
+        if nm.startswith(K + ".dense_cliff_pine") or nm.startswith(K + ".cliff_pine") or \
+                (nm.startswith(K + ".pinnacle") and ".pine" in nm and o.instance_type == 'COLLECTION'):
+            out.append(o)
+    return out
+
+
+def r48_dress(coll, root):
+    """Round 48's dressing of the cliff (see ABODE_R48): a rock shelf right of the inscription with two hero
+    Huangshan pines leaning out over the drop, fern and shrub strips in R48_FERN_X's joints (only where a plant may
+    grow: _face_free), vines from the rim (one mesh, material nature_vine, kept off the inscription and the fall)
+    and a shrub shelf left of the fall. Everything is a child of ``root``, named abode.r48_*, tagged R48_TAG =
+    'abode'. Returns the objects."""
+    r = U.rng(K, "r48_dress")
+    made = []
+
+    def tag(o):
+        o[R48_TAG] = "abode"
+        made.append(o)
+        return o
+
+    def shelf(x, z_top, width, seed, nm):
+        ox, oy = _out_dir(x)
+        p = _face_point(x, z_top)
+        ob = N.rock(coll, size=width, seed=seed, kind="ledge", name=K + nm, parent=root,
+                    location=(p.x - ox * 0.4, p.y - oy * 0.4, z_top), rotation=_face_yaw(x))
+        ob.location.z = z_top - float(ob.get("top_z", 0.0))
+        return tag(ob), (ox, oy)
+
+    # hero shelf and its two pines
+    x, z, w = R48_SHELF
+    sh, (ox, oy) = shelf(x, z, w, 48, ".r48_shelf")
+    yaw = _face_yaw(x)
+    ca, sa = math.cos(yaw), math.sin(yaw)
+    depth = w * 0.62
+    for along, h, seed in R48_SHELF_PINES:
+        lx, ly = along * w, -0.22 * depth                   # on the protruding part of the shelf (local -Y = out)
+        px = sh.location.x + ca * lx - sa * ly
+        py = sh.location.y + sa * lx + ca * ly
+        tag(N.pine(coll, h, seed=seed, style="huangshan", lod="hero", name=K + ".r48_shelf_pine", parent=root,
+                   location=(px, py, z - 0.2), lean_toward=math.atan2(oy, ox) + r.uniform(-0.35, 0.35)))
+    # the shrub shelf left of the fall
+    x2, z2, w2 = R48_SHRUB_SHELF
+    sh2, (ox2, oy2) = shelf(x2, z2, w2, 49, ".r48_shrub_shelf")
+    yaw2 = _face_yaw(x2)
+    c2, s2 = math.cos(yaw2), math.sin(yaw2)
+    for k in range(7):
+        lx, ly = r.uniform(-0.4, 0.4) * w2, -r.uniform(0.0, 0.3) * w2 * 0.62
+        tag(N.shrub(coll, r.uniform(1.4, 2.4), seed=4800 + k, kind="azalea" if k % 3 == 0 else "green",
+                    name=K + ".r48_shelf_shrub", parent=root,
+                    location=(sh2.location.x + c2 * lx - s2 * ly, sh2.location.y + s2 * lx + c2 * ly, z2 - 0.15)))
+    # fern and shrub strips in the joints
+    for xj in R48_FERN_X:
+        z = 13.0
+        while z < _top(xj) - 6.0:
+            x = xj + r.uniform(-0.6, 0.6)
+            if r.random() > 0.4 and _face_free(x, z, h=2.0):
+                p = _face_point(x, z)
+                ox, oy = _out_dir(x)
+                tag(N.shrub(coll, r.uniform(0.9, 1.7), seed=r.randrange(1, 10 ** 5), kind="green",
+                            name=K + ".r48_fern", parent=root, location=(p.x + ox * 0.15, p.y + oy * 0.15, z)))
+            z += R48_FERN_STEP * r.uniform(0.7, 1.3)
+    # vines from the rim
+    bm = bmesh.new()
+    x = R48_VINE_X[0]
+    n_v = 0
+    while x < R48_VINE_X[1]:
+        if abs(x - INSC_X) > 7.0 and abs(x - FALL_X) > 7.0 and r.random() > 0.25:
+            L = r.uniform(*R48_VINE_LEN)
+            w = r.uniform(0.9, 1.8)
+            zt = _top(x) - 0.3
+            prev = None
+            for k in range(5):
+                q = k / 4.0
+                zz = zt - L * q
+                hw = 0.5 * w * (1.0 - 0.7 * q)
+                ox, oy = _out_dir(x)
+                sx, sy = -oy, ox
+                cy = _face_y(x, zz)
+                cur = (bm.verts.new((x + sx * hw + ox * 0.35, cy + sy * hw + oy * 0.35, zz)),
+                       bm.verts.new((x - sx * hw + ox * 0.35, cy - sy * hw + oy * 0.35, zz)))
+                if prev is not None:
+                    f = bm.faces.new((prev[0], prev[1], cur[1], cur[0]))
+                    f.smooth = True
+                prev = cur
+            n_v += 1
+        x += R48_VINE_X[2] * r.uniform(0.7, 1.3)
+    if len(bm.faces):
+        tag(U.mesh_from_bmesh(K + ".r48_vines", bm, coll, materials=["nature_vine"], smooth=None, parent=root))
+    else:
+        bm.free()
+    print("ABODE round 48 dressing: %d objects (2 shelf pines, %d vines)" % (len(made), n_v), flush=True)
+    return made
+
+
 def _plants(coll, root, pool):
     # peach blossom trees: a big hero tree beside the balcony stair, smaller ones around the lawn
     N.blossom_tree(coll, 10.0, seed=1, kind="peach", lod="hero", name=K + ".peach", parent=root,
@@ -751,8 +872,8 @@ def _plants(coll, root, pool):
     N.bamboo_clump(coll, 12, 10.0, seed=4, name=K + ".bamboo", parent=root, location=(-25.0, 22.0, 0))
     N.bamboo_clump(coll, 14, 12.0, seed=3, name=K + ".bamboo", parent=root, location=(32.0, 4.0, 0))
     N.bamboo_clump(coll, 10, 10.0, seed=5, name=K + ".bamboo", parent=root, location=(37.0, -18.0, 0))
-    # cliff pines growing out of the face, pines on the cliff top
-    for k, (x, z, h) in enumerate(FACE_PINES):
+    # cliff pines growing out of the face (round 48: none, ABODE_R48), pines on the cliff top
+    for k, (x, z, h) in enumerate(() if ABODE_R48 else FACE_PINES):
         p = _face_point(x, z)
         N.pine(coll, h, seed=k, style="cliff", name=K + ".cliff_pine", parent=root,
                location=(p.x, p.y + 0.6, p.z), rotation=_face_yaw(x))
@@ -2108,7 +2229,9 @@ def build(collection):
     # karst peaks rising behind the cliff top (Zhangjiajie silhouette)
     for k, (x, y, zt, r, h) in enumerate(PINNACLES):
         N.rock_pillar(collection, height=h, top_radius=r, seed=21 + k, top_flat=False, top_z=zt,
-                      pines=True, name=K + ".pinnacle", parent=root, location=(x, y, 0.0))
+                      pines=not ABODE_R48, name=K + ".pinnacle", parent=root, location=(x, y, 0.0))
+    if ABODE_R48:
+        r48_dress(collection, root)
     # the Smiling, Proud Wanderer duet, just left: the qin table scene on the open lawn by the koi pool (round 34:
     # Xiaolongnü's ribbon no longer hangs from the tea pavilion's eave; it lies coiled at the summit)
     _duet(collection, root)
