@@ -3004,7 +3004,12 @@ def _is_fall(R, i):
 # flight sees it only at frames 7-448 (far, 100-170 px) and 691-859 (the library, up to 370 px), where the page holds
 # the library and two areas each side, never the formation: at the library hold (772) it drew the backdrop's coarse
 # stand-in (proxy.formation, sized for frames 1-639). Its waterfall's sheets were already in the library chunk.
-LORE_CHUNKS = {"scenery.island.009": "library"}
+# (round 42) The Five Element Banners (formation.flag.<element>: pole, rings, finial, cloth) all go to the formation:
+# the nearest-frame rule put the metal and water flags' cloth (and the water flag's pole) in the abode chunk, whose
+# texel budget is 4.6x over (density scale 0.464), so those two baked at 3.9 texels a metre against the formation's 8
+# (owner, 2026-10-24: "The flags at the formation seem very low quality and blurry"). bake_web DETAIL_FULL and
+# NO_DECIMATE_FAR do the rest.
+LORE_CHUNKS = {"scenery.island.009": "library", **{"formation.flag.%s" % k: "formation" for k in LORE_ELEMENTS}}
 _LORE_CHUNK_MEMBERS = None
 
 

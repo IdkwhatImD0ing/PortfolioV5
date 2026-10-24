@@ -507,7 +507,14 @@ def is_fall(R, i):
 
 
 DETAIL = (("plaque", 2.5), ("inscription", 2.0), ("glyph", 1.5), ("lion", 1.6))
-DETAIL_FULL = (("plaque", 2.5), ("inscription", 2.0), ("glyph", 3.0), ("lion", 1.6))   # full profile   # name part -> texel density factor
+DETAIL_FULL = (("plaque", 2.5), ("inscription", 2.0), ("glyph", 3.0), ("lion", 1.6),   # full profile   # name part -> texel density factor
+               ("formation.flag.", 3.0))
+# (round 42) The formation's Five Element Banners 五行旗 (formation.flag.<element>): a 4.6 m cloth with one big
+# character in a ring, which the visitor reads from 82 m at the nearest pass and 160 m at the hold. The distance rule
+# (RHO_K / 82 m) gave them 8 texels a metre (37 across a flag, about 2 screen pixels a texel at that pass; the gate's
+# and arena's banners have 16-30) and the abode's budget halved that for the two the export put in its chunk
+# (export_web LORE_CHUNKS now keeps all five in the formation). x3: 21-25 texels a metre, about 80k more texels in a
+# chunk using 5.7M of its 11.5M.
 
 
 def detail_boost(name):
@@ -516,6 +523,17 @@ def detail_boost(name):
 
 
 NO_DECIMATE = ("plaque", ".text", "inscription", "glyph", "couplet", "banner")
+# (round 42) Names never decimated within a farther distance than NO_DECIMATE's 80 m: {name part: metres}. The Five
+# Element Banners are never nearer the camera than 82 m, so the 80 m rule never held them; their character and ring are
+# faces of the cloth (slot 2) that collapse decimation merges into the cloth. A few thousand triangles.
+NO_DECIMATE_FAR = {"formation.flag.": 250.0}
+
+
+def no_decimate(name, owner, d):
+    """NO_DECIMATE within 80 m, NO_DECIMATE_FAR within its own distance."""
+    if d <= 80.0 and any(k in name or k in owner for k in NO_DECIMATE):
+        return True
+    return any(d <= far and (k in name or k in owner) for k, far in NO_DECIMATE_FAR.items())
 # near-black glossy materials read in the film through their coat reflections of the sky; a diffuse-only bake
 # leaves them black (the mission board). Their base colour is raised to at least this (linear) for the bake.
 DARK_GLOSS_LIFT = {"lacquer_black": (0.030, 0.040, 0.045)}
@@ -2112,8 +2130,7 @@ def cmd_bake(a):
     fl = EW.lod_floor(R, at_idx, S, EW.NEAR_MAX)
     # never decimate glyphs (collapse eats their strokes) or banners (their gold trim is separate faces with
     # its own material; collapse merges triangles across that border and the trim turns into wedges)
-    protect = np.array([dmin[i] <= 80.0 and any(k in R.name[i] or k in R.owner[i] for k in NO_DECIMATE)
-                        for i in at_idx], bool)
+    protect = np.array([no_decimate(R.name[i], R.owner[i], dmin[i]) for i in at_idx], bool)
     fl = np.maximum(fl, protect.astype(float))
     log("protected from decimation:", int(protect.sum()), "pieces,", int(R.tris[at_idx][protect].sum()), "tris")
     # props near the two hold cameras (lanterns, lions, censer, mirror finials, balusters, lattice panels): the
@@ -3565,8 +3582,7 @@ def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_vie
     fl = np.zeros(len(idx))
     if floors:
         fl = EW.lod_floor(R, idx, S, EW.NEAR_MAX)
-        protect = np.array([dmin[i] <= 80.0 and any(k in R.name[i] or k in R.owner[i] for k in NO_DECIMATE)
-                            for i in idx], bool)
+        protect = np.array([no_decimate(R.name[i], R.owner[i], dmin[i]) for i in idx], bool)
         cut = _cut_mask(R, idx) & np.array([dmin[i] <= CUT_NEAR for i in idx], bool)
         protect |= cut
         struct = np.array([dmin[i] <= STRUCT_NEAR and re.sub(r"\.\d{3}$", "", R.name[i]).endswith(STRUCT_SUFFIX)
