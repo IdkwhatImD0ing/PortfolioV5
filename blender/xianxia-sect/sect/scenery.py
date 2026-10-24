@@ -753,13 +753,17 @@ SPIRE_SCALE = (0.6, 1.4)
 PINE_SCALE = (0.6, 1.0)
 SCRUB_SCALE = (0.8, 2.0)
 GROVE_SCALE = 45.0             # m: groves and clearings (2D noise)
-GROVE_FLOOR = 0.2              # density factor in a clearing
+GROVE_FLOOR = 0.45             # density factor in a clearing (slice: 0.2 left lawn patches in the closed canopy)
 CONCAVE_BLUR = 30.0            # m: concavity (gullies x2, ridges x0.4) against the terrain smoothed this wide
 CONCAVE_K = 6.0                # m of hollow for a factor of 2
 FOREST_MODE = "hull"           # P-4 (B0 picked hull): 'cards' (trees everywhere), 'shell150' (trees to 150 m, shell
                                # beyond), 'shell250', 'hull' (trees to HULL_TREE_END, hull clumps to 250 m, shell beyond)
-HULL_TREE_END = 150.0          # m from the path: hull mode's trees reach this far (B0: only a's trees to 150 m read as
-                               # green forest; the hulls alone read as boulders on a lawn)
+HULL_TREE_END = 250.0          # m from the path: hull mode's trees reach this far (B0: only a's trees to 150 m read as
+                               # green forest; the hulls alone read as boulders on a lawn). Slice (r48 s1): under each
+                               # chunk's triangle budget the hull clumps baked as ~20-triangle pyramids, while the
+                               # broadleaf cards read as round green crowns, so the trees now run to HULL_END and the
+                               # hull band is empty; hull clumps stand only between HULL_TREE_END and HULL_END
+HULL_END = 250.0               # m from the path: the shell starts here in hull mode
 SHELL_CELL = 7.5               # m: the shell's grid
 SHELL_LIFT = (6.0, 11.0)       # m over the ground (the crowns' height), lumpy
 SHELL_TILE = 320.0             # m: one shell / hull object per tile (the export splits by chunk)
@@ -769,6 +773,8 @@ HULL_R = (4.0, 12.0)           # clump radius: big, medium and small (C6)
 HULL_KEEP = (0.75, 0.5)        # a cell keeps its clump with chance KEEP[0] + KEEP[1] x the grove factor (B0: 0.35 + 0.5f)
 SHELF_DENSITY = 0.2            # shrubs per m2 of pillar shelf top (mean; in clumps of 3-15 by SHELF_CLUMP)
 SHELF_CLUMP = (6.0, 2.6)       # m across a shelf clump; density factor inside one (about 40 % of a shelf is in clumps)
+SHELF_CROWN = 0.05             # small broadleaf crowns (3-5.5 m) per m2 of shelf, in the same clumps: they overhang
+                               # the lip, so a shelf reads as a green band from the side, not a line of dots
 CRACK_DENSITY = 0.04           # ferns per m2 of pillar crack strip
 CAP_DENSITY = 0.06             # broadleaf per m2 of pillar cap (a closed canopy cap from 50 m, rule 3)
 CAP_RIM_SPIRE = 0.012          # spires per m2 on the cap's outer quarter
@@ -969,7 +975,7 @@ def r48_canopy_masks(rng_obj, scene, anchors, hold_views, star, scope=None):
     f_conc = np.clip(1.0 + lap / CONCAVE_K, 0.4, 2.0)
     f = f_grove * f_conc * np.where(path_d < CANOPY_NEAR, CANOPY_NEAR_K, 1.0)
     f_crest = f_grove * np.clip(1.0 - lap / CONCAVE_K, 0.3, 2.5)
-    shell_start = dict(cards=1e9, shell150=150.0, shell250=250.0, hull=250.0)[FOREST_MODE]
+    shell_start = dict(cards=1e9, shell150=150.0, shell250=250.0, hull=max(HULL_END, HULL_TREE_END))[FOREST_MODE]
     tree_end = dict(cards=1e9, shell150=150.0, shell250=250.0, hull=HULL_TREE_END)[FOREST_MODE]
     ok = cand & ~ex & insc
     canopy = ok & (nz >= 0.78) & (path_d < tree_end)
@@ -1119,8 +1125,10 @@ def r48_pillar_plants(coll, scope=None):
                 (".shelf", N.canopy_prototypes("shelf"), SHELF_DENSITY, "nature_shelf", (1.2, 2.4), 60.0, 0.2),
                 (".crack", N.canopy_prototypes("fern"), CRACK_DENSITY, "nature_crack", (0.45, 0.9), 84.0, 0.5),
                 (".cap_rim", N.canopy_prototypes("broadleaf"), CAP_RIM_BROADLEAF, "r48_rim", (0.6 * ks, 1.05 * ks),
-                 75.0, 0.35)):
-            if nm == ".shelf":
+                 75.0, 0.35),
+                (".shelf_crown", N.canopy_prototypes("broadleaf"), SHELF_CROWN, "nature_shelf", (0.3, 0.55), 60.0,
+                 0.3)):
+            if nm in (".shelf", ".shelf_crown"):
                 s = N.rscatter_on(ob, protos, density=dens, seed=seed, max_slope=math.radians(slope),
                                   scale_range=scale, collection=coll, name=ob.name + nm, align=align,
                                   mask_attribute=mask, factor_attribute="r48_shelf_f")
@@ -1289,7 +1297,7 @@ def r48_hulls(rng_obj, coll, masks):
     out = []
     for k, (tk, cl) in enumerate(sorted(tiles.items())):
         bm = N.hull_clumps_bm(cl, seed=k)
-        ob = U.mesh_from_bmesh("world.canopy_hull", bm, coll, materials=["nature_canopy_mass"], smooth=None)
+        ob = N._mesh_obj("world.canopy_hull", bm, coll, ["nature_canopy_mass"])     # (custom normals: soft clumps)
         ob[R48_TAG] = "forest"
         out.append(ob)
     _log("r48 hulls: %d clumps in %d tiles" % (len(clumps), len(out)))

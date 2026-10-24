@@ -41,8 +41,11 @@ a lawn). Changes before the slice:
 
 - No fringe strips over the shelf lips. They baked as flat paper and black sticks, and a few of their faces marked
   the page's "built" mask over most of a pillar, so the paler range rock never reached it and the pillar stayed orange.
-- Trees reach 150 m from the camera path (was 90 m); beyond that the hull clumps sit 11 m apart (was 21 m), 4-12 m
-  wide, so they close into one canopy instead of boulders on a lawn.
+- Broadleaf trees reach 250 m from the camera path (was 90 m), with fewer bare clearings; the canopy shell starts
+  beyond. The hull clumps were packed closer first (11 m apart), but under each chunk's triangle budget they baked as
+  small pyramids, while the trees' cards read as round green crowns.
+- The bake keeps more triangles on each pillar a stop sees (a floor by its size on screen, extra to the chunk's
+  budget): the 185 m pillar at f870 had been cut to 1,142 triangles and its shelves were gone.
 - Shelf shrubs four times as dense, in clumps; caps twice as dense, with rim crowns leaning out; on the pillars near a
   stop, shelves stick out about 2 m; some rock beds are 2-3 times thicker, so the beds are not equal drums.
 - The page turns far range ground (the hull clumps bake as ground) canopy green from 90-180 m (was 150-260 m).

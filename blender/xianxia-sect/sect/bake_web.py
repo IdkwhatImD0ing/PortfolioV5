@@ -3234,6 +3234,17 @@ ISLAND_FLOOR_SHARE_PROXY = 0.3    # per area proxy: at most this share of its re
                                   # the views where the proxy stands in; they kept a median of ~7 triangles)
 FAR_ROCK_K = 0.08              # far-set rock pieces of at least FAR_ROCK_MIN_PX (the distant massifs): triangles =
 FAR_ROCK_MIN_PX = 60.0         # K * px^2, at most ISLAND_FLOOR_HI
+# round 48: the range's karst pillars (world.peak.NNN, scenery round 48) keep their beds and shelves. Under the chunk's
+# triangle budget the screen-size rule gave a 185 m hero pillar 1,142 of its 32k triangles (the f870 wall), so its 3 m
+# shelves were decimated away and their shrubs stood on a smooth wall. Each pillar seen at PILLAR_FLOOR_MIN_PX or more
+# keeps clip(K * px^2, LO, HI) triangles, all of them at most PILLAR_FLOOR_CAP per chunk (scaled down evenly), and the
+# chunk's budget grows by what the floors add, so the halls keep their triangles.
+PILLAR_RE = re.compile(r"^world\.peak\.\d{3}$")
+PILLAR_FLOOR_K = 0.04
+PILLAR_FLOOR_LO = 600.0
+PILLAR_FLOOR_HI = 9000.0
+PILLAR_FLOOR_MIN_PX = 60.0
+PILLAR_FLOOR_CAP = 120_000
 ISLAND_EXCLUDE = VEG_KINDS + ROOT_WORDS + ("fall", "mist")   # island-named pieces that are not the rock
 FAR_TRIS_FULL = 360_000        # backdrop far set
 PROXY_TRIS_FULL = 30_000       # backdrop proxy per area (records; the area's terrain faces come on top)
@@ -3551,6 +3562,34 @@ def _island_floors(F, idx, vmask, cap, far_rock, label):
     return r, rows
 
 
+def _pillar_floors(F, idx, vmask, label):
+    """Round 48: LOD floor ratios (per record of idx) for the range pillars (PILLAR_RE owners): clip(PILLAR_FLOOR_K x
+    px^2, LO, HI) triangles, px = the largest on-screen size over the views in vmask where the audit saw the piece, at
+    least PILLAR_FLOOR_MIN_PX; all of them at most PILLAR_FLOOR_CAP (one common scale)."""
+    R, S, V = F["R"], F["S"], F["views"]
+    idx = np.asarray(idx, int)
+    pil = np.array([bool(PILLAR_RE.match(R.owner[i])) for i in idx], bool)
+    r = np.zeros(len(idx))
+    vmask = np.asarray(vmask, bool)
+    if not pil.any() or not vmask.any():
+        return r
+    tri = R.tris[idx].astype(float)
+    if "view_np" not in F:
+        F["view_np"] = np.array([np.asarray(m, float) for m in V.mats]).reshape(-1, 4, 4)
+    rec = idx[pil]
+    vis = S.get("vis")
+    vis = vis[rec][:, vmask] if vis is not None and vis.shape[1] == len(V) else None
+    px = np.zeros(len(idx))
+    px[pil] = BR.projected_px(R.lo[rec], R.hi[rec], F["view_np"][vmask], F["tv"], F["aw"], dscale=V.dscale[vmask],
+                              vis=vis)
+    r = BR.floor_ratios(tri, px, pil & (px >= PILLAR_FLOOR_MIN_PX), PILLAR_FLOOR_K, PILLAR_FLOOR_LO, PILLAR_FLOOR_HI)
+    r, info = BR.cap_floors(r, tri, PILLAR_FLOOR_CAP, EW.LEVELS)
+    log(label, "pillar floors: pillars", int(pil.sum()), "floored", info["n"], "keep", info["tris"], "tris (wanted",
+        info["want"], "cap", PILLAR_FLOOR_CAP, "scale", info["scale"], "); largest px",
+        int(px.max()) if len(px) else 0)
+    return r
+
+
 _CUT = {}                      # _cut_mask memo: tkey -> cut
 
 
@@ -3652,6 +3691,14 @@ def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_vie
     if isl_views is not None:
         fl_i, isl_rows = _island_floors(F, idx, isl_views, isl_cap, far_rock, label)
         fl = np.maximum(fl, fl_i)
+        # round 48: the range pillars' floors are extra triangles: the budget grows by what they add over the other floors
+        # (area chunks only: the backdrop's far set and proxies keep their far-rock and island floors)
+        fl_p = _pillar_floors(F, idx, isl_views, label) if floors else np.zeros(len(idx))
+        if fl_p.any():
+            extra = float((R.tris[idx] * np.maximum(fl_p - fl, 0.0)).sum())
+            fl = np.maximum(fl, fl_p)
+            budget += extra
+            log(label, "pillar floors add", int(extra), "tris to the budget ->", int(budget))
     if floors and ROOM_MIN > 0:
         # room for the screen-size rule: the floors' real cost (each rounds up to a LEVEL)
         li = np.maximum((EW.LEVELS[None, :] >= fl[:, None]).sum(1) - 1, 0)

@@ -3688,21 +3688,28 @@ def canopy_prototypes(kind="broadleaf"):
 # ---- hull clumps (P-4) ------------------------------------------------------------------------------------------
 
 def hull_clumps_bm(clumps, seed=0):
-    """One BMesh of low-poly crown clumps for 70-250 m (round 48, P-4): per clump (x, y, z_ground, radius) 2-4 lumpy
-    icosphere blobs (80 triangles each) sitting on their own ground height, wider than tall, flat underneath. One
-    material (index 0, nature_canopy_mass). Coordinates as given (world, for an object at the origin)."""
+    """One BMesh of low-poly crown clumps for 70-250 m (round 48, P-4): per clump (x, y, z_ground, radius) 3-5 lumpy
+    icosphere blobs (80 triangles each: a big centre crown and smaller ones round it at uneven heights) sitting on their
+    own ground height, wider than tall, flat underneath. The blobs' normals bend toward the clump's envelope (the
+    custom-normal layer _NRM: build the object with _mesh_obj), so a clump shades as one soft crown mass, not as
+    faceted pyramids. One material (index 0, nature_canopy_mass). Coordinates as given (world, for an object at the
+    origin)."""
     r = U.rng("nature.hulls", seed)
     bm = bmesh.new()
+    _nrm_layer(bm)
     for i, (x, y, z, rad) in enumerate(clumps):
-        n = 2 if rad < 6.0 else (3 if rad < 10.0 else 4)
+        n = 3 if rad < 6.0 else (4 if rad < 9.0 else 5)
+        hk = r.uniform(0.62, 0.85)                       # this clump's height to width
+        env = (Vector((x, y, z + rad * hk * 0.55)), (rad * 1.05, rad * 1.05, rad * hk * 0.75), Matrix.Identity(3))
         for k in range(n):
             a = r.uniform(0, 2 * math.pi)
-            off = rad * (0.0 if k == 0 else r.uniform(0.35, 0.6))
-            s = rad * (0.75 if k == 0 else r.uniform(0.45, 0.62))
-            h = s * r.uniform(0.7, 0.9)
-            c = Vector((x + math.cos(a) * off, y + math.sin(a) * off, z + h * 0.75 + r.uniform(-0.3, 0.5)))
-            _bm_blob(bm, c, (s, s * r.uniform(0.85, 1.0), h), subdiv=1, seed=seed * 101 + i * 5 + k, lump=0.2,
-                     freq=1.5, flatten=0.35, mat=0)
+            off = rad * (0.0 if k == 0 else r.uniform(0.4, 0.72))
+            s = rad * (0.68 if k == 0 else r.uniform(0.32, 0.55))
+            h = s * hk * r.uniform(0.95, 1.2)
+            c = Vector((x + math.cos(a) * off, y + math.sin(a) * off,
+                        z + h * 0.7 + (0.0 if k == 0 else r.uniform(-0.15, 0.25) * rad)))
+            _bm_blob(bm, c, (s, s * r.uniform(0.85, 1.0), h), subdiv=1, seed=seed * 101 + i * 7 + k, lump=0.24,
+                     freq=1.7, flatten=0.35, mat=0, env=env, env_w=0.7)
     return bm
 
 
