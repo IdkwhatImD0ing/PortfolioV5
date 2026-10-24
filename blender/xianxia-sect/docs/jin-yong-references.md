@@ -441,7 +441,7 @@ Three novels want the summit. Rule: one line on the final frame (Su1). Everythin
   - 问世间，情是何物 (wèn shìjiān, qíng shì hé wù, "Ask the world: what is love?") gets the second half, 直教生死相许 ("that two would pledge life and death to each other"), and a note that it is really Yuan Haowen's 13th-century poem, the one Li Mochou sings in Return.
   - "Who am I?": "Careful. Ouyang Feng asked that on Mount Hua and ended up fighting his own shadow."
   - "How long until you reply?": "Less than sixteen years. Email's faster."
-  - "Join our sect": a joke about Linghu Chong turning down the cult leader Ren Woxing, who kept asking.
+  - "Join our sect": a joke about Linghu Chong turning down the sect leader Ren Woxing, who kept asking.
   - 千秋万载，一统江湖 (qiānqiū wànzǎi, yītǒng jiānghú, "for a thousand autumns and ten thousand years, rule all the jianghu"): a laugh that it is the flatterers' chant from Wanderer.
   - Rarely, in text mode, when the guardrail declines an off-topic request: "I'm like Hu Qingniu, the doctor who treats only members of his own sect. Ask me about my projects." (Heaven Sword: Hu Qingniu's nickname is 见死不救, jiàn sǐ bú jiù, "lets the dying die", because he treats only Ming Cult members.)
 - **Effort:** S (prompt text), plus adding the novels to the guardrail's allowed passions (the "Yes also for" list near line 281 of `guardrail.py`), then running the guardrail tests.

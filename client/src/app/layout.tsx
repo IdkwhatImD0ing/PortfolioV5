@@ -118,7 +118,6 @@ const JSON_LD = {
         },
       ],
       url: SITE,
-      image: `${SITE}/icons/icon-512x512.png`,
       sameAs: [PORTFOLIO.github, PORTFOLIO.linkedin, PORTFOLIO.devpost],
       knowsAbout: ["Artificial Intelligence", "Machine Learning", "Conversational AI", "Voice Agents"],
     },
