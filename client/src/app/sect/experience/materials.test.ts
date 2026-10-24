@@ -1,4 +1,22 @@
-import { AdditiveBlending, DoubleSide, FrontSide, MeshBasicMaterial, Object3D, RedFormat, RepeatWrapping, RGBAFormat, ShaderChunk, ShaderLib, Texture, Vector2, Vector3, type WebGLRenderer } from "three";
+import {
+  AdditiveBlending,
+  BufferGeometry,
+  DoubleSide,
+  Float32BufferAttribute,
+  FrontSide,
+  Mesh,
+  MeshBasicMaterial,
+  Object3D,
+  RedFormat,
+  RepeatWrapping,
+  RGBAFormat,
+  ShaderChunk,
+  ShaderLib,
+  Texture,
+  Vector2,
+  Vector3,
+  type WebGLRenderer,
+} from "three";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,13 +44,18 @@ import {
   getClumpTexture,
   getGroundNoiseTexture,
   getNoiseTexture,
+  installAreas,
+  isBuiltMaterial,
   isNearTreeMaterial,
+  markBuiltSliced,
+  commitBuilt,
   isTreeCardMaterial,
   patchCardMaterial,
   patchMaterial,
   prepareBakedMaterial,
   prepareNeedleCard,
   SCREEN_DITHER_GLSL,
+  SECT_AREAS,
   SECT_ENV,
   SECT_MIRROR,
   SECT_WET,
@@ -328,7 +351,8 @@ describe("detail layers on baked rock and ground", () => {
   it("keeps the texel before the grade, then applies the layers after the grade and before the wet rock", () => {
     for (const kind of ["rock", "ground"] as const) {
       const fs = detailed(kind).shader.fragmentShader;
-      const order = ["vec3 sectTexel = diffuseColor.rgb / max( diffuse", "sectGrade( sectTexel )", "sectGroundLayers( diffuseColor.rgb", "sectWetRock( diffuseColor.rgb"];
+      // Rock and ground grade with the range look's parameters (range-look.ts rockGradeStatements, groundGradeStatements).
+      const order = ["vec3 sectTexel = diffuseColor.rgb / max( diffuse", "float sectRw = sectRangeW( vSectWorld )", "sectGradeWith( sectTexel,", "sectGroundLayers( diffuseColor.rgb", "sectWetRock( diffuseColor.rgb"];
       const at = order.map((x) => fs.indexOf(x));
       expect(at.every((i) => i >= 0), kind).toBe(true);
       expect([...at].sort((a, b) => a - b)).toEqual(at);
@@ -336,6 +360,8 @@ describe("detail layers on baked rock and ground", () => {
         expect(count(fs, `uniform ${u};`), `${kind} ${u}`).toBe(1);
       }
       expect(count(fs, "uniform float uSectRockFar;")).toBe(kind === "rock" ? 1 : 0);
+      // Rock under anything built (stair piers) keeps its stone; lawns do not ask.
+      expect(fs.includes("sectRangeW( vSectWorld ) * ( 1.0 - sectBuilt( vSectWorld ) )")).toBe(kind === "rock");
       for (const name of includes(fs)) expect((ShaderChunk as unknown as Record<string, string>)[name], name).toBeTypeOf("string");
     }
   });
@@ -656,7 +682,7 @@ describe("near pines", () => {
     prepareBakedMaterial(pine);
     const fs = compile(pine).fragmentShader;
     expect(fs.indexOf("sectTexel = sectTreeLift( sectTexel );")).toBeGreaterThan(0);
-    expect(fs.indexOf("sectTexel = sectTreeLift( sectTexel );")).toBeLessThan(fs.indexOf("sectGrade( sectTexel )"));
+    expect(fs.indexOf("sectTexel = sectTreeLift( sectTexel );")).toBeLessThan(fs.indexOf("sectGradeWith( sectTexel,"));
     expect(pine.customProgramCacheKey()).toContain("|tree");
     const { shader, mat } = prepareCard("twig", false);
     expect(isNearTreeMaterial(mat)).toBe(true);
@@ -788,5 +814,71 @@ describe("moon", () => {
       expect(body).toContain("fragmentShader:");
       expect(body).not.toContain("colorspace_fragment");
     }
+  });
+});
+
+describe("the range look (lib/sect/range-look.ts)", () => {
+  const baked = (name: string, userData: Record<string, unknown> = {}) => {
+    const m = new MeshBasicMaterial({ map: new Texture() });
+    m.name = name;
+    m.userData = { baked: true, ...userData };
+    return m;
+  };
+
+  it("tells built atlas materials from terrain, trees, water and vertex colours", () => {
+    expect(isBuiltMaterial(baked("baked.abode_A0"))).toBe(true);
+    expect(isBuiltMaterial(baked("baked.abode_A0.detail.paving", { detail: "paving" }))).toBe(true);
+    expect(isBuiltMaterial(baked("baked.abode_A0.detail.tiles", { detail: "tiles" }))).toBe(true);
+    expect(isBuiltMaterial(baked("baked.abode_A0.detail.rock", { detail: "rock" }))).toBe(false);
+    expect(isBuiltMaterial(baked("baked.abode_A0.detail.ground", { detail: "ground" }))).toBe(false);
+    expect(isBuiltMaterial(baked("baked.vc"))).toBe(false);
+    expect(isBuiltMaterial(baked("trees.mesh.abode"))).toBe(false);
+    expect(isBuiltMaterial(baked("baked.abode_water"))).toBe(false);
+    expect(isBuiltMaterial(new MeshBasicMaterial())).toBe(false);
+  });
+
+  it("marks a built mesh's treads in the shared mask and uploads it", () => {
+    installAreas([{ anchor: [0, 40, 0], footprint: 40 }]);
+    const tex = SECT_AREAS.tSectBuilt.value;
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new Float32BufferAttribute([10, 50, 10, 12, 50, 10, 10, 50, 12], 3));
+    const mesh = new Mesh(geo, baked("baked.gate_A0"));
+    const v0 = tex.version;
+    for (const step of markBuiltSliced(mesh)) void step;
+    commitBuilt();
+    expect(tex.version).toBeGreaterThan(v0);
+    const box = SECT_AREAS.uSectBuiltBox.value;
+    const i = Math.floor((10.5 - box.x) * box.z * tex.image.width);
+    const j = Math.floor((10.5 - box.y) * box.w * tex.image.height);
+    expect((tex.image.data as Uint8Array)[j * tex.image.width + i]).toBe(255);
+    // Terrain does not mark.
+    const rock = new Mesh(geo, baked("baked.gate_A0.detail.rock", { detail: "rock" }));
+    expect([...markBuiltSliced(rock)]).toHaveLength(0);
+  });
+
+  it("gives range materials the shared areas and built mask", () => {
+    const rock = baked("baked.gate_A0.detail.rock", { detail: "rock" });
+    prepareBakedMaterial(rock);
+    const shader = compile(rock);
+    expect(shader.uniforms.uSectAreas).toBe(SECT_AREAS.uSectAreas);
+    expect(shader.uniforms.tSectBuilt).toBe(SECT_AREAS.tSectBuilt);
+    expect(shader.fragmentShader).toContain("sectRockRange( sectGraded, sectRw * ( 1.0 - sectMoss ) )");
+    const card = cardMaterial();
+    prepareBakedMaterial(card);
+    const cs = compile(card);
+    expect(cs.uniforms.uSectAreas).toBe(SECT_AREAS.uSectAreas);
+    expect(cs.fragmentShader).toContain("sectFoliageRange( sectGraded, sectTexel, sectRw, length( vSectWorld - cameraPosition ) )");
+    // On Low (no detail layers) rock and lawns still get their own programs: with one key, three
+    // drew Low's rock with the lawns' program.
+    const lawn = baked("baked.gate_A0.detail.ground", { detail: "ground" });
+    prepareBakedMaterial(lawn);
+    expect(rock.customProgramCacheKey()).not.toBe(lawn.customProgramCacheKey());
+    expect(compile(lawn).fragmentShader).not.toContain("sectRockRange(");
+    // Halls (generic atlas) keep the plain grade and no range uniforms.
+    const hall = baked("baked.gate_A0");
+    prepareBakedMaterial(hall);
+    const hs = compile(hall);
+    expect(hs.uniforms.uSectAreas).toBeUndefined();
+    expect(hs.fragmentShader).toContain("vec3 sectGraded = sectGrade( sectTexel );");
   });
 });

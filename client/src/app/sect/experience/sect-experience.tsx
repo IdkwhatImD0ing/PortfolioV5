@@ -121,7 +121,7 @@ import {
 import { InkTravel, type TravelRequest } from "./ink-travel";
 import { LoreCard, useLoreCard } from "./lore-card";
 import type { MapViewProps } from "./map-view";
-import { installFog } from "./materials";
+import { installAreas, installFog } from "./materials";
 import { SectMusic } from "./music";
 import type { MusicEngine } from "./music-engine";
 import {
@@ -497,6 +497,8 @@ export default function SectExperience() {
       try {
         const d = await loadSectData(base, params.flyer, ac.signal);
         installFog(lookFogConstants(d.meta));
+        // The stops' footprints, which the range look leaves alone (lib/sect/range-look.ts).
+        installAreas(d.meta.areas);
         const map = buildScrollMap(d.camera.startFrame, d.camera.frameEnd, d.camera.holds, FLIGHT_SCROLL);
         const deepHold = deep ? map.holds.find((h) => h.id === deep.target.area) : undefined;
         // Loaded again for a new tier: back where the visitor was (a ?frame=N view still held, too).

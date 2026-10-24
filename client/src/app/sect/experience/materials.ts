@@ -8,6 +8,9 @@
 import {
   AdditiveBlending,
   BackSide,
+  type BufferAttribute,
+  type InterleavedBufferAttribute,
+  type Mesh,
   Color,
   DataTexture,
   DoubleSide,
@@ -52,6 +55,21 @@ import {
 import { heartMirrorGlsl, MIRROR_PART } from "@/lib/sect/heart-mirror";
 import { gradeGlsl, SECT_LOOK, treeLiftGlsl, treeShadeGlsl, unitTint, type SectLook } from "@/lib/sect/look";
 import { clumpField, groundNoise, tilingNoise } from "@/lib/sect/noise";
+import {
+  createBuiltGrid,
+  foliageGlsl,
+  foliageGradeStatements,
+  groundGradeStatements,
+  growBuilt,
+  markBuiltTriangles,
+  packRangeAreas,
+  rangeGlsl,
+  rockGlsl,
+  rockGradeStatements,
+  type BuiltGrid,
+  type PositionSource,
+  type RangeArea,
+} from "@/lib/sect/range-look";
 import type { Vec3 } from "@/lib/sect/types";
 import type { WaterSurface } from "@/lib/sect/water";
 import { fallGlsl, packWetFalls, selectWetFalls, SHEET, WET, wetArrays, wetRockGlsl, type WetFall } from "@/lib/sect/waterfall";
@@ -70,6 +88,96 @@ export function installFog(c: FogConstants): void {
   target.fog_pars_fragment = chunks.fog_pars_fragment;
   target.fog_fragment = chunks.fog_fragment;
   installedKey = key;
+}
+
+/**
+ * The range look's uniforms (lib/sect/range-look.ts), shared by every material that tells the range
+ * from the stops: the areas' anchors and footprints (sectRangeW; until installAreas runs every slot
+ * is empty, which reads as all range) and the built mask (sectBuilt: cells under stairs, bridges,
+ * piers and terraces, filled as each set is prepared; empty, it protects nothing).
+ */
+export const SECT_AREAS = {
+  uSectAreas: { value: packRangeAreas([]).map((a) => new Vector4(...a)) },
+  tSectBuilt: { value: builtTexture(createBuiltGrid([])) },
+  uSectBuiltBox: { value: new Vector4(0, 0, 0, 0) },
+};
+
+let builtGrid: BuiltGrid = createBuiltGrid([]);
+
+function builtTexture(grid: BuiltGrid): DataTexture {
+  const tex = new DataTexture(grid.mask, grid.nx, grid.nz, RedFormat, UnsignedByteType);
+  tex.name = "sect.built";
+  tex.unpackAlignment = 1;
+  tex.magFilter = LinearFilter;
+  tex.minFilter = LinearFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/** Fills SECT_AREAS from meta.json's areas (anchor, footprint) and starts an empty built mask over them. Call when the meta arrives. */
+export function installAreas(areas: readonly RangeArea[]): void {
+  packRangeAreas(areas).forEach((a, i) => SECT_AREAS.uSectAreas.value[i].set(...a));
+  builtGrid = createBuiltGrid(areas);
+  SECT_AREAS.tSectBuilt.value.dispose();
+  SECT_AREAS.tSectBuilt.value = builtTexture(builtGrid);
+  SECT_AREAS.uSectBuiltBox.value.set(builtGrid.x0, builtGrid.z0, 1 / (builtGrid.nx * builtGrid.cell), 1 / (builtGrid.nz * builtGrid.cell));
+}
+
+/** Triangles marked per slice of markBuiltSliced. */
+const BUILT_SLICE = 20000;
+
+/**
+ * True for an atlas-baked material of something built (range-look.ts RANGE_LOOK.built): not rock or
+ * ground, not a tree, card or water, and not vertex-coloured (baked.vc: small trim, and everything
+ * far from the path, terrain too).
+ */
+export function isBuiltMaterial(mat: Material): boolean {
+  const b = mat as MeshBasicMaterial;
+  if (!b.isMeshBasicMaterial || b.userData?.baked !== true || /^baked\.vc/i.test(b.name)) return false;
+  const kind = detailClass(b.userData?.detail);
+  if (kind === "rock" || kind === "ground") return false;
+  return !/^trees\./i.test(b.name) && !/water|pond/i.test(b.name) && !(b.alphaTest > 0);
+}
+
+/** Marks a mesh's upward built triangles in the built mask, yielding every BUILT_SLICE triangles (prepare.ts). */
+export function* markBuiltSliced(mesh: Object3D): Generator<void, void, void> {
+  const o = mesh as Mesh;
+  if (!o.isMesh || !o.geometry) return;
+  const mats = Array.isArray(o.material) ? o.material : [o.material];
+  if (!mats.some(isBuiltMaterial)) return;
+  const pos = positionSource(o.geometry.getAttribute("position"));
+  if (!pos) return;
+  const index = o.geometry.index?.array ?? null;
+  const tris = Math.floor((index ? index.length : o.geometry.getAttribute("position").count) / 3);
+  mesh.updateWorldMatrix(true, false);
+  const e = mesh.matrixWorld.elements;
+  const identity = e.every((v, i) => v === (i % 5 === 0 ? 1 : 0));
+  for (let t = 0; t < tris; t += BUILT_SLICE) {
+    markBuiltTriangles(builtGrid, pos, index, t, Math.min(t + BUILT_SLICE, tris), identity ? null : e);
+    yield;
+  }
+}
+
+/**
+ * A position attribute as range-look.ts reads it: plain or interleaved, float or normalized 16-bit
+ * (the files' quantized positions; their node matrix holds the scale). Null for anything else.
+ */
+function positionSource(a: BufferAttribute | InterleavedBufferAttribute | undefined): PositionSource | null {
+  if (!a || a.itemSize < 3) return null;
+  const inter = (a as InterleavedBufferAttribute).isInterleavedBufferAttribute === true;
+  const array = inter ? (a as InterleavedBufferAttribute).data.array : (a as BufferAttribute).array;
+  const scale = !a.normalized ? 1 : array instanceof Int16Array ? 1 / 32767 : array instanceof Uint16Array ? 1 / 65535 : array instanceof Int8Array ? 1 / 127 : array instanceof Uint8Array ? 1 / 255 : 0;
+  if (!scale) return null;
+  return inter
+    ? { array, stride: (a as InterleavedBufferAttribute).data.stride, offset: (a as InterleavedBufferAttribute).offset, scale }
+    : { array, stride: a.itemSize, offset: 0, scale };
+}
+
+/** Grows the new marks and uploads the built mask (once per prepared set). */
+export function commitBuilt(): void {
+  growBuilt(builtGrid);
+  SECT_AREAS.tSectBuilt.value.needsUpdate = true;
 }
 
 /** Exposure for lit stand-in materials (Blender: +0.25 stops on AgX Punchy). */
@@ -615,9 +723,16 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
   const tree = grade && isNearTreeMaterial(mat);
   // The far tree cards take the same shade as the near pines beside them (not the lift).
   const shade = tree || (grade && isTreeCardMaterial(mat));
+  // The range look (lib/sect/range-look.ts): its foliage grade on every tree material, its rock and
+  // lawn grades on every tier, and the detail's range layers (rock streaks, far lawns as canopy).
+  const foliage = shade;
+  const surfaceClass = grade ? detailClass(mat.userData?.detail) : null;
+  const rock = surfaceClass === "rock";
+  const ground = surfaceClass === "ground";
+  const range = foliage || rock || ground;
   const key = `sect|${lit ? `agx${opts.exposure.toFixed(3)}` : "flat"}|${grade ? "grade" : ""}|${hl ? "hl" : ""}|${water ? "water" : ""}|${
     detail ? `detail-${detail.kind}-${detailProgramKey(detail.kind)}` : ""
-  }${wet ? "|wet" : ""}${tree ? "|tree" : ""}${shade ? "|shade" : ""}`;
+  }${wet ? "|wet" : ""}${tree ? "|tree" : ""}${shade ? "|shade" : ""}${range ? `|range-${rock ? "rock" : ground ? "ground" : "foliage"}-${RANGE_KEY}` : ""}`;
   const hover = new Color(SECT_LOOK.hover);
   // The reflective class is read when the shader compiles (and by the cache key), so a material
   // tagged after loading picks it up at its next compile (needsUpdate).
@@ -631,10 +746,11 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
     if (water) Object.assign(shader.uniforms, water);
     if (detail) Object.assign(shader.uniforms, detail.uniforms);
     if (wet) Object.assign(shader.uniforms, SECT_WET);
+    if (range) Object.assign(shader.uniforms, SECT_AREAS);
     const env = !!water || !!surface;
     if (env) Object.assign(shader.uniforms, SECT_ENV);
     if (surface === "mirror") Object.assign(shader.uniforms, SECT_MIRROR);
-    const needWorld = !!water || !!hl || !!detail || wet || !!surface;
+    const needWorld = !!water || !!hl || !!detail || wet || !!surface || range;
     if (needWorld) {
       // Paving also passes its slab coordinates (uv1) on (detail.ts detailVertexGlsl; empty for rock and ground).
       const dv = detail ? detailVertexGlsl(detail.kind) : { pars: "", main: "" };
@@ -645,7 +761,9 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
     let fs = shader.fragmentShader;
     const header = `${lit ? TONE_HELPERS(opts.exposure) : ""}${grade ? GRADE_GLSL : ""}${water ? WATER_PARS : ""}${
       hl ? "uniform float uSectHighlight;\nuniform vec3 uSectHover;\n" : ""
-    }${needWorld ? "varying vec3 vSectWorld;\n" : ""}${detail ? detailGlsl(detail.kind) : ""}${wet ? WET_GLSL : ""}${tree ? TREE_LIFT_GLSL : ""}${shade ? TREE_SHADE_GLSL : ""}${
+    }${needWorld ? "varying vec3 vSectWorld;\n" : ""}${range ? RANGE_GLSL : ""}${foliage ? FOLIAGE_GLSL : ""}${rock ? ROCK_GLSL : ""}${
+      detail ? detailGlsl(detail.kind) : ""
+    }${wet ? WET_GLSL : ""}${tree ? TREE_LIFT_GLSL : ""}${shade ? TREE_SHADE_GLSL : ""}${
       surface === "mirror" ? MIRROR_PARS : ""
     }`;
     fs = fs.replace("#include <common>", `#include <common>\n${header}`);
@@ -665,9 +783,16 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
           "  vec3 sectTexel = diffuseColor.rgb / max( diffuse, vec3( 1e-4 ) );",
           // Near pines: their dark needles lifted toward the far cards' level (look.ts treeLiftLinear).
           tree ? "  sectTexel = sectTreeLift( sectTexel );" : "",
-          "  vec3 sectGraded = sectGrade( sectTexel );",
+          // 1 on the range, 0 at the stops (range-look.ts sectRangeW; rock also 0 under anything
+          // built, sectBuilt: stair piers are rock); the detail's range layers read it too.
+          range ? `  float sectRw = sectRangeW( vSectWorld )${rock ? " * ( 1.0 - sectBuilt( vSectWorld ) )" : ""};` : "",
+          // Foliage, mossy rock and lawns on the range keep more of their green; range rock is paler
+          // (range-look.ts foliageGradeStatements, rockGradeStatements, groundGradeStatements).
+          foliage ? FOLIAGE_GRADE : rock ? ROCK_GRADE : ground ? GROUND_GRADE : "  vec3 sectGraded = sectGrade( sectTexel );",
           // Tree shade deep green instead of the grade's slate (look.ts treeShadeLinear).
           shade ? "  sectGraded = sectTreeShade( sectGraded, sectTexel );" : "",
+          // Range foliage held short of lime; far trunks turned to the canopy's shade.
+          foliage ? "  sectGraded = sectFoliageRange( sectGraded, sectTexel, sectRw, length( vSectWorld - cameraPosition ) );" : "",
           // Glow surfaces (material colour > 1) keep a little extra colour, so they read gold /
           // amber / jade rather than white once bloom and the hue-preserving clip are applied.
           "  if ( max( diffuse.r, max( diffuse.g, diffuse.b ) ) > 1.001 ) {",
@@ -712,6 +837,20 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
 
 const TREE_LIFT_GLSL = treeLiftGlsl(SECT_LOOK.trees.lift);
 const TREE_SHADE_GLSL = treeShadeGlsl(SECT_LOOK.trees.shade);
+const RANGE_GLSL = rangeGlsl();
+const FOLIAGE_GLSL = foliageGlsl();
+const FOLIAGE_GRADE = foliageGradeStatements(SECT_LOOK.grade);
+const ROCK_GLSL = rockGlsl();
+const ROCK_GRADE = rockGradeStatements(SECT_LOOK.grade);
+const GROUND_GRADE = groundGradeStatements(SECT_LOOK.grade);
+/** A tag of the range GLSL for the program cache key (a changed constant must recompile). */
+const RANGE_KEY = programTag(RANGE_GLSL + FOLIAGE_GLSL + FOLIAGE_GRADE + ROCK_GLSL + ROCK_GRADE + GROUND_GRADE);
+
+function programTag(src: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < src.length; i++) h = Math.imul(h ^ src.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+}
 
 export type WaterUniforms = Record<string, IUniform>;
 

@@ -42,6 +42,12 @@ export interface SectLook {
      * nearby scenery does not shift; far ridges and the horizon take the full shift.
      */
     aerialDepth: number;
+    /**
+     * Metres from the camera where the per-stop extra haze (range-look.ts RANGE_LOOK.haze) starts:
+     * nearer, the film's haze alone, so the halls of a stop look as they did while the distance
+     * deepens.
+     */
+    clear: number;
   };
   /**
    * Valley mist: a second, thin exponential layer sitting on the cloud layer's top (gorge floors,
@@ -350,11 +356,15 @@ export const SECT_LOOK: SectLook = {
     color: "#c8ada0",
     sunColor: "#f6c48a",
     densityScale: 1.1,
-    coolColor: "#aeaad8",
+    // r47 (range look): lilac-grey (saturation 0.11, was #aeaad8 at 0.21), so far ridges fade into
+    // the dusk sky's own grey-lilac rather than turning pink-violet; far colour gives way more
+    // (desaturate was 0.4) and sooner (aerialDepth was 0.35).
+    coolColor: "#b8b0c6",
     coolMix: 0.6,
     extinction: [0.7, 1.0, 1.6],
-    desaturate: 0.4,
-    aerialDepth: 0.35,
+    desaturate: 0.5,
+    aerialDepth: 0.3,
+    clear: 80,
   },
   mist: { density: 0.001, falloff: 45, start: 150 },
   dither: 1,
@@ -527,6 +537,7 @@ export function lookFogConstants(meta: SectMeta, look: SectLook = SECT_LOOK): Fo
     coolMix: look.haze.coolMix,
     desaturate: look.haze.desaturate,
     aerialDepth: look.haze.aerialDepth,
+    hazeClear: look.haze.clear,
     mistDensity: look.mist.density,
     mistBaseY: base.cloudTop,
     mistFalloff: look.mist.falloff,
@@ -573,15 +584,21 @@ const SPLIT_HI = 0.2;
 
 /** TypeScript mirror of the GLSL grade (linear in, linear out), for tests. */
 export function gradeLinear(c: Vec3, g: SectLook["grade"] = SECT_LOOK.grade): Vec3 {
+  return gradeLinearWith(c, g, g.greenTame, unitTint(g.shadowTint), g.splitShadow ?? g.split);
+}
+
+/**
+ * The grade with its green tame, shadow tint (luminance 1, unitTint) and shadow split given: the
+ * range's foliage blends its own in (lib/sect/range-look.ts). Mirrors sectGradeWith.
+ */
+export function gradeLinearWith(c: Vec3, g: SectLook["grade"], tame: number, st: Vec3, ss: number): Vec3 {
   let x = c.map((v) => v * g.exposure) as Vec3;
-  x[1] -= Math.max(x[1] - Math.max(x[0], x[2]), 0) * g.greenTame;
+  x[1] -= Math.max(x[1] - Math.max(x[0], x[2]), 0) * tame;
   const l0 = luma(x);
   const l1 = l0 > 0 ? g.pivot * Math.pow(l0 / g.pivot, g.contrast) : 0;
   x = x.map((v) => (l0 > 1e-6 ? (v * l1) / l0 : v)) as Vec3;
   const w = smoothstep(SPLIT_LO, SPLIT_HI, l1);
-  const st = unitTint(g.shadowTint);
   const ht = unitTint(g.highlightTint);
-  const ss = g.splitShadow ?? g.split;
   x = x.map((v, i) => v * (1 + (st[i] - 1) * ss + ((1 + (ht[i] - 1) * g.split) - (1 + (st[i] - 1) * ss)) * w)) as Vec3;
   const l = luma(x);
   const k = g.shoulder;
@@ -610,6 +627,21 @@ vec3 sectGrade( vec3 c ) {
   float w = smoothstep( ${glslFloat(SPLIT_LO)}, ${glslFloat(SPLIT_HI)}, l1 );
   c *= mix( mix( vec3( 1.0 ), ${glslVec3(unitTint(g.shadowTint))}, ${glslFloat(g.splitShadow ?? g.split)} ),
     mix( vec3( 1.0 ), ${glslVec3(unitTint(g.highlightTint))}, ${glslFloat(g.split)} ), w );
+  float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
+  c = max( vec3( l ) + ( c - vec3( l ) ) * ${glslFloat(g.saturation)}, 0.0 );
+  vec3 rolled = ${k} + ( 1.0 - ${k} ) * ( 1.0 - exp( - ( c - ${k} ) / ( 1.0 - ${k} ) ) );
+  return mix( c, rolled, step( vec3( ${k} ), c ) );
+}
+// The same grade with the green tame, the shadow tint (luminance 1) and the shadow split given
+// (lib/sect/range-look.ts: the range's foliage). Mirrors gradeLinearWith.
+vec3 sectGradeWith( vec3 c, float tame, vec3 shadowTint, float splitShadow ) {
+  c *= ${glslFloat(g.exposure)};
+  c.g -= max( c.g - max( c.r, c.b ), 0.0 ) * tame;
+  float l0 = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
+  float l1 = l0 > 0.0 ? ${glslFloat(g.pivot)} * pow( l0 / ${glslFloat(g.pivot)}, ${glslFloat(g.contrast)} ) : 0.0;
+  c *= l0 > 1e-6 ? l1 / l0 : 1.0;
+  float w = smoothstep( ${glslFloat(SPLIT_LO)}, ${glslFloat(SPLIT_HI)}, l1 );
+  c *= mix( mix( vec3( 1.0 ), shadowTint, splitShadow ), mix( vec3( 1.0 ), ${glslVec3(unitTint(g.highlightTint))}, ${glslFloat(g.split)} ), w );
   float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
   c = max( vec3( l ) + ( c - vec3( l ) ) * ${glslFloat(g.saturation)}, 0.0 );
   vec3 rolled = ${k} + ( 1.0 - ${k} ) * ( 1.0 - exp( - ( c - ${k} ) / ( 1.0 - ${k} ) ) );

@@ -29,6 +29,7 @@ import {
 } from "./detail";
 import { glslFloat } from "./glsl";
 import { clumpField, groundNoise, rankBytes, tilingNoise } from "./noise";
+import { mossGate, RANGE_LOOK } from "./range-look";
 
 const count = (s: string, sub: string) => s.split(sub).length - 1;
 
@@ -574,5 +575,44 @@ describe("tiles (roof courses)", () => {
     expect(detailProgramKey("tiles")).not.toBe(detailProgramKey("paving"));
     expect(m.crest).toBeCloseTo(0.14, 3);
     expect(m.lip).toBeGreaterThan(0.1);
+  });
+});
+
+describe("the range look's detail layers (range-look.ts)", () => {
+  it("draws the range rock's water streaks with the far rock layer, on the range only", () => {
+    const g = detailGlsl("rock");
+    expect(count(g, "float sectRockStreak( vec3 p )")).toBe(1);
+    expect(g.indexOf("float sectNoise3( vec3 x )")).toBeLessThan(g.indexOf("float sectRockStreak( vec3 p )"));
+    expect(g).toContain(glslFloat(1 / RANGE_LOOK.rock.streaks.lengthM));
+    // Still one read of the noise texture's top level (the streak calls sectNoise3).
+    expect(count(g, "textureLod( tSectGroundNoise")).toBe(1);
+    const a = detailApplyGlsl("rock");
+    expect(a).toContain(`1.0 - ${glslFloat(RANGE_LOOK.rock.streaks.dark)} * sectRockStreak( vSectWorld ) * sectRf * sectRw;`);
+    expect(a.indexOf("sectRockFar( vSectWorld )")).toBeLessThan(a.indexOf("sectRockStreak( vSectWorld )"));
+  });
+
+  it("turns far range lawns toward the canopy, from `near` to `far` metres", () => {
+    const a = detailApplyGlsl("ground");
+    const gr = RANGE_LOOK.ground;
+    expect(a).toContain(`smoothstep( ${glslFloat(gr.near)}, ${glslFloat(gr.far)}, sectDd ) * sectRw * ${glslFloat(gr.amount)}`);
+    expect(a.indexOf("sectSheen( vSectWorld")).toBeLessThan(a.indexOf("float sectGl"));
+    expect(detailApplyGlsl("paving")).not.toContain("sectRw");
+    expect(detailApplyGlsl("tiles")).not.toContain("sectRw");
+  });
+
+  it("the range's moss test is the detail's mossy-rock test", () => {
+    for (const hex of ["#5f6a33", "#53673a", "#c8875a", "#8a8070", "#36503a"]) {
+      const t = [1, 3, 5].map((i) => {
+        const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      }) as [number, number, number];
+      expect(mossGate(t)).toBeCloseTo(greenRockGate(t), 9);
+    }
+  });
+
+  it("changes the rock and ground programs' keys with the range look", () => {
+    const tweaked = { ...RANGE_LOOK, rock: { ...RANGE_LOOK.rock, streaks: { ...RANGE_LOOK.rock.streaks, dark: 0.5, lengthM: 55 } } };
+    expect(detailGlsl("rock", DETAIL_LOOK, tweaked)).not.toBe(detailGlsl("rock"));
+    expect(detailApplyGlsl("rock", DETAIL_LOOK, tweaked)).not.toBe(detailApplyGlsl("rock"));
   });
 });

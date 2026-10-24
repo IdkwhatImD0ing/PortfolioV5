@@ -46,7 +46,16 @@ import { isBakedMote } from "@/lib/sect/life";
 import { hotspotSurface, hotspotTint } from "@/lib/sect/look";
 import type { HotspotInfo } from "@/lib/sect/types";
 import { anyMissingColor, repairColors } from "@/lib/sect/vertex-colors";
-import { bakedDetail, patchCardMaterial, patchMaterial, prepareBakedMaterial, prepareNeedleCard, type DetailUniforms } from "./materials";
+import {
+  bakedDetail,
+  commitBuilt,
+  markBuiltSliced,
+  patchCardMaterial,
+  patchMaterial,
+  prepareBakedMaterial,
+  prepareNeedleCard,
+  type DetailUniforms,
+} from "./materials";
 
 export interface HotspotEntry extends HotspotInfo {
   /** Highlight strength shared by the hotspot's material copies (0 off, about 1 on). */
@@ -619,6 +628,10 @@ function* prepareSteps(root: Object3D, opts: PrepareOptions): Generator<void, Pr
     m.removeFromParent();
     m.geometry.dispose();
   }
+  // The range look's built mask (lib/sect/range-look.ts RANGE_LOOK.built): range rock under this
+  // set's stairs, bridges and terraces keeps its stone (the stair piers bake as rock).
+  for (const m of meshes) yield* markBuiltSliced(m);
+  commitBuilt();
 
   const prepMaterial = (m: Material): Material => {
     const b = m as MeshBasicMaterial;

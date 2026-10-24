@@ -60,6 +60,7 @@ import {
 } from "@/lib/sect/free-look";
 import { packPuffs, PUFF_STRIDE, RESORT_DISTANCE2, sortFarToNear } from "@/lib/sect/clouds";
 import { lookFogConstants, puffDensityScale, SECT_LOOK, twilightAmount } from "@/lib/sect/look";
+import { flattenPuff, hazeScaleAt, RANGE_LOOK } from "@/lib/sect/range-look";
 import { isLoreId, loreUnderPointer, type LoreHit, type LoreId } from "@/lib/sect/lore";
 import { turnKeyIntent } from "@/lib/sect/nav";
 import { boxHits, canStandIn, containedItemAt, onScreenDepth, pickWithBoxes, type BoxHit, type PickBox } from "@/lib/sect/pick";
@@ -398,13 +399,17 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
   const fog = useMemo(() => lookFogConstants(meta), [meta]);
   const sky = ctx.sky;
 
+  // The fog chunks (lib/sect/glsl.ts) take their density from the look's constants; three's own
+  // density uniform carries the per-stop haze multiplier instead (lib/sect/range-look.ts
+  // RANGE_LOOK.haze, on meta.fog.density, which the look already scaled by haze.densityScale).
+  const hazeAt = (frame: number) => hazeScaleAt(frame, store.camera.holds) / SECT_LOOK.haze.densityScale;
   useLayoutEffect(() => {
-    scene.fog = new FogExp2(new Color(meta.fog.color), meta.fog.density);
+    scene.fog = new FogExp2(new Color(meta.fog.color), hazeScaleAt(store.frame, store.camera.holds) / SECT_LOOK.haze.densityScale);
     scene.background = new Color(meta.fog.color);
     return () => {
       scene.fog = null;
     };
-  }, [scene, meta]);
+  }, [scene, meta, store]);
 
   // Built once; the sky image arrives later and only swaps a uniform.
   const dome = useMemo(() => {
@@ -505,8 +510,10 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
       if (v) pairs.push([v, v.clone(), new Color(night)]);
     }
     const halo = moon?.children[0] as Mesh | undefined;
-    return { from, to, pairs, coverage: [u.uCoverage.value as number, L.coverage] as const, halo, last: -1 };
-  }, [dome, moon, cloudSea, store]);
+    // The land's haze follows the sky's (scene.fog's colour: every material three fogs reads it).
+    const land: [Color, Color] = [new Color(meta.fog.color), new Color(L.haze)];
+    return { from, to, pairs, land, coverage: [u.uCoverage.value as number, L.coverage] as const, halo, last: -1 };
+  }, [dome, moon, cloudSea, store, meta]);
 
   useEffect(
     () => () => {
@@ -531,11 +538,14 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
       moon.quaternion.copy(camera.quaternion);
       moon.updateMatrixWorld();
     }
+    const fogNow = scene.fog as FogExp2 | null;
+    if (fogNow?.isFogExp2) fogNow.density = hazeAt(store.frame);
     if (twilight) {
       const k = twilightAmount(store.frame, twilight.from, twilight.to);
       if (Math.abs(k - twilight.last) > 1e-3) {
         twilight.last = k;
         for (const [v, day, night] of twilight.pairs) v.copy(day).lerp(night, k);
+        if (fogNow) fogNow.color.copy(twilight.land[0]).lerp(twilight.land[1], k);
         const [c0, c1] = twilight.coverage;
         (dome.material as ShaderMaterial).uniforms.uCoverage.value = c0 + (c1 - c0) * k;
       }
@@ -587,7 +597,15 @@ function CloudPuffs({
   const fog = useMemo(() => lookFogConstants(meta), [meta]);
   const built = useMemo(() => {
     const path: Vec3[] = store.camera.frames.filter((_, i) => i % 6 === 0).map((f) => f.p);
-    const packed = packPuffs(puffs, path, 2600, (c) => puffDensityScale(c, anchors));
+    // Mist as flat layers along the wind (range-look.ts RANGE_LOOK.mist), but for the opening bank
+    // the flight starts in and Ice-Fire Island's steam.
+    const opening: Vec3[] = store.camera.frames.filter((f) => f.f <= store.camera.frameStart + RANGE_LOOK.mist.openingFrames).map((f) => f.p);
+    const packed = packPuffs(
+      puffs.map((p) => flattenPuff(p, opening)),
+      path,
+      2600,
+      (c) => puffDensityScale(c, anchors),
+    );
     const n = packed.length / PUFF_STRIDE;
     if (n === 0) return null;
     const quad = new PlaneGeometry(2, 2);

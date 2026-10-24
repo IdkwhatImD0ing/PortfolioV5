@@ -33,7 +33,9 @@
  *
  * Pure data, maths and GLSL strings (no three.js import), so it is testable.
  */
-import { glslFloat } from "./glsl";
+import { glslFloat, glslVec3 } from "./glsl";
+import { unitTint } from "./look";
+import { RANGE_LOOK, type RangeLook } from "./range-look";
 import type { Tier } from "./runtime";
 
 /**
@@ -555,8 +557,11 @@ float sectSheen( vec3 p, vec3 v, float dist, float ds ) {
 `;
 }
 
-/** GLSL: `float sectRockFar( vec3 p )`, the far rock layer's signed value (0 = none) at p. */
-function rockFarGlsl(look: DetailLook): string {
+/**
+ * GLSL: `float sectRockFar( vec3 p )`, the far rock layer's signed value (0 = none) at p, and
+ * `float sectRockStreak( vec3 p )` (the range's water streaks).
+ */
+function rockFarGlsl(look: DetailLook, range: RangeLook): string {
   const r = look.rockFar;
   const n = DETAIL_NOISE.ground;
   return /* glsl */ `
@@ -577,6 +582,22 @@ float sectRockFar( vec3 p ) {
   if ( uSectRockOctaves > 1.5 ) b = sectNoise3( p * ${glslFloat(1 / r.scalesM[1])} + vec3( 5.3, 1.7, 9.1 ) );
   float band = sin( ( p.y + ( ( a - 0.5 ) * 0.4 + ( b - 0.5 ) ) * ${glslFloat(r.band.warpM)} ) * ${glslFloat((2 * Math.PI) / r.band.periodM)} );
   return ( a - 0.5 ) * ${glslFloat(r.weights[0])} + ( b - 0.5 ) * ${glslFloat(r.weights[1])} + band * ${glslFloat(r.band.weight)};
+}
+${rockStreakGlsl(range)}`;
+}
+
+/**
+ * GLSL: `float sectRockStreak( vec3 p )`, the range rock's dark water streaks (range-look.ts
+ * RANGE_LOOK.rock.streaks), 0..1 with 1 fully dark: the 3D noise stretched up and down, so its low
+ * values run down the faces. Needs sectNoise3.
+ */
+function rockStreakGlsl(range: RangeLook): string {
+  const st = range.rock.streaks;
+  const w = glslFloat(1 / st.widthM);
+  return /* glsl */ `
+float sectRockStreak( vec3 p ) {
+  float n = sectNoise3( p * vec3( ${w}, ${glslFloat(1 / st.lengthM)}, ${w} ) + vec3( 3.1, 7.7, 1.9 ) );
+  return 1.0 - smoothstep( ${glslFloat(st.hi)}, ${glslFloat(st.lo)}, n );
 }
 `;
 }
@@ -707,7 +728,7 @@ vec3 sectPaving( vec3 col, vec3 p, vec3 n, float dist, float ds ) {
  * through sectGroundLayers (4 reads), ground sectSheen (1 read), rock sectRockFar (1 read, 2 on
  * high). Paving: pavingGlsl (the marble scan per slab, 2 reads; the slab layer, 2 reads).
  */
-export function detailGlsl(kind: DetailClass, look = DETAIL_LOOK): string {
+export function detailGlsl(kind: DetailClass, look = DETAIL_LOOK, range: RangeLook = RANGE_LOOK): string {
   if (kind === "paving") return pavingGlsl(look);
   if (kind === "tiles") return tilesGlsl(look);
   const l2 = look.layer2;
@@ -737,7 +758,7 @@ float sectDetail( vec3 p ) {
   return /* glsl */ `${shared}
 uniform float uSectRockFar;
 uniform float uSectRockOctaves;
-${rockFarGlsl(look)}
+${rockFarGlsl(look, range)}
 float sectDetail( vec3 p ) {
   vec3 n = cross( dFdx( p ), dFdy( p ) );
   n *= inversesqrt( max( dot( n, n ), 1e-30 ) );
@@ -761,7 +782,7 @@ float sectDetail( vec3 p ) {
  * detailGlsl. No branch: the texture reads use screen derivatives (the far rock layer's one test
  * is on a uniform, and its reads name their mip level).
  */
-export function detailApplyGlsl(kind: DetailClass, look = DETAIL_LOOK): string {
+export function detailApplyGlsl(kind: DetailClass, look = DETAIL_LOOK, range: RangeLook = RANGE_LOOK): string {
   if (kind === "tiles") return "  diffuseColor.rgb = sectTiles( diffuseColor.rgb, sectTexel );";
   const k = look[kind];
   const d = look.dark;
@@ -792,10 +813,15 @@ export function detailApplyGlsl(kind: DetailClass, look = DETAIL_LOOK): string {
     `    diffuseColor.rgb *= exp2( ( sectDetail( vSectWorld ) - 0.5 ) * ${glslFloat(k.gain)} * sectDf * sectDs );`,
   ];
   if (kind === "ground") {
+    const gr = range.ground;
     return [
       ...head,
       "    vec3 sectDu = sectDv / sectDd;",
       "    diffuseColor.rgb = sectGroundLayers( diffuseColor.rgb, vSectWorld, sectDu, sectDd ) * sectSheen( vSectWorld, sectDu, sectDd, sectDs );",
+      // Far range lawns read as canopy (range-look.ts RANGE_LOOK.ground; sectRw from materials.ts).
+      `    float sectGl = mix( ${glslFloat(gr.lump[0])}, ${glslFloat(gr.lump[1])}, texture2D( tSectGroundNoise, vSectWorld.xz * ${glslFloat(1 / (gr.lumpM * DETAIL_NOISE.ground.cells))} + vec2( 0.61, 0.37 ) ).b );`,
+      `    vec3 sectGc = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) ) * ${glslFloat(gr.value)} * sectGl * ${glslVec3(unitTint(gr.color))};`,
+      `    diffuseColor.rgb = mix( diffuseColor.rgb, sectGc, smoothstep( ${glslFloat(gr.near)}, ${glslFloat(gr.far)}, sectDd ) * sectRw * ${glslFloat(gr.amount)} );`,
       "  }",
     ].join("\n");
   }
@@ -811,6 +837,8 @@ export function detailApplyGlsl(kind: DetailClass, look = DETAIL_LOOK): string {
     "    diffuseColor.rgb = mix( diffuseColor.rgb, sectGroundLayers( diffuseColor.rgb, vSectWorld, sectDv / sectDd, sectDd ), sectGr );",
     `    float sectRf = smoothstep( ${glslFloat(r.fadeNear * 0.5)}, ${glslFloat(r.fadeNear)}, sectDd ) * ( 1.0 - smoothstep( ${glslFloat(r.fadeFar * 0.6)}, ${glslFloat(r.fadeFar)}, sectDd ) ) * uSectRockFar;`,
     `    diffuseColor.rgb *= exp2( sectRockFar( vSectWorld ) * ${glslFloat(r.gain)} * sectRf * mix( ${glslFloat(r.darkFloor)}, 1.0, smoothstep( ${glslFloat(d.lo)}, ${glslFloat(d.hi)}, sectDl ) ) );`,
+    // The range's dark water streaks (range-look.ts RANGE_LOOK.rock.streaks; sectRw from materials.ts).
+    `    diffuseColor.rgb *= 1.0 - ${glslFloat(range.rock.streaks.dark)} * sectRockStreak( vSectWorld ) * sectRf * sectRw;`,
     "  }",
   ].join("\n");
 }

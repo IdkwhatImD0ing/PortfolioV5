@@ -71,6 +71,12 @@ export interface FogConstants {
    * (1 - exp(-od / aerialDepth)): thin haze keeps the plain veil, so the scenery at hand is unchanged.
    */
   aerialDepth: number;
+  /**
+   * Metres from the camera before the page's per-stop extra haze starts (lib/sect/range-look.ts: a
+   * multiplier on the film's haze, SECT_HAZE_SCALE). Nearer than this the film's own haze is all
+   * there is, so the scenery at hand (the halls of a stop) looks as it did.
+   */
+  hazeClear: number;
   /** Valley mist: extinction per metre at mistBaseY (0 = none), thinning upward over mistFalloff. */
   mistDensity: number;
   mistBaseY: number;
@@ -103,6 +109,7 @@ export function fogConstantsFromMeta(meta: SectMeta): FogConstants {
     coolMix: 0,
     desaturate: 0,
     aerialDepth: 0.35,
+    hazeClear: 0,
     mistDensity: 0,
     mistBaseY: cloudTop,
     mistFalloff: 40,
@@ -117,10 +124,21 @@ export function expIntegral(k: number, t: number): number {
   return (1 - Math.exp(Math.min(Math.max(-k * t, -80), 80))) / k;
 }
 
-/** Optical depth of the height haze alone (Blender's world haze). */
-export function hazeLayerDepth(c: FogConstants, y0: number, dy: number, t: number): number {
+/** Optical depth of Blender's world haze from `s0` metres out to `t` along the ray. */
+function hazeSpan(c: FogConstants, y0: number, dy: number, s0: number, t: number): number {
+  const len = t - s0;
+  if (len <= 0) return 0;
   const b = 1 / c.falloff;
-  return c.density * Math.exp(Math.min(Math.max(-(y0 - c.baseY) * b, -80), 80)) * expIntegral(dy * b, t);
+  return c.density * Math.exp(Math.min(Math.max(-(y0 + dy * s0 - c.baseY) * b, -80), 80)) * expIntegral(dy * b, len);
+}
+
+/**
+ * Optical depth of the height haze alone (Blender's world haze), with the page's per-stop
+ * multiplier `scale` (three's fogDensity uniform, SECT_HAZE_SCALE) on the part beyond hazeClear
+ * metres: the film's haze up to there, `scale` times it beyond. Mirrors sectHazeLayerDepth.
+ */
+export function hazeLayerDepth(c: FogConstants, y0: number, dy: number, t: number, scale = 1): number {
+  return hazeSpan(c, y0, dy, 0, t) + (scale - 1) * hazeSpan(c, y0, dy, c.hazeClear, t);
 }
 
 /**
@@ -138,13 +156,13 @@ export function mistOpticalDepth(c: FogConstants, y0: number, dy: number, t: num
 }
 
 /** Air optical depth (haze plus valley mist) along a ray from height y0, vertical component dy, length t. */
-export function hazeOpticalDepth(c: FogConstants, y0: number, dy: number, t: number): number {
-  return hazeLayerDepth(c, y0, dy, t) + mistOpticalDepth(c, y0, dy, t);
+export function hazeOpticalDepth(c: FogConstants, y0: number, dy: number, t: number, scale = 1): number {
+  return hazeLayerDepth(c, y0, dy, t, scale) + mistOpticalDepth(c, y0, dy, t);
 }
 
 /** Fraction of a surface's colour replaced by haze (0..1), before the aerial colour shifts. */
-export function hazeVeil(c: FogConstants, y0: number, dy: number, t: number): number {
-  return 1 - Math.exp(-hazeOpticalDepth(c, y0, dy, t));
+export function hazeVeil(c: FogConstants, y0: number, dy: number, t: number, scale = 1): number {
+  return 1 - Math.exp(-hazeOpticalDepth(c, y0, dy, t, scale));
 }
 
 const LUMA: Vec3 = [0.2126, 0.7152, 0.0722];
@@ -298,9 +316,17 @@ float sectExpIntegral( float k, float t ) {
   if ( abs( k ) < 1e-5 ) return t;
   return ( 1.0 - exp( clamp( - k * t, - 80.0, 80.0 ) ) ) / k;
 }
-float sectHazeLayerDepth( float y0, float dy, float t ) {
+// Blender's height haze from s0 metres out to t.
+float sectHazeSpan( float y0, float dy, float s0, float t ) {
+  float len = t - s0;
+  if ( len <= 0.0 ) return 0.0;
   float b = 1.0 / SECT_FOG_FALLOFF;
-  return SECT_FOG_DENSITY * exp( clamp( - ( y0 - SECT_FOG_BASE_Y ) * b, - 80.0, 80.0 ) ) * sectExpIntegral( dy * b, t );
+  return SECT_FOG_DENSITY * exp( clamp( - ( y0 + dy * s0 - SECT_FOG_BASE_Y ) * b, - 80.0, 80.0 ) ) * sectExpIntegral( dy * b, len );
+}
+// The film's haze, plus the per-stop extra beyond SECT_HAZE_CLEAR metres (the scenery at hand keeps
+// the film's haze alone).
+float sectHazeLayerDepth( float y0, float dy, float t ) {
+  return sectHazeSpan( y0, dy, 0.0, t ) + ( SECT_HAZE_SCALE - 1.0 ) * sectHazeSpan( y0, dy, SECT_HAZE_CLEAR, t );
 }
 // Valley mist: a thin layer low over the cloud layer (gorge floors, under the islands). It starts
 // SECT_MIST_START metres out and stops where the ray sinks into the cloud layer. No noise: noise in
@@ -381,6 +407,11 @@ export function fogDefines(c: FogConstants): string {
     `#define SECT_COOL_MIX ${glslFloat(c.coolMix)}`,
     `#define SECT_DESATURATE ${glslFloat(c.desaturate)}`,
     `#define SECT_AERIAL_DEPTH ${glslFloat(Math.max(c.aerialDepth, 1e-3))}`,
+    `#define SECT_HAZE_CLEAR ${glslFloat(Math.max(c.hazeClear, 0))}`,
+    // The per-stop haze multiplier: three's fogDensity uniform in the materials three fogs (the fog
+    // chunk defines it first; scene.tsx sets the scene's FogExp2 density every frame), 1 in the
+    // custom shaders (the sky dome, the cloud sea and the puffs keep the film's haze).
+    "#ifndef SECT_HAZE_SCALE\n#define SECT_HAZE_SCALE 1.0\n#endif",
     c.mistDensity > 0 ? "#define SECT_MIST" : "",
     `#define SECT_MIST_DENSITY ${glslFloat(c.mistDensity)}`,
     `#define SECT_MIST_BASE_Y ${glslFloat(c.mistBaseY)}`,
@@ -426,6 +457,8 @@ export function fogChunks(c: FogConstants): FogChunks {
   varying vec3 vFogWorldPos;
   #ifdef FOG_EXP2
     uniform float fogDensity;
+    // scene.fog's density carries the per-stop haze multiplier (scene.tsx Atmosphere).
+    #define SECT_HAZE_SCALE fogDensity
   #else
     uniform float fogNear;
     uniform float fogFar;
