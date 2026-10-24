@@ -221,7 +221,9 @@ GLOW_FALLBACK = (1.8, None)
 # here: a factory-startup post does not load the material registry, so the base builder is not known there.
 DETAIL_CLASSES = (
     ("rock", ("rock_cliff", "world_rock_under", "nature_rock_small", "world_pier_stone")),
-    ("ground", ("grass", "soil", "nature_soil_moss", "moss")),
+    # (round 48: the far canopy mass, world.canopy_shell / world.canopy_hull, is ground too: the client grades
+    # far range ground as canopy, and no grass tuft grows that far from the camera)
+    ("ground", ("grass", "soil", "nature_soil_moss", "moss", "nature_canopy_mass")),
     # the plazas, paths and terrace tops (1.2 x 0.8 m slabs, 1.2 cm joints: materials._paving). The joints do not
     # survive 14-20 texels a metre, so the forge and mission plazas baked as flat white sheets (28 % of the lower
     # frame at their holds). Their faces carry the slab coordinates as a second UV set (PAVE_UV): the web draws the

@@ -24,8 +24,9 @@ PARTS (default walls,canopy,shelves,hero,forest,rock,abode):
               round-48 dressing built (areas/abode.r48_dress). abode_undo takes it back.
 SCOPE b0 | slice | all (default all): the canopy masks and the walls step stay inside it; shelves and hero only on
 the pillars inside it.
-Overrides: KEY=value for an upper-case constant of sect/scenery.py, lib/nature.py or sect/world.py
-(CANOPY_DENSITY=0.03, CANOPY_NEAR_K=0.25 ...), FOREST=..., PARTS=..., DRY_RUN=1.
+Overrides: KEY=value for an upper-case constant of sect/scenery.py, lib/nature.py, sect/world.py or lib/materials.py
+(CANOPY_DENSITY=0.03, CANOPY_NEAR_K=0.25, ROCK_SCAN_HUE=0.8 ...), FOREST=..., PARTS=..., DRY_RUN=1. A materials
+override only lasts for that run's PARTS=rock rebuild; put the value in lib/materials.py to keep it.
 
 Checks (any failure stops before saving): the shared scatter groups are version 3 (else nothing is touched); no
 existing tree prototype is rebuilt (new ones, broadleaf / masson / scrub, are allowed); the keep zones keep every
@@ -139,7 +140,7 @@ def part_abode(undo=False):
 
 def main():
     t0 = time.time()
-    opt = R.options(PARTS, dict(forest=""), modules=(S, N, W))
+    opt = R.options(PARTS, dict(forest=""), modules=(S, N, W, M))
     if not any(a.startswith("PARTS=") for a in (sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])):
         opt["parts"] = DEFAULT_PARTS
     if opt["forest"]:
