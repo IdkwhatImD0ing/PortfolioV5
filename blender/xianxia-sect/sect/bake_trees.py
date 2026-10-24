@@ -196,11 +196,16 @@ def proto_obj(name):
     return ob if ob is not None and ob.type == "MESH" else None
 
 
+BROADLEAF_NEAR_RATIO = 0.2     # the broadleaf's leafless hero crown (about 6k triangles) near the path
+
+
 def mesh_source(fam):
     """(object, decimation ratio) for the near mesh of a family."""
     kind = fam.split(".")[0]
     if fam.startswith("pine.huangshan"):
         return proto_obj(fam + ".far") or proto_obj(fam + ".mid") or proto_obj(fam + ".hero"), 1.0
+    if fam.startswith("pine.broadleaf"):        # round 48: about 1.2k triangles near (the plan's budget; 0.35 gave 2k)
+        return proto_obj(fam + ".hero") or proto_obj(fam + ".far"), BROADLEAF_NEAR_RATIO
     if kind == "pine":
         return proto_obj(fam + ".hero") or proto_obj(fam + ".mid"), 0.35
     if kind == "blossom":
