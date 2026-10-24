@@ -3716,11 +3716,12 @@ def hull_clumps_bm(clumps, seed=0):
 def _register_r48_materials():
     R = M.register
     pad = dict(tuft=2.0, transl=0.18, sun_mix=0.32, under_k=0.4, cells=2.2)
-    R("nature_canopy_a", _mat_pine_pad, dark="#1f3322", mid="#2f4a32", light="#4d6b35", sun="#8a9a4a",
+    # (slice: the sunlit tops a touch greener and darker, hue about 85 deg not 70: they read yellow-sage on the web)
+    R("nature_canopy_a", _mat_pine_pad, dark="#1f3322", mid="#2f4a32", light="#466636", sun="#76904a",
       under="#1b2c1f", crevice="#152519", **pad)
-    R("nature_canopy_b", _mat_pine_pad, dark="#253823", mid="#3a5530", light="#5c7639", sun="#9aa24e",
+    R("nature_canopy_b", _mat_pine_pad, dark="#253823", mid="#3a5530", light="#527039", sun="#84984e",
       under="#1e301d", crevice="#18281a", **pad)
-    R("nature_canopy_c", _mat_pine_pad, dark="#1b3026", mid="#2b4637", light="#476548", sun="#82955a",
+    R("nature_canopy_c", _mat_pine_pad, dark="#1b3026", mid="#2b4637", light="#41604a", sun="#728c5c",
       under="#182b22", crevice="#132219", **pad)
     R("nature_canopy_accent", _mat_pine_pad, dark="#2c4426", mid="#4a6a32", light="#7a9a48", sun="#b0b860",
       under="#24381f", crevice="#1e301a", **pad)

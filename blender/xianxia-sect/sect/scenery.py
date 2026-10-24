@@ -743,15 +743,15 @@ OLD_RANGE_MASKS = ("scenery_forest", "scenery_cliff", "scenery_cliff_dense", "sc
                    "world_veg")
 CANOPY_NEAR = 90.0             # m from the camera path: nearer than this the canopy thins to CANOPY_NEAR_K (the bake
 CANOPY_NEAR_K = 0.6            # draws trees within --tree-near as 3D meshes; B0 had only 66 within 70 m at 0.3)
-CANOPY_DENSITY = 0.028         # broadleaf crowns per m2 at factor 1 (a closed canopy: ~1 per 30 m2)
+CANOPY_DENSITY = 0.042         # broadleaf crowns per m2 at factor 1 (slice: 0.028 left gaps between single crowns)
 SPIRE_DENSITY = 0.005          # Masson spires (10-25 % of a canopy, more on rims and crests)
 PINE_DENSITY = 0.002           # Huangshan pines on convex crests only (under 15 %)
-SCRUB_DENSITY = 0.035          # scrub on 37-60 deg slopes
+SCRUB_DENSITY = 0.09           # scrub on 37-60 deg slopes (slice: 0.035 read as scattered dots, rule 2)
 ACCENT_DENSITY = 0.006         # spring-green accent crowns in clusters by buildings, falls and path turns
-CANOPY_SCALE = (0.6, 1.2)      # x nature.CANOPY_HEIGHT (10 m): 6-12 m crowns (plan D11: not 12-24 m)
+CANOPY_SCALE = (0.7, 1.4)      # x nature.CANOPY_HEIGHT (10 m): 7-14 m crowns (plan D11: not 12-24 m), closing the canopy
 SPIRE_SCALE = (0.6, 1.4)
 PINE_SCALE = (0.6, 1.0)
-SCRUB_SCALE = (0.8, 2.0)
+SCRUB_SCALE = (1.2, 2.8)
 GROVE_SCALE = 45.0             # m: groves and clearings (2D noise)
 GROVE_FLOOR = 0.45             # density factor in a clearing (slice: 0.2 left lawn patches in the closed canopy)
 CONCAVE_BLUR = 30.0            # m: concavity (gullies x2, ridges x0.4) against the terrain smoothed this wide
@@ -775,7 +775,8 @@ SHELF_DENSITY = 0.2            # shrubs per m2 of pillar shelf top (mean; in clu
 SHELF_CLUMP = (6.0, 2.6)       # m across a shelf clump; density factor inside one (about 40 % of a shelf is in clumps)
 SHELF_CROWN = 0.05             # small broadleaf crowns (3-5.5 m) per m2 of shelf, in the same clumps: they overhang
                                # the lip, so a shelf reads as a green band from the side, not a line of dots
-CRACK_DENSITY = 0.04           # ferns per m2 of pillar crack strip
+CRACK_DENSITY = 0.1            # ferns per m2 of pillar crack strip (mean; in vertical runs by CRACK_RUN)
+CRACK_RUN = (4.0, 30.0, 3.0)   # m across and m tall a run of crack plants; density factor inside one (strips, not dots)
 CAP_DENSITY = 0.06             # broadleaf per m2 of pillar cap (a closed canopy cap from 50 m, rule 3)
 CAP_RIM_SPIRE = 0.012          # spires per m2 on the cap's outer quarter
 CAP_RIM_BROADLEAF = 0.03       # broadleaf per m2 on the cap's outer quarter, leaning out: 1-2 crowns spill over the rim
@@ -1093,6 +1094,24 @@ def _shelf_clumps(ob):
     me.update()
 
 
+def _crack_runs(ob):
+    """'r48_crack_f' (FACE float) on a pillar: the crack plants' density factor, CRACK_RUN[2] inside vertical runs
+    about CRACK_RUN[0] m across and CRACK_RUN[1] m tall (noise over arc length and height), 0 between them, so the
+    fissures read as green strips (rule 2), not a scatter of dots."""
+    me = ob.data
+    c = np.empty(len(me.polygons) * 3)
+    me.polygons.foreach_get("center", c)
+    c = c.reshape(-1, 3)
+    tr = float(ob.get("nature_top_radius", 10.0))
+    arc = np.arctan2(c[:, 1], c[:, 0]) * tr
+    nz = W._VNoise(4907 + int(ob.get("r48_peak", 0)))
+    v = nz(arc / CRACK_RUN[0], c[:, 2] / CRACK_RUN[1], 1.0, o=6)
+    f = (CRACK_RUN[2] * W._smooth(0.05, 0.3, v)).astype(np.float32)
+    at = me.attributes.get("r48_crack_f") or me.attributes.new("r48_crack_f", 'FLOAT', 'FACE')
+    at.data.foreach_set("value", f)
+    me.update()
+
+
 def r48_pillar_plants(coll, scope=None):
     """P-2 / P-3 on every round-48 pillar (world.peak.*): a closed broadleaf cap with spires and outward-leaning
     crowns on its rim (they spill over it), shrub clumps on the shelves (the range-only group with the clump factor
@@ -1117,21 +1136,23 @@ def r48_pillar_plants(coll, scope=None):
             a2.data.foreach_set("value", v)
             me.update()
         _shelf_clumps(ob)
+        _crack_runs(ob)
         seed = int(ob.get("r48_peak", 0)) * 13 + 4900
         for nm, protos, dens, mask, scale, slope, align in (
                 (".cap", N.canopy_prototypes("broadleaf"), CAP_DENSITY, "nature_cap", (0.55 * ks, 1.0 * ks), 50.0, 0.1),
                 (".cap_spire", N.canopy_prototypes("spire"), CAP_RIM_SPIRE, "r48_rim", (0.5 * ks, 1.1 * ks), 60.0,
                  0.05),
                 (".shelf", N.canopy_prototypes("shelf"), SHELF_DENSITY, "nature_shelf", (1.2, 2.4), 60.0, 0.2),
-                (".crack", N.canopy_prototypes("fern"), CRACK_DENSITY, "nature_crack", (0.45, 0.9), 84.0, 0.5),
+                (".crack", N.canopy_prototypes("fern"), CRACK_DENSITY, "nature_crack", (0.6, 1.2), 84.0, 0.5),
                 (".cap_rim", N.canopy_prototypes("broadleaf"), CAP_RIM_BROADLEAF, "r48_rim", (0.6 * ks, 1.05 * ks),
                  75.0, 0.35),
                 (".shelf_crown", N.canopy_prototypes("broadleaf"), SHELF_CROWN, "nature_shelf", (0.3, 0.55), 60.0,
                  0.3)):
-            if nm in (".shelf", ".shelf_crown"):
+            if nm in (".shelf", ".shelf_crown", ".crack"):
                 s = N.rscatter_on(ob, protos, density=dens, seed=seed, max_slope=math.radians(slope),
                                   scale_range=scale, collection=coll, name=ob.name + nm, align=align,
-                                  mask_attribute=mask, factor_attribute="r48_shelf_f")
+                                  mask_attribute=mask,
+                                  factor_attribute="r48_crack_f" if nm == ".crack" else "r48_shelf_f")
             else:
                 s = N.scatter_on(ob, protos, density=dens, seed=seed, max_slope=math.radians(slope),
                                  scale_range=scale, collection=coll, name=ob.name + nm, align=align,
