@@ -306,8 +306,8 @@ def cull_islands(islands, views, intent, star=None, log=print):
                 continue
             bad = None
             if sb is not None:
-                w = max(0.05, sb["u1"] - sb["u0"])
-                if sb["u0"] - w < u < sb["u1"] + w and v < sb.get("v_bot", 1.0) + 0.05:
+                m = min(0.08, 0.25 * max(0.05, sb["u1"] - sb["u0"]))
+                if sb["u0"] - m < u < sb["u1"] + m and sb["v_top"] - 0.06 < v < sb.get("v_bot", 1.0):
                     bad = "near the star"
             if bad is None and zone is not None and not _in_rect(u, v, zone):
                 bad = "outside the zone"
