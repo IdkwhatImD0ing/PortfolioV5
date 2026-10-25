@@ -96,6 +96,13 @@ DENSE_TAG = "sect_density"      # = scenery.DENSITY_TAG
 # joints, vines hanging from the rim and a shrub shelf left of the fall. A finished scene gets the same through
 # sect/patch_r48_green.py PARTS=abode (the old pines hidden, not deleted: PARTS=abode_undo shows them again).
 ABODE_R48 = True
+R48_DRESS = False              # phase D (range critic M4): r48_dress builds nothing. Its sawn-slab shelf with two flat
+                               # pines, the shrub-shelf slab, the vines (black strips) and the fern strips (bead
+                               # ladders) read as man-made; with the face pines gone the cliff reads as one mass
+                               # (intent 3.1 abode). The code stays for a later, better-placed dressing
+R48_TOP_X = 33.0               # round 48: no cliff-top pine past |x| 33 m. There _top's shoulders drop the top edge to
+                               # 4 m, so a top pine stands on the falling flank and reads as growing out of the face
+                               # (range critic M4: f1380 x 315-395, the formation's view of the right flank)
 R48_TAG = "sect_r48"            # = scenery.R48_TAG
 R48_SHELF = (INSC_X + 9.5, 31.0, 9.0)          # hero-pine shelf: x, z (its top), width
 R48_SHELF_PINES = ((-0.24, 8.5, 3), (0.2, 6.6, 8))   # (along the shelf (x width), height m, seed)
@@ -743,9 +750,10 @@ def dense_pines(coll, root):
         if not _top_free(p.x, p.y) or any(math.hypot(p.x - a, p.y - b) < DENSE_SPACING for a, b in taken):
             continue
         taken.append((p.x, p.y))
-        ob = N.pine(coll, h, seed=seed, style="huangshan", lod="far", name=K + ".dense_top_pine", parent=root,
-                    location=(p.x, p.y, p.z - 0.6))
-        ob[DENSE_TAG] = "abode"
+        if not (ABODE_R48 and abs(p.x) > R48_TOP_X):     # (the draw stays, so the others stand where they stood)
+            ob = N.pine(coll, h, seed=seed, style="huangshan", lod="far", name=K + ".dense_top_pine", parent=root,
+                        location=(p.x, p.y, p.z - 0.6))
+            ob[DENSE_TAG] = "abode"
         top += 1
     print("ABODE dense pines: face %d of %d, top %d of %d (top rows %.0f m2)"
           % (face, DENSE_FACE_PINES, top, want, area), flush=True)
@@ -760,12 +768,18 @@ def _out_dir(x):
 
 def r48_old_face_pines():
     """The objects round 48 takes off the cliff face (sect/patch_r48_green.py PARTS=abode hides them): the dense face
-    pines, the hand-placed FACE_PINES and the pinnacles' wall pines."""
+    pines, the hand-placed FACE_PINES and the pinnacles' wall pines, and (phase D) the cliff-top pines on the
+    shoulders, past |x| R48_TOP_X in abode.root's frame."""
     out = []
+    root = bpy.data.objects.get(K + ".root")
+    inv = root.matrix_world.inverted() if root is not None else None
     for o in bpy.data.objects:
         nm = o.name
         if nm.startswith(K + ".dense_cliff_pine") or nm.startswith(K + ".cliff_pine") or \
                 (nm.startswith(K + ".pinnacle") and ".pine" in nm and o.instance_type == 'COLLECTION'):
+            out.append(o)
+        elif inv is not None and nm.startswith((K + ".top_pine", K + ".dense_top_pine")) and \
+                abs((inv @ o.matrix_world.translation).x) > R48_TOP_X:
             out.append(o)
     return out
 
@@ -776,6 +790,9 @@ def r48_dress(coll, root):
     grow: _face_free), vines from the rim (one mesh, material nature_vine, kept off the inscription and the fall)
     and a shrub shelf left of the fall. Everything is a child of ``root``, named abode.r48_*, tagged R48_TAG =
     'abode'. Returns the objects."""
+    if not R48_DRESS:
+        print("ABODE round 48 dressing: none (R48_DRESS off; the cliff stays one mass)", flush=True)
+        return []
     r = U.rng(K, "r48_dress")
     made = []
 
@@ -886,6 +903,8 @@ def _plants(coll, root, pool):
         N.pine(coll, h, seed=k, style="cliff", name=K + ".cliff_pine", parent=root,
                location=(p.x, p.y + 0.6, p.z), rotation=_face_yaw(x))
     for k, (x, y, z) in enumerate(_top_pine_points()):
+        if ABODE_R48 and abs(x) > R48_TOP_X:
+            continue
         N.pine(coll, 10.0 + 2.0 * (k % 2), seed=k + 2, style="huangshan", name=K + ".top_pine", parent=root,
                location=(x, y, z))
     dense_pines(coll, root)

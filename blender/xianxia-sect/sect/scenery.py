@@ -784,6 +784,9 @@ SHELF_CLUMP = (9.0, 3.4)       # m across a shelf clump; density factor inside o
 SHELF_CLUMP_COVER = 0.65       # run, big, medium and small, bare shelf between; share of the shelf top in clumps)
 SHELF_CROWN = 0.12             # small broadleaf crowns (3-7 m) per m2 of shelf, in the same clumps: they overhang
 SHELF_CROWN_SCALE = (0.3, 0.7)  # the lip 0.5-2 m, so a shelf reads as a green mass from the side, not dots
+R48_BARE_SHELF_PEAKS = (10,)   # pillars with shelf shrubs but no shelf crowns: peak 10 stands behind 思過崖, whose
+                               # host is bare jointed granite (intent 3.1 mirror); its crowns read as four flat
+                               # pine pads from the mirror (phase D, range critic M5)
 CRACK_DENSITY = 0.2            # ferns per m2 of pillar crack strip (mean; in vertical runs by CRACK_RUN)
 CRACK_RUN = (6.0, 24.0, 3.0)   # m across and m tall a run of crack plants; density factor inside one (strips, not dots)
 CRACK_COVER = 0.35             # share of the crack faces inside runs (phase C, F6: fewer, denser runs; no single dots)
@@ -1231,6 +1234,30 @@ def _pillars(scope=None):
     return [o for o in out if R.in_scope(scope, [tuple(o.matrix_world.translation)[:2]])[0]]
 
 
+def _drop_lone_shelves(ob):
+    """lib.nature.drop_lone_shelves_bm on a finished pillar's mesh: shelf faces in edge-connected runs of fewer than
+    N.SHELF_MIN_RUN faces go back to rock ('nature_shelf' 0, the cushion material 2 back to 0), as peak_pillar now
+    builds them (phase D, range critic M3). Idempotent. Returns how many faces changed."""
+    import bmesh
+    me = ob.data
+    if me.attributes.get("nature_shelf") is None:
+        return 0
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    try:
+        lay = bm.faces.layers.float.get("nature_shelf")
+        if lay is None:
+            return 0
+        n = N.drop_lone_shelves_bm(bm, lay, green=True)
+        if n:
+            me.attributes["nature_shelf"].data.foreach_set("value", np.array([f[lay] for f in bm.faces], np.float32))
+            me.polygons.foreach_set("material_index", np.array([f.material_index for f in bm.faces], np.int32))
+            me.update()
+        return n
+    finally:
+        bm.free()
+
+
 def _shelf_clumps(ob):
     """'r48_shelf_f' (FACE float) on a pillar: the shelf shrubs' density factor, SHELF_CLUMP[1] inside clumps about
     SHELF_CLUMP[0] m across (noise on the face centre, sheared with height so clumps differ from shelf to shelf), 0
@@ -1316,6 +1343,7 @@ def r48_pillar_plants(coll, scope=None):
             a2 = me.attributes.new("r48_rim", 'FLOAT', 'FACE')
             a2.data.foreach_set("value", v)
             me.update()
+        n["lone_shelf_faces"] = n.get("lone_shelf_faces", 0) + _drop_lone_shelves(ob)
         _shelf_clumps(ob)
         _crack_runs(ob)
         seed = int(ob.get("r48_peak", 0)) * 13 + 4900
@@ -1330,6 +1358,9 @@ def r48_pillar_plants(coll, scope=None):
                  75.0, 0.35),
                 (".shelf_crown", N.canopy_prototypes("broadleaf"), SHELF_CROWN, "nature_shelf", SHELF_CROWN_SCALE,
                  60.0, 0.3)):
+            if nm == ".shelf_crown" and int(ob.get("r48_peak", -1)) in R48_BARE_SHELF_PEAKS:
+                seed += 1           # (the seeds of the scatters after it stay as they were)
+                continue
             if nm in (".shelf", ".shelf_crown", ".crack"):
                 s = N.rscatter_on(ob, protos, density=dens, seed=seed, max_slope=math.radians(slope),
                                   scale_range=scale, collection=coll, name=ob.name + nm, align=align,
@@ -1543,6 +1574,7 @@ def r48_island_caps(kd, prefixes=("scenery.island", "world.islet"), keep=None):
 
 # ---- round 48, C: islands and islets, falls, horizon -------------------------------------------------------------
 
+LIFE_ISLAND = "life.island."   # life.build_islands' blossoms and azaleas: they go with a culled rock (range critic M1)
 R48_FALL_W = (0.3, 0.5)        # island fall width x island size (was 0.16-0.26)
 R48_RANGE_FALL_W = (12.0, 22.0)
 
@@ -1612,13 +1644,15 @@ def r48_isles(intent, hold_views, star, log=None):
 
 
 def _hide_culled_companions():
-    """Hide the top-level companions (scenery.island.*, world.islet.*: top pines, blossoms, falls) standing on any rock
-    the isles part has hidden, by the rock's own box widened by NUDGE_REACH (one pass over the objects; per rock
-    island_companions with children_recursive took minutes over 80 rocks). Not life.*: the life pass's chain bridge
-    has its origin at the world's origin, inside a culled island's box, and is a location (rule 13); a first try hid
-    it, so any life.* object hidden as 'isles' is shown again here. Returns the number hidden."""
+    """Hide the top-level companions (scenery.island.*, world.islet.*: top pines, blossoms, falls; life.island.*: the
+    life pass's peach blossoms and azaleas) standing on any rock the isles part has hidden, by the rock's own box
+    widened by NUDGE_REACH (one pass over the objects; per rock island_companions with children_recursive took minutes
+    over 80 rocks). No other life.*: the life pass's chain bridge has its origin at the world's origin, inside a culled
+    island's box, and is a location (rule 13); a first try hid it, so any other life.* object hidden as 'isles' is
+    shown again here. (Phase D, range critic M1: the life.island blossoms had stayed, 16 groups floating in the sky
+    in 9 of 18 stills.) Returns the number hidden."""
     for o in bpy.data.objects:
-        if o.name.startswith("life.") and o.get(R48_HIDDEN) == "isles":
+        if o.name.startswith("life.") and not o.name.startswith(LIFE_ISLAND) and o.get(R48_HIDDEN) == "isles":
             o.hide_render = False
             o.hide_viewport = False
             del o[R48_HIDDEN]
@@ -1640,7 +1674,7 @@ def _hide_culled_companions():
     for o in bpy.data.objects:
         if o.parent is not None or o.hide_render or _ISLAND_ROCK.match(o.name) or _ISLET_ROCK.match(o.name):
             continue
-        if not o.name.startswith(("scenery.island.", "world.islet.")):
+        if not o.name.startswith(("scenery.island.", "world.islet.", LIFE_ISLAND)):
             continue
         p = o.matrix_world.translation
         if ((B[:, 0] <= p.x) & (p.x <= B[:, 1]) & (B[:, 2] <= p.y) & (p.y <= B[:, 3]) & (B[:, 4] <= p.z) &
@@ -1656,7 +1690,8 @@ def _hide_culled_companions():
     C = np.array([r["c"] for r in recs], float).reshape(-1, 3)
     Sz = np.array([r["size"] for r in recs], float)
     for o in bpy.data.objects:
-        if o.parent is not None or o.hide_render or not o.name.startswith(("world.islet.pine", "scenery.island.pine")):
+        if o.parent is not None or o.hide_render or \
+                not o.name.startswith(("world.islet.pine", "scenery.island.pine", LIFE_ISLAND)):
             continue
         p = np.array(o.matrix_world.translation)
         if not len(C) or not (np.hypot(C[:, 0] - p[0], C[:, 1] - p[1]) < np.maximum(15.0, 0.8 * Sz)).any():
@@ -1666,6 +1701,34 @@ def _hide_culled_companions():
                 out.append(x)
                 stack += kids.get(x.name, [])
     return r48_hide(out, "isles")
+
+
+def r48_sink_range_chips(rng_obj):
+    """world.sink_chips on world.range's mesh (a finished scene; terrain_data does the same on a fresh build): its loose
+    parts under world.RANGE_CHIP_FACES faces go down whole under the cloud sea (phase D, range critic M2). Vertices
+    move; faces, their order and their attributes stay, so the scatters elsewhere keep every instance. Returns
+    dict(chips, moved vertices)."""
+    me = rng_obj.data
+    nv, nf = len(me.vertices), len(me.polygons)
+    co = np.empty(nv * 3)
+    me.vertices.foreach_get("co", co)
+    co = co.reshape(-1, 3)
+    lt = np.empty(nf, np.int64)
+    me.polygons.foreach_get("loop_total", lt)
+    ls = np.empty(nf, np.int64)
+    me.polygons.foreach_get("loop_start", ls)
+    if not (lt == 4).all() or not np.array_equal(ls, np.arange(nf) * 4):
+        raise ValueError("r48_sink_range_chips: world.range is not all quads in order")
+    lv = np.empty(len(me.loops), np.int64)
+    me.loops.foreach_get("vertex_index", lv)
+    before = co.copy()
+    chips = W.sink_chips(co, lv.reshape(-1, 4))
+    moved = int((np.abs(co - before).max(1) > 1e-6).sum())
+    if moved:
+        me.vertices.foreach_set("co", co.ravel())
+        me.update()
+    _log("r48 range chips: %d loose parts under %d faces, %d vertices moved down" % (chips, W.RANGE_CHIP_FACES, moved))
+    return dict(chips=chips, moved=moved)
 
 
 def r48_unhide_isles():

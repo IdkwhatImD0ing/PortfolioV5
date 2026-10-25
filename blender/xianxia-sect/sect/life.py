@@ -911,6 +911,8 @@ def build_islands(ctx):
         return made
     for prefix in ISLAND_PREFIXES:
         for rock in _rocks(prefix):
+            if rock.hide_render:        # a rock round 48's isles part culled (range critic M1: blossoms in the sky)
+                continue
             me = rock.data
             n = len(me.polygons)
             if not n:

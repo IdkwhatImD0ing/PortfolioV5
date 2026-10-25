@@ -3481,6 +3481,9 @@ def pillar_preset(preset, top_radius):
 PILLAR_SEG = dict(hero=1.25, mid=2.5, far=4.0)             # m of wall per segment round the pillar
 PILLAR_SEG_CLAMP = dict(hero=(96, 320), mid=(40, 160), far=(28, 80))
 SHELF_NZ = 0.55            # an up-facing rock face this flat (normal z) under the dome is a shelf top
+SHELF_MIN_RUN = 3          # a shelf needs this many edge-connected shelf faces; a lone one or a pair turns back to
+                           # rock (phase D, range critic M3: single tilted faces showed as flat green stickers on the
+                           # f870 wall, and the shelf scatter put a lone shrub on one)
 CRACK_MIN = 0.3            # fissure strength (_PillarShape.fissure) over which a steep face is a crack strip
 CRACK_NZ = 0.5             # ... steep: |normal z| under this (60 deg and steeper)
 FRINGE_MIN = 0.6           # m: a shelf this deep or deeper gets the hanging fringe along its lip
@@ -3570,6 +3573,34 @@ def _pillar_fringe_bm(shape, seed, kx, ky, detail):
     return bm, shelves
 
 
+def drop_lone_shelves_bm(bm, shelf_l, green=True, min_run=None):
+    """Shelf faces (layer ``shelf_l`` > 0.5) in edge-connected runs of fewer than ``min_run`` (SHELF_MIN_RUN) faces go
+    back to rock: the flag cleared and, when ``green``, material 2 (the shelf cushion) back to 0. Returns how many."""
+    min_run = SHELF_MIN_RUN if min_run is None else min_run
+    bm.faces.index_update()
+    seen, n = set(), 0
+    for f in bm.faces:
+        if f.index in seen or f[shelf_l] <= 0.5:
+            continue
+        run, stack = [], [f]
+        seen.add(f.index)
+        while stack:
+            g = stack.pop()
+            run.append(g)
+            for e in g.edges:
+                for h in e.link_faces:
+                    if h.index not in seen and h[shelf_l] > 0.5:
+                        seen.add(h.index)
+                        stack.append(h)
+        if len(run) < min_run:
+            for g in run:
+                g[shelf_l] = 0.0
+                if green and g.material_index == 2:
+                    g.material_index = 0
+            n += len(run)
+    return n
+
+
 def peak_pillar(collection, height=150.0, top_radius=18.0, bottom_radius=None, seed=0, top_z=0.0, preset="sandstone",
                 lod="mid", name=None, location=(0, 0, 0), parent=None, dip=None, dip_az=None, fringe=None,
                 green_shelves=True):
@@ -3616,6 +3647,7 @@ def peak_pillar(collection, height=150.0, top_radius=18.0, bottom_radius=None, s
         elif abs(nz) < CRACK_NZ and shape.fissure(math.atan2(c.y, c.x), z0) > CRACK_MIN:
             f[crack_l] = 1.0
             n_crack += 1
+    n_shelf -= drop_lone_shelves_bm(bm, shelf_l, green_shelves)
     nm = _name(name, "peak_pillar")
     ob = _mesh_obj(nm, bm, collection, ["rock_cliff", "nature_soil_moss", SHELF_GREEN_MAT], parent=parent,
                    location=location)

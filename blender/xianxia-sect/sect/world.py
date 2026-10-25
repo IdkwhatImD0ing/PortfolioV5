@@ -908,9 +908,51 @@ def terrain_data(rng_, grid=None, lip=RIM_LIP):
     faces = np.concatenate([q_t, q_b, q_l])
     mats = np.concatenate([mat_t, np.full(len(q_b) + len(q_l), 2)])
     veg = np.concatenate([veg, np.zeros(len(q_b) + len(q_l), bool)])
+    sink_chips(verts, faces)
     grid = dict(X=X, Y=Y, T=T, F=F, B=B, rim=rim, inside=inside)
     return dict(verts=verts, faces=faces, mats=mats, veg=veg, grid=grid, n_top=n_used, n_inside=n_in, n_rim=n_rim,
                 n_lip=len(q_l), n_qt=len(q_t), n_qb=len(q_b))
+
+
+RANGE_CHIP_FACES = 200         # a loose part of the range with fewer faces than this is a chip: a few-m footprint the
+RANGE_CHIP_Z = -400.0          # field leaves on its own, a slab floating in the air (phase D, range critic M2: the
+                               # 'crown over the cloud sea' at f1300 was one); sink_chips drops it, whole, so its top is
+                               # here, under the cloud sea and the haze (vertices move, faces and indices stay)
+
+
+def vertex_parts(n_verts, faces):
+    """Per vertex, the lowest vertex index of its connected part (vertices joined by ``faces``, an (m, k) index
+    array)."""
+    lab = np.arange(n_verts)
+    faces = np.asarray(faces, np.int64)
+    while True:
+        new = lab.copy()
+        np.minimum.at(new, faces.ravel(), np.repeat(lab[faces].min(1), faces.shape[1]))
+        new = new[new]
+        new = new[new]
+        if np.array_equal(new, lab):
+            return lab
+        lab = new
+
+
+def sink_chips(verts, faces, max_faces=None, z=None):
+    """Move every loose part of the range with fewer than RANGE_CHIP_FACES faces down whole, so its top stands at
+    RANGE_CHIP_Z (in place on ``verts``; idempotent: a sunk chip's top is already there). Returns the number of
+    chips."""
+    max_faces = RANGE_CHIP_FACES if max_faces is None else max_faces
+    z = RANGE_CHIP_Z if z is None else z
+    if not len(faces):
+        return 0
+    lab = vertex_parts(len(verts), faces)
+    part, cnt = np.unique(lab[np.asarray(faces, np.int64)[:, 0]], return_counts=True)
+    small = part[cnt < max_faces]
+    if not len(small):
+        return 0
+    top = np.full(len(verts), -np.inf)
+    np.maximum.at(top, lab, verts[:, 2])
+    m = np.isin(lab, small)
+    verts[m, 2] += z - top[lab[m]]
+    return int(len(small))
 
 
 def rim_lip(q_t, bot_of):
@@ -1143,12 +1185,19 @@ BACKDROP_R48 = (
 )
 
 
+BACKDROP_R48_CUT = ("family1",)   # not built: family1 stands under the moon, and from the summit its two front pillars
+                                  # read as stumps in the quiet sea (intent 3.1 summit: sky only; 3.2 f1729: the
+                                  # purest void; phase D, range critic M5). The table keeps it, so seeds stay
+
+
 def build_backdrop(coll, count=14):
     """Round 48: the BACKDROP_R48 horizon (lib.nature.peak_pillar at the far level, no fringe, rising out of the
     cloud sea), named 'world.backdrop' like the massifs before it (export_web counts them as backdrop massifs).
     ``count`` is kept for the old signature (build_backdrop_r47 builds the 14 massifs as before)."""
     out = []
     for i, (kind, x, y, top, tr, br, preset) in enumerate(BACKDROP_R48):
+        if kind in BACKDROP_R48_CUT:
+            continue
         if preset == "sandstone" and tr < N.SLIM_R:
             br = max(br, 1.5 * tr)          # (phase C, F5: the far families read as chimneys over the cloud sea)
         ob, _info = N.peak_pillar(coll, height=top - (CLOUD_SEA_Z - 30.0), top_radius=tr, bottom_radius=br,
