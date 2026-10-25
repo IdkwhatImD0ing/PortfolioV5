@@ -7,7 +7,7 @@
 <a id="top"></a>
 
 <p align="center">
-  <a href="https://art3m1s.me"><img src="client/public/favicon.svg" width="88" height="88" alt="The sect's seal: a crescent moon and a sun on red"/></a>
+  <a href="https://art3m1s.me"><picture><source media="(prefers-color-scheme: light)" srcset=".github/readme/seal-light.svg"/><img src=".github/readme/seal.svg" width="88" height="88" alt="The sect's seal: a sun held in a crescent moon, cut into a red stone seal"/></picture></a>
 </p>
 
 <h1 align="center">日月神教<br/><sub>The Sun Moon Divine Sect</sub></h1>

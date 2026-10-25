@@ -251,6 +251,24 @@ horizon gets pillar families and level mesas. Every hall, prop and stair stays a
 trunks, not enough grenery. In real life, people just see green, they dont see the trunk", "the overall background
 and vibe of the scene don't quite have enough intent yet", and, on the plan, "i approve of the new background".
 
+### 2026-10-24 · The logo is cut like a seal
+
+**Decided.** The logo keeps its idea and its three colours, a paper crescent holding a gold sun on a cinnabar
+seal, but is redrawn as a carved 白文 seal (the design is cut out of the red, so the red margin is the border).
+It is design B, "carved", of three redesigns. Every size comes from one unit, 1/16 of the moon's radius. The
+moon's full circle is centred and lifted a little, the sun sits wholly inside it, and the red border is as wide
+as the gap between sun and moon. The frame and the sun's rays are gone. Three drawings share the same circles: a
+small one fitted to the pixel grid for the browser tab and the top bar (horn tips cut where they would smear, and
+a red 1.25% lighter so it holds 3:1 on Chrome's dark tabs), a straight-edged one from 48 to about 128 px and in
+the share image, and one with a hand-ground stone edge from 180 px up. The top bar's mark is now upright and
+18 px. One source draws every icon, the share image's mark and the README's seal (`client/src/lib/sect/logo.ts`,
+`client/scripts/make-icons.mjs`).
+
+**Why.** The owner: "i like it tbh, but right now it doesnt seem like it was carefully designed, porportions seem
+off". Measured, the old moon sat low and left (its red border was 7.4 units on two sides and 14.5 on the other
+two), 92% of the sun hung outside the crescent, the tab icon and the big icon were two different drawings, and
+all 60 edge pixels of the 16 px icon were blurred. Now 4 are, the rounded corners. The owner picked B.
+
 ---
 
 ## Longer write-ups

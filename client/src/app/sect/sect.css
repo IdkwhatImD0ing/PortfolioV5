@@ -126,16 +126,19 @@
  * The top bar's seal, before the owner's name. Phones under 390 px need its room: there the bar would
  * reach the Map button (at 360 px it overlapped it by 17 px).
  */
-/* The site's logo by the owner's name in the top bar (ornaments.tsx SectLogo: the favicon's drawing). */
+/*
+ * The site's logo by the owner's name in the top bar (ornaments.tsx SectLogo: the favicon's drawing).
+ * Upright: it is fitted to the pixel grid, and a tilt would stair-step every edge below 48 px. 18 px
+ * keeps it about 1.45 times the height of the name's capitals and lands its box on whole pixels.
+ */
 .sect-logo {
   display: inline-block;
   flex: none;
   width: 1em;
   height: 1em;
-  transform: rotate(-3deg);
 }
 .sect-toplinks-seal {
-  font-size: 1.15rem;
+  font-size: 1.125rem;
 }
 @media (max-width: 389px) {
   .sect-toplinks-seal {

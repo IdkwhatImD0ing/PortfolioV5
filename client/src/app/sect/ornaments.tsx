@@ -81,17 +81,18 @@ export function SealStamp({ text = "神", className }: { text?: string; classNam
 }
 
 /**
- * The site's logo, as the browser tab shows it (lib/sect/logo.ts, public/favicon.svg): a sun cradled
- * in a crescent moon on the cinnabar seal. Decorative: the name beside it says whose site it is.
+ * The site's logo, as the browser tab shows it (lib/sect/logo.ts "small", public/favicon.svg): a sun
+ * cradled in a crescent moon on the cinnabar seal, fitted to the pixel grid, so it is drawn upright.
+ * Decorative: the name beside it says whose site it is.
  */
 export function SectLogo({ className }: { className?: string }) {
   return (
     <svg
-      viewBox="0 0 64 64"
+      viewBox="0 0 16 16"
       aria-hidden
       focusable="false"
       className={`sect-logo${className ? ` ${className}` : ""}`}
-      dangerouslySetInnerHTML={{ __html: logoMarkup({ bold: true }) }}
+      dangerouslySetInnerHTML={{ __html: logoMarkup("small") }}
     />
   );
 }
