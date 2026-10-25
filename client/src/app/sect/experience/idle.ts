@@ -835,8 +835,8 @@ function* planSteps(
   // a copy of its material, and flutters as props.banner's wave did in Blender.
   const hangs = BANNER_HANGS[id];
   if (hangs?.length && main) yield* swayCut(plan, main, skip, hangRegion(hangs), (w) => hangSway(w, hangs), BANNER);
-  // The flags flying from their poles' tops (FLAG_FLIES: the formation's Five Element Banners, in the
-  // formation's chunk and the abode's), the same way, rippling out from the pole. Their cloth keeps
+  // The flags flying from their poles' tops (FLAG_FLIES: the formation's Five Element Banners, all in the
+  // formation's chunk), the same way, rippling out from the pole. Their cloth keeps
   // its green through the grade, which takes green's lead out of every baked texel (look.ts
   // greenTame) and drew the wood flag's jade slate blue.
   const flies = FLAG_FLIES[id];

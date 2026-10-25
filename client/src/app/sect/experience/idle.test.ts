@@ -508,7 +508,7 @@ describe("planIdle (the formation's Five Element flags)", () => {
     return { root, atlas, metal, atlasTris: atlas.geometry.index!.count / 3, metalIndex: Array.from(metal.geometry.index!.array) };
   }
 
-  for (const area of ["formation", "abode"]) {
+  for (const area of ["formation"]) {
     it(`cuts out every flag's cloth in the ${area}'s chunk and nothing of its pole or rings`, () => {
       const { root, atlas, metal, atlasTris, metalIndex } = flagScene();
       const plan = planIdle(area, root, new Map(), new Map());

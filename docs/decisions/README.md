@@ -269,13 +269,29 @@ off". Measured, the old moon sat low and left (its red border was 7.4 units on t
 two), 92% of the sun hung outside the crescent, the tab icon and the big icon were two different drawings, and
 all 60 edge pixels of the 16 px icon were blurred. Now 4 are, the rounded corners. The owner picked B.
 
+### 2026-10-24 · The reworked background ships as the final production bake
+
+**Decided.** The background rework is done, and its last web bake ran once at production quality (about four
+times the light samples of a development bake; same files and sizes). That bake is the version on the site, the
+final version for now. The rules it follows: trees grow on ledges, caps and slopes, never out of a sheer wall; past
+about 70 m the forest is one green canopy, not trunks; every stop has one star, one background host and quiet sky;
+0-3 floating islands per stop, each standing on rock; no range or island falls for now (the rebuilt ones stood in
+the wrong place, and the bake found it); every hall, prop, stair, bridge, shrine, plaque and inscription stays
+exactly as it was. Before the bake, a critic standing in for the owner checked every stop against these rules and
+the owner's intent standard; its last blockers (blossoms floating in the sky, a floating rock chip, a man-made
+dressing on the Cave Abode cliff) were fixed first. Details in
+[`2026-10-24-background-with-intent.md`](2026-10-24-background-with-intent.md).
+
+**Why.** The owner: "once everything is done, we can do the full hd render and use that as the final version for
+now and call it." On the background: "i approve of the new background", "I trust you".
+
 ---
 
 ## Longer write-ups
 
 | Date | Change | Write-up |
 |---|---|---|
-| 2026-10-24 | Ice-Fire Island's steam rises from the crater; the Five Element flags get three times the texture detail (needs a bake) | [`2026-10-24-icefire-steam-and-element-flags.md`](2026-10-24-icefire-steam-and-element-flags.md) |
+| 2026-10-24 | Ice-Fire Island's steam rises from the crater; the Five Element flags get three times the texture detail (baked in the round-48 production bake) | [`2026-10-24-icefire-steam-and-element-flags.md`](2026-10-24-icefire-steam-and-element-flags.md) |
 | 2026-10-24 | The music volume slider opens and closes on its own | [`../sect/music-volume-slider.md`](../sect/music-volume-slider.md) |
 | 2026-10-24 | The jade slip camera steps back | [`../sect/jade-slip-framing.md`](../sect/jade-slip-framing.md) |
-| 2026-10-24 | The background with intent: pillars with grassy shelves, a broadleaf canopy, fewer islands, a planned horizon (round 48; needs the final bake) | [`2026-10-24-background-with-intent.md`](2026-10-24-background-with-intent.md) |
+| 2026-10-24 | The background with intent: pillars with grassy shelves, a broadleaf canopy, fewer islands, a planned horizon (round 48; shipped as the final production bake) | [`2026-10-24-background-with-intent.md`](2026-10-24-background-with-intent.md) |

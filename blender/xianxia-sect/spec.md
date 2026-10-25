@@ -357,9 +357,13 @@ scroll-scrubbing on the website.
 
 ## 7. Web light bake (/sect)
 
-The website's scene is light-baked in Cycles on the rented cloud GPU, never on the PC:
-`sect/bake_web.py -- bakefull,water --profile full` (areas + backdrop, water),
-`sect/bake_trees.py -- build` (vegetation), then `tools/sect_pack.py --profile full`.
+The website's scene is light-baked in Cycles on the rented cloud GPU, never on the PC. A full
+render batch, in order: `sect/export_web.py -- audit --profile full` (visibility, ~40 min),
+`-- chunks,meta --profile full`, `sect/bake_web.py -- bakefull,water --profile full` (areas +
+backdrop, water), `sect/bake_trees.py -- plan,build` (vegetation), `sect/export_web.py -- clouds
+--profile full` (the Blender puffs: Ice-Fire's steam, the falls' spray chains; skipping it lets
+`mist.py` copy stale puffs back), then on the PC `sect/mist.py` and `tools/sect_pack.py --profile
+full`. A changed export or bake script needs `PIPELINE_CHANGED_OK=1` in the round's run sheet.
 
 - `--quality dev` (the default) is the fast bake for development: atlas 160 samples,
   vertex colours 256, trees 128 / sprites 48. About 47 min (areas) + 39 min (trees,

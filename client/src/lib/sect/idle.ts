@@ -507,13 +507,13 @@ export const FIVE_ELEMENT_FLAGS: readonly FlagFly[] = [10, 24, 38, 52, 66].map((
 
 /**
  * The flags each chunk's export merged into its baked scenery (checked against the baked chunks:
- * each flag's space holds its cloth and nothing of its pole, rings or finial). The export put the
- * metal and water flags' cloth (and the water flag's pole) into the cave abode's chunk, so the
- * abode cuts them out too: a space only ever finds cloth in the chunk that has it.
+ * each flag's space holds its cloth and nothing of its pole, rings or finial). Since the round-48
+ * production bake all five cloths and poles are in the formation's chunk (export_web LORE_CHUNKS;
+ * before it, the metal and water flags' cloth sat in the cave abode's chunk, so the abode had an
+ * entry too): a space only ever finds cloth in the chunk that has it.
  */
 export const FLAG_FLIES: Record<string, readonly FlagFly[]> = {
   formation: FIVE_ELEMENT_FLAGS,
-  abode: FIVE_ELEMENT_FLAGS,
 };
 
 // ---- gliding cranes -----------------------------------------------------------------------------

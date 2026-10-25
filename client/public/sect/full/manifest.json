@@ -10,37 +10,34 @@
  "water": null,
  "global": [
   "backdrop.glb.gz",
-  "backdrop_trees.glb.gz",
-  "backdrop_water.glb.gz"
+  "backdrop_trees.glb.gz"
  ],
  "globalLow": null,
- "globalBytes": 9106122,
+ "globalBytes": 9614586,
  "globalBytesLow": null,
- "globalTris": 1491588,
- "globalTexBytes": 9087659,
+ "globalTris": 1476322,
+ "globalTexBytes": 14680064,
  "globalTexBytesLow": null,
  "chunks": [
   {
    "id": "gate",
    "files": [
     "gate.glb.gz",
-    "gate_trees.glb.gz",
-    "gate_water.glb.gz"
+    "gate_trees.glb.gz"
    ],
    "filesLow": [
     "low/gate.glb.gz",
-    "low/gate_trees.glb.gz",
-    "gate_water.glb.gz"
+    "low/gate_trees.glb.gz"
    ],
    "need": [
     1,
     676
    ],
-   "bytes": 12445923,
-   "bytesLow": 9715799,
-   "tris": 1799761,
-   "texBytes": 242570582,
-   "texBytesLow": 61953366,
+   "bytes": 11276770,
+   "bytesLow": 8479202,
+   "tris": 1490391,
+   "texBytes": 243269632,
+   "texBytesLow": 62128128,
    "core": [
     1,
     388
@@ -55,30 +52,28 @@
    "id": "mirror",
    "files": [
     "mirror.glb.gz",
-    "mirror_trees.glb.gz",
-    "mirror_water.glb.gz"
+    "mirror_trees.glb.gz"
    ],
    "filesLow": [
     "low/mirror.glb.gz",
-    "low/mirror_trees.glb.gz",
-    "mirror_water.glb.gz"
+    "low/mirror_trees.glb.gz"
    ],
    "need": [
     1,
     916
    ],
-   "bytes": 8228803,
-   "bytesLow": 6793786,
-   "tris": 911388,
-   "texBytes": 156936875,
-   "texBytesLow": 68856491,
+   "bytes": 8722911,
+   "bytesLow": 6605157,
+   "tris": 1063102,
+   "texBytes": 180704598,
+   "texBytesLow": 63264086,
    "core": [
-    67,
+    64,
     580
    ],
    "need250": [
-    13,
-    724
+    10,
+    676
    ],
    "hold": 217
   },
@@ -86,30 +81,28 @@
    "id": "forge",
    "files": [
     "forge.glb.gz",
-    "forge_trees.glb.gz",
-    "forge_water.glb.gz"
+    "forge_trees.glb.gz"
    ],
    "filesLow": [
     "low/forge.glb.gz",
-    "low/forge_trees.glb.gz",
-    "forge_water.glb.gz"
+    "low/forge_trees.glb.gz"
    ],
    "need": [
     1,
     1060
    ],
-   "bytes": 11599834,
-   "bytesLow": 8981589,
-   "tris": 1437759,
-   "texBytes": 241871531,
-   "texBytesLow": 61778603,
+   "bytes": 11132167,
+   "bytesLow": 8299456,
+   "tris": 1439172,
+   "texBytes": 269833558,
+   "texBytesLow": 68769110,
    "core": [
     190,
     775
    ],
    "need250": [
     73,
-    916
+    1012
    ],
    "hold": 352
   },
@@ -117,30 +110,28 @@
    "id": "arena",
    "files": [
     "arena.glb.gz",
-    "arena_trees.glb.gz",
-    "arena_water.glb.gz"
+    "arena_trees.glb.gz"
    ],
    "filesLow": [
     "low/arena.glb.gz",
-    "low/arena_trees.glb.gz",
-    "arena_water.glb.gz"
+    "low/arena_trees.glb.gz"
    ],
    "need": [
-    88,
-    1156
+    90,
+    1211
    ],
-   "bytes": 8098680,
-   "bytesLow": 6870792,
-   "tris": 1476100,
-   "texBytes": 154839723,
-   "texBytesLow": 64662187,
+   "bytes": 8882279,
+   "bytesLow": 7394438,
+   "tris": 1725573,
+   "texBytes": 167597398,
+   "texBytesLow": 69031254,
    "core": [
     286,
-    775
+    820
    ],
    "need250": [
-    181,
-    1012
+    184,
+    1060
    ],
    "hold": 516
   },
@@ -148,29 +139,27 @@
    "id": "mission",
    "files": [
     "mission.glb.gz",
-    "mission_trees.glb.gz",
-    "mission_water.glb.gz"
+    "mission_trees.glb.gz"
    ],
    "filesLow": [
     "low/mission.glb.gz",
-    "low/mission_trees.glb.gz",
-    "mission_water.glb.gz"
+    "low/mission_trees.glb.gz"
    ],
    "need": [
-    157,
+    154,
     1383
    ],
-   "bytes": 10109634,
-   "bytesLow": 8710539,
-   "tris": 1320435,
-   "texBytes": 156237824,
-   "texBytesLow": 68157440,
+   "bytes": 10096843,
+   "bytesLow": 8490384,
+   "tris": 1412444,
+   "texBytes": 171616939,
+   "texBytesLow": 75147947,
    "core": [
     478,
     1060
    ],
    "need250": [
-    286,
+    307,
     1211
    ],
    "hold": 619
@@ -179,23 +168,21 @@
    "id": "library",
    "files": [
     "library.glb.gz",
-    "library_trees.glb.gz",
-    "library_water.glb.gz"
+    "library_trees.glb.gz"
    ],
    "filesLow": [
     "low/library.glb.gz",
-    "low/library_trees.glb.gz",
-    "library_water.glb.gz"
+    "low/library_trees.glb.gz"
    ],
    "need": [
-    256,
+    214,
     1650
    ],
-   "bytes": 13046663,
-   "bytesLow": 10126756,
-   "tris": 2035333,
-   "texBytes": 237677227,
-   "texBytesLow": 60730027,
+   "bytes": 12880562,
+   "bytesLow": 10391447,
+   "tris": 2127451,
+   "texBytes": 190840832,
+   "texBytesLow": 65798144,
    "core": [
     513,
     1156
@@ -214,24 +201,24 @@
    ],
    "filesLow": [
     "low/steles.glb.gz",
-    "steles_trees.glb.gz"
+    "low/steles_trees.glb.gz"
    ],
    "need": [
     286,
-    1684
+    1729
    ],
-   "bytes": 11606485,
-   "bytesLow": 10105494,
-   "tris": 1755818,
-   "texBytes": 217929046,
-   "texBytesLow": 83711318,
+   "bytes": 11887317,
+   "bytesLow": 9797509,
+   "tris": 2004955,
+   "texBytes": 231385771,
+   "texBytesLow": 69905067,
    "core": [
-    670,
+    700,
     1211
    ],
    "need250": [
-    598,
-    1444
+    574,
+    1540
    ],
    "hold": 974
   },
@@ -239,29 +226,27 @@
    "id": "scroll",
    "files": [
     "scroll.glb.gz",
-    "scroll_trees.glb.gz",
-    "scroll_water.glb.gz"
+    "scroll_trees.glb.gz"
    ],
    "filesLow": [
     "low/scroll.glb.gz",
-    "scroll_trees.glb.gz",
-    "scroll_water.glb.gz"
+    "low/scroll_trees.glb.gz"
    ],
    "need": [
     535,
     1729
    ],
-   "bytes": 8154666,
-   "bytesLow": 7270423,
-   "tris": 1286630,
-   "texBytes": 148373504,
-   "texBytesLow": 81264640,
+   "bytes": 8400379,
+   "bytesLow": 6956001,
+   "tris": 1273657,
+   "texBytes": 170393600,
+   "texBytesLow": 76021760,
    "core": [
     769,
-    1348
+    1650
    ],
    "need250": [
-    634,
+    637,
     1729
    ],
    "hold": 1103
@@ -275,24 +260,24 @@
    ],
    "filesLow": [
     "low/formation.glb.gz",
-    "formation_trees.glb.gz",
+    "low/formation_trees.glb.gz",
     "formation_water.glb.gz"
    ],
    "need": [
-    640,
+    616,
     1729
    ],
-   "bytes": 6806192,
-   "bytesLow": 5656512,
-   "tris": 830414,
-   "texBytes": 110450005,
-   "texBytesLow": 43341141,
+   "bytes": 7249595,
+   "bytesLow": 5683780,
+   "tris": 1180052,
+   "texBytes": 128887466,
+   "texBytesLow": 34515626,
    "core": [
-    1006,
+    958,
     1650
    ],
    "need250": [
-    862,
+    769,
     1729
    ],
    "hold": 1208
@@ -310,14 +295,14 @@
     "abode_water.glb.gz"
    ],
    "need": [
-    769,
+    751,
     1729
    ],
-   "bytes": 10898074,
-   "bytesLow": 8706838,
-   "tris": 1523357,
-   "texBytes": 185597952,
-   "texBytesLow": 64487424,
+   "bytes": 10525154,
+   "bytesLow": 8208499,
+   "tris": 1810872,
+   "texBytes": 188394155,
+   "texBytesLow": 65186475,
    "core": [
     1174,
     1729
@@ -332,29 +317,27 @@
    "id": "summit",
    "files": [
     "summit.glb.gz",
-    "summit_trees.glb.gz",
-    "summit_water.glb.gz"
+    "summit_trees.glb.gz"
    ],
    "filesLow": [
     "low/summit.glb.gz",
-    "low/summit_trees.glb.gz",
-    "summit_water.glb.gz"
+    "low/summit_trees.glb.gz"
    ],
    "need": [
-    1009,
+    979,
     1729
    ],
-   "bytes": 9295872,
-   "bytesLow": 6945688,
-   "tris": 1107257,
-   "texBytes": 236803414,
-   "texBytesLow": 75322710,
+   "bytes": 10192307,
+   "bytesLow": 7208635,
+   "tris": 1109614,
+   "texBytes": 283814571,
+   "texBytesLow": 89041579,
    "core": [
     1246,
     1729
    ],
    "need250": [
-    1111,
+    1099,
     1729
    ],
    "hold": 1647
@@ -362,58 +345,52 @@
  ],
  "fileTexBytes": {
   "backdrop.glb.gz": 0,
-  "backdrop_trees.glb.gz": 9087659,
-  "backdrop_water.glb.gz": 0,
+  "backdrop_trees.glb.gz": 14680064,
   "gate.glb.gz": 178956971,
   "low/gate.glb.gz": 44739243,
-  "gate_trees.glb.gz": 63613611,
-  "low/gate_trees.glb.gz": 17214123,
-  "gate_water.glb.gz": 0,
+  "gate_trees.glb.gz": 64312661,
+  "low/gate_trees.glb.gz": 17388885,
   "mirror.glb.gz": 111848107,
   "low/mirror.glb.gz": 44739243,
-  "mirror_trees.glb.gz": 45088768,
-  "low/mirror_trees.glb.gz": 24117248,
-  "mirror_water.glb.gz": 0,
+  "mirror_trees.glb.gz": 68856491,
+  "low/mirror_trees.glb.gz": 18524843,
   "forge.glb.gz": 178956971,
   "low/forge.glb.gz": 44739243,
-  "forge_trees.glb.gz": 62914560,
-  "low/forge_trees.glb.gz": 17039360,
-  "forge_water.glb.gz": 0,
+  "forge_trees.glb.gz": 90876587,
+  "low/forge_trees.glb.gz": 24029867,
   "arena.glb.gz": 111848107,
   "low/arena.glb.gz": 44739243,
-  "arena_trees.glb.gz": 42991616,
-  "low/arena_trees.glb.gz": 19922944,
-  "arena_water.glb.gz": 0,
+  "arena_trees.glb.gz": 55749291,
+  "low/arena_trees.glb.gz": 24292011,
   "mission.glb.gz": 111848107,
   "low/mission.glb.gz": 44739243,
-  "mission_trees.glb.gz": 44389717,
-  "low/mission_trees.glb.gz": 23418197,
-  "mission_water.glb.gz": 0,
-  "library.glb.gz": 178956971,
+  "mission_trees.glb.gz": 59768832,
+  "low/mission_trees.glb.gz": 30408704,
+  "library.glb.gz": 111848107,
   "low/library.glb.gz": 44739243,
-  "library_trees.glb.gz": 58720256,
-  "low/library_trees.glb.gz": 15990784,
-  "library_water.glb.gz": 0,
+  "library_trees.glb.gz": 78992725,
+  "low/library_trees.glb.gz": 21058901,
   "steles.glb.gz": 178956971,
   "low/steles.glb.gz": 44739243,
-  "steles_trees.glb.gz": 38972075,
+  "steles_trees.glb.gz": 52428800,
+  "low/steles_trees.glb.gz": 25165824,
   "scroll.glb.gz": 111848107,
   "low/scroll.glb.gz": 44739243,
-  "scroll_trees.glb.gz": 36525397,
-  "scroll_water.glb.gz": 0,
+  "scroll_trees.glb.gz": 58545493,
+  "low/scroll_trees.glb.gz": 31282517,
   "formation.glb.gz": 89478485,
   "low/formation.glb.gz": 22369621,
-  "formation_trees.glb.gz": 20971520,
+  "formation_trees.glb.gz": 39408981,
+  "low/formation_trees.glb.gz": 12146005,
   "formation_water.glb.gz": 0,
   "abode.glb.gz": 111848107,
   "low/abode.glb.gz": 44739243,
-  "abode_trees.glb.gz": 73749845,
-  "low/abode_trees.glb.gz": 19748181,
+  "abode_trees.glb.gz": 76546048,
+  "low/abode_trees.glb.gz": 20447232,
   "abode_water.glb.gz": 0,
-  "summit.glb.gz": 178956971,
-  "low/summit.glb.gz": 44739243,
-  "summit_trees.glb.gz": 57846443,
-  "low/summit_trees.glb.gz": 30583467,
-  "summit_water.glb.gz": 0
+  "summit.glb.gz": 201326592,
+  "low/summit.glb.gz": 67108864,
+  "summit_trees.glb.gz": 82487979,
+  "low/summit_trees.glb.gz": 21932715
  }
 }

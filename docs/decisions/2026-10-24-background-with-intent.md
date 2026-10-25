@@ -21,7 +21,7 @@ order, host, quiet sky, islets, falls, mist heights for each of the eleven stops
 
 | Problem | Change | Where |
 |---|---|---|
-| Trees on sheer walls | The cliff, wall and crown pine scatters and the ledge tiers are switched off everywhere except within 60 m of a stop's camera, where every tree stays as it was. The Cave Abode cliff's 29 face pines go; two pines stand on one rock shelf instead, with fern strips in the joints and vines from the rim | `scenery.r48_walls_out`, `areas/abode.r48_dress` |
+| Trees on sheer walls | The cliff, wall and crown pine scatters and the ledge tiers are switched off everywhere except within 60 m of a stop's camera, where every tree stays as it was. The Cave Abode cliff's 29 face pines go, and so do the cliff-top pines on its falling shoulders: the cliff is one bare mass (a rock shelf with two pines, fern strips and vines were tried and cut in phase D, because they read as man-made) | `scenery.r48_walls_out`, `areas/abode.r48_old_face_pines` |
 | No ledges with grass | About 70 of the range's peaks become karst pillars with their own uneven rock beds, real shelves with green tops and clumps of shrubs, fissures with ferns, and a forest cap whose rim crowns lean out over the edge | `world.Range` (peak mode `pillars`), `lib/nature.peak_pillar` |
 | Trunks, not green | A broadleaf canopy (rounded crowns that hide their trunks, six variants in three greens) with slim Masson pine spires and scrub replaces the one see-through pine copied 31,000 times. Beyond the near band the forest is a solid canopy mass, not single trees | `lib/nature.canopy_tree`, `scenery.r48_range_canopy`, `r48_shell`, `r48_hulls` |
 | Confetti islands, light-beam falls | Islands are cut to 0-3 per stop (about 40 islands and 12 islets in all, at most 7 in any frame); the ones that stay get canopy caps. Falls are shorter, arc and break into spray; none at the arena, mission, library, steles or scroll stops | `lib/compose.cull_islands`, `cull_falls`, `scenery.r48_isles`, `r48_falls` |
@@ -85,15 +85,58 @@ changed before the range-wide build:
   of crowns 24 m across vary in value and warmth; tree sprite cards fade their flat top quad near level and their
   upright pair from about 22-37 degrees above, so no disc shows under a crown and no X from above.
 
+## Phase D: the range critic's fixes, before the final bake
+
+The range critic (standing in for the sleeping owner) said no-go until three things were fixed, because each would
+have been baked into the final files:
+
+- Peach trees and azaleas floated in the sky in 9 of 18 test stills (16 groups). They stood on the 82 islands phase C
+  hid; the rule that hid an island's companions skipped every `life.*` object, to protect the chain bridge. Now the
+  life pass's island plants go with their island (86 objects), and `life.build_islands` skips hidden islands.
+- One "crown" floated over the cloud sea at f1300. It was not a tree: the range mesh has five loose chips, slabs a few
+  metres across that the land field leaves on its own (they were there before round 48 too). They now sink whole
+  under the cloud sea (`world.sink_chips`; vertices move, faces stay, so no plant elsewhere moves).
+- The abode cliff's new dressing looked man-made: a stack of sawn slabs with two flat pines, a vine like a black
+  strip, ferns like bead ladders. It is gone, and so are the cliff-top pines on its falling shoulders, which read as
+  growing out of the face. The cliff is one bare mass under 洞天福地, as intent 3.1 asks.
+
+In the same run: single tilted pillar faces that the shelf rule had made into flat green stickers turn back to rock
+(645 faces; a shelf now needs 3 joined faces); the pillar behind 思過崖 keeps its shelf shrubs but no shelf crowns
+(they read as four flat pine pads); and the far pillar family under the moon is not built (from the summit it read
+as two stumps in the quiet sea). Every hall, prop, stair, bridge, shrine, plaque and inscription is unchanged: the
+keep-list diff is 0.
+
+The bake itself found one more mistake. Phase C's 34 rebuilt falls, with their spray, all stood in one pile at the
+world origin, under the gate, because the old falls' root points sit there (their sheets carry the real position).
+The test stills never showed them, so the views the critic judged had no range falls. They are removed rather than
+rebuilt in a hurry: the shipped scene has no range or island falls. The Cave Abode's fall, the Ice-Fire Island fall
+and the stops' own water stay. A rebuild that reads each fall's lip from its sheets can come back later, judged in
+stills first (`scenery.R48_FALL_REBUILD`).
+
 ## How it is built
 
 Patches on the finished scene, rehearsed on a copy first, each with a digest and a dry run:
 `patch_r48_range.py` (pillars), `patch_r48_isles.py` (islands, falls, horizon), `patch_r48_green.py` (wall plants
-out, canopy, shelves, hero pines, canopy mass, rock, the abode), `patch_r48_life.py` (walkways). The same changes are
-in the builders, so a rebuild matches. The run sheets and the author's notes are in the round-48 scratchpad.
+out, canopy, shelves, hero pines, canopy mass, rock, the abode), `patch_r48_life.py` (walkways), and in phase D
+`patch_r48_fixes.py` (island plants, range chips, horizon) with `patch_r48_green.py PARTS=shelves,abode`. The same
+changes are in the builders, so a rebuild matches. The run sheets and the author's notes are in the round-48
+scratchpad.
 
 ## The final bake
 
 The owner: "once everything is done, we can do the full hd render and use that as the final version for now and
-call it." After the round-48 build, the web bake runs once at production quality (with the Five Element flags and the
+call it." After the round-48 build, the web bake ran once at production quality (with the Five Element flags and the
 cloud export from the round-42 decision), and that is the version that ships.
+
+How it ran (2026-10-25, one RTX 5090): the visibility audit 36 min, chunks and meta 2.5 min, the atlas and vertex
+colour bake at production quality (768 atlas samples, 1,024 vertex-colour samples) 77 min for the eleven stops and
+the backdrop, water 1 min, trees 49 min (33 of them the sun-visibility rays on a cold cache), clouds seconds. Every
+bake checked the GPU in its first minutes. The pack passed every check: 120.9 MB of scene files on High (was
+119.4 MB), 87.5 MB of phone copies, and 22.5 MB before the first picture. Eight chunks are over the packer's soft
+size budget, as before: quality beats budget (decision of 2026-10-21). All five Five Element flags are now in the
+formation's chunk, so the client's abode entry for them is gone.
+
+The halls are about 1-4% brighter than in the last development bake (the scroll stop's plaza and slip most, warmer
+by about 10 levels of red). Their geometry is unchanged; the likely cause is the light around them: the old dark
+pines that shaded the terraces are gone, and the paler rock and the canopy bounce more light. The slice bakes at
+development quality showed the same shift, so it is not the production settings.

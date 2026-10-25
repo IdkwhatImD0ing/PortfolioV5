@@ -588,10 +588,9 @@ describe("the formation's Five Element flags", () => {
     expect([...flySway([0, 0, 0, 1, 2, 3], [])].every((v) => v === 0)).toBe(true);
   });
 
-  it("are cut from the formation's chunk and the abode's (the bake put the metal and water cloths there)", () => {
+  it("are cut from the formation's chunk, which holds all five cloths since the round-48 bake", () => {
     expect(FLAG_FLIES.formation).toBe(FIVE_ELEMENT_FLAGS);
-    expect(FLAG_FLIES.abode).toBe(FIVE_ELEMENT_FLAGS);
-    expect(Object.keys(FLAG_FLIES).sort()).toEqual(["abode", "formation"]);
+    expect(Object.keys(FLAG_FLIES)).toEqual(["formation"]);
   });
 
   it("builds a flag as qiFlag reads props.banner", () => {
