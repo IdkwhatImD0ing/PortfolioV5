@@ -1576,6 +1576,11 @@ def r48_island_caps(kd, prefixes=("scenery.island", "world.islet"), keep=None):
 
 LIFE_ISLAND = "life.island."   # life.build_islands' blossoms and azaleas: they go with a culled rock (range critic M1)
 R48_FALL_W = (0.3, 0.5)        # island fall width x island size (was 0.16-0.26)
+R48_FALL_REBUILD = False       # phase D: no range or island fall is rebuilt; r48_falls hides them all (Ice-Fire's stays).
+                               # The old fall roots stand at the world origin (their sheets carry the position), so
+                               # phase C read every lip as (0, 0, 0) and built all 34 new falls, with their spray, in
+                               # one pile at the origin under the gate. A rebuild must take the lip from the sheets
+                               # and be judged in stills before it ships
 R48_RANGE_FALL_W = (12.0, 22.0)
 
 
@@ -1786,7 +1791,7 @@ def r48_falls(intent, hold_views, kept_islands, log=None):
         if rec["location"]:
             continue
         hidden += r48_hide([o] + list(o.children_recursive), "falls")
-        if i in gone:
+        if i in gone or not R48_FALL_REBUILD:
             continue
         r = U.rng(KEY, "r48_fall", o.name)
         lip = rec["lip"]

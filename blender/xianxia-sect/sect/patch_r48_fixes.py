@@ -5,10 +5,10 @@ on a COPY first, AFTER patch_r48_isles.py:
 
     python E:/Github/PortfolioV5/blender/xianxia-sect/tools/rblender.py -b \
         E:/Github/PortfolioV5/blender/xianxia-sect/out/<copy>.blend --python-exit-code 1 \
-        --python E:/Github/PortfolioV5/blender/xianxia-sect/sect/patch_r48_fixes.py -- [PARTS=blossoms,chips,backdrop]
+        --python E:/Github/PortfolioV5/blender/xianxia-sect/sect/patch_r48_fixes.py -- [PARTS=blossoms,chips,backdrop,falls]
         [DRY_RUN=1]
 
-PARTS (default all three):
+PARTS (default all four):
   blossoms  M1: scenery._hide_culled_companions, which now takes the life pass's island blossoms and azaleas
             (life.island.*) with a culled rock, and any with no visible island under them. Hidden as 'isles'
             (patch_r48_isles PARTS=isles_undo shows them again with the rocks). The chain bridge stays.
@@ -17,6 +17,10 @@ PARTS (default all three):
             (scenery.r48_sink_range_chips). Vertices move; faces and their order stay.
   backdrop  M5: the round-48 horizon pillars of world.BACKDROP_R48_CUT (family1: from the summit its two front pillars
             read as stumps in the quiet sea) are removed, as r48_horizon now builds the horizon without them.
+  falls     found in phase D's water bake: phase C's 34 rebuilt falls (and their 131 spray puffs) all stood in one
+            pile at the world origin, under the gate, because the old fall roots sit there (their sheets carry the
+            position). They are removed (scenery.R48_FALL_REBUILD is off: no range or island fall ships; the old ones
+            stay hidden, Ice-Fire's stays), and scenery.r48_streams then hides the streams whose fall is gone.
 The abode (M4) and the pillar shelves (M3, and M5's 思過崖 pads) are patch_r48_green.py PARTS=shelves,abode.
 Checks: the chain bridges (life.span*) and Ice-Fire Island visible; no visible life.island plant without a visible
 island under it. Prints counts, 'PATCH DIGEST <md5>', writes out/tmp/r48/fixes.json. Idempotent (a second run hides,
@@ -39,7 +43,7 @@ from sect import scenery as S  # noqa: E402
 from sect import world as W  # noqa: E402
 from sect.lib import r48 as R  # noqa: E402
 
-PARTS = ("blossoms", "chips", "backdrop")
+PARTS = ("blossoms", "chips", "backdrop", "falls")
 
 
 def orphan_island_plants():
@@ -86,6 +90,12 @@ def main():
         res["backdrop"] = dict(removed=R.remove_objects(cut + [c for o in cut for c in o.children_recursive]),
                                names=names)
         R.log("horizon pillars removed (BACKDROP_R48_CUT %s): %s" % (list(W.BACKDROP_R48_CUT), names))
+    if "falls" in parts:
+        made = [o for o in bpy.data.objects if o.get(S.R48_TAG) == "falls"]
+        n_root = sum(1 for o in made if o.type == 'EMPTY' and o.parent is None)
+        res["falls"] = dict(removed=R.remove_objects(made), roots=n_root, streams_hidden=S.r48_streams(log=R.log))
+        R.log("round-48 falls removed: %d objects (%d falls); streams hidden: %s" % (
+            res["falls"]["removed"], n_root, res["falls"]["streams_hidden"]))
     # checks
     for o in bpy.data.objects:
         if o.name.startswith("life.span") and o.hide_render:
@@ -101,7 +111,8 @@ def main():
     for o in sorted((o for o in bpy.data.objects if o.name.startswith(S.LIFE_ISLAND)), key=lambda o: o.name):
         h.update(("%s|%s|%s" % (o.name, o.hide_render, o.get(S.R48_HIDDEN))).encode())
     h.update(R.mesh_sig(rng_obj, 3).encode())
-    for o in sorted((o for o in bpy.data.objects if o.name.startswith("world.backdrop")), key=lambda o: o.name):
+    for o in sorted((o for o in bpy.data.objects if o.name.startswith(("world.backdrop", "world.stream")) or
+                     o.get(S.R48_TAG) == "falls"), key=lambda o: o.name):
         h.update(("%s|%s|%s" % (o.name, o.hide_render, o.get(S.R48_TAG))).encode())
     res["seconds"] = round(time.time() - t0, 1)
     R.report("fixes.json", res)
