@@ -39,6 +39,7 @@ import {
   TIER_ORDER,
   tierChange,
   tierQuality,
+  waitsForEnter,
   writeTierChoice,
   type Quality,
 } from "./runtime";
@@ -93,6 +94,14 @@ describe("parseSectParams", () => {
       open: null,
     });
     expect(parseSectParams("frame=12.5").frame).toBe(12.5);
+  });
+
+  it("waits for Enter except in the screenshot views", () => {
+    expect(waitsForEnter(parseSectParams(""))).toBe(true);
+    expect(waitsForEnter(parseSectParams("?open=project:dispatchai&tier=low"))).toBe(true);
+    expect(waitsForEnter(parseSectParams("?ui=0"))).toBe(false);
+    expect(waitsForEnter(parseSectParams("?frame=352&ui=0&tier=high"))).toBe(false);
+    expect(waitsForEnter(parseSectParams("?frame=93"))).toBe(false);
   });
 
   it("reads the asset set and the item to open, rejecting anything path-like", () => {

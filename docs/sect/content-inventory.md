@@ -63,7 +63,7 @@ Reader: Mountain Gate (山门). Scroll (or use the area rail) to the Mountain Ga
 - [ ] **C-010** Eyebrow "VOICE-DRIVEN PORTFOLIO · 2026". *not carried.* Not in the sect. Cut to keep the gate reader short.
 - [ ] **C-011** Headline "Ask me anything." *not carried.* Not in the sect. Cut to keep the gate reader short.
 - [x] **C-012** Intro paragraph (I'm Bill Zhang ... ask it something.) *adapted.* Mountain Gate reader. The last two sentences are left out.
-- [x] **C-013** Tagline "AI engineer. Builder of voice-first systems." (portfolio data). *carried.* Mountain Gate reader. Also on the gate's summary panel.
+- [x] **C-013** Tagline "AI engineer" (portfolio data). *carried.* Mountain Gate reader. Also on the gate's summary panel.
 - [x] **C-014** "View resume" button (jumps to the resume). *carried.* Mountain Gate reader. The button goes to the Jade Slip Pavilion reader.
 - [x] **C-015** "Download PDF 113 KB" (downloads /resume.pdf as Bill-Zhang-Resume.pdf). *carried.* Mountain Gate reader. Also on the Jade Slip Pavilion panel and reader.
 - [x] **C-016** Question chip "Who is Bill?" (moves to About). *carried.* Mountain Gate reader. A question chip; it goes to the Heart-Mirror Terrace.

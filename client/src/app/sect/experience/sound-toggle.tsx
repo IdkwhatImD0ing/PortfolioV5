@@ -302,7 +302,7 @@ export function VolumeSlider({
 
 /**
  * The loading screen's invitation (loading-screen.tsx keeps its place): a round gold seal with the
- * speaker, "Turn on sound" and "for the best experience" beside it, all one button. Its press is the
+ * speaker and "Turn on sound" beside it, all one button. Its press is the
  * gesture browsers need before any sound, so the loading music can start at once; the choice is
  * remembered like the toggle's. Once on it says so, and a second press mutes. Nothing without Web
  * Audio or a track list (the place stays empty).
@@ -328,27 +328,24 @@ export function SoundPrompt({ engine }: { engine: MusicEngine }) {
 }
 
 /**
- * SoundPrompt's button. Named in full for screen readers ("Turn on sound, for the best experience").
- * Its width holds when the words change (min-w: the longer wording's, in rem so it grows with the
- * text), so the centred button does not shift and the seal stays under the finger for a second tap.
+ * SoundPrompt's button: its words are its name (the seal is not read out). Its width holds when the
+ * words change (min-w: the longer wording's, in rem so it grows with the text), so the centred
+ * button does not shift and the seal stays under the finger for a second tap.
  */
 export function SoundCall({ on, onToggle }: { on: boolean; onToggle: () => void }) {
-  const [line, note] = on ? ["Sound on", "Tap again to mute"] : ["Turn on sound", "For the best experience"];
   return (
     <button
       type="button"
       data-sect-sound
       data-on={on || undefined}
       onClick={onToggle}
-      aria-label={`${line}, ${note.toLowerCase()}`}
-      className="sect-soundcall sect-fade-in group inline-flex min-h-11 min-w-[15rem] items-center gap-3 rounded-[2px] py-1 pl-1 pr-3 text-left"
+      className="sect-soundcall sect-fade-in group inline-flex min-h-11 min-w-[10.5rem] items-center gap-3 rounded-[2px] py-1 pl-1 pr-3 text-left"
     >
       <span aria-hidden className="sect-soundcall-seal">
         <SpeakerIcon on={on} />
       </span>
-      <span className="flex flex-col leading-tight">
-        <span className="text-[0.9375rem] text-[var(--sect-paper)] transition-colors group-hover:text-[var(--sect-gold)]">{line}</span>
-        <span className="mt-1 text-[0.625rem] uppercase tracking-[0.24em] text-[var(--sect-gold)]">{note}</span>
+      <span className="text-[0.9375rem] leading-tight text-[var(--sect-paper)] transition-colors group-hover:text-[var(--sect-gold)]">
+        {on ? "Sound on" : "Turn on sound"}
       </span>
     </button>
   );

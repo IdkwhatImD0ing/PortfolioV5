@@ -285,6 +285,21 @@ dressing on the Cave Abode cliff) were fixed first. Details in
 **Why.** The owner: "once everything is done, we can do the full hd render and use that as the final version for
 now and call it." On the background: "i approve of the new background", "I trust you".
 
+### 2026-10-25 · The loading screen waits for Enter, in fewer words
+
+**Decided.** When the scene has loaded, the loading screen stays up. The bar reads Ready, and a gold Enter button
+sits beside "Read as page", under the graphics picker and the sound button. The flight starts only when the visitor
+presses Enter, so the graphics and sound are set first. While the screen waits, the next areas keep streaming in.
+Asking the voice guide to go somewhere from this screen also enters. Links the screenshot tools use (`?ui=0`,
+`?frame=N`) skip the button. A reload for a new graphics tier after Enter does not ask again. The words on the
+screen were cut: the tagline is "AI engineer" (it was "AI engineer. Builder of voice-first systems.", which also
+changes the gate's reader and the search description), and the sound button says "Turn on sound" with no "For the
+best experience" under it.
+
+**Why.** The owner: "add like a play or start button to the home screen so the user actually has the option to
+chose the settings before the website loads". On the words: "I still think you occasionally overengineer the
+words to include too many words ... seems long for the sake of being long".
+
 ---
 
 ## Longer write-ups

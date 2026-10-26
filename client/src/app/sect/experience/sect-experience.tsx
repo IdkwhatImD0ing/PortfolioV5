@@ -44,7 +44,10 @@
  * Opening: a page that opens at the top of the path shows the poster still of that view behind the
  * loading screen from its first paint (lib/sect/opening.ts), and the veil's fade is a crossfade to
  * the same view drawn live. The progress bar counts bytes and never goes back. "Read as page" while
- * loading stops the download until the flight comes back.
+ * loading stops the download until the flight comes back. Once the scene has rendered ("loaded") the
+ * screen waits for "Enter", so the graphics and sound are set before the flight starts
+ * ("ready"); meanwhile the next areas stream in. A load again for a new tier after that, and the
+ * screenshot views (?ui=0, ?frame=N), go straight on.
  */
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import type { Object3D } from "three";
@@ -76,6 +79,7 @@ import {
   tierChange,
   tierQuality,
   upgradeQuality,
+  waitsForEnter,
   writeTierChoice,
   type Quality,
   type Tier,
@@ -150,7 +154,8 @@ import { cameraStill, createStore, isMoving, recenterView, wake, type SectStore 
 import { ChunkStreamer, streamBudget } from "./streaming";
 import { SectVoice, startTalk, talismanBox, useVoiceRouting } from "./voice";
 
-type Phase = "data" | "assets" | "ready" | "error" | "nowebgl";
+/** "loaded": the scene has rendered behind the loading screen, which waits for "Enter". */
+type Phase = "data" | "assets" | "loaded" | "ready" | "error" | "nowebgl";
 
 /**
  * The map (map-view.tsx): its code, and its files, load only when it first opens (or when idle).
@@ -331,6 +336,8 @@ export default function SectExperience() {
   const [refocusPicker, setRefocusPicker] = useState(false);
 
   const [phase, setPhase] = useState<Phase>(probe.webgl2 ? "data" : "nowebgl");
+  /** The visitor pressed "Enter" (a later load for a new tier then goes straight on). */
+  const entered = useRef(!waitsForEnter(params));
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState({ value: 0.02, label: LOADING });
   const [data, setData] = useState<SectData | null>(null);
@@ -465,7 +472,7 @@ export default function SectExperience() {
     };
   }, []);
 
-  // Lock scrolling until the scene is ready.
+  // Lock scrolling until the flight starts.
   useEffect(() => {
     const html = document.documentElement;
     if (phase === "ready" || phase === "nowebgl") html.style.overflow = "";
@@ -652,12 +659,13 @@ export default function SectExperience() {
   // The detail texture waits for the opening files; an opening that went on without one of them
   // (the timeout) starts it now.
   useEffect(() => {
-    if (phase === "ready" && ctx) startDetail(ctx);
+    if ((phase === "loaded" || phase === "ready") && ctx) startDetail(ctx);
   }, [phase, ctx]);
 
   // The poster still behind the loading screen (the attribute shows it; the server's script may have
   // set it already): only while the opening view is the poster's, and not over an error.
-  const posterOn = posterOk && posterFits && !load.resumed && veil && (phase === "data" || phase === "assets" || phase === "ready");
+  const posterOn =
+    posterOk && posterFits && !load.resumed && veil && (phase === "data" || phase === "assets" || phase === "loaded" || phase === "ready");
   useEffect(() => {
     const html = document.documentElement;
     if (posterOn) html.setAttribute(POSTER_ATTR, "");
@@ -673,14 +681,16 @@ export default function SectExperience() {
     // (desktops: the phone budget has no look-back slot). It stays until the camera moves on, so
     // turning to and fro at a stop does not load and drop it again and again.
     let lookingBack = false;
+    // Waiting for Enter, the scene is up and still: the next areas stream in as at any stop.
+    const up = phase === "loaded" || phase === "ready";
     const tick = () => {
       if (store.paused) return;
       // Until the opening view is up, plan as a stop at the shown frame: only the area it lands in
       // loads (the next area would share its bandwidth and delay the first picture). A far jump
       // that is gathering wins over a flight still under way (End pressed during a J flight).
-      const opening = phase !== "ready" ? store.frame : null;
+      const opening = !up ? store.frame : null;
       const target = store.gatherFrame ?? (store.flight ? store.flight.toFrame : opening);
-      const ready = phase === "ready" && !store.paused;
+      const ready = up && !store.paused;
       const back = isLookingBack(store.look);
       if (!ready || isMoving(store) || target !== null) lookingBack = false;
       else if (back && cameraStill(store)) lookingBack = true;
@@ -702,10 +712,16 @@ export default function SectExperience() {
     openingTimedOut ||
     (openingIds !== null && streamer !== null && openingIds.every((id) => streamer.isReady(id) || streamer.status().failed.includes(id)));
 
-  // The world has rendered: open the page.
+  // The world has rendered: the loading screen offers "Enter" (the first time), or the page opens.
   const onRendered = useCallback(() => {
     setProgress({ value: 1, label: "Ready" });
-    setPhase((p) => (p === "error" ? p : "ready"));
+    setPhase((p) => (p === "error" ? p : entered.current ? "ready" : "loaded"));
+  }, []);
+
+  /** "Enter": the flight starts (the veil fades below). */
+  const enter = useCallback(() => {
+    entered.current = true;
+    setPhase((p) => (p === "loaded" ? "ready" : p));
   }, []);
 
   const onContextLost = useCallback(() => fail(CONTEXT_LOST), [fail]);
@@ -1777,8 +1793,9 @@ export default function SectExperience() {
 
   // The voice agent (the senior disciple, in a call or the text chat) and the orb's chips: take the
   // visitor there by the map's fast travel, the ink spreading from the talisman (lib/sect/agent-travel.ts),
-  // then open the forge reader for projects. A command given while the scene loads waits for it, and
-  // one given while the ink is up waits for it to clear (the last one wins in both).
+  // then open the forge reader for projects. A command given while the scene loads waits for it (one
+  // given on the Enter screen enters), and one given while the ink is up waits for it to clear (the
+  // last one wins in both).
   const routeVoice = (cmd: VoiceCommand) => {
     const t = commandTarget(cmd);
     if (!t) return;
@@ -1788,6 +1805,8 @@ export default function SectExperience() {
     }
     if (phase !== "ready") {
       pendingVoice.current = cmd;
+      // Asking the guide to go somewhere from the "Enter" screen enters.
+      if (phase === "loaded") enter();
       return;
     }
     const hold = store?.map.holds.find((h) => h.id === t.area);
@@ -2059,11 +2078,12 @@ export default function SectExperience() {
         <LoadingScreen
           progress={progress.value}
           label={progress.label}
-          phaseLabel={phase === "ready" ? "Ready" : load.label}
+          phaseLabel={phase === "ready" || phase === "loaded" ? "Ready" : load.label}
           error={error}
           visible={phase !== "ready"}
           onReload={error ? reloadAfterError : undefined}
           onReadAsPage={readAsPage}
+          onEnter={phase === "loaded" ? enter : undefined}
           quality={picker ? { ...picker, autoFocus: refocusPicker } : undefined}
           sound={music ? <SoundPrompt engine={music} /> : "reserve"}
           poster
@@ -2086,7 +2106,7 @@ export default function SectExperience() {
         <SectMusic
           store={store}
           areas={data?.meta.areas ?? null}
-          loading={phase === "data" || phase === "assets"}
+          loading={phase === "data" || phase === "assets" || phase === "loaded"}
           away={fallback !== null || phase === "error"}
           debug={params.debug}
           extra={showUi && picker ? <QualityButton {...picker} /> : undefined}

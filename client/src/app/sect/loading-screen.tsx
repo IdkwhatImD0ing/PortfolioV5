@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { PORTFOLIO } from "@/lib/portfolio-data";
 import { pageViewHref } from "@/lib/sect/content-start";
 import { POSTER, posterBox } from "@/lib/sect/opening";
@@ -54,9 +54,14 @@ function SunMoonEmblem({ className }: { className?: string }) {
  * here ("reserve" keeps its place empty until then), and above the buttons when the scene failed:
  * a phone that picked High and lost its graphics context gets back with Low and Reload.
  *
- * Under the picker, "Turn on sound, for the best experience" (experience/sound-toggle.tsx
+ * Under the picker, "Turn on sound" (experience/sound-toggle.tsx
  * SoundPrompt): the music starts muted, and browsers allow sound only after a press, so the screen
  * the visitor waits on offers it. Its place is kept too ("reserve"), and stays empty without music.
+ *
+ * Once the scene is ready the screen stays up (`onEnter`): the bar reads Ready, and "Enter"
+ * takes the gold beside "Read as page", in the place the page-view offer had, so nothing moves. The
+ * graphics and sound are set first, top to bottom, then Enter. It takes the focus when nothing else
+ * has it, so Enter or Space starts the flight.
  *
  * The flight's veil can show the poster still of the opening view behind it (Poster), while <html>
  * has POSTER_ATTR; the veil's fade when the scene is ready is then a crossfade to the same view.
@@ -76,6 +81,7 @@ export function LoadingScreen({
   visible = true,
   onReload,
   onReadAsPage,
+  onEnter,
   quality,
   sound,
   poster = false,
@@ -89,6 +95,8 @@ export function LoadingScreen({
   onReload?: () => void;
   /** Opens the one-page view in place; without it the offer links to /?view=page. */
   onReadAsPage?: () => void;
+  /** The scene is ready: "Enter" shows, and starts the flight. */
+  onEnter?: () => void;
   /** The graphics picker, or "reserve" for its empty place (it is coming); none without either. */
   quality?: QualityPickerProps | "reserve";
   /** The sound prompt, or "reserve" for its empty place; none without either. */
@@ -102,18 +110,32 @@ export function LoadingScreen({
   useEffect(() => {
     setPageHref(pageViewHref(window.location.search, window.location.hash));
   }, []);
+  const ready = onEnter !== undefined;
   useEffect(() => {
-    if (!visible || error) return;
+    if (!visible || error || ready) return;
     const t = window.setTimeout(() => setSlow(true), SLOW_MS);
     return () => clearTimeout(t);
-  }, [visible, error]);
+  }, [visible, error, ready]);
 
   const quiet =
     "border-b border-[var(--sect-gold-soft)] text-[var(--sect-gold)] hover:border-[var(--sect-gold)] focus-visible:border-[var(--sect-gold)]";
-  const offerClass = slow
-    ? "inline-flex min-h-11 items-center gap-2 rounded-[2px] border border-[var(--sect-gold)] bg-[var(--sect-gold)] px-5 text-[0.9375rem] font-semibold text-[#1a1306] hover:bg-[#f3d89a]"
-    : "inline-flex min-h-11 items-center gap-2 rounded-[2px] border border-[var(--sect-gold-soft)] bg-[rgba(14,12,20,0.55)] px-5 text-[0.9375rem] text-[var(--sect-paper)] hover:border-[var(--sect-gold)]";
+  const gold =
+    "inline-flex min-h-11 items-center gap-2 rounded-[2px] border border-[var(--sect-gold)] bg-[var(--sect-gold)] px-5 text-[0.9375rem] font-semibold text-[#1a1306] hover:bg-[#f3d89a]";
+  const plain =
+    "inline-flex min-h-11 items-center gap-2 rounded-[2px] border border-[var(--sect-gold-soft)] bg-[rgba(14,12,20,0.55)] px-5 text-[0.9375rem] text-[var(--sect-paper)] hover:border-[var(--sect-gold)]";
+  // Ready: Enter has the gold, the pair one width. Before that the offer takes it once loading is slow.
+  const pair = "min-w-[8.75rem] justify-center";
+  const offerClass = ready ? `${plain} ${pair}` : slow ? gold : plain;
   const offerText = "Read as page";
+  const offer = onReadAsPage ? (
+    <button type="button" onClick={onReadAsPage} className={offerClass}>
+      {offerText}
+    </button>
+  ) : (
+    <a href={pageHref} className={offerClass}>
+      {offerText}
+    </a>
+  );
   const picker = quality === "reserve" ? <QualityPickerSpace /> : quality ? <QualityPicker {...quality} layout="row" /> : null;
 
   return (
@@ -123,7 +145,7 @@ export function LoadingScreen({
     <div
       className="sect-veil fixed inset-0 z-50 flex flex-col items-center justify-center-safe overflow-y-auto px-6 py-10 text-center transition-opacity duration-700 [@media(max-height:30rem)]:py-5"
       style={{ opacity: visible ? 1 : 0, pointerEvents: visible ? "auto" : "none" }}
-      aria-busy={!error && visible}
+      aria-busy={!error && visible && !ready}
     >
       {poster && <Poster />}
       {/* The emblem sits above the name; short screens (a phone on its side) drop it so the column still fits. */}
@@ -180,20 +202,36 @@ export function LoadingScreen({
           <div className="mt-3 flex flex-col items-center gap-2">
             {/* Its line is always kept (hidden until slow), so the centred column and the picker above
                 don't jump up 15 px under a finger when it shows. */}
-            <p className={`text-[0.875rem] text-[var(--sect-paper)] ${slow ? "" : "invisible"}`}>Slow connection?</p>
-            {onReadAsPage ? (
-              <button type="button" onClick={onReadAsPage} className={offerClass}>
-                {offerText}
-              </button>
+            <p className={`text-[0.875rem] text-[var(--sect-paper)] ${slow && !ready ? "" : "invisible"}`}>Slow connection?</p>
+            {ready ? (
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <EnterButton onEnter={onEnter} className={`sect-fade-in ${gold} ${pair}`} />
+                {offer}
+              </div>
             ) : (
-              <a href={pageHref} className={offerClass}>
-                {offerText}
-              </a>
+              offer
             )}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * "Enter". It takes the focus when it comes, unless the visitor has put it somewhere (the
+ * picker, the sound prompt), so the keyboard's Enter starts the flight.
+ */
+function EnterButton({ onEnter, className }: { onEnter: () => void; className: string }) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const a = document.activeElement;
+    if (!a || a === document.body) ref.current?.focus({ preventScroll: true });
+  }, []);
+  return (
+    <button ref={ref} type="button" data-sect-enter onClick={onEnter} className={className}>
+      Enter
+    </button>
   );
 }
 

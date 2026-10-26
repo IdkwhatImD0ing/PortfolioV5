@@ -130,6 +130,23 @@ describe("LoadingScreen with the picker", () => {
     // No placeholder on the error screen.
     expect(screen({ quality: "reserve", error: "The scene failed to load." })).not.toMatch(/aria-hidden="true" class="mt-7/);
   });
+
+  it("offers Enter once the scene is ready, after the settings, with the gold", () => {
+    const loading = screen({ quality });
+    expect(loading).not.toContain("data-sect-enter");
+    expect(loading).toContain('aria-busy="true"');
+    const ready = screen({ quality, progress: 1, label: "Ready", onEnter: () => {} });
+    expect(ready).toMatch(/<button type="button" data-sect-enter="true"[^>]*>Enter<\/button>/);
+    expect(ready.indexOf("<fieldset")).toBeLessThan(ready.indexOf("data-sect-enter"));
+    expect(ready.indexOf("data-sect-enter")).toBeLessThan(ready.indexOf("Read as page"));
+    expect(ready).toContain('aria-busy="false"');
+    // Only Enter is gold; "Read as page" steps back beside it.
+    const enterClass = /data-sect-enter="true" class="([^"]+)"/.exec(ready)![1];
+    expect(enterClass).toContain("bg-[var(--sect-gold)]");
+    expect(/class="([^"]+)">Read as page</.exec(ready)![1]).not.toContain("bg-[var(--sect-gold)]");
+    // No Enter over an error.
+    expect(screen({ quality, error: "The scene failed to load.", onEnter: () => {} })).not.toContain("data-sect-enter");
+  });
 });
 
 describe("QualityButton", () => {
@@ -168,19 +185,16 @@ describe("the loading screen's sound prompt", () => {
   const screen = (extra: Partial<Parameters<typeof LoadingScreen>[0]>) =>
     renderToStaticMarkup(<LoadingScreen progress={0.4} label="Loading the sect" {...extra} />);
 
-  it("is one real button that says what it does, and why", () => {
+  it("is one real button that says what it does, in a few words", () => {
     const off = renderToStaticMarkup(<SoundCall on={false} onToggle={() => {}} />);
-    expect(off).toMatch(/^<button type="button" data-sect-sound="true" aria-label="Turn on sound, for the best experience"/);
-    expect(textOf(off)).toBe("Turn on sound For the best experience");
+    expect(off).toMatch(/^<button type="button" data-sect-sound="true" class="/);
+    expect(textOf(off)).toBe("Turn on sound");
     const on = renderToStaticMarkup(<SoundCall on onToggle={() => {}} />);
-    expect(on).toContain('aria-label="Sound on, tap again to mute"');
     expect(on).toContain('data-on="true"');
-    expect(textOf(on)).toBe("Sound on Tap again to mute");
+    expect(textOf(on)).toBe("Sound on");
     for (const html of [off, on]) {
-      // The visible words are in its name (WCAG 2.5.3), and the icon is not read out.
-      const name = /aria-label="([^"]+)"/.exec(html)![1].toLowerCase();
-      const [line, note] = [...html.matchAll(/<span class="[^"]*">([^<]+)<\/span>/g)].map((m) => m[1].toLowerCase());
-      expect(name).toBe(`${line}, ${note}`);
+      // Its words are its name (no aria-label to drift from them), and the icon is not read out.
+      expect(html).not.toContain("aria-label");
       expect(html).toMatch(/<span aria-hidden="true" class="sect-soundcall-seal"><svg/);
     }
   });

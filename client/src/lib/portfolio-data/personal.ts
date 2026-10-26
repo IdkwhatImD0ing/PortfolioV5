@@ -2,7 +2,7 @@ import type { PersonalFact } from "./types";
 
 export const PORTFOLIO = {
   name: "Bill Zhang",
-  tagline: "AI engineer. Builder of voice-first systems.",
+  tagline: "AI engineer",
   location: "San Francisco, CA",
   email: "billzhangsc@gmail.com",
   github: "https://github.com/IdkwhatImD0ing",

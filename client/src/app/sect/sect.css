@@ -1279,9 +1279,11 @@
 
 /*
  * The "tap to talk" pill shows on the intro only: at the stops it covered the scene's own objects
- * (the gate's right lion), and over a reader or the page view it would cover their controls.
+ * (the gate's right lion), and over a reader or the page view it would cover their controls. Not on
+ * the loading screen either, where its "or scroll" is not true until Enter.
  */
 .sect-root:has(.sect-intro[style*="hidden"]) .sect-orb > div:not([role="dialog"]) > div:first-child,
+body:has(.sect-veil) .sect-orb > div:not([role="dialog"]) > div:first-child,
 body[data-sect-modal] .sect-orb > div:not([role="dialog"]) > div:first-child,
 body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   display: none;

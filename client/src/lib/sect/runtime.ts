@@ -31,6 +31,15 @@ export interface SectParams {
   open: string | null;
 }
 
+/**
+ * The loading screen waits for the visitor's "Enter" once the scene is ready, so the
+ * graphics and sound can be set first. The screenshot views (?ui=0, ?frame=N) open at once: the
+ * tools that capture them wait for body[data-sect-ready] and press nothing.
+ */
+export function waitsForEnter(p: Pick<SectParams, "ui" | "frame">): boolean {
+  return p.ui && p.frame === null;
+}
+
 function flag(v: string | null): boolean {
   return v !== null && v !== "0" && v.toLowerCase() !== "false";
 }
