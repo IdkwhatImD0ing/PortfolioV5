@@ -24,8 +24,10 @@ differences from the plan:
 - Fix 10 (caching): files are fetched as `<file>?v=<fingerprint>`, using a new
   `rev` map in `manifest.json` (written by `sect_pack.py` from now on), and those
   URLs are cached for a year. A test fails if a file changes without a new
-  fingerprint. The early-start script was not built. The header was checked on a
-  local production server, not yet on Vercel.
+  fingerprint. The early-start script was not built. On art3m1s.me (commit
+  8906fe3) a `?v=` URL gets `public, max-age=31536000, immutable`, while the same
+  file without `?v=` and `manifest.json` still get `max-age=0, must-revalidate`.
+  14 of the 16 scene files the first stop loads used `?v=`.
 - Fix 11 (reflections): pond reuse is on Medium only. High still redraws the pond
   every frame.
 
