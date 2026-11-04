@@ -75,7 +75,7 @@ import {
   type LadderStatus,
   type Quality,
 } from "@/lib/sect/runtime";
-import { ATMOS, atmosFeatures, holdAt, holdFocusStep, nearestHold } from "@/lib/sect/post";
+import { ATMOS, atmosFeatures, holdAt, holdFocusStep, nearestHold, planPipeline, type PipelineShape } from "@/lib/sect/post";
 import { easeInOut, nearestStop, uToFrame } from "@/lib/sect/scroll-map";
 import type { CloudPuff, FlyerPath, SectMeta, Vec3 } from "@/lib/sect/types";
 import { fxTier } from "@/lib/sect/water";
@@ -102,7 +102,7 @@ import {
 } from "./materials";
 import { bvhStats, buildBvhOffThread } from "./bvh-build";
 import { ensureBvh, hasBvh, imageClosed, triangleCount } from "./prepare";
-import { cameraStill, framesToGo, isMoving, recenterView, wake, wakeForRecenter, type SectStore } from "./store";
+import { cameraStill, framesToGo, glowKey, HOVER_BURST_MS, isMoving, recenterView, wake, wakeForRecenter, wakeHover, type SectStore } from "./store";
 import type { ChunkStreamer } from "./streaming";
 import { WaterfallFx } from "./waterfall-fx";
 
@@ -426,7 +426,7 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
       }),
     );
     m.scale.setScalar(8500);
-    // Drawn after the solid world (and the cloud sea, which writes depth), at the far plane, so its
+    // Drawn after the solid world and the cloud sea (999, which writes depth), at the far plane, so its
     // clouds and haze are shaded only where nothing covers it: drawn first, it shaded every pixel
     // and was then painted over (13% of the world pass on average, 24% at the gate). The water,
     // the moon and the other transparent things still come after it.
@@ -472,7 +472,11 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
       createCloudSeaMaterial(fog, meta.cloudSea.color, "#8f93ad", meta.fog.color),
     );
     m.position.y = meta.cloudSea.y;
-    m.renderOrder = -800;
+    // Drawn after the solid world, just before the sky (1000), for the sky's reason (the comment
+    // there): its shader is heavy, and drawn first it shaded pixels the islands then covered. It is
+    // opaque and writes depth, so it stays in three's opaque list and the world's depth hides it;
+    // everything transparent (the water, the moon's disc and halo, the puffs) still comes after.
+    m.renderOrder = 999;
     m.frustumCulled = false;
     m.name = "sect.cloudsea";
     return m;
@@ -625,7 +629,7 @@ function CloudPuffs({
     mesh.name = "sect.cloudpuffs";
     mesh.frustumCulled = false;
     mesh.renderOrder = 3;
-    return { mesh, material, quad, packed, buf, order: new Uint32Array(n), scratch: new Float32Array(n), last: new Vector3(1e9, 0, 0) };
+    return { mesh, material, quad, packed, buf, order: new Uint32Array(n), scratch: new Float32Array(n), last: new Vector3(1e9, 0, 0), sorted: false };
   }, [fog, meta, puffs, store, anchors]);
 
   const objects = useMemo(() => (built ? [built.mesh] : []), [built]);
@@ -650,11 +654,15 @@ function CloudPuffs({
     cam[1] = camera.position.y;
     cam[2] = camera.position.z;
     const { packed, buf, order, scratch } = built;
-    sortFarToNear(packed, cam, order, scratch);
+    // After the first sort the list is nearly in order, so it is fixed up in place (same result).
+    sortFarToNear(packed, cam, order, scratch, built.sorted);
+    built.sorted = true;
     const arr = buf.array as Float32Array;
+    // Copied by hand: a subarray per puff would make a view object for every one, every frame.
     for (let i = 0; i < order.length; i++) {
       const src = order[i] * PUFF_STRIDE;
-      arr.set(packed.subarray(src, src + PUFF_STRIDE), i * PUFF_STRIDE);
+      const dst = i * PUFF_STRIDE;
+      for (let k = 0; k < PUFF_STRIDE; k++) arr[dst + k] = packed[src + k];
     }
     buf.needsUpdate = true;
   }, -1);
@@ -1001,6 +1009,8 @@ function Hotspots({
   const pickRef = useRef<() => string | null>(() => null);
   /** The reference the last pick found under the pointer (host: the hotspot that holds it). */
   const loreRef = useRef<{ id: LoreId; host: string | null } | null>(null);
+  /** The reference whose hover card was last sent up, so the cursor can move the card between frames. */
+  const loreShown = useRef<{ id: LoreId; host: string | null } | null>(null);
   const loreBoxes = useMemo(() => (meta.lore ?? []).filter((b) => isLoreId(b.id)), [meta]);
   /** World point of the last hotspot hit (the label sits above it, not above the middle of a pair). */
   const hitPoint = useMemo(() => new Vector3(), []);
@@ -1170,16 +1180,27 @@ function Hotspots({
       pressedBy = e.pointerType || "mouse";
       pointer.current.kind = pressedBy;
     };
+    /** A hover card's move to the cursor waits for the next display frame (one React update at most per frame). */
+    let cardFrame = 0;
+    const followCard = () => {
+      cardFrame = 0;
+      const shown = loreShown.current;
+      const p = pointer.current;
+      if (shown && p.inside) onLore?.({ ...shown, at: [p.cx, p.cy] }, "hover");
+    };
     const move = (e: PointerEvent) => {
       setFrom(e);
       pointer.current.kind = e.pointerType || "mouse";
       pointer.current.dirty = true;
-      wake(store, 200);
+      // The pointer only changes the pick and the card, which render at the idle rate; the card
+      // follows the cursor from here, not from the frame loop, so it keeps up at any frame rate.
+      wakeHover(store, 200);
+      if (loreShown.current && cardFrame === 0) cardFrame = requestAnimationFrame(followCard);
     };
     const leave = () => {
       pointer.current.inside = false;
       pointer.current.dirty = true;
-      wake(store, 200);
+      wakeHover(store, 200);
     };
     const occluded = (dist: number): boolean => {
       const o = ray.ray.origin;
@@ -1359,6 +1380,7 @@ function Hotspots({
       el.removeEventListener("pointermove", move);
       el.removeEventListener("pointerleave", leave);
       el.removeEventListener("click", click);
+      if (cardFrame) cancelAnimationFrame(cardFrame);
     };
   }, [gl, camera, size, pickables, fallPicks, ray, ndc, onSelect, onLore, loreBoxes, occ, store, hitPoint, moon, moonFromFrame]);
 
@@ -1420,6 +1442,7 @@ function Hotspots({
       // behind would bring a dismissed card back); a reference a hotspot holds rides on its label.
       const l = loreRef.current;
       const own = l && (l.host !== null || p.kind !== "touch") ? l : null;
+      loreShown.current = own;
       onLore?.(own ? { ...own, at: [p.cx, p.cy] } : null, "hover");
     } else if (store.hovered && !p.dirty) {
       // Keep the label on the object while the camera moves (hidden while it is behind the camera).
@@ -1507,14 +1530,28 @@ function Post({
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
+  const invalidate = useThree((s) => s.invalidate);
   const size = useThree((s) => s.size);
   const dpr = useThree((s) => s.viewport.dpr);
   const fog = useMemo(() => lookFogConstants(meta), [meta]);
-  const features = atmosFeatures(ceiling ?? quality, quality);
-  const { cloudShadows, holdFocus } = features;
+  const { cloudShadows, holdFocus } = atmosFeatures(ceiling ?? quality, quality);
+  // The chain the quality asks for now, and the one the pipeline below is built with. They differ
+  // after a step down: that is applied to the built chain in place (MSAA reallocated, a dropped
+  // pass switched off, no shader compile mid-flight, when frames are already slow), and the chain
+  // is rebuilt to exactly the wanted one once the camera rests. A climb rebuilds at once (the
+  // Driver already holds it for a rest).
+  const want = useMemo<PipelineShape>(
+    () => ({ msaa: quality.msaa, bloom: quality.bloom, cloudShadows, holdFocus }),
+    [quality.msaa, quality.bloom, cloudShadows, holdFocus],
+  );
+  const [built, setBuilt] = useState<PipelineShape>(want);
+  const shapes = useMemo(() => new WeakMap<Pipeline, PipelineShape>(), []);
   // Created in an effect, not a memo: StrictMode runs memos twice, and the discarded pipeline's
   // (never written) depth texture would win the shared soft-depth uniform.
   const [pipe, setPipe] = useState<Pipeline | null>(null);
+  // The cloud shade drift, carried across rebuilds: a new effect starts at zero, and the whole
+  // shade pattern would jump back to its start position when the chain is rebuilt.
+  const cloudDrift = useRef({ elapsed: 0, frozen: false });
   useLayoutEffect(() => {
     const p = createPipeline(
       gl,
@@ -1522,28 +1559,50 @@ function Post({
       overlay,
       camera,
       {
-        msaa: quality.msaa,
-        bloom: quality.bloom,
+        msaa: built.msaa,
+        bloom: built.bloom,
         vignette: meta.vignette,
         sunDir: new Vector3(...meta.sun.direction),
         sunHaze: SECT_LOOK.sunHaze,
-        atmos: { fog, features: { cloudShadows, holdFocus } },
+        atmos: { fog, features: { cloudShadows: built.cloudShadows, holdFocus: built.holdFocus } },
       },
       (t) => {
         SOFT_DEPTH.tDepth.value = t;
         SOFT_DEPTH.uHasDepth.value = t ? 1 : 0;
       },
     );
+    if (p.cloudShadow) {
+      p.cloudShadow.elapsed = cloudDrift.current.elapsed;
+      p.cloudShadow.frozen = cloudDrift.current.frozen;
+    }
+    shapes.set(p, built);
     setPipe(p);
+    // A rebuild at rest has no frame coming: draw one with the new chain.
+    invalidate();
     // Inspection scripts (?debug=1): same-frame comparisons with a pass off.
     const w = window as unknown as { __sectPost?: Pipeline };
     if (/[?&]debug=1/.test(window.location.search)) w.__sectPost = p;
     return () => {
+      if (p.cloudShadow) cloudDrift.current = { elapsed: p.cloudShadow.elapsed, frozen: p.cloudShadow.frozen };
       p.dispose();
       setPipe((cur) => (cur === p ? null : cur));
       if (w.__sectPost === p) delete w.__sectPost;
     };
-  }, [gl, scene, overlay, camera, quality.msaa, quality.bloom, meta, fog, cloudShadows, holdFocus]);
+  }, [gl, scene, overlay, camera, meta, fog, built, shapes, invalidate]);
+  // Whether the built chain still holds a pass the quality has dropped (replaced at the next rest).
+  const settle = useRef(false);
+  useLayoutEffect(() => {
+    if (!pipe) return;
+    const b = shapes.get(pipe);
+    if (!b) return;
+    const plan = planPipeline(b, want);
+    settle.current = plan.settleAtRest;
+    if (plan.rebuild) {
+      setBuilt(want);
+      return;
+    }
+    pipe.setLive(plan.live);
+  }, [pipe, want, shapes]);
   useLayoutEffect(() => {
     pipe?.composer.setSize(size.width, size.height);
   }, [pipe, size, dpr]);
@@ -1573,6 +1632,13 @@ function Post({
       state.gl.render(state.scene, state.camera);
       return;
     }
+    // At rest (the same signal the climb waits for): replace a chain that still holds passes a step
+    // down switched off with an exact build of the wanted one. The new chain draws from the next
+    // frame; this one still draws with the old.
+    if (settle.current && state.frameloop !== "always" && cameraStill(store)) {
+      settle.current = false;
+      setBuilt((cur) => (cur === want ? cur : want));
+    }
     if (pipe.cloudShadow || pipe.holdFocus) {
       const near = nearestHold(store.camera.holds, store.frame);
       const subject = near ? (subjects.get(near.id) ?? null) : null;
@@ -1580,7 +1646,7 @@ function Post({
       const keep = near ? Math.max(0, 1 - Math.abs(near.frame - store.frame) / 40) : 0;
       pipe.cloudShadow?.keep(subject, ATMOS.cloudShadow.keepRadius * keep);
       const hf = pipe.holdFocus;
-      if (hf) {
+      if (hf && !hf.suspended) {
         // Only the stop's own framing: at rest at a stop, the view not turned off the path, and
         // the subject ahead (its distance along the view at least half its distance).
         let axial = 0;
@@ -1896,6 +1962,7 @@ function Driver({
     let lastIdle = 0;
     let lastCapped = 0;
     let lastInput = performance.now();
+    let lastGlow = glowKey(store);
     const onInput = () => {
       lastInput = performance.now();
     };
@@ -1922,8 +1989,17 @@ function Driver({
       const { maxFps } = live.current;
       if (!live.current.veiled) opened.current = true;
       const veiled = !opened.current;
+      // A hotspot gaining or losing the glow renders at the full rate for a moment, so its fade is smooth.
+      const key = glowKey(store);
+      if (key !== lastGlow) {
+        lastGlow = key;
+        wake(store, HOVER_BURST_MS);
+      }
+      // The pulse (a ~0.5 Hz glow) and the pointer's pick and card need frames, not every display
+      // frame: they render at the idle rate below.
       const pulse = !store.reducedMotion && !store.modal && (store.hovered !== null || store.focused !== null || store.selected !== null);
-      const continuous = !store.paused && (isMoving(store) || pulse || now < store.wakeUntil);
+      const pointerAwake = now < store.hoverWakeUntil;
+      const continuous = !store.paused && (isMoving(store) || now < store.wakeUntil);
       const capped = maxFps > 0 && !capIsMoot(maxFps, ladder.cadenceMs());
       const mode = get().frameloop;
       if (continuous && !capped) {
@@ -1945,8 +2021,11 @@ function Driver({
         return;
       }
       // Under a reader nothing needs to move.
-      if (store.modal) return;
-      const idleFps = store.reducedMotion ? 2 : veiled ? IDLE_VEILED_FPS : now - lastInput > IDLE_DIM_MS ? IDLE_DIM_FPS : IDLE_FPS;
+      if (store.modal && !pointerAwake) return;
+      // Pulse and pointer frames never go below the normal idle rate (reduced motion, a veil or the
+      // dimmed rate would make the pick and the card lag); they are never counted as moving frames.
+      const baseFps = store.reducedMotion ? 2 : veiled ? IDLE_VEILED_FPS : now - lastInput > IDLE_DIM_MS ? IDLE_DIM_FPS : IDLE_FPS;
+      const idleFps = pulse || pointerAwake ? Math.max(baseFps, IDLE_FPS) : baseFps;
       if (now - lastIdle >= 1000 / Math.min(idleFps, capped ? maxFps : idleFps) - 2) {
         lastIdle = now;
         render(now, false);

@@ -52,6 +52,12 @@ export interface SectManifest {
   water: string | null;
   /** Tileable detail texture for baked rock and ground (detail.webp, lib/sect/detail.ts), when packed. */
   detail?: string;
+  /**
+   * A short fingerprint of each file's bytes, by the name listed in this manifest (sect_pack.py). A file
+   * with one is fetched as `<file>?v=<fingerprint>`, which the host may cache for a year because a changed
+   * file gets a new URL. Absent in older manifests: those files are fetched as before.
+   */
+  rev?: Record<string, string>;
   /** Always loaded, before any chunk. */
   global: string[];
   /** Same order as `global`, low-tier textures, or null. */

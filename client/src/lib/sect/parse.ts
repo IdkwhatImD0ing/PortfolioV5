@@ -111,6 +111,16 @@ function texBytesOf(v: unknown): number | null {
   return sum > 0 ? sum : null;
 }
 
+/** The manifest's `rev` map (file name to fingerprint); entries that are not non-empty strings are dropped, null when none are left. */
+function parseRev(v: unknown): Record<string, string> | null {
+  if (!isObj(v)) return null;
+  const out: Record<string, string> = {};
+  for (const [file, hash] of Object.entries(v)) {
+    if (typeof hash === "string" && /^[0-9a-zA-Z]+$/.test(hash)) out[file] = hash;
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 /**
  * manifest.json. Version 2 lists `global` files and per-area `chunks`; version 1 (the first test,
  * a flat `scene` list) is read as global files with no chunks, so the old test still loads.
@@ -119,6 +129,7 @@ function texBytesOf(v: unknown): number | null {
 export function parseManifest(raw: unknown): SectManifest {
   const o = requireObj(raw, "manifest.json");
   const detail = optStr(o.detail);
+  const rev = parseRev(o.rev);
   const common = {
     baked: o.baked === true,
     camera: str(o.camera, "camera.json"),
@@ -128,6 +139,7 @@ export function parseManifest(raw: unknown): SectManifest {
     flyerPath: optStr(o.flyerPath),
     water: optStr(o.water),
     ...(detail ? { detail } : {}),
+    ...(rev ? { rev } : {}),
   };
   const version = num(o.version, Array.isArray(o.scene) ? 1 : 2);
   if (version < 2) {
@@ -170,6 +182,17 @@ export function parseClouds(raw: unknown): CloudPuff[] {
 export function resolveAsset(base: string, file: string): string {
   if (/^(https?:)?\/\//.test(file) || file.startsWith("/")) return file;
   return `${base.replace(/\/+$/, "")}/${file.replace(/^\.\//, "")}`;
+}
+
+/**
+ * The URL to download a manifest file from: its plain URL with `?v=<fingerprint>` when the manifest
+ * has one for it, otherwise exactly resolveAsset. The host caches a URL with `v` for a year, so a file
+ * that changes must change its fingerprint. Progress and bookkeeping stay keyed by the plain URL.
+ */
+export function fetchUrl(base: string, file: string, rev?: Readonly<Record<string, string>>): string {
+  const url = resolveAsset(base, file);
+  const v = rev?.[file];
+  return v ? `${url}?v=${v}` : url;
 }
 
 function parsePathFrame(v: unknown, i: number): PathFrame {

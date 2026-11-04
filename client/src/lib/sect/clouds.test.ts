@@ -59,6 +59,40 @@ describe("cloud puffs", () => {
     const order = sortFarToNear(packed, [0, 0, 0], new Uint32Array(3), new Float32Array(3));
     expect(Array.from(order)).toEqual([1, 2, 0]);
   });
+
+  /** The sort this replaced: a stable sort of 0..n-1 by distance, farthest first. */
+  const fullSort = (packed: Float32Array, cam: Vec3): number[] => {
+    const n = packed.length / PUFF_STRIDE;
+    const d = (i: number) => (packed[i * PUFF_STRIDE] - cam[0]) ** 2 + (packed[i * PUFF_STRIDE + 1] - cam[1]) ** 2 + (packed[i * PUFF_STRIDE + 2] - cam[2]) ** 2;
+    const dist = Float32Array.from({ length: n }, (_, i) => d(i));
+    return Array.from({ length: n }, (_, i) => i).sort((a, b) => dist[b] - dist[a]);
+  };
+
+  it("re-sorts from the previous order to exactly the full sort's order, ties included", () => {
+    let seed = 7;
+    const rnd = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    // Whole-number positions on a small grid make many puffs exactly equally far.
+    const puffs = Array.from({ length: 300 }, () => puff([Math.floor(rnd() * 12) * 10, Math.floor(rnd() * 3) * 10, Math.floor(rnd() * 12) * 10], [1, 1, 1]));
+    const packed = packPuffs(puffs, [], 0);
+    const order = new Uint32Array(300);
+    const scratch = new Float32Array(300);
+    const cam: Vec3 = [3, 4, 5];
+    expect(Array.from(sortFarToNear(packed, cam, order, scratch))).toEqual(fullSort(packed, cam));
+    for (let step = 0; step < 40; step++) {
+      // Small moves (and now and then a jump), each fixed up from the last order.
+      const big = step % 13 === 12;
+      cam[0] += (rnd() - 0.5) * (big ? 200 : 1);
+      cam[1] += (rnd() - 0.5) * (big ? 200 : 1);
+      cam[2] += (rnd() - 0.5) * (big ? 200 : 1);
+      expect(Array.from(sortFarToNear(packed, cam, order, scratch, true))).toEqual(fullSort(packed, cam));
+    }
+    // Same camera again: nothing moves.
+    const before = Array.from(order);
+    expect(Array.from(sortFarToNear(packed, cam, order, scratch, true))).toEqual(before);
+  });
 });
 
 /**

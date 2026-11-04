@@ -68,16 +68,24 @@ float csClouds( vec2 p ) {
 void mainImage( const in vec4 inputColor, const in vec2 uv, const in float depth, out vec4 outputColor ) {
   outputColor = inputColor;
   if ( depth >= 0.999999 || uStrength <= 0.0 ) return;
+  // The cheap tests come first. The shade is 1 - strength * shade * lit * tr, so when lit, the
+  // keep fade or the cloud shade is exactly 0 the factor is exactly 1 and the input stays as it
+  // is: most pixels (deep shade, glows, the stop's subject, clear sky between clouds) skip the
+  // noise and the haze maths below, and the output is the same bit for bit.
+  float l = dot( inputColor.rgb, SECT_LUMA );
+  float lit = smoothstep( CS_LIT_LO, CS_LIT_HI, l ) * ( 1.0 - smoothstep( CS_GLOW_LO, CS_GLOW_HI, l ) );
+  if ( lit <= 0.0 ) return;
   vec4 v = uProjInv * vec4( uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0 );
   vec3 wp = ( uViewInv * vec4( v.xyz / v.w, 1.0 ) ).xyz;
+  // The stop's subject stays in the light (a film's key light on its hero): no shade within
+  // uKeep.w metres of it, eased back in over the next uKeep.w.
+  float keepFade = smoothstep( uKeep.w, 2.0 * uKeep.w, distance( wp, uKeep.xyz ) );
+  if ( keepFade <= 0.0 ) return;
   // Along the sun's ray up to the deck (the sun is low: shade is long along its bearing).
   vec2 q = wp.xz + SECT_SUN_DIR.xz * ( ( CS_DECK_Y - wp.y ) / max( SECT_SUN_DIR.y, 0.02 ) );
   float shade = smoothstep( CS_COVER_LO, CS_COVER_HI, csClouds( q / CS_SCALE + uDrift ) );
-  // The stop's subject stays in the light (a film's key light on its hero): no shade within
-  // uKeep.w metres of it, eased back in over the next uKeep.w.
-  shade *= smoothstep( uKeep.w, 2.0 * uKeep.w, distance( wp, uKeep.xyz ) );
-  float l = dot( inputColor.rgb, SECT_LUMA );
-  float lit = smoothstep( CS_LIT_LO, CS_LIT_HI, l ) * ( 1.0 - smoothstep( CS_GLOW_LO, CS_GLOW_HI, l ) );
+  if ( shade <= 0.0 ) return;
+  shade *= keepFade;
   // The haze between the camera and the surface is lit air, not the surface: only what still shows
   // through it darkens.
   vec3 rd = wp - uCamPos;
@@ -116,6 +124,19 @@ export class CloudShadowEffect extends Effect {
 
   set strength(v: number) {
     this.uniforms.get("uStrength")!.value = v;
+  }
+
+  /**
+   * Off without a recompile: the shader leaves at once on a strength of 0, which is what a chain
+   * built without this pass shows. The ladder uses it for a step down (effects.ts setLive).
+   */
+  get suspended(): boolean {
+    return this.strength <= 0;
+  }
+
+  set suspended(off: boolean) {
+    if (off) this.strength = 0;
+    else if (this.suspended) this.strength = ATMOS.cloudShadow.strength;
   }
 
   /** Keeps shade off the stop's subject: its point and radius (metres; 0 = none). */
@@ -166,6 +187,7 @@ void mainImage( const in vec4 inputColor, const in vec2 uv, const in float depth
 export class HoldFocusEffect extends Effect {
   private readonly blur: KawaseBlurPass;
   private readonly target: WebGLRenderTarget;
+  private off = false;
 
   constructor() {
     super("SectHoldFocusEffect", HOLD_FOCUS_FRAGMENT, {
@@ -189,7 +211,21 @@ export class HoldFocusEffect extends Effect {
   }
 
   set weight(v: number) {
-    this.uniforms.get("uWeight")!.value = v;
+    this.uniforms.get("uWeight")!.value = this.off ? 0 : v;
+  }
+
+  /**
+   * Off without a recompile: the weight stays 0 (no blur pass, the shader leaves at its first
+   * test), which is what a chain built without this pass shows. Callers skip their per-frame
+   * weight work while this is set. The ladder uses it for a step down (effects.ts setLive).
+   */
+  get suspended(): boolean {
+    return this.off;
+  }
+
+  set suspended(off: boolean) {
+    this.off = off;
+    if (off) this.uniforms.get("uWeight")!.value = 0;
   }
 
   /** Distance to the subject (metres). */

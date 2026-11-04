@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createFreeLook } from "@/lib/sect/free-look";
 import { buildScrollMap, uToFrame } from "@/lib/sect/scroll-map";
-import { cameraStill, framesToGo, isMoving } from "./store";
+import { cameraStill, createStore, framesToGo, glowKey, isMoving, wake, wakeHover } from "./store";
 
 const map = buildScrollMap(1, 400, [
   { id: "gate", label: "Mountain Gate", frame: 93 },
@@ -59,5 +59,32 @@ describe("framesToGo", () => {
   it("is 0 when the camera snaps (reduced motion) or is pinned (?frame=)", () => {
     expect(framesToGo({ ...base, reducedMotion: true, targetU: mid.u1, frame: mid.f0 })).toBe(0);
     expect(framesToGo({ ...base, frameOverride: 93, targetU: mid.u1, frame: 93 })).toBe(0);
+  });
+});
+
+describe("pointer wakes", () => {
+  const camera = { startFrame: 0 } as Parameters<typeof createStore>[1];
+  it("keeps the pointer's wake apart from the full-rate wake", () => {
+    const store = createStore(map, camera, 0, null, false);
+    wakeHover(store, 200);
+    expect(store.hoverWakeUntil).toBeGreaterThan(performance.now());
+    expect(store.wakeUntil).toBe(0);
+    wake(store, 250);
+    expect(store.wakeUntil).toBeGreaterThan(performance.now());
+  });
+
+  it("never shortens a wake already set", () => {
+    const store = createStore(map, camera, 0, null, false);
+    wakeHover(store, 5000);
+    const until = store.hoverWakeUntil;
+    wakeHover(store, 10);
+    expect(store.hoverWakeUntil).toBe(until);
+  });
+
+  it("changes the glow key when a hotspot gains or loses the pointer, focus or selection", () => {
+    const a = glowKey({ hovered: null, focused: null, selected: null });
+    expect(glowKey({ hovered: "x", focused: null, selected: null })).not.toBe(a);
+    expect(glowKey({ hovered: null, focused: "x", selected: null })).not.toBe(glowKey({ hovered: "x", focused: null, selected: null }));
+    expect(glowKey({ hovered: null, focused: null, selected: null })).toBe(a);
   });
 });

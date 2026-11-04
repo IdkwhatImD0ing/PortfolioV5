@@ -217,9 +217,19 @@ describe("fog GLSL", () => {
     const f = fogChunks(aerial).fog_fragment;
     expect(f).toContain("sectAerial( sectC, sectBase, sectRd, sectHazeDepth(");
     expect(f).toContain("linearToOutputTexel( vec4( 0.5 ) )");
-    expect(f).toContain("sectSrgbDecode( gl_FragColor.rgb )");
+    expect(f).toContain("vec3 sectC = gl_FragColor.rgb;");
+    expect(f).not.toContain("sectSrgbDecode( gl_FragColor.rgb )");
     expect(f).toContain("sectSrgbDecode( fogColor )");
     expect(f).toContain("sectDitherEncoded( sectSrgbEncode( sectScreenClip( sectC ) ), gl_FragCoord.xy )");
+  });
+
+  it("takes a linear colour and a linear fog colour when a shader sets SECT_FOG_ONCE, and decodes only the fog colour otherwise", () => {
+    const f = fogChunks(aerial).fog_fragment;
+    expect(f).toContain("#ifdef SECT_FOG_ONCE");
+    expect(f).toContain("sectEncoded ? uSectFogLinear : fogColor");
+    expect(f).toContain("sectEncoded ? sectSrgbDecode( fogColor ) : fogColor");
+    expect(fogChunks(aerial).fog_pars_fragment).toContain("#define SECT_FOG_FOLLOWS");
+    expect(fogChunks(aerial).fog_pars_fragment).toContain("uniform vec3 uSectFogLinear;");
   });
 
   it("puts the cloud layer under the haze: cloud first (the far end of the ray), then the air in front", () => {

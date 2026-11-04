@@ -1,6 +1,7 @@
 import {
   AdditiveBlending,
   BufferGeometry,
+  Color,
   DoubleSide,
   Float32BufferAttribute,
   FrontSide,
@@ -12,6 +13,7 @@ import {
   RGBAFormat,
   ShaderChunk,
   ShaderLib,
+  ShaderMaterial,
   Texture,
   Vector2,
   Vector3,
@@ -22,7 +24,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { DETAIL_NOISE, detailProgramKey } from "@/lib/sect/detail";
-import { fogConstantsFromMeta, glslFloat } from "@/lib/sect/glsl";
+import { fogConstantsFromMeta, fogDefines, glslFloat } from "@/lib/sect/glsl";
 import { heartMirrorGlsl } from "@/lib/sect/heart-mirror";
 import { SECT_LOOK } from "@/lib/sect/look";
 import { parseMeta } from "@/lib/sect/parse";
@@ -31,8 +33,13 @@ import { REFLECT } from "./reflect/plan";
 import {
   aimPondMirror,
   createBeamMaterial,
+  createCloudPuffMaterial,
   createCloudSeaMaterial,
   createDetailUniforms,
+  createMistMaterial,
+  createWaterfallMaterial,
+  enableFogEncodeOnce,
+  installFog,
   createDomeMaterial,
   createGlowMaterial,
   createMoonMaterial,
@@ -123,8 +130,17 @@ describe("patchCardMaterial", () => {
     expect(fs).toContain("diffuseColor.a *= sectCut.g");
     expect(fs).toContain("2.0 * sectCut.r - 1.0");
     expect(fs).toContain("if ( sectPx < 0.0 ) discard;");
-    // Order: the grade, then the twig detail and cut-out, then the test, then the rim.
-    const order = ["sectGraded", "sectCut.r", "float sectPx", "if ( sectPx < 0.0 ) discard;", "outgoingLight += uSectRim", "#include <opaque_fragment>"];
+    // Order: the cut-out and the test (discard), then the grade, then the twig detail on the graded
+    // colour (the grade is not linear), then the rim.
+    const order = [
+      "sectCut.r",
+      "float sectPx",
+      "if ( sectPx < 0.0 ) discard;",
+      "sectGraded",
+      "diffuseColor.rgb *= sectTwigK;",
+      "outgoingLight += uSectRim",
+      "#include <opaque_fragment>",
+    ];
     const at = order.map((s) => fs.indexOf(s));
     expect(at.every((i) => i >= 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
@@ -153,6 +169,36 @@ describe("patchCardMaterial", () => {
     // sectPx is measured before three's test, and used by the rim.
     expect(fs.indexOf("float sectPx")).toBeLessThan(fs.indexOf("#include <alphatest_fragment>"));
     expect(fs).toContain("outgoingLight += uSectRim");
+  });
+
+  it("grades every card kind after its cut-out test, with the derivative work before the discard", () => {
+    for (const kind of ["needle", "twig", undefined]) {
+      for (const a2c of [false, true]) {
+        const fs = prepareCard(kind, a2c).shader.fragmentShader;
+        const grade = fs.indexOf("vec3 sectTexel");
+        const test = kind ? fs.indexOf("discard;") : fs.indexOf("#include <alphatest_fragment>");
+        expect(grade, `${kind} ${a2c}`).toBeGreaterThan(test);
+        expect(test).toBeGreaterThan(fs.indexOf("float sectPx"));
+        // Nothing with screen derivatives sits between the discard and the end of the grade.
+        const after = fs.slice(test, fs.indexOf("outgoingLight += uSectRim"));
+        expect(after).not.toMatch(/dFd[xy]|fwidth/);
+        // The grade reads the texel colour, which nothing has multiplied yet.
+        expect(fs.indexOf("vec3 sectTexel")).toBeLessThan(fs.indexOf("diffuseColor.rgb = sectGraded"));
+        expect(fs.indexOf("diffuseColor.rgb *= sectTwigK;") === -1).toBe(kind !== "twig");
+      }
+    }
+  });
+
+  it("takes a card's range weight from the vertices' margin, and only runs the area loop near an area", () => {
+    for (const kind of ["needle", "twig", undefined]) {
+      const { shader } = prepareCard(kind, false);
+      expect(shader.vertexShader).toContain("float sectRangeMargin( vec3 p )");
+      expect(shader.vertexShader).toContain("vSectRm = sectRangeMargin( vSectWorld );");
+      expect(shader.fragmentShader).toContain("varying float vSectRm;");
+      expect(shader.fragmentShader).toMatch(/float sectRw = 1\.0;\n {2}if \( vSectRm < 4\.0 \) sectRw = sectRangeW\( vSectWorld \);/);
+      // The canopy variation is not smooth at card scale: still per pixel.
+      expect(shader.fragmentShader).toContain("sectCanopyVary( sectGraded, sectTexel, vSectWorld, sectRw )");
+    }
   });
 
   it("leaves only real three chunks to include, and every anchor it needs was found", () => {
@@ -880,5 +926,64 @@ describe("the range look (lib/sect/range-look.ts)", () => {
     const hs = compile(hall);
     expect(hs.uniforms.uSectAreas).toBeUndefined();
     expect(hs.fragmentShader).toContain("vec3 sectGraded = sectGrade( sectTexel );");
+  });
+});
+
+describe("fog worked out once per sprite", () => {
+  const fog = fogConstantsFromMeta(parseMeta({}));
+
+  it("computes the cloud puff's haze, cloud and sun glow in the vertex shader and only reads them per pixel", () => {
+    const mat = createCloudPuffMaterial(fog, "#c8ada0");
+    expect(mat.vertexShader).toContain("vHazeMix = 1.0 - exp( - sectHazeDepth( cameraPosition.y, f.y, dist ) );");
+    expect(mat.vertexShader).toContain("vHaze = sectHazeColor( uFogColor, f );");
+    expect(mat.vertexShader).toContain("vCloudMix = 1.0 - exp( - sectCloudDepth( cameraPosition.y, f.y, dist ) );");
+    expect(mat.vertexShader).toContain("vToward = pow( max( dot( f, SECT_SUN_DIR ), 0.0 ), 5.0 );");
+    for (const call of ["sectHazeDepth(", "sectCloudDepth(", "sectHazeColor(", "pow("]) {
+      expect(mat.fragmentShader).not.toContain(call);
+    }
+    expect(mat.fragmentShader).toContain("col = mix( col, vHaze, vHazeMix );");
+    expect(mat.fragmentShader).toContain("col = mix( col, SECT_CLOUD_FOG, vCloudMix );");
+  });
+
+  it("does the same for the mist sprites", () => {
+    const mat = createMistMaterial(fog, "#c8ada0", { value: 0 });
+    expect(mat.vertexShader).toContain("vHaze = sectHazeColor( uFogColor, f );");
+    expect(mat.fragmentShader).not.toContain("sectHazeDepth(");
+    expect(mat.fragmentShader).not.toContain("uFogColor");
+    expect(mat.fragmentShader).toContain("col = mix( col, vHaze, vHazeMix );");
+  });
+});
+
+describe("one colour conversion on the low tier", () => {
+  it("guards three's encode behind SECT_FOG_FOLLOWS once installFog has run, for the fog chunk's shaders only", () => {
+    const c = fogConstantsFromMeta(parseMeta({}));
+    installFog(c);
+    installFog({ ...c, density: c.density + 1 });
+    const chunk = (ShaderChunk as unknown as Record<string, string>).colorspace_fragment;
+    expect(chunk.startsWith("#ifndef SECT_FOG_FOLLOWS")).toBe(true);
+    expect(chunk.match(/#ifndef SECT_FOG_FOLLOWS/g)).toHaveLength(1);
+    expect(chunk).toContain("linearToOutputTexel");
+    expect(fogDefines(c)).not.toContain("SECT_FOG_FOLLOWS");
+  });
+
+  it("opts in the waterfall and keeps a linear copy of the scene fog colour", () => {
+    const mat = createWaterfallMaterial("#e6eff2");
+    expect(mat.defines).toHaveProperty("SECT_FOG_ONCE");
+    const fogColor = new Color("#c8ada0");
+    const uniform = mat.uniforms.uSectFogLinear.value as Color;
+    const call = (scene: unknown) => mat.onBeforeRender({} as never, scene as never, {} as never, {} as never, {} as never, {} as never);
+    call({ fog: { color: fogColor } });
+    expect(uniform.toArray()).toEqual(fogColor.toArray());
+    // Without scene fog it leaves the value alone.
+    fogColor.set("#000000");
+    call({});
+    expect(uniform.r).toBeGreaterThan(0);
+  });
+
+  it("enableFogEncodeOnce adds the define and the uniform to a material", () => {
+    const other = new ShaderMaterial({ uniforms: {} });
+    enableFogEncodeOnce(other);
+    expect(other.defines.SECT_FOG_ONCE).toBe("");
+    expect(other.uniforms.uSectFogLinear.value).toBeInstanceOf(Color);
   });
 });

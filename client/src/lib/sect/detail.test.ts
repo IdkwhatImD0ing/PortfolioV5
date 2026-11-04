@@ -120,12 +120,12 @@ describe("detailWanted", () => {
 describe("detail GLSL", () => {
   it("rock: three projections on the flat face normal, two layers, red channel, its own tile", () => {
     const g = detailGlsl("rock");
-    expect(g).toContain("float sectDetail( vec3 p )");
+    expect(g).toContain("float sectDetail( vec3 p, bool on )");
     expect(g).toContain("uniform sampler2D tSectDetail;");
     expect(g).toContain("uniform float uSectDetailOn;");
     expect(g).toContain("cross( dFdx( p ), dFdy( p ) )");
-    expect(count(g, "texture2D( tSectDetail")).toBe(6);
-    expect(count(g, "texture2D( tSectDetail, r * q")).toBe(3);
+    expect(count(g, "textureGrad( tSectDetail")).toBe(6);
+    expect(count(g, "textureGrad( tSectDetail, d")).toBe(3);
     expect(g).toContain(glslFloat(1 / DETAIL_TILE_M.rock));
     // Softer than the first 6, so the pattern jumps less at each triangle edge.
     expect(DETAIL_LOOK.sharpness).toBe(3);
@@ -136,10 +136,38 @@ describe("detail GLSL", () => {
     const g = detailGlsl("ground");
     const photo = g.slice(g.indexOf("float sectDetail("));
     expect(photo).toContain("p.xz");
-    expect(g).not.toContain("dFdx");
-    expect(count(g, "texture2D( tSectDetail")).toBe(2);
+    expect(photo).toContain("dFdx( q )");
+    expect(count(g, "textureGrad( tSectDetail")).toBe(2);
     expect(count(photo, ").g")).toBe(2);
     expect(g).toContain(glslFloat(1 / DETAIL_TILE_M.ground));
+  });
+
+  it("skips the layers that have faded to nothing, with every derivative taken before the branch", () => {
+    // Each skipped layer: all dFdx / dFdy first, then the early-out, then only textureGrad reads.
+    const beforeBranch = (g: string, fn: string, branch: string, read = "textureGrad(") => {
+      const body = g.slice(g.indexOf(fn));
+      const at = body.indexOf(branch);
+      expect(at, `${fn} has ${branch}`).toBeGreaterThan(0);
+      const [before, after] = [body.slice(0, at), body.slice(at, body.indexOf("\n}\n", at))];
+      expect(before).toContain("dFdx(");
+      expect(after).not.toMatch(/dFd[xy]|fwidth|texture2D/);
+      expect(after).toContain(read);
+    };
+    const rock = detailGlsl("rock");
+    const ground = detailGlsl("ground");
+    beforeBranch(rock, "float sectDetail( vec3 p, bool on )", "if ( !on ) return 0.5;");
+    beforeBranch(ground, "float sectDetail( vec3 p, bool on )", "if ( !on ) return 0.5;");
+    beforeBranch(ground, "float sectSheen(", "if ( f <= 0.0 ) return 1.0;");
+    beforeBranch(ground, "vec3 sectGroundLayers(", "if ( sectCf > 0.0 )", "sectClump( p, sectW, sectGa, sectGb )");
+    // No implicit-derivative read is left in the detail stack (inside a branch it would be undefined).
+    for (const g of [rock, ground]) expect(g).not.toContain("texture2D( tSectDetail");
+    expect(ground).not.toContain("texture2D( tSectClump");
+    // The call sites hand each layer its own fade, and the ground tint and far rock keep running.
+    expect(detailApplyGlsl("rock")).toContain("sectDetail( vSectWorld, sectDf > 0.0 )");
+    expect(detailApplyGlsl("ground")).toContain("sectDetail( vSectWorld, sectDf > 0.0 )");
+    expect(ground).toMatch(/col = mix\( col, sectGroundTint\( col, p \), uSectGroundLayers \);\n {2}float sectW/);
+    expect(rock).toContain("textureLod( tSectGroundNoise");
+    expect(detailApplyGlsl("rock")).toContain("sectRockFar( vSectWorld )");
   });
 
   it("declares every uniform once, in both classes", () => {
@@ -194,7 +222,7 @@ describe("detail GLSL", () => {
     // The layers' switch reaches the patches, the clumps and the sheen.
     const g2 = detailGlsl("ground");
     expect(g2).toContain("sectGroundTint( col, p ), uSectGroundLayers )");
-    expect(g2).toMatch(/smoothstep\( [\d.]+, [\d.]+, dist \) \) \* uSectGroundLayers \);/);
+    expect(g2).toMatch(/smoothstep\( [\d.]+, [\d.]+, dist \) \) \* uSectGroundLayers;/);
     expect(g2).toContain("* ds * uSectGroundLayers;");
   });
 

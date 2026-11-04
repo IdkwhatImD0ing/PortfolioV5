@@ -82,6 +82,12 @@ export interface SectStore {
    * the water and clouds otherwise. Events that change the picture call wake() to render until then.
    */
   wakeUntil: number;
+  /**
+   * The pointer moved over the canvas: the hover pick and the card that follows the cursor want
+   * frames, but the picture itself barely changes (a slow glow), so they render at the idle rate,
+   * not every display frame. wakeUntil keeps its meaning: a full-rate wake.
+   */
+  hoverWakeUntil: number;
   /** Quality line for the debug HUD (resolution, MSAA, bloom). */
   qualityLabel: string;
   /**
@@ -112,6 +118,7 @@ export function createStore(map: ScrollMap, camera: CameraData, u: number, frame
     focused: null,
     selected: null,
     wakeUntil: 0,
+    hoverWakeUntil: 0,
     qualityLabel: "",
     look: createFreeLook(),
   };
@@ -120,6 +127,19 @@ export function createStore(map: ScrollMap, camera: CameraData, u: number, frame
 /** Render continuously for the next `ms` milliseconds (the picture is about to change). */
 export function wake(store: SectStore, ms = 400): void {
   store.wakeUntil = Math.max(store.wakeUntil, performance.now() + ms);
+}
+
+/** The pointer moved: render at the idle rate (not every display frame) for the next `ms` milliseconds. */
+export function wakeHover(store: SectStore, ms = 200): void {
+  store.hoverWakeUntil = Math.max(store.hoverWakeUntil, performance.now() + ms);
+}
+
+/** How long a hotspot gaining or losing the pointer renders at the full rate, for its glow's fade (ms). */
+export const HOVER_BURST_MS = 300;
+
+/** Which hotspots glow (hovered, focused, selected): a change of it starts a short full-rate burst. */
+export function glowKey(s: Pick<SectStore, "hovered" | "focused" | "selected">): string {
+  return `${s.hovered ?? ""}|${s.focused ?? ""}|${s.selected ?? ""}`;
 }
 
 /** Render for as long as the swing back to the path under way takes (a moment, after a snap). */

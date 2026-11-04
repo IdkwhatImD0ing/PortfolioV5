@@ -172,8 +172,8 @@ export function cardViewFadeGlsl(look: CardLook = CARD_LOOK): string {
 
 /**
  * GLSL in place of <alphamap_fragment> for a needle or twig card: one read of the alpha map, the
- * cut-out from G with the (small) gain per mip level, and for a twig card the colour detail from R
- * (after the grade, which <color_fragment> applied). Needs uSectTexSize and vSectCardWorld.
+ * cut-out from G with the (small) gain per mip level, and for a twig card the colour detail factor
+ * from R (`sectTwigK`, applied to the graded colour by cardTwigApplyGlsl). Needs uSectTexSize and vSectCardWorld.
  */
 export function cardAlphaMapGlsl(kind: CardAlpha, look: CardLook = CARD_LOOK): string {
   const t = look.twig;
@@ -184,10 +184,13 @@ export function cardAlphaMapGlsl(kind: CardAlpha, look: CardLook = CARD_LOOK): s
           `    float sectTf = ( 1.0 - smoothstep( ${glslFloat(t.mipNear)}, ${glslFloat(t.mipFar)}, sectMip ) )`,
           `      * ( 1.0 - smoothstep( ${glslFloat(t.near)}, ${glslFloat(t.far)}, length( vSectCardWorld - cameraPosition ) ) );`,
           `    float sectTd = clamp( 1.0 + ( 2.0 * sectCut.r - 1.0 ) * ${glslFloat(t.gain)}, ${glslFloat(t.min)}, ${glslFloat(t.max)} );`,
-          "    diffuseColor.rgb *= mix( 1.0, sectTd, sectTf );",
+          // Kept as a factor: the grade is not linear, so the colour is multiplied only after it
+          // (cardTwigApplyGlsl), and the grade itself now runs after the cut-out test.
+          "    sectTwigK = mix( 1.0, sectTd, sectTf );",
         ]
       : [];
   return [
+    ...(kind === "twig" ? ["  float sectTwigK = 1.0;"] : []),
     "#ifdef USE_ALPHAMAP",
     "  {",
     "    vec4 sectCut = texture2D( alphaMap, vAlphaMapUv );",
@@ -198,6 +201,15 @@ export function cardAlphaMapGlsl(kind: CardAlpha, look: CardLook = CARD_LOOK): s
     "  }",
     "#endif",
   ].join("\n");
+}
+
+/**
+ * GLSL for a twig card, before <aomap_fragment> (after the cut-out test and the grade, which
+ * materials.ts runs right after <alphatest_fragment> on cards): the twig's colour detail factor
+ * cardAlphaMapGlsl worked out. Multiplies the graded colour, as it always did.
+ */
+export function cardTwigApplyGlsl(): string {
+  return "  diffuseColor.rgb *= sectTwigK;";
 }
 
 /**

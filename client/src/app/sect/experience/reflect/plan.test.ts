@@ -1,6 +1,6 @@
 import { Matrix4, PerspectiveCamera, Vector3, Vector4 } from "three";
 import { describe, expect, it } from "vitest";
-import { clipRect, narrowProjection, obliqueNearPlane, pondViewport, ProbeSchedule, reflectTier, REFLECT } from "./plan";
+import { clipRect, narrowProjection, obliqueNearPlane, pondViewport, PondReuse, ProbeSchedule, reflectTier, REFLECT } from "./plan";
 
 describe("reflection tier", () => {
   it("draws real reflections on High and Medium, none on Low", () => {
@@ -128,5 +128,62 @@ describe("mirrored camera projection", () => {
     expect(ndc(m, on.clone().addScaledVector(n, -1)).z).toBeLessThan(-1);
     // x and y are untouched.
     expect(ndc(m, kept).x).toBeCloseTo(ndc(c.projectionMatrix, kept).x, 6);
+  });
+});
+
+describe("mirror timed refresh while the camera moves", () => {
+  const whole = (s: ProbeSchedule) => {
+    for (let i = 0; i < 6; i++) s.next(i, true, "a", 16);
+  };
+
+  it("waits for rest, then refreshes at once", () => {
+    const s = new ProbeSchedule(6000, 600);
+    whole(s);
+    expect(s.next(7000, true, "a", 16, false, true)).toBe(-1);
+    expect(s.next(9000, true, "a", 16, false, true)).toBe(-1);
+    expect(s.next(9016, true, "a", 16, false, false)).toBe(0);
+  });
+
+  it("still captures at once when the scene changes while moving", () => {
+    const s = new ProbeSchedule(6000, 600);
+    whole(s);
+    expect(s.next(100, true, "b", 16, false, true)).toBe(0);
+  });
+
+  it("keeps the 6 s timer at rest", () => {
+    const s = new ProbeSchedule(6000, 600);
+    whole(s);
+    expect(s.next(3000, true, "a", 16)).toBe(-1);
+    expect(s.next(6100, true, "a", 16)).toBe(0);
+  });
+});
+
+describe("pond reflection reuse", () => {
+  it("renders every frame when reuse is off (High) or the camera moves", () => {
+    const r = new PondReuse();
+    for (let i = 0; i < 6; i++) expect(r.shouldRender("k", true, false)).toBe(true);
+    for (let i = 0; i < 6; i++) expect(r.shouldRender("k", false, true)).toBe(true);
+  });
+
+  it("at rest renders every third idle render", () => {
+    const r = new PondReuse();
+    const got = Array.from({ length: 9 }, () => r.shouldRender("k", true, true));
+    expect(got).toEqual([true, false, false, true, false, false, true, false, false]);
+  });
+
+  it("renders at once when the drawn areas, size or quality change, or the image was dropped", () => {
+    const r = new PondReuse();
+    r.shouldRender("k", true, true);
+    expect(r.shouldRender("k", true, true)).toBe(false);
+    expect(r.shouldRender("other", true, true)).toBe(true);
+    expect(r.shouldRender("other", true, true)).toBe(false);
+    r.invalidate();
+    expect(r.shouldRender("other", true, true)).toBe(true);
+  });
+
+  it("reuses the image from a frame rendered at the pose the camera has now stopped on", () => {
+    const r = new PondReuse();
+    r.shouldRender("k", false, true);
+    expect(r.shouldRender("k", true, true)).toBe(false);
   });
 });

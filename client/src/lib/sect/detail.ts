@@ -509,7 +509,20 @@ vec3 sectGroundTint( vec3 col, vec3 p ) {
 `;
 }
 
-/** GLSL: `float sectClump( vec3 p, float w )`, the clumps' factor at p with gap weight w (clumpGapWeight). */
+/**
+ * The clump texture's two read coordinates at world position p (GLSL expressions): `a` the first
+ * layer's, `b` the second's. sectGroundLayers takes their screen derivatives outside its branch.
+ */
+function clumpCoords(c: DetailLook["clump"]): { a: string; b: string } {
+  const a = `p.xz * ${glslFloat(1 / c.tileM)}`;
+  return { a, b: `${rotation(c.second.angle)} * ( ${a} ) * ${glslFloat(c.second.scale)} + ${vec2(c.second.offset)}` };
+}
+
+/**
+ * GLSL: `float sectClump( vec3 p, float w, vec4 ga, vec4 gb )`, the clumps' factor at p with gap
+ * weight w (clumpGapWeight). ga and gb are the screen derivatives (dFdx.xy, dFdy.xy) of the two read
+ * coordinates, taken by the caller outside any branch (the reads name their mip level).
+ */
 function clumpGlsl(look: DetailLook): string {
   const c = look.clump;
   const mean = glslFloat(DETAIL_NOISE.clump.mean);
@@ -518,11 +531,11 @@ function clumpGlsl(look: DetailLook): string {
     const t = glslFloat(1 + (c.top - 1) * weight);
     return `mix( ${g}, ${t}, ${v} ) / mix( ${g}, ${t}, ${mean} )`;
   };
-  const q = `p.xz * ${glslFloat(1 / c.tileM)}`;
+  const q = clumpCoords(c);
   return /* glsl */ `
-float sectClump( vec3 p, float w ) {
-  float sectCa = texture2D( tSectClump, ${q} ).r;
-  float sectCb = texture2D( tSectClump, ${rotation(c.second.angle)} * ${q} * ${glslFloat(c.second.scale)} + ${vec2(c.second.offset)} ).r;
+float sectClump( vec3 p, float w, vec4 ga, vec4 gb ) {
+  float sectCa = textureGrad( tSectClump, ${q.a}, ga.xy, ga.zw ).r;
+  float sectCb = textureGrad( tSectClump, ${q.b}, gb.xy, gb.zw ).r;
   return ${layer("sectCa", 1)} * ${layer("sectCb", c.second.weight)};
 }
 `;
@@ -539,19 +552,35 @@ function groundLayersGlsl(look: DetailLook): string {
   const wx = glslFloat(s.wind[0] / w);
   const wz = glslFloat(s.wind[1] / w);
   const inv = glslFloat(1 / (s.scaleM * DETAIL_NOISE.ground.cells));
+  const cc = clumpCoords(c);
   return /* glsl */ `
 // The patches and clumps on colour col at p, seen along v (unit, camera to p) from dist metres.
+// The clumps' factor is exactly 1 once they have faded out, so that layer is skipped there; its
+// reads name their mip level from derivatives taken before the branch (the same levels as ever).
+// The caller must reach this in uniform control flow.
 vec3 sectGroundLayers( vec3 col, vec3 p, vec3 v, float dist ) {
   col = mix( col, sectGroundTint( col, p ), uSectGroundLayers );
   float sectW = mix( ${glslFloat(c.grazingKeep)}, 1.0, smoothstep( ${glslFloat(c.grazing[0])}, ${glslFloat(c.grazing[1])}, abs( v.y ) ) );
-  return col * mix( 1.0, sectClump( p, sectW ), ( 1.0 - smoothstep( ${glslFloat(c.fadeNear)}, ${glslFloat(c.fadeFar)}, dist ) ) * uSectGroundLayers );
+  vec2 sectQa = ${cc.a};
+  vec2 sectQb = ${cc.b};
+  vec4 sectGa = vec4( dFdx( sectQa ), dFdy( sectQa ) );
+  vec4 sectGb = vec4( dFdx( sectQb ), dFdy( sectQb ) );
+  float sectCf = ( 1.0 - smoothstep( ${glslFloat(c.fadeNear)}, ${glslFloat(c.fadeFar)}, dist ) ) * uSectGroundLayers;
+  if ( sectCf > 0.0 ) col *= mix( 1.0, sectClump( p, sectW, sectGa, sectGb ), sectCf );
+  return col;
 }
-// The wind sheen's factor on a texel of shadow scale ds: bands drifting with the wind.
+// The wind sheen's factor on a texel of shadow scale ds: bands drifting with the wind. Once it has
+// faded out (or on a texel with no shadow scale) the factor is exactly 1 and the read is skipped;
+// the read names its mip level from derivatives taken before the branch.
 float sectSheen( vec3 p, vec3 v, float dist, float ds ) {
   vec2 q = vec2( dot( p.xz, vec2( ${wx}, ${wz} ) ) - uSectTime * ${glslFloat(s.speed)}, dot( p.xz, vec2( -${wz}, ${wx} ) ) * ${glslFloat(1 / s.stretch)} );
-  float n = texture2D( tSectGroundNoise, q * ${inv} + ${vec2(s.offset)} ).b;
-  float t = max( dot( v, uSectSun ), 0.0 );
+  vec2 sectUv = q * ${inv} + ${vec2(s.offset)};
+  vec2 sectGx = dFdx( sectUv );
+  vec2 sectGy = dFdy( sectUv );
   float f = ( 1.0 - smoothstep( ${glslFloat(s.fadeNear)}, ${glslFloat(s.fadeFar)}, dist ) ) * ds * uSectGroundLayers;
+  if ( f <= 0.0 ) return 1.0;
+  float n = textureGrad( tSectGroundNoise, sectUv, sectGx, sectGy ).b;
+  float t = max( dot( v, uSectSun ), 0.0 );
   return 1.0 + ( n - 0.5 ) * ${glslFloat(2 * s.amount)} * ( 1.0 + ${glslFloat(s.sunBoost)} * t * t ) * f;
 }
 `;
@@ -747,10 +776,16 @@ uniform vec3 uSectSun;
 ${groundTintGlsl(look)}${clumpGlsl(look)}${groundLayersGlsl(look)}`;
   if (kind === "ground") {
     return /* glsl */ `${shared}
-float sectDetail( vec3 p ) {
+// \`on\` false (the detail has faded out): its factor is exactly 1 whatever this returns, so the reads
+// are skipped. They name their mip level from derivatives taken before the branch.
+float sectDetail( vec3 p, bool on ) {
   vec2 q = p.xz * ${inv};
-  float a = texture2D( tSectDetail, q ).g;
-  float b = texture2D( tSectDetail, ${rot} * q * ${s2} + ${off} ).g;
+  vec2 q2 = ${rot} * q * ${s2} + ${off};
+  vec4 ga = vec4( dFdx( q ), dFdy( q ) );
+  vec4 gb = vec4( dFdx( q2 ), dFdy( q2 ) );
+  if ( !on ) return 0.5;
+  float a = textureGrad( tSectDetail, q, ga.xy, ga.zw ).g;
+  float b = textureGrad( tSectDetail, q2, gb.xy, gb.zw ).g;
   ${mix}
 }
 `;
@@ -759,18 +794,33 @@ float sectDetail( vec3 p ) {
 uniform float uSectRockFar;
 uniform float uSectRockOctaves;
 ${rockFarGlsl(look, range)}
-float sectDetail( vec3 p ) {
+// \`on\` false (the detail has faded out): its factor is exactly 1 whatever this returns, so the six
+// reads are skipped. They name their mip level from derivatives taken before the branch.
+float sectDetail( vec3 p, bool on ) {
   vec3 n = cross( dFdx( p ), dFdy( p ) );
   n *= inversesqrt( max( dot( n, n ), 1e-30 ) );
+  vec3 q = p * ${inv};
+  mat2 r = ${rot};
+  vec2 c1 = q.zy;
+  vec2 c2 = q.xz;
+  vec2 c3 = q.xy;
+  vec2 d1 = r * c1 * ${s2} + ${off};
+  vec2 d2 = r * c2 * ${s2} + ${off};
+  vec2 d3 = r * c3 * ${s2} + ${off};
+  vec4 g1 = vec4( dFdx( c1 ), dFdy( c1 ) );
+  vec4 g2 = vec4( dFdx( c2 ), dFdy( c2 ) );
+  vec4 g3 = vec4( dFdx( c3 ), dFdy( c3 ) );
+  vec4 h1 = vec4( dFdx( d1 ), dFdy( d1 ) );
+  vec4 h2 = vec4( dFdx( d2 ), dFdy( d2 ) );
+  vec4 h3 = vec4( dFdx( d3 ), dFdy( d3 ) );
+  if ( !on ) return 0.5;
   // The small floor keeps the weights defined on a degenerate (zero-area) fragment.
   vec3 w = pow( abs( n ), vec3( ${glslFloat(look.sharpness)} ) ) + 1e-4;
   w /= w.x + w.y + w.z;
-  vec3 q = p * ${inv};
-  mat2 r = ${rot};
-  float a = texture2D( tSectDetail, q.zy ).r * w.x + texture2D( tSectDetail, q.xz ).r * w.y + texture2D( tSectDetail, q.xy ).r * w.z;
-  float b = texture2D( tSectDetail, r * q.zy * ${s2} + ${off} ).r * w.x
-    + texture2D( tSectDetail, r * q.xz * ${s2} + ${off} ).r * w.y
-    + texture2D( tSectDetail, r * q.xy * ${s2} + ${off} ).r * w.z;
+  float a = textureGrad( tSectDetail, c1, g1.xy, g1.zw ).r * w.x + textureGrad( tSectDetail, c2, g2.xy, g2.zw ).r * w.y + textureGrad( tSectDetail, c3, g3.xy, g3.zw ).r * w.z;
+  float b = textureGrad( tSectDetail, d1, h1.xy, h1.zw ).r * w.x
+    + textureGrad( tSectDetail, d2, h2.xy, h2.zw ).r * w.y
+    + textureGrad( tSectDetail, d3, h3.xy, h3.zw ).r * w.z;
   ${mix}
 }
 `;
@@ -810,7 +860,7 @@ export function detailApplyGlsl(kind: DetailClass, look = DETAIL_LOOK, range: Ra
     `    float sectDf = ( 1.0 - smoothstep( ${glslFloat(k.fadeNear)}, ${glslFloat(k.fadeFar)}, sectDd ) ) * uSectDetailOn;`,
     "    float sectDl = dot( diffuseColor.rgb, vec3( 0.2126, 0.7152, 0.0722 ) );",
     `    float sectDs = mix( ${glslFloat(d.floor)}, 1.0, smoothstep( ${glslFloat(d.lo)}, ${glslFloat(d.hi)}, sectDl ) );`,
-    `    diffuseColor.rgb *= exp2( ( sectDetail( vSectWorld ) - 0.5 ) * ${glslFloat(k.gain)} * sectDf * sectDs );`,
+    `    diffuseColor.rgb *= exp2( ( sectDetail( vSectWorld, sectDf > 0.0 ) - 0.5 ) * ${glslFloat(k.gain)} * sectDf * sectDs );`,
   ];
   if (kind === "ground") {
     const gr = range.ground;

@@ -1322,6 +1322,10 @@ img.sc-cover {
   background:
     url("../assets/paper.webp") 0 0 / 256px 256px,
     rgba(13, 10, 19, 0.895);
+  /* No backdrop blur here, unlike the other .sect-panel: this panel sits over the canvas that redraws
+     every frame, so the blur was recomputed every frame, and at 0.895 cover it cannot be seen. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .sc-panel-title {

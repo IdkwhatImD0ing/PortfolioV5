@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fogConstantsFromMeta, hazeLayerDepth, hexToLinear } from "./glsl";
+import { fogConstantsFromMeta, glslFloat, hazeLayerDepth, hexToLinear } from "./glsl";
 import { gradeGlsl, gradeLinear, gradeLinearWith, lookFogConstants, SECT_LOOK, unitTint } from "./look";
 import { parseMeta } from "./parse";
 import {
@@ -24,6 +24,9 @@ import {
   RANGE_LOOK,
   RANGE_MAX_AREAS,
   rangeGlsl,
+  rangeMargin,
+  rangeMarginGlsl,
+  CARD_RANGE_MARGIN,
   rangeWeight,
   rockGlsl,
   rockGradeStatements,
@@ -106,6 +109,51 @@ describe("range areas", () => {
     expect(g).toContain("float sectRangeW( vec3 p )");
     expect(g).toContain("if ( a.w <= 0.0 ) break;");
     expect(g).not.toMatch(/NaN|undefined|Infinity/);
+  });
+
+  it("rangeMargin: past every fade when positive, and interpolated across a card it never skips a fade", () => {
+    expect(rangeMargin([0, 40, 0], [])).toBe(1e9);
+    expect(rangeMargin([0, 40, 0], AREAS)).toBeLessThan(0);
+    expect(rangeMargin([600, 100, -900], AREAS)).toBeGreaterThan(CARD_RANGE_MARGIN);
+    // Triangles with 20 m edges around the first area's fade: wherever the margin interpolated
+    // across the triangle clears CARD_RANGE_MARGIN, the true weight is exactly 1.
+    const { pad, fade } = RANGE_LOOK.areas;
+    const reach = 40 + pad + fade;
+    let skipped = 0;
+    let slow = 0;
+    for (let i = 0; i < 400; i++) {
+      const ang = (i * 2.399963) % (2 * Math.PI);
+      const d = reach - 25 + (i % 50);
+      const a: Vec3 = [d * Math.cos(ang), 40, d * Math.sin(ang)];
+      const b: Vec3 = [a[0] + 20 * Math.cos(i), 45, a[2] + 20 * Math.sin(i)];
+      const c: Vec3 = [a[0] + 20 * Math.cos(i + 2), 50, a[2] + 20 * Math.sin(i + 2)];
+      const m = [a, b, c].map((v) => rangeMargin(v, AREAS));
+      for (const [u, v] of [
+        [0.2, 0.3],
+        [0.5, 0.1],
+        [0.1, 0.8],
+        [0.34, 0.33],
+        [0, 0.5],
+        [0.5, 0.5],
+      ]) {
+        const t = 1 - u - v;
+        const p: Vec3 = [0, 1, 2].map((k) => t * a[k] + u * b[k] + v * c[k]) as Vec3;
+        if (t * m[0] + u * m[1] + v * m[2] >= CARD_RANGE_MARGIN) {
+          skipped++;
+          expect(rangeWeight(p, AREAS)).toBe(1);
+        } else slow++;
+      }
+    }
+    expect(skipped).toBeGreaterThan(100);
+    expect(slow).toBeGreaterThan(100);
+  });
+
+  it("emits the margin's GLSL for a card's vertex shader", () => {
+    const g = rangeMarginGlsl();
+    expect(g).toContain(`uniform vec4 uSectAreas[ ${RANGE_MAX_AREAS} ];`);
+    expect(g).toContain("float sectRangeMargin( vec3 p )");
+    expect(g).toContain("if ( a.w <= 0.0 ) break;");
+    expect(g).toContain(`( a.w + ${glslFloat(RANGE_LOOK.areas.fade)} )`);
   });
 });
 

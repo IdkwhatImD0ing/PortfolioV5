@@ -1,0 +1,1470 @@
+{
+ "synth": {
+  "candidates": [
+   {
+    "id": "C1",
+    "title": "Draw the cloud sea after the solid world",
+    "plainSummary": "The sea of clouds under the islands is drawn first, so the GPU colours every pixel of it and then paints islands and cliffs over much of it. Drawing it after the solid world lets the GPU skip the hidden parts. The site already made this exact fix for the sky.",
+    "tiers": "all",
+    "whereInCode": [
+     "client/src/app/sect/experience/scene.tsx:469-479 (cloudSea renderOrder -800)",
+     "client/src/app/sect/experience/scene.tsx:429-440 (the sky dome precedent and its measured saving)",
+     "client/src/app/sect/experience/materials.ts:1408-1437 (billow() called 3 times = 9 noise reads per pixel)"
+    ],
+    "expectedSaving": "Guess: 5-20% of the world pass in views that look down over terrain. The sea shader is 9 texture reads plus about 120 math ops per pixel. Moving the sky the same way measured 13% of the world pass on average and 24% at the gate. Maybe 1-3 ms a frame on an integrated GPU at the gate, near zero in views with little sea under terrain.",
+    "qualityCost": "None expected. Give it a renderOrder between the opaque world (0) and the sky (1000), e.g. 999. Check the haze-ring note at glsl.ts:476-479, and check that the moon (renderOrder -900) still draws correctly.",
+    "effort": "S",
+    "confidence": "medium",
+    "evidence": "Confirmed in scene.tsx:475 (m.renderOrder = -800; the comment at 429-431 says drawing the dome first 'shaded every pixel and was then painted over (13% of the world pass on average, 24% at the gate)'). The sea writes depth, so moving it later keeps the same final image: depth testing decides what shows, not draw order."
+   },
+   {
+    "id": "C2",
+    "title": "Tree cards: run the cut-out test before the colour grade",
+    "plainSummary": "Tree leaves are flat cards with see-through cut-outs. Today each card pixel is fully colour-graded first, and only then does the code check whether it is see-through and throw it away. Checking first skips that work for the pixels that get thrown away, which is roughly half of them.",
+    "tiers": "all",
+    "whereInCode": [
+     "client/src/app/sect/experience/materials.ts:777-810 (grade, foliage range, canopy vary injected after color_fragment)",
+     "client/src/app/sect/experience/materials.ts:936-947 (card alphamap/alphatest replaced later in the shader)",
+     "client/src/app/sect/experience/card-shading.ts:135-229",
+     "client/src/lib/sect/range-look.ts:557-605 (foliage range)"
+    ],
+    "expectedSaving": "By op count, about 35-50% of card-fragment math, around 150-200 ops per discarded pixel, plus the range loop. Crossed quads overlap 2-3 deep in canopy. Guess: 0.5-2 ms on an integrated GPU or phone in forest-heavy views (range, gate). Not measured.",
+    "qualityCost": "None: same pixels, same colours. Read the needle/twig alpha map earlier, and keep three's alpha-to-coverage smoothstep (fwidth) before the discard so High's soft edges are unchanged.",
+    "effort": "M",
+    "confidence": "medium",
+    "evidence": "materials.ts:779-806 puts sectGrade/FOLIAGE_GRADE/sectFoliageRange/sectCanopyVary right after color_fragment. The card patch at 943-946 swaps alphamap_fragment and alphatest_fragment, which three runs after color_fragment, so pixels that will be discarded have already been graded. Same shader on every tier."
+   },
+   {
+    "id": "C3",
+    "title": "Cloud puffs: fog once per sprite, early exit, and an incremental sort",
+    "plainSummary": "About 1,000 cloud puffs are flat sprites. Every pixel of every sprite redoes fog maths whose answer is the same across the whole sprite. Meanwhile, on every moving frame, the CPU re-sorts all of the puffs from scratch and creates about 1,000 throwaway array views. Doing the fog once per sprite, skipping invisible rim pixels, and updating the previous sort order gives the same picture for less work.",
+    "tiers": "all (Low has 761 puffs, Mid and High 1021)",
+    "whereInCode": [
+     "client/src/app/sect/experience/materials.ts:1902-1907 (haze, haze colour, cloud depth and the 'toward' pow per pixel, all from per-sprite vF/vDist)",
+     "client/src/app/sect/experience/materials.ts:1848-1849 (vF, vDist set per sprite in the vertex shader)",
+     "client/src/app/sect/experience/materials.ts:1975-1976 (mist, same pattern)",
+     "client/src/app/sect/experience/scene.tsx:643-660 (sort, then packed.subarray copy per puff)",
+     "client/src/lib/sect/clouds.ts:63-78 (fresh comparator sort, RESORT_DISTANCE2 = 0.25)"
+    ],
+    "expectedSaving": "GPU: about 60 ops and 8 special-function ops (exp, pow) per puff pixel. Puffs overlap maybe 3-8 deep in banks (a guess), so perhaps 0.3-1 ms on an integrated GPU during the opening flight and at the gate. CPU: a guessed 0.2-0.5 ms per moving frame on desktop and 1-2 ms on a weak phone. It also removes about 100-150 KB of garbage per moving frame.",
+    "qualityCost": "None. The fog result is exact, because vF and vDist are identical on all 4 vertices. The early discard threshold (alpha below 1/512) is under 8-bit precision. The sort order comes out identical. Leave the 0.5 m re-sort distance alone unless a flight check shows no pops.",
+    "effort": "S",
+    "confidence": "high",
+    "evidence": "Confirmed: materials.ts:1904-1907 calls sectHazeDepth/sectHazeColor/sectCloudDepth with cameraPosition.y, vF.y and vDist, and vF/vDist are set per instance at 1848-1849. scene.tsx:655-657 calls packed.subarray inside the per-puff loop, and clouds.ts:73 rebuilds the order and runs order.sort with a JS comparator every time the camera moves 0.5 m."
+   },
+   {
+    "id": "C4",
+    "title": "Render mouse-move and hover-glow frames at the idle rate, not the screen's full rate",
+    "plainSummary": "Moving the mouse, or resting it on a clickable spot, makes the page redraw at the screen's full rate (up to 144 times a second). Yet the picture only changes by a slow glow. Drawing those frames at the 30 per second already used at rest gives the same picture for a fraction of the GPU work.",
+    "tiers": "all (mostly desktop with a mouse)",
+    "whereInCode": [
+     "client/src/app/sect/experience/scene.tsx:1173-1183 (pointermove and leave call wake(store, 200))",
+     "client/src/app/sect/experience/scene.tsx:1925-1936 (pulse or wake makes it continuous, so frameloop goes to 'always' with no cap)",
+     "client/src/lib/sect/runtime.ts:199-205 (maxFps 0 on every tier)",
+     "client/src/app/sect/experience/store.ts:121 (wake)",
+     "client/src/app/sect/experience/scene.tsx:1405-1415 (the pick, already throttled to 50 ms)"
+    ],
+    "expectedSaving": "While the mouse moves or rests on a hotspot: about 50% of frames on a 60 Hz screen and about 80% on a 144 Hz screen. Without the change, a fast GPU runs flat out the whole time the visitor hovers.",
+    "qualityCost": "None expected. The glow is a 0.5 Hz sine, and the label pick is already limited to 20 per second. Camera motion, drag-look, grass grow-in, recentre and ink travel keep the full rate. Only the pulse and pointer-only wakes go through the existing capped path at the idle rate.",
+    "effort": "S",
+    "confidence": "high",
+    "evidence": "Confirmed in scene.tsx:1925-1936: pulse = hovered/focused/selected. continuous = isMoving || pulse || now < wakeUntil. With maxFps 0 the loop sets frameloop 'always' and renders every display frame. The only rate limit is the ladder's last step, and the ladder only reacts to frames over about 20 ms (runtime.ts:319)."
+   },
+   {
+    "id": "C5",
+    "title": "Cloud-shadow pass: cheap checks first, skip the rest",
+    "plainSummary": "A full-screen pass darkens the ground under drifting clouds. Right now it runs all its noise and fog maths for every pixel, including pixels that end up not darkened at all. Doing the two cheap checks first lets most of those pixels skip the expensive part, and the output is exactly the same.",
+    "tiers": "Medium, High",
+    "whereInCode": [
+     "client/src/app/sect/experience/post/atmos.ts:68-88 (mainImage: noise at 75, keep fade at 78, lit at 79-80, transmittance with two exp at 83-86)",
+     "client/src/lib/sect/post.ts:29-35 (cloudShadows on when post and bloom)"
+    ],
+    "expectedSaving": "Guess: 30-50% of this pass's math, wherever the cloud deck is clear or the pixel is too dark or glowing to be shaded. About 0.3-0.8 ms on an integrated GPU at 1080p, about 0.05 ms on a discrete GPU.",
+    "qualityCost": "None (bit-identical). Compute luma and 'lit' and return if it is 0. Then the keep fade, return if 0. Then the noise, return if shade is 0. Then the transmittance. Branches stay coherent because the shade is a smooth field 240 m across.",
+    "effort": "S",
+    "confidence": "medium",
+    "evidence": "Confirmed in atmos.ts:75-87. The 3-octave csClouds noise (12 hash calls) and the sectHazeDepth + sectCloudDepth + exp transmittance run before the result is multiplied by shade*lit*tr. The pass already exits early for sky and for uStrength 0 (line 70), so early returns fit the existing style."
+   },
+   {
+    "id": "C6",
+    "title": "Turn off background blur where the panel is already nearly opaque",
+    "plainSummary": "Several UI panels blur the 3D scene behind them. The browser has to redo that blur every time the scene redraws, which is 20-30 times a second even at rest. The big area panel is 89.5% opaque, so its blur barely shows. Turning blur off there on every tier, and on the small 82% plates on phones and Low, saves GPU work with no visible change.",
+    "tiers": "all for panels at 89% opacity or more; Low and touch devices for the 82% plates (High's plates unchanged)",
+    "whereInCode": [
+     "client/src/app/sect/sect.css:327-335 (.sect-panel blur(10px) saturate(1.1))",
+     "client/src/app/sect/content/content.css:1313-1325 (.sect-panel.sc-panel background 0.895 plus paper texture, still inherits the blur)",
+     "client/src/app/sect/sect.css:3 and 375-380 (.sect-plate at 0.82 with blur 8px)",
+     "client/src/app/sect/content/content.css:1668-1676 (page-view header at 0.94 with blur)",
+     "client/src/app/sect/sect.css:793-794 (orb tooltip)"
+    ],
+    "expectedSaving": "Guess: 0.3-1 ms of compositor GPU per frame on an integrated GPU, more on phones at DPR 3, where the area panel (about 430x330 CSS px) is around 1M device pixels. Not profiled; confirm with a Chrome performance trace (Composite) while flying.",
+    "qualityCost": "None for panels at 89.5% opacity and up. On Low and phones the plates lose a faint softening of bright sky behind them. Raising their alpha from 0.82 to about 0.88 keeps the contrast. High keeps every plate blur.",
+    "effort": "S",
+    "confidence": "medium",
+    "evidence": "Grep found backdrop-filter only at sect.css:333, 378, 793, 1336 and content.css:1675. There is no tier or coarse-pointer switch in the CSS. The scene redraws at 30/20 fps at rest (scene.tsx:1729-1731), so each visible blur is redone at that rate."
+   },
+   {
+    "id": "C7",
+    "title": "Reflections at rest: reuse the pond image, spread out the mirror refresh",
+    "plainSummary": "Near the Still Pond the page draws the whole scene a second time, mirrored, on every frame, even when the camera is not moving. Every 6 seconds it also renders a 6-sided mirror view in 6 heavy frames back to back. Reusing the last pond image while nothing moves, and refreshing the mirror less often and more gently, removes most of that work.",
+    "tiers": "Medium, High",
+    "whereInCode": [
+     "client/src/app/sect/experience/reflect/index.ts:131-162 (the pond renders on every frame while on screen and within 320 m)",
+     "client/src/app/sect/experience/reflect/plan.ts:12-26 (pond scale and view)",
+     "client/src/app/sect/experience/reflect/plan.ts:43-58 (mirror refreshSeconds 6, refreshDistance 160)",
+     "client/src/app/sect/experience/reflect/index.ts:116-130 (cube schedule and signature)"
+    ],
+    "expectedSaving": "Pond: when the camera pose, the drawn areas and the quality are unchanged, re-render only every 3rd idle frame. That saves one extra scene submission (up to about 2.5M triangles before culling: backdrop 1.48M plus mirror area 1.06M from the manifest) on 2 of every 3 frames at the pond and mirror stops. Guess: 1-3 ms a frame on an integrated GPU there. Cube: refreshing every 15-20 s and one face every 2-3 frames removes six double-cost hitch frames every 6 s.",
+    "qualityCost": "Reflected flames, cranes and clouds would update about 7-10 times a second while the camera is still, under ripple distortion. The ripples keep animating in the water shader. Check at the Heart-Mirror stop with window.__sectReflect. If any step is visible on High, keep High per-frame and apply this to Medium only.",
+    "effort": "S",
+    "confidence": "medium",
+    "evidence": "Confirmed in reflect/index.ts:132-134. The pond image is aimed and rendered whenever it is on screen and within REFLECT.pond.maxDistance, with no check for whether the camera has moved. plan.ts:57 sets refreshSeconds: 6. Live measurement saw reflection targets of 996x983 (Mid) and 1245x1229 (High) at the gate."
+   },
+   {
+    "id": "C8",
+    "title": "Low tier: fog before the colour conversion, not after",
+    "plainSummary": "On Low (phones), three.js converts each pixel to screen colour format too early. The fog code then has to convert it back, apply fog, and convert it again. Fogging before the conversion, and decoding the fog colour once on the CPU, removes 6 of the 9 expensive power calls per pixel with identical colours.",
+    "tiers": "Low",
+    "whereInCode": [
+     "client/src/lib/sect/glsl.ts:470-492 (fog_fragment decodes gl_FragColor and fogColor, then re-encodes, when sectEncoded)",
+     "client/src/lib/sect/glsl.ts:238-245 (sectSrgbDecode/Encode)",
+     "client/src/app/sect/experience/materials.ts:89 (installs the fog chunk)",
+     "client/src/app/sect/experience/materials.ts:1501-1502, 1673-1674 (colorspace_fragment before fog_fragment)"
+    ],
+    "expectedSaving": "Counted: about 12 special-function ops per fogged pixel, which is more than the fog maths itself on Low. Guess: 5-10% of a Low frame's pixel work on fogged surfaces. Step 1 (S) passes fogColor pre-decoded as a uniform and removes 3 pow. Step 2 (M) skips three's encode in baked materials on Low and lets the fog chunk's final encode do it, removing 3 more.",
+    "qualityCost": "None. The same maths runs in float either way.",
+    "effort": "M",
+    "confidence": "medium",
+    "evidence": "Confirmed in glsl.ts:485-490. On Low, sectEncoded is true, so every fogged pixel runs sectSrgbDecode(gl_FragColor.rgb), sectSrgbDecode(fogColor) on a uniform, then sectSrgbEncode. The code comment at 470-474 explains this is there only because three's colour-space step runs before fog."
+   },
+   {
+    "id": "C9",
+    "title": "Skip texture layers where they have faded to zero (far rock, far lawns, far waterfalls, reflection passes)",
+    "plainSummary": "Rock and lawn shaders add fine detail textures that fade to nothing beyond 150-320 m. Every pixel still reads all of those textures anyway, because the code was written without branches. Wrapping each layer in an 'only if it shows' check, with the texture-blur info computed beforehand so it stays correct, skips up to 7 texture reads per far rock pixel. The same switch can turn detail off inside the mirror passes.",
+    "tiers": "Medium, High (Low has no detail)",
+    "whereInCode": [
+     "client/src/lib/sect/detail.ts:780-784 (the 'No branch: reads use screen derivatives' note)",
+     "client/src/lib/sect/detail.ts:762-776 (sectDetail: 6 detail reads)",
+     "client/src/lib/sect/detail.ts:798-813, 835-841 (fades sectDf, sectGr, sectRf multiply the result)",
+     "client/src/lib/sect/detail.ts:692-693 (paving already uses textureGrad)",
+     "client/src/app/sect/experience/materials.ts:1618-1635 (waterfall near patterns, far mix at 1627)",
+     "client/src/app/sect/experience/reflect/index.ts:143-145 (where reflection passes already flip SOFT_DEPTH)"
+    ],
+    "expectedSaving": "Rock past 150 m: about 7 texture reads and 120 ops per pixel. Lawns past 260 m: about 5 reads. Waterfall sheets past 260 m: 3 of 5 reads. Wide range views are mostly far pixels, so a guessed 0.5-2 ms on an integrated GPU. In reflection passes: about 13 reads per reflected rock pixel.",
+    "qualityCost": "None in the main view, because each layer is multiplied by 0 where it is skipped. Use textureGrad with derivatives taken outside the branch, as paving already does. Detail off in reflections should be invisible at 1/2 to 1/3 resolution under ripples; check the pond image.",
+    "effort": "M",
+    "confidence": "medium",
+    "evidence": "detail.ts:781-784 says the stack is branch-free because the reads use screen derivatives. At 798-841 each layer's fade (sectDf, sectGr, sectRf, uSectDetailOn) only multiplies the result, so the texture reads always run."
+   },
+   {
+    "id": "C10",
+    "title": "Ladder steps without rebuilding the post-processing chain",
+    "plainSummary": "When a struggling device drops MSAA or bloom, the page throws away its whole post-processing chain and builds a new one, compiling a large shader on the spot. That is a freeze of maybe 30-150 ms, arriving exactly when frames are already slow. Changing those settings in place, or compiling the next step ahead of time, removes the freeze.",
+    "tiers": "Medium, High (auto-picked tiers; Low never changes MSAA or bloom)",
+    "whereInCode": [
+     "client/src/app/sect/experience/scene.tsx:1518-1546 (createPipeline re-runs on quality.msaa, quality.bloom, cloudShadows, holdFocus)",
+     "client/src/app/sect/experience/effects.ts:192-231 (composer with multisampling at 200, merged EffectPass)",
+     "client/src/lib/sect/runtime.ts:253-266 (degradeQuality: msaa 4 to 2 to 0, then bloom off)",
+     "client/src/app/sect/experience/materials.ts:950-958 (card program key changes with alpha-to-coverage)"
+    ],
+    "expectedSaving": "Stalls removed: one hitch per step down mid-flight and one per climb. Guessed at 30-150 ms each; the repo's own notes give 18-40 ms for a set's programs and 46 ms for decoration. Once this lands, climbs would no longer need to wait for the camera to rest.",
+    "qualityCost": "None. Set composer.multisampling in place. Keep bloom and cloud shadows in the merged shader and switch them off by uniform (the cloud shadow already exits on uStrength 0, atmos.ts:70) while skipping bloom's update. Pre-compile the card alpha-test and alpha-to-coverage variants with compileAsync at an idle moment.",
+    "effort": "M",
+    "confidence": "medium",
+    "evidence": "Confirmed: the useLayoutEffect at scene.tsx:1518-1546 depends on quality.msaa and quality.bloom and disposes and recreates the pipeline. The composer's programs are not warmed by World.warm or WarmDecor (scene.tsx:835-903, 2039-2075), so they compile synchronously on first render."
+   },
+   {
+    "id": "C11",
+    "title": "Year-long caching for asset files, and start the first downloads before the JavaScript",
+    "plainSummary": "Every visit asks the server about each 3D file again before using it, because the files are sent with 'check every time' headers. The 3D downloads also cannot start until about 545 KB of JavaScript has loaded. Caching files for a year under versioned names, and telling the browser to fetch the first files straight away, gets the scene ready sooner on slow connections.",
+    "tiers": "all",
+    "whereInCode": [
+     "client/next.config.ts:1-5 (empty config, no headers(); no vercel.json)",
+     "client/src/app/sect/experience/assets.ts:136-166 (fetchJson no-cache, manifest first)",
+     "client/src/app/sect-client.tsx:20-21 (flight is a dynamic ssr:false chunk)",
+     "blender/xianxia-sect/tools/sect_pack.py (output file names)"
+    ],
+    "expectedSaving": "Load time only. Repeat visits skip about 25-30 revalidation round trips (50-300 ms each on mobile, partly in parallel). On a first visit, the 9.6 MB backdrop and the first area start roughly 0.5-1 s earlier (an estimate).",
+    "qualityCost": "None. Rebakes must produce new file names (a version folder or a content hash) while manifest.json stays no-cache. Otherwise visitors get stale GLBs for up to a year.",
+    "effort": "S",
+    "confidence": "high",
+    "evidence": "Checked live today with curl -I. https://art3m1s.me/sect/full/gate.glb.gz and manifest.json both return 'Cache-Control: public, max-age=0, must-revalidate' with an ETag, so every use costs a conditional request. Bundle size is from the assets map (main checkout .next, Oct 25 build)."
+   },
+   {
+    "id": "C12",
+    "title": "GPU-compressed textures (KTX2 UASTC) for the baked atlases",
+    "plainSummary": "Textures ship as WebP, which the GPU cannot read directly, so each one is unpacked to full size in video memory. At the forge stop on desktop Medium and High that is up to 1.23 GB. GPU-compressed textures stay compressed on the GPU at a quarter of that size and upload faster. Made from the original bakes, they should look the same.",
+    "tiers": "all",
+    "whereInCode": [
+     "client/public/sect/full/manifest.json (texBytes 168-284 MB per area at 4096; texBytesLow 35-89 MB)",
+     "client/src/lib/sect/runtime.ts:197-205 (desktop Medium keeps the 4096 set; lowTextures only when coarse)",
+     "blender/xianxia-sect/tools/sect_pack.py:617-629 (the webp step to replace)",
+     "client/src/app/sect/experience/scene.tsx:835-863 (one texture upload per frame, 6-30 ms each at 4096)",
+     "client/src/app/sect/experience/assets.ts (getLoader: add KTX2Loader)"
+    ],
+    "expectedSaving": "GPU texture memory divided by about 4. At the forge (6 areas resident on desktop Medium and High) that is about 1.23 GB down to about 0.31 GB. Low goes from about 280 MB to about 70 MB. Uploads move about 4x less data and skip mip generation and the decoded-bitmap peak (180-270 MB per area in flight today). Upload stalls would drop from 6-30 ms to a guessed 2-8 ms.",
+    "qualityCost": "None expected with UASTC encoded from the original PNG bakes. Do not use ETC1S on baked light: it bands. The real cost is download size. Textures grow from about 43 MB to a guessed 130-210 MB over the whole flight, so area files roughly double. Trial one atlas first (bytes, PSNR/SSIM, side-by-side look). Follow-on (b): a compressed 4096 atlas with mips is about 22 MB, the same as a 2048 RGBA one, so Low and touch Medium could get High's sharper atlases at today's memory, gated on connection speed or saveData. If KTX2 is rejected, decoding each WebP just before its upload still cuts the in-flight peak about 4x.",
+    "effort": "L",
+    "confidence": "medium",
+    "evidence": "Live: Mid and High at the forge had 6 areas resident with texBytes 245+181+272+168+172+193 MB, about 1.23 GB, and Mid's texBytes equalled High's. A grep found no KTX2/Basis use. The packer is plain Python with gltf-transform, so no Blender is needed to change it (sect_pack.py:8, 36)."
+   },
+   {
+    "id": "C13",
+    "title": "Simplified far geometry chosen so the change is under a pixel",
+    "plainSummary": "Every tier draws the same 4.7-6.7 million triangles at the gate, including far cliffs where many triangles are smaller than a pixel. A simplified copy of far cells, with the simplification limited so nothing moves by more than a pixel on screen, cuts vertex work and the wasted shading of tiny triangles.",
+    "tiers": "all (invisible by construction if the error stays under about 0.5-1 px); a Low-only backdrop is the smaller first step",
+    "whereInCode": [
+     "client/src/app/sect/experience/prepare.ts:825-899 (merge per material and spatial cell)",
+     "client/src/lib/sect/cells.ts:15-21 (150 m, 450 m and 1800 m cells)",
+     "client/src/app/sect/experience/scene.tsx:905-925 (visibility per set)",
+     "blender/xianxia-sect/tools/sect_pack.py:1585 (globalLow written only if a 2048 variant exists; manifest globalLow is null)"
+    ],
+    "expectedSaving": "A guess. Halving the far cells might remove 1.5-3M triangles at the gate, perhaps 1-4 ms on an integrated GPU (vertex work plus 2x2 quad overshading on tiny triangles). The repo's note that 720p vs 1080p cut a weak GPU from 43 to 26 ms says pixel cost dominates, so this ranks below the shader fixes.",
+    "qualityCost": "None if the simplifier's error bound maps to under a pixel at each cell's nearest camera distance, with baked UV seams locked. Costs extra download (a second, smaller far copy, a guessed 20-30% more bytes) and packer work.",
+    "effort": "L",
+    "confidence": "low",
+    "evidence": "Live counts at the gate: 4.74M triangles (Low), 6.48M (Mid), 6.66M (High), with the same areas resident on Mid and High. The manifest gives 1.06-2.13M triangles per area plus 1.48M global, and globalLow is null. No tier changes geometry."
+   },
+   {
+    "id": "C14",
+    "title": "Edge-aware upscale (FSR 1) at the 0.75 render-scale step",
+    "plainSummary": "When a device is still too slow, the last resolution step draws the scene at 3/4 size and lets the browser stretch it, which looks soft. An edge-aware upscale plus sharpen (AMD FSR 1, two small passes) makes that same 3/4 image look much closer to full resolution.",
+    "tiers": "Medium and auto High when they reach the 0.75 step (visitor-picked tiers can also drop to it); Low later, since it has no composer",
+    "whereInCode": [
+     "client/src/lib/sect/runtime.ts:208-213 (RENDER_SCALE_MIN 0.75: 'the browser scales it up')",
+     "client/src/lib/sect/runtime.ts:219-222, 260 (effectiveDpr and the degrade step)",
+     "client/src/app/sect/experience/effects.ts:200-219 (final EffectPass straight to the screen)",
+     "client/src/app/sect/experience/scene.tsx:1547-1549 (composer setSize)"
+    ],
+    "expectedSaving": "Not a saving. It shades the same number of pixels and adds two full-resolution passes, a guessed 0.3-0.8 ms on an integrated GPU. The gain is a sharper image at the bottom step. It could also allow finer steps (0.9, 0.85) before 0.75.",
+    "qualityCost": "A visible gain on devices that reach the step. It needs the canvas back at full size, with the composer drawing to a 0.75 target, so it costs one full-size buffer more.",
+    "effort": "M",
+    "confidence": "medium",
+    "evidence": "runtime.ts:208-213 documents the 0.75 step as plain browser scaling. It is the one step even a visitor-picked tier can reach (degradeQuality with keepLook only steps resolution, runtime.ts:253-261), so its look matters on every weak device."
+   },
+   {
+    "id": "C15",
+    "title": "Low: sun haze and vignette in one blended full-screen quad",
+    "plainSummary": "Low skips all post effects, so it loses the warm sun glow and darkened corners that give High much of its look. One extra see-through full-screen quad, drawn last with the same formulas, brings those back cheaply.",
+    "tiers": "Low",
+    "whereInCode": [
+     "client/src/app/sect/experience/scene.tsx:1702-1716 (PlainRender: world then overlay, no composer)",
+     "client/src/app/sect/experience/effects.ts:63-130 (SunHaze and Vignette formulas)",
+     "client/src/lib/sect/runtime.ts:199 (Low post: false)"
+    ],
+    "expectedSaving": "Not a saving. Costs a guessed 0.2-0.6 ms on a mid phone: about 40 ops per pixel, one blended draw, no extra render target, so a tile GPU stays inside its render pass.",
+    "qualityCost": "A visible gain on Low. Bloom, cloud shade and the hue-preserving clip are still missing.",
+    "effort": "M",
+    "confidence": "medium",
+    "evidence": "scene.tsx:1702-1716 draws Low as world plus overlay straight to the canvas. Sun haze and vignette are plain per-pixel formulas in effects.ts that need no neighbour reads, so they can go in a blended quad (blendFunc ONE, SRC_ALPHA: dst = haze + dst * vignette)."
+   },
+   {
+    "id": "C16",
+    "title": "Low: a small near-only grass layer",
+    "plainSummary": "Low draws no grass at all, so its lawns look bare next to Medium. A small grass layer close to the camera (a few thousand tufts within about 40 m), using the same grass shader, fits Low's budget. Low's canvas already has 4x anti-aliasing, so thin blades will not shimmer.",
+    "tiers": "Low",
+    "whereInCode": [
+     "client/src/lib/sect/grass.ts:220-226 (grassTier returns 'off' when !post)",
+     "client/src/lib/sect/grass.ts:129-137 (Mid: 16k tufts, 110 m, about 0.05 ms on an RTX 5080)",
+     "client/src/app/sect/experience/scene.tsx:2370 (antialias true when post is off)",
+     "client/src/app/sect/experience/grass.tsx:655-700 (sliced main-thread build)"
+    ],
+    "expectedSaving": "Not a saving. Adds a guessed 0.1-0.3 ms of GPU on a phone and about 25k triangles at the gate, plus about 48 B per tuft and build time on the main thread for each area (unmeasured on phones).",
+    "qualityCost": "A visible gain on Low.",
+    "effort": "M",
+    "confidence": "medium",
+    "evidence": "Live at the gate: Mid drew 9,750 grass instances (87,750 triangles) and Low drew 0. grass.ts:213-215 turns Mid's blades wider because Mid has no MSAA, while Low's canvas is multisampled (scene.tsx:2370)."
+   },
+   {
+    "id": "C17",
+    "title": "Medium: cheap edge smoothing when MSAA is off",
+    "plainSummary": "Medium has no anti-aliasing at all: MSAA is 0 and the canvas's own anti-aliasing is turned off, so every edge stair-steps. A cheap edge-smoothing pass (FXAA, or SMAA for a little more cost), run only when MSAA is 0, brings Medium's edges much closer to High's.",
+    "tiers": "Medium; also High after the ladder drops MSAA",
+    "whereInCode": [
+     "client/src/lib/sect/runtime.ts:200 (Mid msaa 0)",
+     "client/src/app/sect/experience/scene.tsx:2370 (antialias only when !post)",
+     "client/src/app/sect/experience/effects.ts:200-219 (composer chain; EffectPass to the screen)"
+    ],
+    "expectedSaving": "Not a saving. Adds a guessed 0.3-0.9 ms on an integrated GPU at 1080p (FXAA at the low end) plus one more full-size target.",
+    "qualityCost": "A visible gain. FXAA can soften fine baked texture detail slightly; SMAA less so. It must run as a second pass after the hue clip and dither, because both expect screen-ready colour.",
+    "effort": "M",
+    "confidence": "medium",
+    "evidence": "runtime.ts:200 gives Mid msaa 0 and scene.tsx:2370 sets antialias: !quality.post, so Mid desktop at 1x DPR has no anti-aliasing anywhere in its chain."
+   },
+   {
+    "id": "C18",
+    "title": "Low and Medium: dim the resting frame rate sooner",
+    "plainSummary": "At rest the page still redraws 30 times a second (20 after 20 s without input), which keeps phones and laptops hot. On Low and Medium only, dropping to 20 after 5 s and to about 12 after a minute would cut resting GPU load roughly in half. High stays exactly as it is.",
+    "tiers": "Low, Medium",
+    "whereInCode": [
+     "client/src/app/sect/experience/scene.tsx:1729-1731 (IDLE_FPS 30, IDLE_DIM_FPS 20, IDLE_DIM_MS 20000)",
+     "client/src/app/sect/experience/scene.tsx:1949 (idleFps chosen per tick)"
+    ],
+    "expectedSaving": "33-60% of resting GPU, CPU and battery use on those tiers (arithmetic). It also reduces the thermal throttling that slows the next flight.",
+    "qualityCost": "Small but real. On Low and Medium, slow ambient motion (petals, water drift, flame flicker) looks a little steppier after a while at rest. The owner decides.",
+    "effort": "S",
+    "confidence": "high",
+    "evidence": "Confirmed in scene.tsx:1949. The idle rate is the same constant on every tier (2 with reduced motion, 10 while veiled, else 30 or 20). A visitor spends most of their time resting at stops."
+   }
+  ],
+  "alreadyDone": [
+   "Device-probe quality tiers (low/mid/high) and a frame-time quality ladder with hysteresis and a GPU timer (runtime.ts:197-266).",
+   "Sky dome drawn after the solid world at the far plane, which they measured at 13% of the world pass on average and 24% at the gate (scene.tsx:429-440).",
+   "Demand frame loop with idle rates of 30/20 fps, 10 while veiled, 2 with reduced motion, and 0 under readers or the map (scene.tsx:1729-1954).",
+   "Texture uploads one per frame, deferred while flying (at most 500 ms), bitmaps closed after upload, UV and colour CPU arrays freed (scene.tsx:835-863, prepare.ts:323-333, 435-471).",
+   "gunzip, meshopt decode and BVH builds in workers; main-thread prepare in 5 ms slices (assets.ts:355-461, prepare.ts:505).",
+   "Shader warm-up with compileAsync (KHR_parallel_shader_compile) against a stand-in half-float target matching the composer's program key (scene.tsx:835-903, 2039-2075).",
+   "2048 px texture set for Low and touch Medium, and narrower area windows on phones (runtime.ts:199-200).",
+   "Pond reflection drawn only over the pond's screen rectangle at 1/2 (High) or 1/3 (Mid) resolution; mirror cube one face per frame; reflection targets freed away from the mirror (reflect/index.ts:111, plan.ts:15).",
+   "Cloud puffs in one instanced draw, re-sorted only when the camera moves, collapsed off screen when faded (scene.tsx:646-647, materials.ts:1860).",
+   "Bloom already uses a mip-chain blur that starts at half resolution (only the luminance prefilter is full size).",
+   "High uses 2 MSAA samples instead of 4 at DPR 1.25 and up (runtime.ts:201-205).",
+   "Per-tier counts for flames, spray, mist, petals, birds and motes; grass reach and density by tier.",
+   "Static meshes merged per material and spatial cell with matrixAutoUpdate off; program variants by cache key, so Low gets smaller rock and ground programs."
+  ],
+  "gaps": [
+   "No frame times on weak hardware. The live run used an RTX 5080 with forced tiers, so it gave draw and triangle counts, not milliseconds. Every ms figure above is an estimate from op counts, code structure or the repo's own comments.",
+   "The GLB files are Git LFS pointers here, so I could not see how much of the screen each material covers, triangle sizes, or how many tree cards there are. That limits the size estimates for C1, C2, C9 and C13.",
+   "The compositor cost of the backdrop blurs (C6) is not profiled. A Chrome performance trace while flying would settle it.",
+   "KTX2 size and quality against today's WebP q82 is untested. One atlas trial is needed before C12.",
+   "I did not check whether three r186 sorts opaque objects front to back by default. That affects how much early depth rejection C1 gets.",
+   "The main-thread time of the grass build on phones was not measured (stats().areas[id].buildMs). That matters for C16, and for a possible worker-based grass build (left out, because measured per-frame grass CPU is only 0.05-0.16 ms).",
+   "Left out because they cost some quality, or the gain was unclear: anisotropy per tier (lowers the Low and Mid look), bloom prefilter at half resolution (could dim sparks on High), R11G11B10 main buffer (banding risk), half-resolution cloud overlay (halo risk), a fog lookup table, a baked sky environment and a range-weight texture (larger jobs with uncertain size; worth a second round), and holding fewer decoded music tracks on phones (memory only, about 38 MB)."
+  ]
+ },
+ "verdicts": [
+  {
+   "id": "C1",
+   "verdict": "keep",
+   "alreadyDone": false,
+   "reason": "Holds up. The cloud sea material is opaque: no transparent flag, and depth writes are on by default (materials.ts:1373-1376). That puts it in three's opaque list, where renderOrder -800 draws it before the whole world (scene.tsx:475). The moon disc and halo are transparent (materials.ts:1250-1251, 1333-1335), so they sit in the transparent list and the -900/-901 orders do not interact with the sea. The sky stays at 1000, after any value up to 999. The glsl.ts:476-479 note is about the order of cloud and haze maths inside the fog function, not draw order, so it is unaffected. Nothing opaque uses an unusual depth function except the sky (depthFunc appears only at scene.tsx:435). One caveat to measure: terrain that hangs below y=-60 (island roots, pillar bases going into the sea; meta cloudSea.y = -60) is rejected early today because the sea's depth is already written. After the move, that terrain gets shaded and then covered, which eats into the saving. Measure the world pass with the GPU timer at the gate and 2-3 other stops, the way the sky move was measured. It also helps the pond and mirror reflection passes, which draw the sea too.",
+   "codeRefs": [
+    "client/src/app/sect/experience/scene.tsx:469-479",
+    "client/src/app/sect/experience/scene.tsx:429-440",
+    "client/src/app/sect/experience/materials.ts:1373-1376",
+    "client/src/app/sect/experience/materials.ts:1247-1252",
+    "client/src/app/sect/experience/materials.ts:1408-1437",
+    "client/src/lib/sect/glsl.ts:476-479"
+   ],
+   "correctedEffort": "S",
+   "correctedSaving": "Unmeasured. Probably a few percent up to about 12% of the world pass in views where islands cover the sea, less where terrain dips below y=-60. Near zero elsewhere. Measure before quoting ms.",
+   "correctedQualityCost": "None. Depth testing decides what shows, and the moon and sky orders are unaffected."
+  },
+  {
+   "id": "C3",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "Sound idea with small errors. The fog inputs really are the same across each sprite: vF and vDist come from iCenter in the vertex shader (materials.ts:1828-1849). So haze depth, haze colour, cloud depth and 'toward' (materials.ts:1902-1907) can move to the vertex shader as varyings. The result is visually exact but not bit-exact, because interpolated varyings can differ in the last bits. The per-pixel saving is bigger than claimed. sectHazeDepth costs 4-6 exp (two haze spans plus mist), sectHazeColor has a pow, the two 1-exp mixes add 2 more, sectCloudDepth adds 2, and 'toward' is a pow: about 11 exp plus 2 pow per pixel, not 8 special-function ops in total. The mist sprites follow the same pattern (vDir/vDist per instance, materials.ts:1975-1976). The early-discard claim is wrong for Mid and High: the composer buffer is half-float (effects.ts:200), not 8-bit. Also, the two noise reads and the soft-depth read must run before alpha is known, so the discard only skips the lighting tail. Keep the threshold tiny or skip it. The CPU part is right. Uint32Array.sort with a JS comparator makes about 10k comparator calls for 1021 puffs (clouds.ts:63-78). packed.subarray allocates about 1021 view objects per moving frame (scene.tsx:655-657), roughly 60-100 KB of garbage. Re-sorting from the previous order with insertion sort (the list is nearly sorted) and copying the 13 floats by hand gives the same order. The 0.5 m re-sort distance should stay.",
+   "codeRefs": [
+    "client/src/app/sect/experience/materials.ts:1828-1849",
+    "client/src/app/sect/experience/materials.ts:1884-1909",
+    "client/src/app/sect/experience/materials.ts:1975-1976",
+    "client/src/app/sect/experience/scene.tsx:643-660",
+    "client/src/lib/sect/clouds.ts:63-78",
+    "client/src/app/sect/experience/effects.ts:200",
+    "client/src/lib/sect/glsl.ts:347-354"
+   ],
+   "correctedEffort": "S",
+   "correctedSaving": "GPU: about 60-80 ALU ops plus about 13 exp/pow per puff pixel, so 0.3-1 ms on an integrated GPU in cloud banks is plausible. CPU: about 0.1-0.3 ms per moving frame on desktop and 0.5-1.5 ms on a weak phone, plus about 60-100 KB less garbage per moving frame.",
+   "correctedQualityCost": "None visible: vertex-computed fog equals the per-pixel result to rounding. Drop or tighten the early discard on Mid and High, because their buffers are half-float, so 'below 8-bit' does not apply there."
+  },
+  {
+   "id": "C5",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "The reordering is valid, and the output is bit-identical: when shade or lit is exactly 0, the factor is exactly 1.0. An early return inside mainImage is fine in a merged EffectPass, because each effect's mainImage is its own function. The saving is overstated, though. The most expensive part is the 3-octave noise (12 hashes, roughly 180 ops), and it still has to run on every lit pixel. What gets skipped is the transmittance (about 9 exp in sectHazeDepth, sectCloudDepth and the final exp) on pixels under clear deck. With cover [0.5, 0.74] that is about half the area (post.ts cover). Everything after the luma test can also be skipped on the minority of pixels that are deep shade (luma under 0.02) or glows (luma over 2.2). The world-position unprojection is needed for the keep fade and the noise anyway. Net: roughly 15-30% of this pass's ALU, not 30-50%. This pass only exists while bloom is on (post.ts:29-35). A Mid device the ladder has already stepped below bloom no longer runs it, so the gain goes to devices that keep bloom, where it may stop them stepping down.",
+   "codeRefs": [
+    "client/src/app/sect/experience/post/atmos.ts:68-88",
+    "client/src/app/sect/experience/post/atmos.ts:44-66",
+    "client/src/lib/sect/post.ts:29-35",
+    "client/src/lib/sect/post.ts:46-55",
+    "client/src/lib/sect/glsl.ts:314-354",
+    "client/src/app/sect/experience/effects.ts:206-219"
+   ],
+   "correctedEffort": "S",
+   "correctedSaving": "About 15-30% of the cloud-shadow pass. Roughly 0.1-0.4 ms on a weak integrated GPU at 1080p, near 0 on a discrete GPU. It applies only while bloom (and so this pass) is on.",
+   "correctedQualityCost": "None (bit-identical)."
+  },
+  {
+   "id": "C7",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "Partly right, but the benefit is misdescribed. Pond: in flight the pose changes every frame, so nothing can be reused. Reuse only applies at rest. At rest the page already renders at an idle 30 fps, or 20 fps after 20 s with no input (scene.tsx:1728-1731, 1949-1953). So this saves GPU power and heat at the Mirror and gate stops, not frame time or smoothness. Devices that are short of time already skip the pond pass: it is off once the ladder reaches stand-ins (reflect/index.ts:132, !f.lean). The pond view already leaves out grass and draws the other areas as stand-ins (plan.ts:25). Its camera is also narrowed to the pond's screen rectangle (plan.ts narrowProjection), so '2.5M triangles' is a loose upper bound. Implementation catch: update() clears uHasReflect and tReflect every frame (index.ts:99-103), and uWaterTime only advances inside renderPond (index.ts:242). Reuse must keep feeding both, or the ripples freeze. Cube: it is already one face per frame (plan.ts ProbeSchedule), and its content comes from the mirror's fixed capture point, not the main camera. The better fix is to skip timed refreshes while the camera moves (keep the refresh on signature changes) and keep 6 s at rest, where an extra face at a 30 fps idle rate is not seen. Do not stretch High's refresh to 15-20 s. The bronze face reflects strongly (f0 0.8), so drifting clouds would jump three times as far at each refresh, and that pop would show on High. The 'double-cost' frames were not measured: check with window.__sectReflect and the span timer.",
+   "codeRefs": [
+    "client/src/app/sect/experience/reflect/index.ts:94-162",
+    "client/src/app/sect/experience/reflect/index.ts:132",
+    "client/src/app/sect/experience/reflect/index.ts:99-103",
+    "client/src/app/sect/experience/reflect/index.ts:232-247",
+    "client/src/app/sect/experience/reflect/plan.ts:12-26",
+    "client/src/app/sect/experience/reflect/plan.ts:43-58",
+    "client/src/app/sect/experience/reflect/plan.ts:91-146",
+    "client/src/app/sect/experience/scene.tsx:1728-1733",
+    "client/src/app/sect/experience/scene.tsx:1949-1953"
+   ],
+   "correctedEffort": "S",
+   "correctedSaving": "Pond: GPU power and heat only, while resting near the pond (2 of 3 idle renders skip one narrowed scene pass). No frame-time gain in flight. Cube: removes one burst of 6 heavier frames per in-flight pass near the mirror. Measure the per-face cost before claiming 'double'.",
+   "correctedQualityCost": "Pond at rest: reflected slow content (sky clouds, cranes, the mirror's breathing glow) updates at about 7-10 Hz under ripples, likely invisible, but check on High at the Heart-Mirror stop. Cube: none if timed refreshes are deferred only while the camera moves. A visible pop on High if the refresh interval is lengthened."
+  },
+  {
+   "id": "C9",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "The main idea is sound. The stack is branch-free on purpose (detail.ts:780-784), and the distance fades only multiply the result (detail.ts:798-813, 835-841). A distance branch is spatially coherent, and textureGrad with derivatives taken outside the branch keeps the mip choice correct, as paving already does (detail.ts:692-693). It is not already done. Corrections: (1) Only some layers die far away. Rock detail is gone past 150 m (6 reads) and ground detail past 140 m (2). Clumps are gone past 260 m (2) and sheen past 320 m (1). The far-rock layer (sectRockFar, 1-2 reads, active from 50 to 700 m), the rock streaks (1 read) and the ground tint (never faded) must still run far away, so far rock saves about 6 reads, plus 2 more only for mossy rock past 260 m. (2) The waterfall claim is wrong. At far=1, nA and st still feed the ragged sides at 40% (nAe and ste, materials.ts:1631-1632), so only nB, 1 read of 5, can be skipped. Far sheets are small on screen anyway, so drop that part. (3) The far reads hit tiny, cached mips, so the saving is mostly sampler issue rate: about 0.2-0.7 ms on a weak integrated GPU in wide range views, not 0.5-2. textureGrad can be slightly slower than implicit reads on near pixels. (4) Reflections: turning detail off is fine for the pond pass (1/2 to 1/3 resolution, ripples, f0 0.05). It is not fine for High's mirror cube (512 px faces, bronze f0 0.8, a 30 m parallax sphere reflecting the paved dais). Keep detail there on High.",
+   "codeRefs": [
+    "client/src/lib/sect/detail.ts:75-76",
+    "client/src/lib/sect/detail.ts:162-163",
+    "client/src/lib/sect/detail.ts:201-202",
+    "client/src/lib/sect/detail.ts:223-231",
+    "client/src/lib/sect/detail.ts:543-556",
+    "client/src/lib/sect/detail.ts:692-693",
+    "client/src/lib/sect/detail.ts:762-776",
+    "client/src/lib/sect/detail.ts:780-844",
+    "client/src/app/sect/experience/materials.ts:1618-1635",
+    "client/src/lib/sect/waterfall.ts:150-151",
+    "client/src/app/sect/experience/reflect/plan.ts:43-48"
+   ],
+   "correctedEffort": "M",
+   "correctedSaving": "About 6 texture reads per rock pixel past 150 m, 2 per ground pixel past 140 m, and 2-3 more past 260-320 m. Roughly 0.2-0.7 ms on a weak integrated GPU in wide range views. Waterfalls: 1 read, negligible. Pond reflection pass: up to about 6-8 reads per near rock texel.",
+   "correctedQualityCost": "None in the main view. Detail off in reflections only for the pond pass (and Mid's mirror), not for High's mirror cube."
+  },
+  {
+   "id": "C11",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "The header finding is confirmed. I ran curl -I today: gate.glb.gz and manifest.json both return 'public, max-age=0, must-revalidate' with an ETag and X-Vercel-Cache HIT. next.config.ts is empty and there is no vercel.json. GLBs are fetched with the default cache mode (assets.ts:313), so each use is a conditional 304 round trip to the edge. The JSON files use cache:'no-cache' (assets.ts:139) and would need versioned names too. Corrections: (1) The early start cannot be a static <link rel=preload> in the HTML. Save-Data and ?view=page visitors never download the scene (sect-client.tsx:24-29), and browsers without WebGL2 or DecompressionStream fall back (sect-experience.tsx:207-209). Chunk files also differ by tier (filesLow on phones and Low) and by the stop a deep link starts at. Only the tier-independent files are safe to start early: the manifest, camera/meta/clouds JSON, and the backdrop (globalLow is null, so it is the same 9.6 MB for every tier). Start them from a tiny inline script that checks the same conditions, like the existing POSTER_SCRIPT, and hand the responses to the loader. (2) The 25-30 revalidations are spread over the whole flight, because the streamer loads one area at a time (streaming.ts:38). Only about 4-8 are on the opening path. (3) Phone browser caches may evict 100+ MB of GLBs, so repeat-visit gains on phones are smaller. Needs content-hashed or version-folder names from sect_pack.py, a headers() rule, and the inline script. That is M, not S.",
+   "codeRefs": [
+    "client/next.config.ts:1-5",
+    "client/src/app/sect/experience/assets.ts:136-166",
+    "client/src/app/sect/experience/assets.ts:313",
+    "client/src/app/sect/sect-client.tsx:20-29",
+    "client/src/app/sect/experience/sect-experience.tsx:207-209",
+    "client/src/app/sect/experience/sect-experience.tsx:497-560",
+    "client/src/app/sect/experience/streaming.ts:38",
+    "client/public/sect/full/manifest.json (globalLow null, global backdrop 9.6 MB)",
+    "blender/xianxia-sect/tools/sect_pack.py:1570-1600"
+   ],
+   "correctedEffort": "M",
+   "correctedSaving": "Load time only. Repeat visit: about 4-8 round trips off the opening path (roughly 0.2-0.6 s on mobile), with the rest saved quietly during the flight. First visit: the manifest, JSON and backdrop start roughly 0.5-1 s earlier. That is about 5% of a 20 MB opening download on a 10 Mbps phone.",
+   "correctedQualityCost": "None, if rebakes always produce new names and manifest.json stays no-cache. A badly targeted preload would waste 8-11 MB on phones, Save-Data and page-view visitors."
+  },
+  {
+   "id": "C13",
+   "verdict": "revise",
+   "alreadyDone": true,
+   "reason": "Mostly already done offline, and the proposal misses that. Before the bake, Blender decimates terrain weighted by distance to the camera path (BIG_RATIO 0.3). The range gets full detail only near a view. Heavy pieces are split by face distance, and distant pieces under 6 px on screen are dropped (bake_web.py:91-99, 170-180). After the bake, sect_pack.py runs a meshopt pass that keeps UV seams. It simplifies every area primitive to under 0.5 px of error at 1080 lines at its nearest approach to the camera path (sect_pack.py:646-649, 840-905). So far geometry is not unsimplified. Other errors: 'every tier draws the same triangles' contradicts the cited 4.74M (Low) vs 6.66M (High). globalLow null refers to a 2048 px texture copy of the backdrop, not geometry. What is really left: (a) the backdrop and *_trees files skip the packer's sub-pixel pass (simp only for area_ids, sect_pack.py:1706-1709). Running the same pass on backdrop.glb is a re-pack, invisible by construction, with no second copy and no extra download. Check first why it was left out, given the carried normals and the proxies. (b) A runtime per-stop LOD for neighbouring areas seen from hundreds of metres, which carry detail sized for their own nearest approach. The ladder's standIns step (backdrop proxies) is the extreme form of that LOD. Timing the gate with standIns on and off using the GPU timer gives an upper bound before building anything.",
+   "codeRefs": [
+    "blender/xianxia-sect/tools/sect_pack.py:646-649",
+    "blender/xianxia-sect/tools/sect_pack.py:840-905",
+    "blender/xianxia-sect/tools/sect_pack.py:1706-1709",
+    "blender/xianxia-sect/sect/bake_web.py:33-36",
+    "blender/xianxia-sect/sect/bake_web.py:91-99",
+    "blender/xianxia-sect/sect/bake_web.py:170-180",
+    "client/src/lib/sect/runtime.ts:174-180",
+    "client/src/lib/sect/runtime.ts:254-266",
+    "client/src/app/sect/experience/prepare.ts:825-899",
+    "client/src/lib/sect/cells.ts:15-21"
+   ],
+   "correctedEffort": "L",
+   "correctedSaving": "Unknown, and bounded above by what the standIns step saves at the gate (measure it). The first step, the backdrop through the existing sub-pixel pass, saves some of its 1.48M triangles with no extra download. The full runtime LOD costs about 20-30% more geometry bytes.",
+   "correctedQualityCost": "None if the error bound stays under 0.5 px at each cell's nearest camera distance for the stops where it is used, with UV seams kept, as the packer already does."
+  },
+  {
+   "id": "C15",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "Confirmed that Low has no sun haze or vignette anywhere. They exist only in effects.ts. PlainRender draws the world and then the overlay into the default framebuffer (scene.tsx:1702-1715), so a third draw stays in the same tile pass. The formula claim is wrong, though. High adds the haze in linear light, scaled down by (1 - 0.7 x luma of the pixel) (effects.ts:76-78), and Low's framebuffer holds sRGB-encoded colour. 'ONE, SRC_ALPHA: dst = haze + dst*vignette' drops that luminance scaling. Bright surfaces toward the sun would then get the full glow and clip per channel to yellow-white, which High avoids. Better: a screen blend (ONE, ONE_MINUS_SRC_COLOR) for the haze, which lifts darks and spares brights the way High does and never clips. Then a multiply quad (ZERO, SRC_COLOR) for the vignette, with its factor raised to about 1/2.2 for encoded space. That is two cheap draws. Dither the haze quad's own output: the glow is a broad gradient on an 8-bit buffer, and Low dithers only inside materials (glsl.ts:466-490). The cost is lower than claimed: about 40 ops on a phone at about 0.75 MP is tiny.",
+   "codeRefs": [
+    "client/src/app/sect/experience/scene.tsx:1701-1715",
+    "client/src/app/sect/experience/effects.ts:63-114",
+    "client/src/app/sect/experience/effects.ts:217",
+    "client/src/lib/sect/runtime.ts:199",
+    "client/src/lib/sect/glsl.ts:466-490",
+    "client/src/lib/sect/look.ts:417",
+    "client/src/lib/sect/parse.ts:256"
+   ],
+   "correctedEffort": "S",
+   "correctedSaving": "Not a saving. Costs about 0.1-0.3 ms on a mid phone for two blended full-screen draws in the same render pass.",
+   "correctedQualityCost": "A visible gain on Low, close to High's haze and vignette but not identical (encoded-space approximation). Bloom, cloud shade and the hue clip are still missing."
+  },
+  {
+   "id": "C17",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "Confirmed that Medium has no anti-aliasing at 1x. Mid has msaa 0 (runtime.ts:200), the canvas antialias flag is set only when there is no post pass (scene.tsx:2370), and Mid tree cards fall back from alpha-to-coverage (sect-experience.tsx:532). Low actually has native canvas MSAA. Mid on touch and on Safari runs at 1.5x, which helps there. Corrections: (1) A second EffectPass is right. A convolution effect merged into the current pass would sample the pass's input, the HDR image before haze, bloom and clip. But the order should be hue clip, then FXAA in pass 2, then dither. The dither moves out of pass 1 to the end of pass 2, because it must stay last. Running FXAA after the dither, as proposed, would blur the dither. (2) No new full-size target is needed. The EffectComposer already keeps two ping-pong buffers. The cost is one more full-screen read and write of the half-float buffer plus FXAA's maths. (3) Turn it on only when msaa is 0, so High never pays at its top quality. After the ladder drops High's MSAA it pays a little back, still cheaper than MSAA. The pipeline is already rebuilt when MSAA changes (runtime.ts climbRebuildsPipeline), so switching is free to wire in. Use FXAA's edge threshold so fine baked texture detail is left mostly alone.",
+   "codeRefs": [
+    "client/src/lib/sect/runtime.ts:198-206",
+    "client/src/app/sect/experience/scene.tsx:2370",
+    "client/src/app/sect/experience/sect-experience.tsx:532",
+    "client/src/app/sect/experience/effects.ts:198-230",
+    "client/src/lib/sect/runtime.ts:304-312",
+    "client/src/lib/sect/post.ts:29-35"
+   ],
+   "correctedEffort": "M",
+   "correctedSaving": "Not a saving. About 0.3-0.8 ms on an integrated GPU at 1080p (FXAA plus one extra full-screen half-float pass). No extra render target.",
+   "correctedQualityCost": "A visible gain on Medium edges and tree cards. FXAA softens fine baked detail slightly (SMAA less so)."
+  },
+  {
+   "id": "C2",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "The cost is real. In three r186 MeshBasicMaterial runs map, then color, then alphamap, then alphatest, so the grade, foliage range, canopy vary and the 16-slot sectRangeW loop all run before the card discard. This happens on every tier. The saving is overstated, though. A GPU only skips work when every pixel in a block (a 2x2 quad, and really a 32-64 lane group) is cut out. In mixed blocks the discarded lanes just wait. Sprite crowns have clean transparent corners, so whole blocks drop there. Needle fans mix 1-3 px needles with 1-3 px gaps, so most blocks stay mixed. The driver may also already move the rgb-only grade below the discard. Corrections: (1) Keep the twig detail multiply after the grade. Today cardAlphaMapGlsl applies it inside alphamap_fragment, which runs after color_fragment. The grade is non-linear, so running the twig multiply before it changes colours. (2) For sprites, the decision can sit right after map_fragment plus the boost and fade. Needle and twig cards need the grade moved below alphatest_fragment. (3) The grade has no derivatives, so moving it after the discard is safe. fwidth and the mip derivatives already run earlier. (4) A surer, separate win: compute sectRangeW per vertex for card materials. Cards are a few metres across and the weight fades over 25 m (range-look.ts:37), so the loop leaves every card pixel, kept or discarded, with no visible change. Measure the change with the existing GPU timer at the gate or range.",
+   "codeRefs": [
+    "client/src/app/sect/experience/materials.ts:777-810",
+    "client/src/app/sect/experience/materials.ts:936-947",
+    "client/src/lib/sect/card-shading.ts:178-229",
+    "client/src/lib/sect/range-look.ts:529-540",
+    "client/src/lib/sect/range-look.ts:37",
+    "client/src/lib/sect/look.ts:637-649",
+    "three r186 ShaderLib/meshbasic.glsl.js fragment order: map, color, alphamap, alphatest"
+   ],
+   "correctedEffort": "M",
+   "correctedSaving": "About 10-30% of card-fragment work, not 35-50%. The cap is how many pixel blocks are fully cut out: good on sprite crowns, poor on needle fans. Guess 0.2-1 ms on an integrated GPU or phone in forest-heavy views. Moving sectRangeW to the vertex shader removes about 100-160 ops from every card pixel, whether it is kept or discarded.",
+   "correctedQualityCost": "None, if the twig detail multiply stays after the grade and the alpha-to-coverage sharpening (sectPx with fwidth) still runs before the discard."
+  },
+  {
+   "id": "C4",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "Confirmed. pulse means hovered, focused or selected (scene.tsx:1925), and continuous includes it, so with maxFps 0 the loop goes to 'always' (1929-1936). Every pointermove also wakes 200 ms (1173-1183), so any mouse motion over the canvas at rest renders at the screen's full rate. The glow is 0.75+0.25*sin(3.2t), about 0.5 Hz (1430). The pick is throttled to 50 ms (1408). Corrections: (1) Do not render these frames through the existing capped branch, render(now, true). Driver's useFrame counts capped frames as moving (1967) and gives the ladder their 33 ms intervals with capMs 0 (2009-2011). On browsers without the GPU timer (Safari, Firefox), the ladder would read 33 ms as over the 20 ms budget and step quality down (runtime.ts:434-436). Render them as idle frames from the idle branch, render(now, false). (2) Hover and drag share store.wakeUntil. FreeLookInput's drag also calls wake(store, 250) (scene.tsx:319). The hover wake needs its own field, so drag-look keeps the full rate. (3) The lore card that follows the cursor is positioned inside useFrame (1423). At 30 renders a second it would update about every 66 ms instead of every 50 ms. Position it from the pointermove handler instead. (4) Optional: render a short full-rate burst (about 300 ms) when hovered changes, so the damp-10 fade-in (1432) stays smooth. Nothing else reads the pointer for visuals: no parallax.",
+   "codeRefs": [
+    "client/src/app/sect/experience/scene.tsx:1173-1183",
+    "client/src/app/sect/experience/scene.tsx:319",
+    "client/src/app/sect/experience/scene.tsx:1405-1433",
+    "client/src/app/sect/experience/scene.tsx:1925-1953",
+    "client/src/app/sect/experience/scene.tsx:1963-2011",
+    "client/src/lib/sect/runtime.ts:199-205",
+    "client/src/lib/sect/runtime.ts:425-437",
+    "client/src/app/sect/experience/store.ts:121-123"
+   ],
+   "correctedEffort": "S",
+   "correctedSaving": "As stated while the mouse moves or rests on a hotspot. A 60 Hz screen draws 50% fewer frames, a 144 Hz screen about 79% fewer. This counts only once the ladder bug above is avoided.",
+   "correctedQualityCost": "None. Idle motion during hover drops to the 30 fps it already has at rest. The lore card needs DOM positioning to keep its 20 Hz follow."
+  },
+  {
+   "id": "C6",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "The blur declarations are where the proposal says, with no tier switch. But two of the targets cost nothing per frame. The map and readers set store.modal (sect-experience.tsx:1204-1207), and then the scene does not redraw (scene.tsx:1948), so their blur is not recomputed. The page-view header (content.css:1674-1676) sits over the opaque page view while the 3D view is paused (sect-experience.tsx:1220), so its blur only reruns on scroll. Drop both from the list. The real per-frame targets are two. First, the area panel: .sect-panel.sc-panel is 0.895 opaque, and paper.webp has an alpha channel, so it adds a little more cover. Removing its blur on every tier is near-invisible. Second, the always-visible HUD plates (sect.css:375-380), used by about 8 controls in overlay.tsx and sound-toggle.tsx. Removing their blur on Low is a visible Low-only change, which the owner's rule does not cover, so it is the owner's call. Gate it by a tier class on the root, not a coarse-pointer media query, or High-tier tablets change too. Each backdrop-filter element makes the compositor copy what is behind it into its own pass whenever the canvas updates. On tiled phone GPUs that costs more than the pixel count suggests. The idle rate is 30, or 20 after 20 s.",
+   "codeRefs": [
+    "client/src/app/sect/sect.css:327-335",
+    "client/src/app/sect/sect.css:375-384",
+    "client/src/app/sect/content/content.css:1313-1325",
+    "client/src/app/sect/content/content.css:1674-1676",
+    "client/src/app/sect/sect.css:1332-1337",
+    "client/src/app/sect/experience/sect-experience.tsx:1204-1220",
+    "client/src/app/sect/experience/scene.tsx:1947-1953",
+    "client/src/app/sect/experience/scene.tsx:1729-1731"
+   ],
+   "correctedEffort": "S",
+   "correctedSaving": "Guess 0.2-1 ms of compositor GPU per redrawn frame on phones, mostly from the area panel. Not profiled. The map, readers and page-view header save nothing.",
+   "correctedQualityCost": "None for the area panel. On Low, the plates would show a sharper scene through their 18% see-through. Owner's call."
+  },
+  {
+   "id": "C8",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "Confirmed. On Low, three's colorspace_fragment encodes to sRGB, then the fog chunk decodes gl_FragColor and fogColor, fogs, clips and encodes again (glsl.ts:485-490). three uploads fogColor in the output colour space when drawing to the screen, so it really does arrive encoded. The count is off. Today a fogged pixel runs 12 pow calls (three's encode 3, the decode 3, the fogColor decode 3, the final encode 3), and each pow is log2 plus exp2. After both steps only the final 3 remain, so 9 are removed, not 6. Step 1 removes 3. Step 2 removes 6: three's encode and the decode that undoes it. Step 1 may save nothing on drivers that already pull uniform-only maths out of the per-pixel code (Qualcomm does), but it costs nothing to do. Implementation: change it once in installFog (materials.ts:81-91). Make colorspace_fragment skip its encode under USE_FOG, drop the decode at glsl.ts:486, and pass a linear copy of the fog colour as its own uniform. Audit the custom shaders that include colorspace_fragment (materials.ts 1193, 1308, 1439, 1501, 1673, 1909, 1978; flames, fx, life, grass, waterfall-fx). Those checked put fog_fragment straight after it. Sky shaders that use SCREEN_DITHER_GLSL without three's fog are not affected. Mid and High draw into the composer's linear buffer, so nothing changes there.",
+   "codeRefs": [
+    "client/src/lib/sect/glsl.ts:470-492",
+    "client/src/lib/sect/glsl.ts:238-245",
+    "client/src/app/sect/experience/materials.ts:81-91",
+    "client/src/app/sect/experience/materials.ts:1501-1502",
+    "client/src/app/sect/experience/materials.ts:1673-1674",
+    "client/src/app/sect/experience/materials.ts:1047-1048",
+    "client/src/lib/sect/runtime.ts:199"
+   ],
+   "correctedEffort": "M",
+   "correctedSaving": "9 of 12 pow calls per fogged pixel on Low, about 18 special-function ops. Low frames are mostly limited by memory bandwidth and fill, so guess 2-5% of a Low frame's GPU time, not 5-10%.",
+   "correctedQualityCost": "None. The same float maths and the same clip and dither run on the same values."
+  },
+  {
+   "id": "C10",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "Confirmed. The useLayoutEffect at scene.tsx:1518-1546 disposes and rebuilds the composer whenever quality.msaa, quality.bloom, cloudShadows or holdFocus change. Step-downs happen mid-flight. Climbs that rebuild already wait for the camera to rest (runtime.ts:308-316, scene.tsx:2013-2016), so half of this is already mitigated. Corrections: (1) holdFocus also flips. atmosFeatures ties holdFocus to now.msaa > 0 and cloudShadows to now.bloom (post.ts:29-35). So the MSAA-to-0 step also rebuilds to remove hold focus, and hold focus needs a switch-off by uniform as well. (2) composer.multisampling already has a setter in postprocessing 6.39 (build/index.js:985). It only disposes the two buffers, which reallocate on the next render: a small hitch of a few ms, not a shader compile. (3) The MSAA-to-0 step also recompiles the tree card programs (setCardCoverageOf sets needsUpdate, assets.ts:1302-1307), so pre-compiling those variants matters. (4) Bloom switched off by uniform still costs one texture read per pixel in the merged shader. bloom.update must also be skipped. (5) Which steps it covers: up to 3 stalls on auto High (4 to 2 samples when DPR < 1.25, 2 to 0, bloom off) and 1 on Medium (bloom, which also removes cloud shadows).",
+   "codeRefs": [
+    "client/src/app/sect/experience/scene.tsx:1513-1552",
+    "client/src/app/sect/experience/scene.tsx:2013-2021",
+    "client/src/app/sect/experience/effects.ts:192-231",
+    "client/src/lib/sect/post.ts:29-35",
+    "client/src/lib/sect/runtime.ts:253-266",
+    "client/src/lib/sect/runtime.ts:308-316",
+    "client/src/app/sect/experience/assets.ts:1296-1308",
+    "client/src/app/sect/experience/post/atmos.ts:70",
+    "E:/Github/PortfolioV5/client/node_modules/postprocessing/build/index.js:985-994"
+   ],
+   "correctedEffort": "M",
+   "correctedSaving": "Removes the shader-compile stall on each mid-flight step-down (up to 3 on auto High, 1 on Medium). The guessed 30-150 ms each is plausible next to the repo's own 18-40 ms and 46 ms notes. A few ms of buffer reallocation stays at each MSAA change. Climbs could then happen in flight.",
+   "correctedQualityCost": "None, if bloom, cloud shadow and hold focus switched off by uniform match today's removed passes. The cost is one extra texture read per pixel at the bottom steps."
+  },
+  {
+   "id": "C12",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "No KTX2 or Basis code exists, and the manifest confirms the memory figures. Full-set decoded textures with mips total about 2.12 GiB, and the Low set about 0.70 GiB. Dividing GPU memory by 4 is right, since BC7 and ASTC 4x4 are 8 bits per pixel against 32 for RGBA. Corrections: (1) The download grows more than claimed. UASTC is 8 bits per pixel before supercompression, so the full set is about 530 MiB as UASTC. After RDO plus zstd it is roughly 200-320 MB, against about 40 MB of WebP today (full minus low bytes is about 2.8 MB per area). Area files go from about 11 MB to about 25-40 MB, 2.5-3.5 times, not about double. That breaks the packer's ~10 MB per chunk budget. (2) The steady-state CPU copy is already freed: prepare.ts:320-331 closes each ImageBitmap after upload. So only the GPU memory and the in-flight decode peak are saved. (3) The grass root read samples atlases through a shader into a render target (grass.tsx:414-459), so it still works with compressed textures. (4) It adds the Basis transcoder (WASM in workers) and transcode time on phones. Older devices without ASTC fall back to ETC2. Trial one area for bytes, PSNR and a side-by-side look. Consider the cheaper fallback (decode each WebP just before its upload) first.",
+   "codeRefs": [
+    "client/public/sect/full/manifest.json",
+    "client/src/lib/sect/runtime.ts:197-205",
+    "blender/xianxia-sect/tools/sect_pack.py:615-631",
+    "blender/xianxia-sect/tools/sect_pack.py:1-60",
+    "client/src/app/sect/experience/scene.tsx:835-863",
+    "client/src/app/sect/experience/prepare.ts:320-331",
+    "client/src/app/sect/experience/grass.tsx:414-459",
+    "client/src/app/sect/experience/assets.ts:270-280"
+   ],
+   "correctedEffort": "L",
+   "correctedSaving": "GPU texture memory divided by 4: about 1.23 GB to 0.31 GB at the forge on desktop Medium and High. Uploads move about 4 times less data, with no mip generation. Download cost: textures about 40 MB to about 200-320 MB over the flight, and area files 2.5-3.5 times larger.",
+   "correctedQualityCost": "None expected with UASTC (no RDO, or a low RDO setting) encoded from the original PNG bakes. It may even beat today's WebP q88, which halves colour resolution. ETC1S would band baked light. The real cost is download size and load time on slow connections."
+  },
+  {
+   "id": "C14",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "The 0.75 step is plain browser upscaling (runtime.ts:208-213), and keepLook tiers can reach it (runtime.ts:253-261). But FSR 1 needs anti-aliased input. By the 0.75 step, auto tiers have already dropped MSAA (runtime.ts:256-260), Medium never has it (runtime.ts:200), and the pipeline has no FXAA or SMAA (effects.ts:192-231). On that input, the edge-aware upscale plus sharpen would sharpen stair-steps and the shimmer of needles and grass in motion. Only a visitor-picked High tier still has MSAA at that step. Also, the DitherEffect runs at the end of the merged pass (effects.ts:217-218). It must move after the upscale, or the sharpen boosts the dither noise. The cost guess is low for the weak integrated GPUs that actually reach this step: more like 0.5-1.5 ms at 1080p. That is small against the 26 ms frame, but it can delay climbs. Recommendation: gate FSR to msaa > 0, or use the sharpen pass alone on today's upscale. Then measure before adding finer steps.",
+   "codeRefs": [
+    "client/src/lib/sect/runtime.ts:200",
+    "client/src/lib/sect/runtime.ts:208-222",
+    "client/src/lib/sect/runtime.ts:253-261",
+    "client/src/app/sect/experience/effects.ts:200-219",
+    "client/src/app/sect/experience/scene.tsx:1547-1549"
+   ],
+   "correctedEffort": "M",
+   "correctedSaving": "Not a saving. It adds an estimated 0.5-1.5 ms on the integrated GPUs that reach the step, plus one full-size buffer.",
+   "correctedQualityCost": "A clear gain only where the input has MSAA (visitor-picked High). On Medium and auto tiers without MSAA it can make jaggies and shimmer more visible, unless an anti-aliasing pass is added."
+  },
+  {
+   "id": "C16",
+   "verdict": "revise",
+   "alreadyDone": false,
+   "reason": "Confirmed that grassTier returns 'off' without post (grass.ts:220-226) and that Low's canvas requests antialias (scene.tsx:2370). Browsers usually give 4x MSAA, but it is not guaranteed. Problems: (1) A 40 m reach misses the lawns the holds actually frame, 50-110 m out (grass.ts:130-133). The visible gain would mostly come mid-flight, not at the stops where visitors rest. (2) It adds cost on the weakest devices. That means GPU time, the main-thread build in 6 ms slices (grass.tsx:671-686), and a GPU readback per atlas (readRoots, grass.tsx:414-459) on phones. It does not fit the owner's 'same cost' rule. (3) The GPU guess is low: Mid's 0.05 ms for 16k tufts on an RTX 5080, on a phone GPU 20-50 times slower, gives about 0.3-1 ms for a near layer, and near tufts cover the most pixels. Revision: make Low grass a ladder rung. It turns on only while frames have headroom and is the first thing dropped. Give it a reach that covers the hold lawns, about 80-110 m at low density.",
+   "codeRefs": [
+    "client/src/lib/sect/grass.ts:129-137",
+    "client/src/lib/sect/grass.ts:220-226",
+    "client/src/app/sect/experience/scene.tsx:2370",
+    "client/src/app/sect/experience/grass.tsx:414-459",
+    "client/src/app/sect/experience/grass.tsx:671-686",
+    "client/src/app/sect/experience/grass.tsx:840-915"
+   ],
+   "correctedEffort": "M",
+   "correctedSaving": "Not a saving. Estimated 0.3-1 ms of phone GPU, plus main-thread build and a GPU readback per area. Acceptable only when gated on ladder headroom.",
+   "correctedQualityCost": "A visible gain on Low only if the reach covers the hold lawns. At 40 m it shows mostly in flight."
+  },
+  {
+   "id": "C18",
+   "verdict": "drop",
+   "alreadyDone": false,
+   "reason": "The proposal admits a visible loss on Low and Medium: steppier water, flames and petals, and 12 fps reads as stutter. The owner's rule allows only no-loss savings or changes that bring Low and Medium closer to High. The saving is also overstated, because the code already dims to 20 fps after 20 s (scene.tsx:1729-1731, 1949). Counted over a whole rest, the proposal cuts rendered frames by about 17% over 10 s, 25% over 20 s, 11% over 60 s and 24% over 2 minutes. That is nowhere near half. A no-loss alternative for every tier: dim when the window has lost focus (blur, or document.hasFocus() false). The visitor is not looking then.",
+   "codeRefs": [
+    "client/src/app/sect/experience/scene.tsx:1729-1734",
+    "client/src/app/sect/experience/scene.tsx:1898-1902",
+    "client/src/app/sect/experience/scene.tsx:1947-1953"
+   ],
+   "correctedSaving": "About 11-25% of resting frames, depending on how long the rest lasts, not 33-60%.",
+   "correctedQualityCost": "Visible on Low and Medium: ambient motion steps after 5 s, and stutters at 12 fps after a minute."
+  }
+ ],
+ "unchecked": [],
+ "measure": {
+  "ran": true,
+  "method": "Playwright run_code loop on live https://art3m1s.me with ?tier=X&debug=1&ui=0&frame=N for tiers low/mid/high at frames 93 (gate), 352 (forge), 1647 (summit, last hold). Waited for body[data-sect-ready] plus 6 s, then read window.__sect.info(), gl.info.programs.length, gl.info.render/memory, __sect.grass.stats(), and flames/reflect/post (truncated). No screenshots taken. Hooks all present in production. Renderer is ANGLE NVIDIA GeForce RTX 5080 D3D11 (real GPU, not SwiftShader), so counts are valid but I read no frame times.",
+  "rows": [
+   {
+    "tier": "low",
+    "place": "gate f93",
+    "drawCalls": 303,
+    "triangles": 4735308,
+    "geometries": 325,
+    "textures": 23,
+    "programs": 46,
+    "other": "3 areas resident (gate, mirror, forge), resident tris 5.47M, resident texBytes ~63.9/63.6/70.5 MB per area (~198 MB total); stream bytes 6.6-8.5 MB per area; grass tier off (0 instances); flames enabled"
+   },
+   {
+    "tier": "low",
+    "place": "forge f352",
+    "drawCalls": 200,
+    "triangles": 2971470,
+    "geometries": 218,
+    "textures": 29,
+    "programs": 48,
+    "other": "4 areas resident (mirror, forge, arena, mission), resident tris 7.12M, texBytes ~63-75 MB per area (~279 MB total); grass off"
+   },
+   {
+    "tier": "low",
+    "place": "summit f1647",
+    "drawCalls": 73,
+    "triangles": 1347920,
+    "geometries": 82,
+    "textures": 22,
+    "programs": 43,
+    "other": "3 areas resident (formation, abode, summit), resident tris 5.58M; texBytes 34.9/66.9/90.8 MB (summit low copy 90.8 MB); grass off"
+   },
+   {
+    "tier": "mid",
+    "place": "gate f93",
+    "drawCalls": 482,
+    "triangles": 6479459,
+    "geometries": 492,
+    "textures": 54,
+    "programs": 56,
+    "other": "4 areas resident (gate, mirror, forge, arena), resident tris 7.19M, texBytes 245/181/272/168 MB (~866 MB total); grass tier mid: 9750 instances, 87750 tris drawn, 67541 resident instances, 25 cells in view; reflection tier mid, drawing 996x983"
+   },
+   {
+    "tier": "mid",
+    "place": "forge f352",
+    "drawCalls": 341,
+    "triangles": 5122579,
+    "geometries": 426,
+    "textures": 67,
+    "programs": 58,
+    "other": "6 areas resident (gate, mirror, forge, arena, mission, library), resident tris 10.73M, texBytes ~1.23 GB total (245+181+272+168+172+193 MB); grass mid: 5154 instances, 46386 tris drawn, 98175 resident instances; reflection draw 0x0"
+   },
+   {
+    "tier": "mid",
+    "place": "summit f1647",
+    "drawCalls": 105,
+    "triangles": 1375865,
+    "geometries": 99,
+    "textures": 53,
+    "programs": 53,
+    "other": "4 areas resident (scroll, formation, abode, summit), resident tris 6.85M, texBytes 171/129/190/286 MB (~776 MB total); grass mid: 255 instances, 2295 tris drawn, 47156 resident"
+   },
+   {
+    "tier": "high",
+    "place": "gate f93",
+    "drawCalls": 545,
+    "triangles": 6663198,
+    "geometries": 552,
+    "textures": 57,
+    "programs": 58,
+    "other": "same 4 areas resident as mid (~866 MB texBytes); grass high: 35824 instances, 322416 tris drawn, 214798 resident, 85 cells in view; reflection tier high, drawing 1245x1229 (mid 996x983)"
+   },
+   {
+    "tier": "high",
+    "place": "forge f352",
+    "drawCalls": 384,
+    "triangles": 5255687,
+    "geometries": 488,
+    "textures": 70,
+    "programs": 60,
+    "other": "same 6 areas resident as mid (~1.23 GB texBytes); grass high: 23995 instances, 215955 tris drawn, 328754 resident"
+   },
+   {
+    "tier": "high",
+    "place": "summit f1647",
+    "drawCalls": 117,
+    "triangles": 1425757,
+    "geometries": 108,
+    "textures": 56,
+    "programs": 55,
+    "other": "same 4 areas as mid (~776 MB texBytes); grass high: 7218 instances, 64962 tris drawn, 179988 resident, summit grass candidates 97590 vs mid 16315"
+   }
+  ],
+  "observations": [
+   "Mid and High draw almost the same geometry (gate: 6.48M vs 6.66M tris; forge: 5.12M vs 5.26M). Almost all of that difference is grass. The gap between tiers is mostly texture size, grass and reflection resolution, not mesh detail.",
+   "Triangle counts are very high everywhere: the gate view draws 4.7M (low) to 6.7M (high) triangles. Each area is 1.0-2.1M triangles, plus about 1.48M global triangles (backdrop). Triangles actually drawn are far fewer than resident triangles (gate low: 4.7M drawn vs 5.5M resident; forge mid: 5.1M drawn vs 10.7M resident), so the view frustum is culling a lot. Even so 3-5M triangles per frame is the main cost for weak GPUs.",
+   "Draw calls are 73-545 and vary a lot by place: gate is the heaviest (303 low, 482 mid, 545 high), summit the lightest (73/105/117). Gate has the most calls because it shows the most distinct meshes. Merging or instancing at the gate and forge would help most.",
+   "Texture memory is the largest number. Per-area decoded texBytes is 168-286 MB on mid/high versus 63-91 MB on low (about 2.7x smaller). Mid/high hold 4-6 areas resident, about 780 MB to 1.23 GB of GPU texture memory; low holds 3-4 areas, about 200-280 MB. The forge stop on mid/high keeps 6 areas resident, which is the memory peak and is risky for phones and integrated GPUs. Mid appears to use the same 4096 texture set as high (texBytes identical), so mid saves nothing on textures versus high. Mid's saving is only in grass and reflection resolution.",
+   "Because texBytes are decoded RGBA estimates and textures are WebP-in-GLB, GPU memory is roughly 4 bytes per pixel with no compression. A GPU-compressed format (KTX2/BC7/ASTC) would cut this about 4-8x for mid/high with the same visuals; this is a candidate for idea (a). The streamed download size is small (6.6-12.9 MB per area), so the cost is decoded size, not network.",
+   "Grass is the only live effect that differs sharply by tier. High at the gate draws 35,824 instances / 322k tris; mid draws 9,750 / 88k; low draws 0 (grass tier off). High generates about 4x more candidate blades than mid (gate 184k vs 41k candidates, 69k vs 23k built instances), and High keeps 215-329k instances resident. Low has no grass at all, so Low looks visibly barer than High. A cheap grass layer (a few thousand instances or baked grass cards) on Low would close the look gap (idea b). Grass CPU time is tiny (0.05-0.16 ms), so the cost is GPU triangle count, not CPU.",
+   "Mid-tier grass drops from 9,750 to 255 instances between gate and summit, and High drops from 35,824 to 7,218, so grass cost is concentrated at gate, mirror and forge.",
+   "Shader programs: 43-48 on low, 53-58 on mid, 55-60 on high. That is a moderate count; the extra programs on mid/high are mostly for grass, reflections and post effects. Not a big lever on its own, but program compile at first view causes hitches on slow devices; precompiling or warming programs during the loader would hide that.",
+   "Reflections: mid reflects at roughly 996x983 and high at roughly 1245x1229 (about 1.25x per axis) at the gate; at forge and summit the drawing size was 0x0 (nothing reflective in view), so the reflection cost is paid only where water is visible. Low's reflection state was not captured in the truncated output.",
+   "Flames are enabled on all three tiers (forge flame sources present on low), so fire effects are not tier-gated.",
+   "Stream status was clean: loading and failed lists were empty at every place after about 6 s, ready/drawn true for every resident area; no load errors seen.",
+   "Console showed 0 errors and 8 warnings (log saved at .playwright-mcp/console-2026-11-04T18-14-44-939Z.log); I did not read the warnings.",
+   "Frames were taken from camera.json holds: gate 93, mirror 217, forge 352, arena 516, mission 619, library 772, steles 974, scroll 1103, formation 1208, abode 1380, summit 1647. I measured gate, forge and summit."
+  ],
+  "problems": [
+   "The browser had a real RTX 5080 GPU (not SwiftShader), so these counts are from a strong machine. The tier was forced with ?tier=, so counts show what each tier draws, not how a weak device would behave. No frame times were read, so GPU cost per tier is not measured.",
+   "__sectPost and __sectReflect output was truncated to 200 characters and mostly returned frustum plane data; I did not get post-processing settings (bloom, MSAA, render scale) or Low's reflection state. The Low-tier runs did not return a reflect or post value at all (the fields were missing from the output).",
+   "gl.info.render.calls and triangles are for the last rendered frame only; with ui=0 and a jumped frame, a reflection pass or other extra passes may be included in or excluded from those counts. info().calls matched glinfo.calls exactly in every run.",
+   "The 6-second settle may not be enough for the grass builder in every case (grass 'building' was 0 in all runs, so it did finish), and the Low tier's grass 'off' is by design, not a loading failure.",
+   "No screenshots taken, so I did not visually confirm that each tier rendered correctly. I did not read the console warnings."
+  ]
+ },
+ "webTechniques": [
+  {
+   "name": "KTX2 / Basis Universal textures (UASTC for baked lightmaps, ETC1S for the rest)",
+   "support": "KTX2Loader is in three since r129 and works on r186 (the site's r0.186). Needs WebGL2/WASM. ASTC is on nearly all phones and Apple GPUs; BC7 on desktop; ETC2 on older Android. Open issue #34389: the bundled transcoder needs CSP 'unsafe-eval'. The KTX-Software 4.4.x and basis_universal 2.50 encoders are current.",
+   "fitsThisSite": "Best single fit and the biggest win. It is the one lever that cuts memory (the likely cause of iOS tab kills) and upload stalls on every tier with no visible change if UASTC is used for lightmap-like atlases. It is a build-time change (gltf-transform uastc/etc1s or toktx) and the Low 2048 set could shrink further. Cost: bigger downloads than lossy WebP at equal quality (UASTC with zstd is larger than WebP), so test per chunk. WebP can stay for tiny or distant textures. Risks: alpha edges and normal-less baked data are fine; check sRGB flag.",
+   "sources": [
+    "https://threejs.org/docs/pages/KTX2Loader.html",
+    "https://git.sublimity.de/cronekorkn/l4d2-webgl/raw/commit/e278dc014b31b4b7da13e3bcbf8f8172d868bc14/insights/0023-ktx2-trial-on-c2m1.md",
+    "https://evergine.com/ktx2-texture-compression/",
+    "https://dev.to/alicia_lu/draco-vs-meshopt-and-ktx2-132-loading-trials-in-threejs-lhm",
+    "https://github.com/mrdoob/three.js/issues/34389",
+    "https://www.donmccurdy.com/2024/02/11/web-texture-formats/"
+   ]
+  },
+  {
+   "name": "Texture memory budget and eviction (drop decoded/high mips for far areas; avoid mipmap-less filters)",
+   "support": "Plain three.js (texture.dispose, renderer.info.memory). iOS Safari jetsam kills the web process at a per-process limit; one iOS 26 report shows a 2048 MB limit and a crash with about 1.48 GB resident.",
+   "fitsThisSite": "The ladder already steps down detail but the research shows the real crash risk on phones is resident texture bytes, not frame time. A hard texture-byte budget by deviceMemory/iOS (for example 800 MB-1 GB) checked via renderer.info and the manifest texBytes would be cheap insurance. Pairs well with KTX2 so the budget stretches 4x.",
+   "sources": [
+    "https://discourse.threejs.org/t/memory-limit-crash-on-ios-26/86978",
+    "https://remalw.github.io/blog/three-js-performance.html",
+    "https://www.intelligentgraphicandcode.com/development/threejs-interfaces/performance"
+   ]
+  },
+  {
+   "name": "FSR 1 style upscaling (EASU + RCAS) after a lower render scale",
+   "support": "Pure WebGL2 fragment shaders; runs anywhere. three r184+ has built-in nodes for WebGPURenderer; for WebGLRenderer a custom ShaderPass of the MIT-licensed shader works. Needs a full-screen pass, so it adds one extra render-to-texture on phones.",
+   "fitsThisSite": "Directly improves option (b): today the 0.75 render-scale rung uses plain browser scaling. Replacing that with EASU+RCAS makes Low/Medium look closer to High at the same pixel cost, and also lets Medium run at 0.8-0.85 scale with sharper output. Cost: one more pass and one more full-resolution target, which matters on bandwidth-limited phones; skip it when render scale is 1.",
+   "sources": [
+    "https://gpuopen.com/manuals/fidelityfx_sdk/techniques/super-resolution-spatial",
+    "https://doc.babylonjs.com/features/featuresDeepDive/postProcesses/FSR1RenderingPipeline",
+    "https://gpuopen.com/fidelityfx-superresolution",
+    "https://www.utsubo.com/blog/threejs-2026-what-changed"
+   ]
+  },
+  {
+   "name": "Temporal AA / TAAU instead of MSAA on the heaviest tiers",
+   "support": "Works in WebGL2 with a custom or postprocessing pass; three r184 added a TAAU node for WebGPURenderer. Not built into WebGLRenderer.",
+   "fitsThisSite": "Only partly fits. MSAA is already the cheaper-looking choice for this baked, mostly static look and the ladder already drops it first. A cheap variant is SMAA/FXAA (one pass, no history) for Low when MSAA is off, so edges stay clean for the upscaler. Full TAA is a bigger risk because of the animated live touches; consider it only for static shots and scroll rest.",
+   "sources": [
+    "https://developers.meta.com/vr/documentation/native/android/mobile-msaa-analysis",
+    "https://doc.babylonjs.com/features/featuresDeepDive/postProcesses/FSR1RenderingPipeline",
+    "https://www.utsubo.com/blog/threejs-2026-what-changed"
+   ]
+  },
+  {
+   "name": "Half-resolution bloom and other quarter-cost post effects",
+   "support": "Works in WebGL2 today; postprocessing 6.x already uses a mip-chain based bloom and supports a resolution scale on effects. three UnrealBloomPass also takes a resolution.",
+   "fitsThisSite": "Cheap, safe win for Medium and Low: the ladder drops bloom entirely as a late step, so a half-res bloom that costs a quarter as much would keep bloom on longer. Check the existing postprocessing setup to see whether bloom is already half-res before counting on this; it is the first thing to verify.",
+   "sources": [
+    "https://remalw.github.io/blog/three-js-performance.html",
+    "https://www.utsubo.com/blog/threejs-best-practices-100-tips",
+    "https://www.hontran.dev/blog/three-js-performance-optimization"
+   ]
+  },
+  {
+   "name": "Compute Pressure API (CPU/thermal pressure signal)",
+   "support": "Chrome and Edge 125+ on desktop only; not Chrome for Android, not Firefox, not Safari (caniuse: about 27% global usage, March 2026 data). Only the 'cpu' source exists. Feature-detect with 'PressureObserver' in globalThis.",
+   "fitsThisSite": "Low value for the weak-device goal: phones, the main target, are not covered, and this scene is GPU-bound. Possible as a tiny desktop-laptop extra (a laptop on battery, thermally throttled) feeding the existing ladder as a second input. Not worth building first.",
+   "sources": [
+    "https://developer.chrome.com/docs/web-platform/compute-pressure",
+    "https://caniuse.com/wf-compute-pressure"
+   ]
+  },
+  {
+   "name": "Battery Status, Save-Data, reduced-motion and low-power signals as tier hints",
+   "support": "Battery Status: Chrome/Edge/Opera/Samsung/Chrome Android only; removed in Firefox 52, never in Safari (iOS has no battery API and no JS flag for Low Power Mode). Save-Data / navigator.connection: Chromium only. prefers-reduced-motion: all major browsers. deviceMemory is Chromium only (capped at 8).",
+   "fitsThisSite": "Partial fit. chooseTier already uses touch, deviceMemory and cores. Adding saveData and battery (not charging and under about 20%) as 'start one tier lower, 30 fps cap' is cheap on Android. iOS low-power mode cannot be detected directly; one indirect tell is that Safari drops requestAnimationFrame to 30 Hz, which the ladder's frame-time measure already sees. prefers-reduced-motion should reduce camera easing and live particle motion, which is also an accessibility gain.",
+   "sources": [
+    "https://caniuse.com/battery-status",
+    "https://www.mysimulator.uk/blog/devlog-15-mobile-performance.html",
+    "https://web.dev/articles/offscreen-canvas"
+   ]
+  },
+  {
+   "name": "Parallel shader compile: renderer.compileAsync and KHR_parallel_shader_compile",
+   "support": "KHR_parallel_shader_compile is in Chrome, Edge and Firefox on most hardware, and Safari. The three.js compileAsync API is stable on WebGLRenderer.",
+   "fitsThisSite": "Fits well because the site streams chunks with custom live shaders (grass, flames, water, ink): each new area can hit a first-use compile stall during the fly-through. Call compileAsync on a chunk's group before adding it to the visible scene, and warm the postprocessing passes for each ladder step. Check the existing code first, since the site may already do this.",
+   "sources": [
+    "https://www.utsubo.com/blog/threejs-best-practices-100-tips",
+    "https://discourse.threejs.org/t/why-a-heavy-three-js-scene-tanks-pagespeed-and-it-is-not-your-javascript/94734",
+    "https://www.utsubo.com/blog/threejs-2026-what-changed"
+   ]
+  },
+  {
+   "name": "ImageBitmap decode in workers and throttled texture uploads",
+   "support": "createImageBitmap in workers: Chrome, Firefox, Safari (GLTFLoader historically avoided it on Safari; check the current behaviour for r186). Safari does not do ImageBitmap decode for GLTFLoader textures in older code.",
+   "fitsThisSite": "The site uses WebP inside GLB, so the browser decode runs per chunk. Staggering uploads (one texture per frame, using initTexture and a time budget of about 4-6 ms) is the cheap fix for scroll hitching as chunks arrive. This is complementary to KTX2, which removes both decode and large upload; if KTX2 lands, the staggering matters much less.",
+   "sources": [
+    "https://threejs.org/docs/pages/ImageBitmapLoader.html",
+    "https://discourse.threejs.org/t/how-to-handle-2k-4k-panorama-texture-tils-uploads-without-frame-spikes/87793",
+    "https://discourse.threejs.org/t/performance-ideas-loading-objects-in-workers-faster-texture-uploads-etc/25328",
+    "https://github.com/pixijs/pixijs/issues/7436"
+   ]
+  },
+  {
+   "name": "Impostors and HLOD for distant areas",
+   "support": "Plain three.js (THREE.LOD, Sprite, custom meshes); no browser feature needed.",
+   "fitsThisSite": "The ladder already swaps other areas for stand-ins and turns tree cards off, so this is partly done. The research-backed improvement is to make the stand-in look closer to the real area (a cube or octahedral impostor baked in Cycles, which the owner's pipeline can produce offline) and use it on every tier for areas beyond the +-2 window. That cuts cost on Low and Medium without touching High's near area. Because High keeps full detail within range, this respects 'quality beats optimisation'.",
+   "sources": [
+    "https://docs.godotengine.org/cs/4.x/tutorials/performance/optimizing_3d_performance.html",
+    "https://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-21-true-impostors"
+   ]
+  },
+  {
+   "name": "BatchedMesh and InstancedMesh to cut draw calls",
+   "support": "Plain three.js r186; BatchedMesh uses WEBGL_multi_draw where available, with a fallback.",
+   "fitsThisSite": "Check ?debug=1 window.__sect.info() first: baked chunks with a few large atlases may already be low in draw calls, in which case gains are small. Where there are many small repeated props (lanterns, roof tiles, trees, rocks), instancing them with a shared baked atlas is the likely win. Note per-chunk culling still matters: do not merge across chunks.",
+   "sources": [
+    "https://www.intelligentgraphicandcode.com/development/threejs-interfaces/performance",
+    "https://www.hontran.dev/blog/three-js-performance-optimization",
+    "https://www.utsubo.com/blog/threejs-2026-what-changed"
+   ]
+  },
+  {
+   "name": "Meshopt plus quantization and mesh simplification for far chunks",
+   "support": "gltfpack and meshoptimizer; EXT_meshopt_compression is already supported by the loader.",
+   "fitsThisSite": "Fits as option (a)/(b) for far chunks on all tiers: the ladder's stand-in step becomes a real simplified mesh rather than a card, so the look stays closer to full detail. It costs extra download size per chunk (a second GLB), so make the far copy lazy and small.",
+   "sources": [
+    "https://www.hontran.dev/blog/three-js-performance-optimization",
+    "https://www.utsubo.com/blog/threejs-best-practices-100-tips"
+   ]
+  },
+  {
+   "name": "WebGPU renderer (with automatic WebGL2 fallback)",
+   "support": "Chrome and Edge 113+ (Windows, macOS, ChromeOS), Chrome Android 12+; Safari 26 on macOS and iOS/iPadOS (since September 2025); Firefox on Windows (v141) and Apple Silicon macOS, all macOS Apple Silicon since v147; Linux and Android Firefox behind a flag. caniuse global roughly 87%. Low-end Android phones with old GPUs and old iPhones that cannot run iOS 26 stay on WebGL2.",
+   "fitsThisSite": "Poor fit for the stated goal today. The scene is baked-light, fill-rate and memory bound; WebGPU does not reduce either on its own, the migration is large, and the weakest devices are exactly those that fall back to WebGL2. Revisit later for render bundles (cheap re-submission of static chunks) or compute-based grass.",
+   "sources": [
+    "https://www.utsubo.com/blog/threejs-2026-what-changed",
+    "https://www.utsubo.com/blog/threejs-best-practices-100-tips",
+    "https://www.intelligentgraphicandcode.com/development/threejs-interfaces/performance"
+   ]
+  },
+  {
+   "name": "iOS Safari memory ceiling: budget resident memory and fall back to fewer contexts",
+   "support": "Apple publishes no number; limits vary by device RAM and OS version and have changed between iOS releases. Treat the figures as anecdotal.",
+   "fitsThisSite": "Strong fit. With ~180-243 MB decoded per full chunk and five resident on desktop, an iPhone at 'one each side' is three chunks (about 60 MB each at Low), well under the reported ceiling, so the current phone setup looks safe. The risk is a user forcing a higher tier on a phone, or render targets (MSAA, bloom, FSR) at DPR 3. Add a memory-based guard and use KTX2 to widen the margin; test on a real older iPhone with Safari memory logging.",
+   "sources": [
+    "https://discourse.threejs.org/t/memory-limit-crash-on-ios-26/86978",
+    "https://dev.to/denshin/how-we-took-a-pixijs-map-from-339-s-to-30-s-on-a-slow-phone-4adg",
+    "https://www.mysimulator.uk/blog/devlog-15-mobile-performance.html"
+   ]
+  },
+  {
+   "name": "OffscreenCanvas: render three.js in a worker",
+   "support": "Chrome 69+, Edge 79+, Firefox 105+, Safari 16.4+ (WebGL in workers included). Safari had historical bugs; test on iOS.",
+   "fitsThisSite": "Poor value for the risk. The site is scroll-driven (scroll value can be sent to the worker cheaply), but the existing React/drei/postprocessing architecture and ?debug hooks make a port large, and the frame-time bottleneck is GPU, not main thread. Consider only for GLB parsing (a worker already used by meshopt/KTX2 decoders) rather than rendering.",
+   "sources": [
+    "https://web.dev/articles/offscreen-canvas",
+    "https://threejs.org/manual/pages/offscreencanvas.html",
+    "https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas",
+    "https://webkit.org/blog/14205/news-from-wwdc23-webkit-features-in-safari-17-beta"
+   ]
+  },
+  {
+   "name": "Frame pacing: render only when something moves, 30 fps cap, pause offscreen/hidden",
+   "support": "requestAnimationFrame everywhere; page visibility and IntersectionObserver everywhere. Safari throttles rAF to 30 Hz in Low Power Mode, which is a free signal. Display refresh of 90/120 Hz Android phones makes a deliberate 60 cap worthwhile.",
+   "fitsThisSite": "The ladder already has a 30 fps cap as the last step; the research suggests an earlier, softer step: cap the live-touch simulations (grass, flames, waterfalls) to 30 Hz while the camera still renders at 60 on Medium, and fully idle when the scroll is still and effects are off-screen. Also confirm rendering stops when the tab is hidden or the loading screen waits for Enter. Check current behaviour in runtime.ts before counting this as new.",
+   "sources": [
+    "https://www.hontran.dev/blog/three-js-performance-optimization",
+    "https://vavist.com/guides/three-js-performance-budget",
+    "https://www.utsubo.com/blog/threejs-best-practices-100-tips",
+    "https://marceloretana.com/checklist/threejs-performance-checklist"
+   ]
+  },
+  {
+   "name": "Dynamic resolution done smoothly (continuous render scale, pixel-ratio caps, and render-target reuse)",
+   "support": "Plain three.js (setPixelRatio / setSize or a scaled render target). three's WebGLRenderer reallocates on setSize.",
+   "fitsThisSite": "The existing ladder already steps resolution, MSAA and render scale. A finer render-scale control between 1.0 and 0.75 (e.g. 0.9, 0.85, 0.8) means devices that are only slightly short of 60 fps keep far more detail, which is the owner's 'quality first' principle. Low risk, no new assets.",
+   "sources": [
+    "https://www.intelligentgraphicandcode.com/development/threejs-interfaces/performance",
+    "https://www.mysimulator.uk/blog/devlog-15-mobile-performance.html",
+    "https://gpuopen.com/fidelityfx-superresolution"
+   ]
+  },
+  {
+   "name": "Variable-rate shading / foveated rendering (and cheap substitutes)",
+   "support": "No general WebGL support. WebXR foveation exists only for headsets. WebGPU has no shipped VRS feature either. Treat as unavailable.",
+   "fitsThisSite": "Does not fit. The lighting is baked, so the main cost is texture sampling and overdraw, not expensive per-pixel lighting that VRS usually saves. A cheaper equivalent already in the ladder is lowering render scale; FSR-style upscaling is the better route.",
+   "sources": [
+    "https://www.utsubo.com/blog/threejs-2026-what-changed",
+    "https://doc.babylonjs.com/features/featuresDeepDive/postProcesses/FSR1RenderingPipeline"
+   ]
+  },
+  {
+   "name": "Anisotropic filtering, mip bias and texture-filter tuning per tier",
+   "support": "EXT_texture_filter_anisotropic is in all desktop browsers and nearly all phones; texture.mipmapBias exists in three r186 for the filtering bias.",
+   "fitsThisSite": "Fits: the site already ships a 2048 px Low texture set, but anisotropy and mip bias are free dials per tier and make Low sharper at the same cost. Verify the current values in runtime.ts; this is a small tuning job, not a new system.",
+   "sources": [
+    "https://gpuopen.com/fidelityfx-superresolution",
+    "https://remalw.github.io/blog/three-js-performance.html"
+   ]
+  },
+  {
+   "name": "Lazy GPU resource creation: avoid duplicate decodes and keep CPU copies small",
+   "support": "Plain three.js (ImageBitmap.close, BufferAttribute.onUpload). GLTFLoader with ImageBitmapLoader already moves decode off thread on supporting browsers.",
+   "fitsThisSite": "Worth auditing: with chunk textures at hundreds of MB decoded, any CPU copy kept after upload is wasted memory on phones. Check by watching Chrome DevTools memory or Safari Web Inspector on an iPhone, then release in the chunk loader. Small effort, no visual change, and it widens the iOS safety margin.",
+   "sources": [
+    "https://developer.mozilla.org/en-US/docs/Web/API/ImageBitmap",
+    "https://dev.to/denshin/how-we-took-a-pixijs-map-from-339-s-to-30-s-on-a-slow-phone-4adg",
+    "https://threejs.org/docs/pages/ImageBitmapLoader.html"
+   ]
+  }
+ ],
+ "mapNotes": [
+  {
+   "area": "Render pipeline and frame loop (Canvas setup, Driver, composer chain, reflections, quality ladder, idle logic)",
+   "notes": "I could not run the page (no dev server, no GPU, GLBs are LFS pointers), so every cost is an estimate from code, shader instruction counts, the manifest and numbers the repo's own comments quote; none is measured. To measure: ?debug=1, then window.__sect.info() (draw calls, triangles), window.__sectPost (same-frame pass toggles), window.__sectReflect (mode 'passes' or 'frame' GPU time), and the Driver's EXT_disjoint_timer_query timer feeding the ladder (Chrome only).\n\nAnswers to the direct questions. Scene renders per frame: Low 2 (world, overlay) straight to the canvas. Mid and High normal frames 3 draw-list submissions into the composer (RenderPass world, OverlayPass, then the final EffectPass fullscreen) plus bloom's 16 small passes and, on High at rest, hold focus's 2 half-res passes. At the Mirror area add the pond planar pass every frame and a cube face on capture frames (6 consecutive frames every 6 s), so up to 3 scene submissions a frame there. There is no separate depth prepass: the composer blits the depth into a stable 32-bit float depth texture after the RenderPass (needsDepthBlit), and soft depth for puffs, cloud shadow and hold focus read it. Targets: all half float (HalfFloatType) at the full drawing-buffer size (canvas size x dpr, dpr up to 1.5 on High, 1 on Mid unless touch or Safari-on-Mac); pond reflection 0.5 or 1/3 of the drawing buffer only over the pond's rectangle; cube 512 or 256 px per face. Composer chain pass by pass: RenderPass, OverlayPass (needsSwap false, draws into the same buffer), EffectPass(hold focus [High], cloud shadow, bloom, sun haze, vignette, hue clip, dither) to the screen, with bloom's own luminance + mip chain as sub-passes. Rest logic: the page has its own rest logic (Driver), not R3F's: demand loop, 30 fps idle, 20 fps after 20 s, 10 fps while veiled, 2 fps with reduced motion, 0 under a reader or map; the flight 'always' loop only while something moves. What the ladder turns off, in order: dpr to 1 (0.25 steps), MSAA 4->2->0, bloom (and with it cloud shadows, via atmosFeatures), render scale 0.75, other areas as stand-ins (this also turns the pond's real reflection off, 'lean'), tree cards, then the 30 fps cap. A visitor-picked tier only loses resolution. What stays on at every tier: the full triangle load of the drawn areas, the sky dome, the overlay puffs, the fog math in every shader, the 32-bit depth and blit on the composer path; no tier changes geometry. Canvas flags and shader warm-up are in the cost drivers; KHR_parallel_shader_compile is used through three's compileAsync, but the composer's own programs are not pre-warmed.\n\nCorrections to a possible first guess: the composer's output ping-pong buffer is never rendered into here, so three should not allocate it; and the 'depth texture on every buffer' cost in postprocessing 6.39.5 is one real depth target plus one stable blit target, not three live ones. I left out ideas that look good but fight the owner's rule: lowering High's resolution cap, cutting the MSAA samples on High, a depth prepass (the shading is cheap and the load is vertex-bound, so it would add draw cost), and frame-skipping in flight. Triangle LOD and occlusion culling are the largest unexamined levers (the same 6 to 9M triangles are submitted on every tier), but they belong to the asset-side areas, not this one.\"",
+   "drivers": [
+    {
+     "what": "World pass: every drawn area's baked meshes, merged per material and spatial cell (150 m cells within 250 m of the camera path, 450 m to 900 m, 1800 m beyond). Global set is 1.48M tris; each area chunk is 1.06M to 2.13M tris (manifest.json). Desktop keeps current area plus two each side drawn, so roughly 5 areas, about 6 to 9M triangles in the draw list before cell culling. There is no occlusion culling and no triangle LOD: Low, Mid and High draw the same geometry (only textures differ on Low).",
+     "where": "client/src/app/sect/experience/prepare.ts:825-899 (merge by material+cell), client/src/lib/sect/cells.ts:15-21, scene.tsx:905-925 (World useFrame sets visibility per set)",
+     "when": "per frame, every render",
+     "tierBehaviour": "Same triangles on every tier. Only the ladder's 'stand-ins' step (runtime.ts:262, scene.tsx:913-918) draws just the camera's own area at full detail and shows the others as backdrop proxies. Phones/Low keep 1 area each side instead of 2 (streaming, not render).",
+     "costGuess": "Probably the biggest single GPU item on integrated GPUs (vertex and draw-call bound, shading is a cheap baked texture plus fog). Not measured. Estimate: 2 to 6 ms of a 20 to 40 ms integrated-GPU frame (the repo comments say 720p vs 1080p cut a weak iGPU frame from 43 to 26 ms, so most of it is pixel cost, not vertex). Check draw calls and triangles with window.__sect.info() under ?debug=1."
+    },
+    {
+     "what": "Composer's main colour buffer: half-float RGBA16F (8 B/px) at the full canvas size, MSAA 2 or 4 samples on High, none on Mid, plus a 32-bit float depth texture, a second 'stable' depth target filled by a blitFramebuffer each frame, and a depth texture on the ping-pong output buffer. postprocessing 6.39.5 createDepthTexture/blitDepthBuffer. The output ping-pong buffer is never drawn into here (RenderPass and OverlayPass have needsSwap false, EffectPass goes to screen), so three should never allocate it on the GPU.",
+     "where": "client/src/app/sect/experience/effects.ts:200 (HalfFloatType, multisampling: o.msaa), node_modules/postprocessing/build/index.js:1071-1130 (depth textures + blit), scene.tsx:1547-1549 (setSize)",
+     "when": "allocated on pipeline creation and on every resize or dpr change; depth blit and MSAA resolve every frame",
+     "tierBehaviour": "High: 2 samples at dpr>=1.25, else 4 (runtime.ts:204-205), dpr up to 1.5. Mid: 0 samples, dpr 1 (1.5 on touch or Safari-on-Mac). Low: no composer. Ladder lowers dpr by 0.25 steps to 1, then msaa 4->2->0, then 0.75 render scale.",
+     "costGuess": "Memory, my arithmetic, unmeasured: High at 1080p x1.5 (2880x1620, 4.67 Mpx) with 2 samples is about 60 B/px = 280 MB; with 4 samples about 85 B/px = 400 MB. Mid at 1080p x1 (2.07 Mpx) about 40 B/px = 85 MB. Counted: colour RT 8 (+8 per sample), depth 4 (+4 per sample), stable depth 4, bloom luminance 8, bloom mips about 5, canvas back buffer 4+4. Each frame also pays an MSAA resolve of colour and depth and a depth blit (about 0.1 to 0.4 ms on High, a guess)."
+    },
+    {
+     "what": "Overlay pass: one instanced draw of up to about 1021 cloud puffs (clouds.json has 1021, packPuffs keeps those within 2600 m of the path), plus mist, waterfall spray, light beams, formation barrier. Each puff is a camera-facing sprite sized to an ellipsoid silhouette with 2 noise fetches, soft-depth fetch, fog math (sectHazeDepth, sectCloudDepth, exp) and no depth write. Heavy overdraw when the camera is inside a bank (the opening flight). The puff mesh has frustumCulled=false and is re-sorted far-to-near on the CPU and re-uploaded (about 53 KB) whenever the camera moves more than RESORT_DISTANCE.",
+     "where": "scene.tsx:596-670 (CloudPuffs, 626 frustumCulled false, sort useFrame), materials.ts:1797-1925 (puff shader), effects.ts:137-158 (OverlayPass)",
+     "when": "per frame; fill-rate cost scales with screen pixels times layers",
+     "tierBehaviour": "High and Mid: full, with soft edges against geometry (reads the stable depth texture). Low: puffs without soft depth, and 'mist.*' puffs removed (scene.tsx:2327), drawn by a second gl.render with autoClear off (scene.tsx:1708-1713). Not touched by any ladder step except resolution.",
+     "costGuess": "Unknown; commonly 10 to 25% of a frame in cloud-heavy views on weak GPUs. Estimate from shader size: about 70 ALU + 3 fetches per fragment per layer, 3 to 6 average layers at the gate and opening -> 0.5 to 2 ms at 1080p on an iGPU. Measure with window.__sectPost (toggle) and the frame GPU timer."
+    },
+    {
+     "what": "Final merged EffectPass (one fullscreen draw): hold focus mix (High only, depth read), cloud shadows (depth -> world position via two mat4 multiplies, 3-octave value noise = 12 hash evaluations, then two haze/cloud transmittance calls with exp), bloom add, sun haze (normalize + 2 pow), vignette, hue-preserving clip, dither (sRGB encode/decode). Cloud-shadow noise and fog transmittance are computed for every non-sky pixel even where no cloud shade falls (cover threshold 0.5 to 0.74 leaves roughly half the deck clear).",
+     "where": "effects.ts:216-219, post/atmos.ts:27-89 (CloudShadow), 141-159 (HoldFocus), effects.ts:63-130",
+     "when": "per rendered frame, per pixel",
+     "tierBehaviour": "cloudShadows = post && bloom (lib/sect/post.ts:29-35): on for High and Mid; dropped when the ladder turns bloom off. holdFocus = High only (msaa>0 on both ceiling and current). Low: none of this runs.",
+     "costGuess": "Estimated 250 to 400 flops/px, mostly cloud shadow. At 2.07 Mpx that is 0.5 to 0.8 GFLOP/frame, about 1.5 to 3 ms on a UHD 620-class iGPU (peak math, then x1.5 to 2 for real efficiency), about 0.1 to 0.2 ms on a discrete GPU. Estimated from instruction counts, not timed."
+    },
+    {
+     "what": "Bloom: mipmap blur chain. A full-resolution luminance prefilter (RGBA16F target, custom glowPrefilter), then 8 down passes starting at half res and 7 up passes, 16 small fullscreen draws in total.",
+     "where": "effects.ts:211-215, post/atmos.ts:231-240, node_modules/postprocessing/build/index.js:4335-4352 (BloomEffect.update), 3993-4030 (MipmapBlurPass)",
+     "when": "per rendered frame (also on idle frames at rest)",
+     "tierBehaviour": "High and Mid on. Ladder step 3 turns it off (and cloud shadows with it); visitor-picked tiers never lose it (keepLook).",
+     "costGuess": "About 1.3 to 1.5 full-res passes of bandwidth: the full-res luminance pass (reads 8 B, writes 8 B per px) plus the chain (about 1/3 of full res total). Estimated 0.4 to 1 ms on an iGPU at 1080p, 0.1 ms discrete. About 16 draw calls of CPU overhead. Estimate, not timed."
+    },
+    {
+     "what": "Hold focus blur (High only): Kawase VERY_SMALL blur at reduced resolution, run every frame while weight>0 (that means every idle frame once resting at a stop for 0.6 s, since weight stays at 1).",
+     "where": "post/atmos.ts:166-221 (update at 200-203), scene.tsx:1576-1609",
+     "when": "every frame at rest at a stop on High",
+     "tierBehaviour": "High only; off after the ladder drops MSAA.",
+     "costGuess": "About 2 half-res passes, 0.1 to 0.3 ms on a discrete GPU. Small, but it is paid on every idle frame."
+    },
+    {
+     "what": "Pond planar reflection: a second render of the scene from a mirrored camera into a half-float target (0.5 texel/px on High, 1/3 on Mid, over the pond's screen rectangle only), with soft depth off, no grass, other areas as backdrop stand-ins. Renders EVERY frame while the Still Pond is on screen and within 320 m (no temporal throttle, also at rest).",
+     "where": "reflect/index.ts:131-135, 154-162, 229-247, reflect/pond.ts:59-64, reflect/plan.ts:12-40",
+     "when": "every rendered frame while at the Mirror area (stops 'mirror' and nearby, frames about 1 to 916 of need range, close to the pond)",
+     "tierBehaviour": "High and Mid; none on Low; skipped when ladder is on stand-ins (lean, index.ts:132). Memory about 14 MB at 1440x810 reflection size, freed away from the mirror (index.ts:111).",
+     "costGuess": "A second full draw list submission (global set + mirror area + proxies), vertex and CPU bound: estimated 15 to 35% of a main world pass, 1 to 4 ms on an iGPU, plus the fill of the pond rectangle at half or third res."
+    },
+    {
+     "what": "Heart-Mirror cube probe: one cube face per frame, 6 consecutive frames for each capture, first capture on approach within 250 m, then every 6 s while within 160 m and on screen (so forever while resting at its stop 66 to 90 m away), and again whenever the set of drawn areas changes. High: 512 px faces, grass included, all areas at full detail. Mid: 256 px, no grass, stand-ins. HalfFloat cube with mip generation on the last face.",
+     "where": "reflect/index.ts:116-130, 146-153, reflect/probe.ts:25-60, reflect/plan.ts:41-60",
+     "when": "6 heavy frames every 6 s at the mirror stop, 6 frames on first approach",
+     "tierBehaviour": "High and Mid; none on Low. Cube memory about 17 MB (High) and 4 MB (Mid).",
+     "costGuess": "Each capture frame is a third full-scene submission (about 1 world pass of triangles for High, about 30% for Mid). Average load is small (about 1 face/second); the cost is six hitch frames every 6 s at 30 fps idle (frame time roughly doubles for 0.2 s). Estimated."
+    },
+    {
+     "what": "Frame loop and idle logic: the page does not draw continuously at rest. Driver runs its own rAF; frameloop stays 'demand'. It switches to 'always' when scroll/flight/drag/hover/wake is active. At rest it renders the FULL frame (composer, overlay, reflections) at 30 fps, 20 fps after 20 s with no input, 10 fps while the veil is up, 2 fps with reduced motion, and 0 while a reader, map or travel covers the scene or the page-view fallback is active. The 30 fps cap is the ladder's last step.",
+     "where": "scene.tsx:1729-1734 (constants), 1921-1954 (tick), 1928-1946",
+     "when": "at rest, which is where a visitor spends most of the time",
+     "tierBehaviour": "Same idle rates on every tier. Only the last ladder step caps moving frames at 30 fps.",
+     "costGuess": "Rest-state GPU load is 20 to 30 full frames per second, the same cost per frame as flight (about 50 to 100% of flight load at 30 vs 60 fps), so a phone or laptop on battery stays hot and throttles at a stop, which then hurts the next flight. Estimated from the loop logic."
+    },
+    {
+     "what": "Shader compile and first-use stalls: there is a warm-up. World.warm uploads each texture one frame at a time (deferred while flying), then gl.compileAsync on every scene root against a stand-in half-float 1x1 target (matching the composer's program key). three's compileAsync uses KHR_parallel_shader_compile when present. WarmDecor compiles decoration and overlay the same way. NOT warmed: the composer's own programs (merged EffectPass, luminance, down/up samplers, Kawase, depth copy), compiled synchronously on its first render (hidden behind the loading veil at start) and again at every pipeline rebuild.",
+     "where": "scene.tsx:835-903 (warm), 2039-2075 (WarmDecor), 1518-1546 (pipeline rebuild effect with deps quality.msaa, quality.bloom, cloudShadows, holdFocus)",
+     "when": "once per area load; once per pipeline rebuild (any ladder step on msaa or bloom, in either direction)",
+     "tierBehaviour": "Climbs that rebuild the pipeline wait for the camera to rest (runtime.ts:313-316, scene.tsx:1992-1998). Steps DOWN do not wait: they rebuild mid-flight on a struggling device.",
+     "costGuess": "A rebuild allocates new targets and compiles the merged effect shader synchronously: guess 30 to 150 ms hitch (the repo's own notes: 18 to 40 ms for a set's programs, 46 ms for decoration). Texture uploads 6 to 30 ms each at 4096 px (repo comment, scene.tsx:839)."
+    },
+    {
+     "what": "Culling and sorting: three's own frustum culling per merged cell mesh (cell sizes above), no occlusion culling; opaque list sorted by material id then depth (three's painterSort), transparents far-to-near by object z; tree cards are alpha-tested or alpha-to-coverage (no early-Z on those); sky dome (64x32 sphere) is drawn last at the far plane so it shades only uncovered pixels. Static meshes have matrixAutoUpdate false, so updateMatrixWorld is a cheap walk. UncullOnce turns culling off for one frame behind the travel ink.",
+     "where": "prepare.ts:895-898, scene.tsx:407-445 (sky dome ordering), 2101-2137 (UncullOnce), 440-441, 626 (frustumCulled false)",
+     "when": "per frame (cheap) ",
+     "tierBehaviour": "Same on all tiers; ladder 'noCards' step hides tree card materials (scene.tsx:792-803).",
+     "costGuess": "CPU side is small: a few hundred meshes, well under 1 ms. The heavy part is the triangle count, not sorting."
+    },
+    {
+     "what": "Canvas flags: frameloop demand, flat (no tone mapping), antialias only when post is off (Low), powerPreference high-performance, stencil false, alpha false, depth left at default true, preserveDrawingBuffer false (default), no logarithmicDepthBuffer. Camera near 0.5, far 9000. Shadows are off for the baked scene (shadows only if post && msaa && !baked).",
+     "where": "scene.tsx:2364-2371, 2315",
+     "when": "fixed at context creation",
+     "tierBehaviour": "Low: antialias:true (native 4x canvas MSAA, cheap on tile GPUs; the card alpha-to-coverage relies on it, scene.tsx:1704-1707). Mid and High: antialias:false (the composer does MSAA on High; Mid has no anti-aliasing at all). Depth buffer is allocated on the canvas even when the composer draws to it with no depth test.",
+     "costGuess": "Canvas depth on the post path is a wasted 4 B/px, about 8 MB at 1080p x1 or 19 MB at 4.67 Mpx, plus a clear. Small."
+    },
+    {
+     "what": "Low tier path: no composer, so the world draws straight to the (MSAA) canvas, then the overlay in a second gl.render. Missing compared with High: bloom, cloud shadow, sun haze, vignette, hue-preserving clip, dither, hold focus, reflections. Over-range glows are clipped per channel by the 8-bit canvas.",
+     "where": "scene.tsx:1702-1716, 2435-2439, runtime.ts:199",
+     "when": "per frame",
+     "tierBehaviour": "Low tier only (phones, software renderers, small devices).",
+     "costGuess": "Cheapest path: roughly world pass + overlay, no full-screen post draws. Low's gap to High is mostly look, not cost."
+    }
+   ]
+  },
+  {
+   "area": "Materials and per-pixel shader cost (materials.ts, glsl.ts fog, detail.ts, card-shading.ts, look.ts grade, range-look.ts, waterfall.ts wet rock, water.ts, reflect/*)",
+   "notes": "Method: read the source only. No GPU timings, no profiles, nothing run. Every fetch and ALU number comes from counting GLSL operations as written; treat them as relative sizes, not milliseconds. The GLB files here are LFS pointers, so I could not count how many pixels use glaze/metal/iron or how large the triangles are; the manifest's tris and texBytes were read. The tier picture today: Low drops the rock and ground detail (detailWanted), has no post pass, uses analytic water and no cube probe, has 2 wet falls and no wet sheen; everything else (fog, grade, range look, surface reflections, cloud sea, sky, puffs, sheets, cards) is the same shader as High. Mid and High differ only in the far-rock octave count, wet-fall count, MSAA, the reflection resolution (1/3 vs 1/2, 256 vs 512 px, stand-ins vs full) and overlay tiering. Cheapest wins that cost nothing visible and help every tier: alpha test before grade on cards, detail/layers branches, cloud sea after opaque, puff/mist fog per vertex, reflection pass with detail off, hold-still reflection reuse. The three biggest per-pixel changes with real engineering are the fog LUT, the baked sky environment, and the range-weight lookup. Features switched by #define: none inside a program; program variants are made by patching source and the cache key (materials.ts:733-735), so tier-dropped detail really is a smaller program; the rest are uniforms. Precision: no mediump anywhere, so all highp. I did not look at grass.tsx, flames.tsx, post/ or texture formats, which other areas cover. Two things worth confirming on a real device with ?debug=1: how many ms the pond pass and the six cube faces cost (window.__sectReflect, SpanTimer in reflect/timer.ts), and the real share of sky, cloud sea and rock pixels per stop.",
+   "drivers": [
+    {
+     "what": "Fog chunk runs on every fogged pixel of every baked material: cloud depth, haze depth (two spans), aerial colour. About 10-12 exp/pow calls plus ~60 ALU. Applies to rock, ground, buildings, cards, pond, waterfall sheets. All of it is recomputed per pixel from (camera y, ray y, distance).",
+     "where": "client/src/lib/sect/glsl.ts:314-388 (FOG_FUNCTIONS), 480-492 (fog_fragment); installed at materials.ts:81-91",
+     "when": "per pixel, per frame, every tier",
+     "tierBehaviour": "Same on every tier. SECT_MIST is a #define (off at the defaults), so mist costs 2 more exp only where the look enables it.",
+     "costGuess": "~70 ALU + ~12 SFU per pixel (SFU = special-function unit: exp, pow, log, sin, run at a quarter rate). Estimated by counting GLSL ops, not profiled. Roughly a third of a plain building pixel."
+    },
+    {
+     "what": "Low tier fog path also decodes and re-encodes sRGB per pixel, because three has already encoded the colour (colorspace_fragment) before fog_fragment. Per pixel: 3 pow to decode the colour, 3 pow to decode fogColor (a uniform, recomputed per pixel), 3 pow to encode, plus a 2-hash dither.",
+     "where": "client/src/lib/sect/glsl.ts:485-490 (sectEncoded branch), 238-245 (sectSrgbDecode/Encode), 383-387 (dither)",
+     "when": "per pixel, Low tier only (no post pass)",
+     "tierBehaviour": "Only Low pays it (the branch is a compile-time constant); High and Mid skip it",
+     "costGuess": "~9 pow = ~18 SFU extra per fogged pixel, more than the fog maths itself. Counted from GLSL."
+    },
+    {
+     "what": "The grade (sectGrade/sectGradeWith) on every baked texel: exposure, green tame, pow for contrast, shadow/highlight tint, saturation, exp shoulder. It is a pure function of the texel colour (plus range weights on rock/ground/foliage). Range materials call sectGradeWith with mixed parameters, so the tint mixes are per pixel too.",
+     "where": "client/src/lib/sect/look.ts:616-651; injected at materials.ts:779-809; range variants range-look.ts:612-643",
+     "when": "per pixel",
+     "tierBehaviour": "Same on all tiers",
+     "costGuess": "~45-55 ALU + ~6 SFU per pixel (one pow, a 3-channel exp, 3 smoothsteps). About 30 percent of a plain building pixel."
+    },
+    {
+     "what": "Rock detail stack (high and mid): photo detail with three world projections x two layers = 6 fetches of tSectDetail, 3 pow for the projection weights, ground tint (2 fetches), clump (2 fetches), far-rock 3D noise (1 fetch per octave, 2 on high, 1 on mid), rock streak noise (1 fetch), mossy-rock gate computed a second time. Everything runs even where its fade is 0, because the code is branch-free. Photo detail fades out at 150 m and far rock at 700 m, but most range cliffs are 150-1500 m away.",
+     "where": "client/src/lib/sect/detail.ts:762-776 (sectDetail), 806-814 and 828-843 (apply), 535-558, 564-587; fade constants detail.ts:75, 223-231; no-branch note at detail.ts:781-784",
+     "when": "per pixel of every rock material",
+     "tierBehaviour": "Low: not patched at all (detailWanted false, detail.ts:461-465). Mid: one far-rock octave (rockFarOctaves, detail.ts:468). High: two octaves. The detail texture has anisotropy 8 (assets.ts:925).",
+     "costGuess": "13-14 fetches + ~250-300 ALU on high rock (5-6 fewer ALU on mid), on top of ~300 ALU base. Counted from GLSL. Wasted beyond 150 m, i.e. most rock pixels in wide shots."
+    },
+    {
+     "what": "Ground (lawn) detail stack: 2 detail fetches, ground tint 2, clump 2, wind sheen 1, far-lawn lump 1 = 8 fetches + hue rotation (cos, sin) and two clump layers. Same no-branch design: sheen fades at 320 m, clumps at 260 m, photo detail at 140 m, but all fetches always run.",
+     "where": "client/src/lib/sect/detail.ts:748-757, 815-827, 535-558, 488-510",
+     "when": "per pixel of every ground material",
+     "tierBehaviour": "Low: none of it (not patched). Mid and High: identical. Lawns carry the range, so most pixels are far.",
+     "costGuess": "9 fetches (with the atlas) + ~180 ALU above the Low base of ~260 ALU. Counted from GLSL."
+    },
+    {
+     "what": "sectRangeW: a 16-slot loop over uSectAreas for every rock, ground and foliage pixel (breaks at the first empty slot, so ~11 iterations), then sectBuilt (one fetch, rock only). It is a smooth function of world position (25 m fade) recomputed per pixel.",
+     "where": "client/src/lib/sect/range-look.ts:524-551; used at materials.ts:788; RANGE_MAX_AREAS = 16 (range-look.ts:30); built grid cell 2.5 m (range-look.ts:160)",
+     "when": "per pixel of rock, ground, near trees and tree cards, all tiers (surfaceClass is read from userData, not from the tier, materials.ts:729-732)",
+     "tierBehaviour": "Same on every tier, including Low (Low rock/ground still compile the range grade even though the detail is dropped)",
+     "costGuess": "~90 ALU per pixel (11 iterations of a few ops, sqrt+smoothstep only inside a radius), +1 fetch on rock. Counted from GLSL."
+    },
+    {
+     "what": "Tree cards run the whole shade before the alpha test. In three's fragment order the grade/foliage/canopy block (injected after color_fragment) comes before alphamap/alphatest, so every fragment that is about to be discarded still pays for the foliage grade, tree shade, foliage range (sqrt, saturation cap, bark gate), canopy variation (2 value-noise = 8 sin) and the range loop. Sprite cards also take 2 derivative terms for mip boost and a cross/normalize for the view fade.",
+     "where": "client/src/app/sect/experience/materials.ts:779-809 (grade) vs 936-948 (card patch replaces alphamap/alphatest later); card-shading.ts:135-171, 178-201, 209-229, 236-248; range-look.ts:557-605",
+     "when": "per card fragment, including transparent texels. Crossed quads + a top quad per tree, so overdraw is 2-3x in canopy.",
+     "tierBehaviour": "Same shader on all tiers. Differences: alpha to coverage when msaa > 0 or on Low's canvas (sect-experience.tsx:532, materials.ts:955-958 alphaTest 0.4 vs 0.42), and the last rung of the quality ladder turns cards off.",
+     "costGuess": "~450 ALU + ~25 SFU + 1-2 fetches per card fragment; roughly 40-60 percent of the cut-out card is transparent, so ~35-50 percent of that ALU is thrown away. Estimated by counting; the fraction is a guess for needle/sprite alpha. `discard` also costs early-Z / hidden-surface removal on tile-based GPUs."
+    },
+    {
+     "what": "Metal, glaze, iron and Heart-Mirror surfaces call sectEnvSky per pixel: 1 sky fetch + atan + asin + two normalize + ~9 sin for the far-ridge and near-pillar silhouettes (these depend only on azimuth) + pow(sunSide,4) + the haze mix (4 exp) + sectEnvSun (2 pow with big exponents). Also dFdx/dFdy face normal, reflect, Schlick pow5.",
+     "where": "client/src/app/sect/experience/materials.ts:245-300 (ENV_GLSL: ridge 283, pillar 288-290), 370-454 (surfaceGlsl); gate materials.ts:739, 750-753",
+     "when": "per pixel of every tagged surface (roof glaze, metal trim, black iron), all tiers",
+     "tierBehaviour": "Identical on every tier; Low gets no cheaper variant. (The Heart-Mirror cube path adds 2 cube fetches on High and Mid only, materials.ts:405-425.)",
+     "costGuess": "~250-300 ALU-equivalents per tagged pixel (about 20 SFU). Share of screen unknown: GLBs here are LFS pointers, so I could not count tagged materials."
+    },
+    {
+     "what": "Pond shader. Planar path (High, Mid, while a reflection was rendered): per pixel of the area's atlas material it does dFdx/dFdy normal, plane and bounds tests; on open-water pixels it adds 4 cos ripples, reflect, Schlick, 4 half-float bilinear taps. Analytic path (Low, or any frame without a planar image): sectEnvSky plus, where the reflected ray hits the mirror disc, the full procedural Heart-Mirror (arm, runes with atan, cradle loop over lathe slices, rim, up to ~8 composited layers each calling sectMirrorShade with more sectEnvSky). Both paths are compiled into one program.",
+     "where": "client/src/app/sect/experience/materials.ts:588-655 (WATER_FRAGMENT), 669-695 (POND_MIRROR_GLSL); client/src/lib/sect/heart-mirror.ts:332-361, 402-476",
+     "when": "per pixel of the pond area's water material (shared atlas, so the test runs well beyond the pond); heavy part only on water pixels, mirror part only where the ray meets the disc",
+     "tierBehaviour": "Planar on High (0.5 texel/pixel) and Mid (1/3); analytic on Low and as the fallback elsewhere. uHasReflect is a uniform, so both branches live in the same program (register pressure on every tier).",
+     "costGuess": "Planar: ~4 fetches + ~80 ALU on water pixels. Analytic with mirror: ~500-900 ALU-equivalents on mirror-hit pixels (counted: 8 layers x shade + cradle loop). Low only pays it at the Heart-Mirror stop."
+    },
+    {
+     "what": "Pond planar reflection pass: a second full scene render per frame while the open water is on screen and within 320 m, not 'lean'. It draws the global backdrop (~1.48M tris) and the mirror's own area in full (~1.06M tris), other drawn areas as stand-ins, no grass, into a half-float target the size of the drawing buffer x scale (only the pond rectangle is filled). Every frame, even when the camera is still.",
+     "where": "client/src/app/sect/experience/reflect/index.ts:129-160, 229-247; reflect/pond.ts:53-147; reflect/plan.ts:13-39 (scale high 0.5, mid 1/3, maxDistance 320, view standIns true); manifest.json globalTris 1476322, mirror tris 1063102",
+     "when": "per frame while the pond is on screen within 320 m",
+     "tierBehaviour": "High: 0.5 scale, Mid: 1/3, Low: none (analytic). Skipped when the ladder is at 'lean'. Whole-mesh frustum culling only, so the narrowed frustum rarely drops a chunk.",
+     "costGuess": "Vertex side ~2.5M tris extra per frame (my count from the manifest; culling may cut it). Fragment side: High 1080p at 1.5x DPR = 2880x1620 x 0.25 = 1.17 MP at most; Mid 1080p x 1/9 = 0.23 MP. Memory: High ~9 MB colour (RGBA16F) + ~5 MB depth, Mid ~2 MB + ~1 MB. Estimated from sizes, not measured."
+    },
+    {
+     "what": "Heart-Mirror cube probe: six faces rendered one per frame. High: 512 px faces, everything drawn at full detail (all drawn areas, grass on); Mid: 256 px faces, stand-ins, no grass. First capture within 250 m, then a fresh capture every 6 s while the mirror is on screen within 160 m, and at once when the drawn sets or quality step change.",
+     "where": "client/src/app/sect/experience/reflect/index.ts:116-130, 146-153; reflect/probe.ts:25-62; reflect/plan.ts:43-58 (size, view, maxDistance 250, refreshDistance 160, refreshSeconds 6), 97-145",
+     "when": "6 frames every 6 s at the mirror stop; mipmap build on the last face",
+     "tierBehaviour": "High: full detail 512 px; Mid: stand-ins 256 px; Low: none",
+     "costGuess": "High: each face is a vertex-heavy pass with up to 4 full areas + backdrop = ~6-8M tris before culling (estimated: ~1.0-1.7M per chunk in manifest.json), small pixel count (0.26 MP). Likely a visible hitch for 6 frames every 6 s on High. Memory: cube 512x512x6 x 8 B x 1.33 (mips) = ~17 MB + 6 depth buffers ~6 MB; Mid ~6 MB total."
+    },
+    {
+     "what": "Reflection passes run the full main-view shaders (rock/ground detail layers, wet rock, range look, clumps) at half or third resolution, through a rippled, blurred reflection. Only the soft-depth read is switched off (SOFT_DEPTH.uHasDepth = 0).",
+     "where": "client/src/app/sect/experience/reflect/index.ts:143-145, 162-166; shaders as above",
+     "when": "every reflection pass",
+     "tierBehaviour": "Same shaders as the main pass",
+     "costGuess": "The pond and cube passes cost fragment work the viewer cannot see: ~13 fetches on rock, ~8 on lawn per reflected pixel."
+    },
+    {
+     "what": "Wet rock loop in every baked material that is not a card or glow: loops up to uWetCount (<= 6) falls, ~6 ops per iteration for the y-test, ~40 more inside a fall's band, plus a drip noise fetch and pow(.,24) on wet pixels. uWetSheen is 0 on Low but the spec and fresnel pow still run.",
+     "where": "client/src/lib/sect/waterfall.ts:665-742 (WET.perTier high 6 / mid 4 / low 2 at 433-436); patched at materials.ts:722, 808; counts set via assets.ts:901",
+     "when": "per pixel while falls are selected (uWetCount > 0); 0 cost when the count is 0",
+     "tierBehaviour": "Count scales by tier (6/4/2). Same code. Uniform branch, so no cost with count 0.",
+     "costGuess": "~5 ALU when count 0; ~25-45 ALU with 2-6 falls near the camera (mostly early `continue`); +~60 ALU and 1 fetch on wet pixels. Counted from GLSL."
+    },
+    {
+     "what": "Cloud sea: 9 tNoise fetches per pixel (billow() x 3: height, +45 m lit step, +260 m shadow step; 3 octaves each) plus haze. Drawn FIRST among opaque (renderOrder -800, writes depth), so every pixel it covers is shaded and then painted over by islands and terrain.",
+     "where": "client/src/app/sect/experience/materials.ts:1405-1437 (billow 1405-1412; calls 1419-1421); scene.tsx:469-479 (renderOrder -800)",
+     "when": "per pixel below the horizon, every frame",
+     "tierBehaviour": "Same on all tiers. Relief fades at 1800-6500 m but the fetches still run.",
+     "costGuess": "9 fetches + ~120 ALU per covered pixel (counted). The sky dome already moved after the opaque pass for exactly this overdraw reason (scene.tsx:429-440, 'drawn first it shaded every pixel'; they measured 13 percent of the world pass on average and 24 percent at the gate), so the sea likely wastes a similar share."
+    },
+    {
+     "what": "Sky dome clouds: per sky pixel above the horizon, 2 layers x 2 samples (n and a sun-shifted nl for lighting) x 4 octaves = 16 tNoise fetches + the sky image fetch, plus atan/asin and fog maths. Already drawn after the opaque pass, only where nothing covers it.",
+     "where": "client/src/app/sect/experience/materials.ts:1141-1144 (sectSkyNoise), 1168-1189; scene.tsx:415-444",
+     "when": "per uncovered sky pixel, every frame; and again inside every reflection pass",
+     "tierBehaviour": "Same on all tiers",
+     "costGuess": "17 fetches + ~150 ALU per sky pixel (counted). Sky is perhaps 30-50 percent of the frame in upward views (my guess from the flight)."
+    },
+    {
+     "what": "Cloud puffs: up to ~1000 camera-facing instanced sprites (clouds.json has 1021, packPuffs keeps those within 2600 m of the path), alpha blended, depthWrite off, sorted far to near. Fragment: 2 noise fetches + 1 depth fetch (composer depth, High and Mid only), sphere lighting, then haze depth, haze colour and cloud depth, each with several exp. That fog uses vF and vDist, which are per-instance constants (not per pixel).",
+     "where": "client/src/app/sect/experience/materials.ts:1796-1913 (fog at 1904-1907; vF/vDist set at 1846-1850); scene.tsx:598-629; clouds.ts:40-57",
+     "when": "per sprite fragment; overdraw is high where banks overlap",
+     "tierBehaviour": "Same shader on all tiers (no depth fetch on Low because there is no composer depth)",
+     "costGuess": "~3 fetches + ~160 ALU + ~8 SFU per fragment, of which the redundant per-fragment fog is ~60 ALU + ~8 SFU. Overdraw depth unknown (guess 3-8 layers in a bank)."
+    },
+    {
+     "what": "Waterfall sheets: 5 texture fetches per fragment (clump, streak, strand, two 'soft' far-field), all always fetched, even though the near patterns are mixed away past 130-260 m, then ~40 smoothsteps. Transparent, DoubleSide, three layers per fall (core, curtain, veil by vertex colour).",
+     "where": "client/src/app/sect/experience/materials.ts:1618-1650 (fetches 1618-1629; far mix 1631-1635), 1553-1559 (DoubleSide, transparent); waterfall.ts SHEET.farFrom 130, farTo 260 (line 150-151)",
+     "when": "per sheet fragment, overdraw 2-4x on large falls",
+     "tierBehaviour": "Same material on all tiers; only spray and puff counts change by tier (waterfall-fx.tsx:677-684)",
+     "costGuess": "5 fetches + ~150 ALU per fragment (counted)."
+    },
+    {
+     "what": "Anisotropic filtering of 8 on every baked texture on every tier, including Low (set in one place, before first upload).",
+     "where": "client/src/app/sect/experience/scene.tsx:815-829 (aniso = min(8, max)); detail texture assets.ts:925",
+     "when": "every atlas fetch (the one fetch every material makes); detail fetches on high/mid",
+     "tierBehaviour": "Not tiered: Low gets the same 8x",
+     "costGuess": "Up to 8 bilinear taps (x2 for trilinear) per fetch on grazing surfaces such as lawns and terraces. Real bandwidth cost on integrated and mobile GPUs. Not measured."
+    },
+    {
+     "what": "Precision and features-by-define vs uniform. No precision statements anywhere (grep found none outside comments), so every shader is the renderer's default, highp. Variants are made by patching source and the program cache key (detail kind, water, surface class, range class, wet, tree, shade), so tiers that drop detail get a genuinely different, smaller program. Within a program the tier switches are uniforms: uSectRockOctaves, uSectRockFar, uSectGroundLayers, uSectDetailOn, uWetCount, uHasReflect, uSectMirrorEnvOn, uStreaks, uDetail.",
+     "where": "client/src/app/sect/experience/materials.ts:733-735, 833-836; detail.ts:781-784; detail.ts:759-760, 582",
+     "when": "compile time vs per pixel",
+     "tierBehaviour": "Low: smaller program for rock/ground (no detail), but none for fog, grade, range, surfaces, water, sky, sea, puffs, sheets. A uniform branch skips the work (cheap), but a uniform that only multiplies (uSectDetailOn, uSectGroundLayers, uSectRockFar, uWetSheen) leaves the fetches and maths in place.",
+     "costGuess": "Qualitative. mediump (fp16) would give up to ~1.3-1.6x ALU on Mali/Adreno for colour math, none on Apple/desktop; world positions and fog integrals must stay highp."
+    }
+   ]
+  },
+  {
+   "area": "Live effects and main-thread CPU work per frame (grass, flames, waterfall fx, life, petals/cranes, cloud puffs, hotspot picking, render driver, music, overlay CSS, ink travel, map)",
+   "notes": "Read-only research; nothing was run or profiled, so every millisecond above is an estimate from code structure (loop counts, instance counts, draw counts), not a measurement. GLB files are LFS pointers here, so triangle numbers come from manifest.json, clouds.json (1021 puffs; 260 are mist), meta.json (6 fires, 5 waterfalls, 103 hotspots, 11 areas) and camera.json (1729 frames, 2580 m, about 1.5 m per authored frame). To check any estimate with the debug hooks on a real device (?debug=1): window.__sect.grass.stats() gives cpuMs (grass pass) and areas[id].buildMs/longestMs; window.__sect.stats.ladder() gives frame and GPU times; window.__sectReflect.gpu() gives the reflection passes' GPU time; window.__sect.info() gives draw calls and triangles; window.__sectFlames[chunk].show toggles each fire draw.\\n\\nDraw calls added by live effects (at most): grass 96 (High) / 28 (Mid) / 0 (Low); flames up to 4 per fire chunk (Low has no light draw); waterfall fx 3; life 3 (butterflies hidden on Low); petals, cranes, forge fire, formation core, incense, cloud puffs 1 each. So about 25 non-grass draws at High and about 20 at Low.\\n\\nStill fully on at Low: cloud puffs (761), petals (half), cranes, flames (thinned, all fires on), waterfall skirt/spray/mist (thinned), birds and motes (35%), forge fire, incense, formation core, idle motion, hover picking, ink travel and music. Off at Low: grass, mist puffs, butterflies, blaze light, reflections, postprocessing.\\n\\nAllocation per frame: the only large source is the cloud-puff subarray views (about 100-150 KB per moving frame). Smaller ones: CameraRig (sampleCamera object spread, framedHolds arrays three times, composeLook arrays), Driver's `counts` template string, cranes (about 15 objects), the Hotspots `pointed` closure, the Reflections signature string, and each pick's Map/arrays. I expect these to cost minor GC but nothing visible.\\n\\nWorker candidates, in order of value: grass build (pure typed-array maths); cloud-puff sort (not needed if the incremental sort lands); buildLifeTables and packPuffs at mount (one-off, hidden behind the loading veil, low value; packPuffs is about 1021 x 288 hypot calls at mount, scene.tsx:601-612, and could be precomputed into clouds.json offline). Precompute candidates: the kept-puff list and density scale, the life tables.\\n\\nWeb Audio verdict: cheap on weak phones in CPU terms; the cost is RAM (about 38 MB per decoded track, two kept on phones). decodeAudioData happens off the main thread, but expect a short memory spike while an MP3 is decoded and the PCM is created.\\n\\nDoes not need changing: React state in the frame loop (none), the useFrame count (about 32, each trivial), idle motion, flames CPU, waterfall CPU, map view. The two best 'free for every tier' fixes are the cloud-puff sort and the render-rate classes (pointer/pulse and idle). The two that make Low/Mid closer to High at the same cost are grass-lite on Low and keeping the pond reflection cached at rest. I did not read the Post/composer, material shaders or the asset loader (other areas); two of my items (cloud overdraw, pond reflection cost) touch them, so check against that research to avoid double-counting.",
+   "drivers": [
+    {
+     "what": "Cloud puffs are re-sorted and re-uploaded on almost every moving frame. A comparator sort of about 1021 puffs (nearly 10k comparator calls), then 1021 `packed.subarray()` views created and copied, then a whole-buffer upload (about 53 KB). It re-runs whenever the camera has moved 0.5 m, and scrolling moves it several metres per display frame.",
+     "where": "client/src/app/sect/experience/scene.tsx:640-660 (useFrame), client/src/lib/sect/clouds.ts:63-78 (sortFarToNear, RESORT_DISTANCE2 = 0.25)",
+     "when": "every moving frame (skipped at rest)",
+     "tierBehaviour": "Same on every tier. Only difference: Low drops the 260 `mist.*` puffs (scene.tsx:2327), so about 761 puffs instead of 1021. All puffs are always submitted: frustumCulled is false and instanceCount is fixed (scene.tsx:625-629).",
+     "costGuess": "My estimate, not measured: about 0.2-0.5 ms of CPU on a desktop, 1-2 ms on a weak phone (typed-array sort with a JS comparator is slow in V8). The subarray views are about 100-150 KB of garbage per frame, roughly 6-9 MB/s at 60 fps. Draw count: 1. GPU side: about 1000 large soft sprites with 2 texture reads and 2 haze exp() each; overdraw not measured."
+    },
+    {
+     "what": "Grass per-frame cell pass and draw submission. Every built cell of every drawn area gets cellDistance (hypot), cellCount (binary search or ring lookup) and a frustum-sphere test. Survivors are sorted by distance with a comparator, fitBudget runs up to 4 iterations (each allocates a forEach closure), then instanceCount is set. The pass repeats at the 30 fps idle rate with identical results.",
+     "where": "client/src/app/sect/experience/grass.tsx:976-1054; tiers at client/src/lib/sect/grass.ts:134-137, grassTier at grass.ts:220-226",
+     "when": "every rendered frame, including idle frames",
+     "tierBehaviour": "Low: off (no postprocessing). Mid: maxDraws 28, maxTufts 16,000, reach 110 m, share 0.4, which is about 144k triangles. High: 96 draws, 60,000 tufts, reach 300 m, about 540k triangles. A High device that has stepped down the ladder uses the mid grass.",
+     "costGuess": "Estimate: the CPU pass is about 0.1-0.4 ms on a desktop, assuming 300-1000 cells in drawn areas (window.__sect.grass.stats().cpuMs reports the real figure). Submitting 96 instanced draws is about 1-3 ms of three.js CPU on a phone-class CPU (10-30 µs per draw); 28 draws about 0.3-0.8 ms. The code's own comment gives 0.15-0.25 ms GPU for High on an RTX 5080. Resident memory is 48 B per tuft (pos 12, colour 4, a 16, b 16)."
+    },
+    {
+     "what": "Grass build per area, on the main thread. It reads every ground and rock triangle into JS arrays, scatters candidates, finds edges, makes fringe and rim bushes, reads roots back from the atlas, then makes cells and geometries. It runs in 6 ms slices separated by setTimeout(0), and is not gated on the camera being still or on idle time (the BVH builder is gated). It is pure typed-array math apart from the atlas readback.",
+     "where": "client/src/app/sect/experience/grass.tsx:655-700 (sliced, nextTask), 794-880 (build steps), 568-640 (collectSoups)",
+     "when": "once per area when its chunk loads (desktop: up to 5 resident areas)",
+     "tierBehaviour": "Not built on Low. Mid and High build the same way, with the tier's own reach and density at build time.",
+     "costGuess": "Unknown; read stats().areas[id].buildMs and longestMs on a real phone. By structure: 6 ms of work per 4-5 ms of timer gap is about 55-60% main-thread occupancy while a build runs, so a slice can land inside a frame. The ladder's 2 s settle window covers 'set ready' and 'first drawn', not the grass build, so slices could count as slow frames."
+    },
+    {
+     "what": "Idle render loop. At rest the full pipeline (world, overlay, composer on Mid/High) renders at 30 fps forever, dropping to 20 fps after 20 s with no input. Petals always move, so something is always changing. The rate is the same constant for every tier.",
+     "where": "client/src/app/sect/experience/scene.tsx:1729-1730 (IDLE_FPS, IDLE_DIM_FPS), 1947-1952",
+     "when": "continuously while the tab is visible and no reader or map is open",
+     "tierBehaviour": "Same on every tier. Only the ladder's last step (30 fps cap) or reduced motion (2 fps) changes it. A reader or the map stops it entirely (store.modal).",
+     "costGuess": "Cost is 30 x frame cost. If a Mid frame is 8 ms of GPU, that is about 24% GPU duty and heat/battery drain while nobody touches the page. Not measured."
+    },
+    {
+     "what": "Hover pulse and pointer wake render at the full display rate. `pulse` (a hovered, focused or selected hotspot) and every pointermove (`wake(store, 200)`) put the Driver in 'always' mode with no cap. The cap (maxFps) is 0 on every tier and only the ladder's last step sets 30. The ladder only reacts to frames over about 20 ms, so a 90/120/144 Hz screen renders every display frame as long as the GPU keeps up.",
+     "where": "client/src/app/sect/experience/scene.tsx:1177 and 1182 (wake on pointer), 1925-1926 (pulse, continuous), 1935-1938; client/src/lib/sect/runtime.ts:199-205 (maxFps 0), 319 (AUTO_FRAME_BUDGET_MS = 20), 427-434",
+     "when": "while the mouse moves or a hotspot is hovered (desktop), and during any camera motion on high-refresh screens",
+     "tierBehaviour": "No difference between tiers. A 120 Hz phone on Low or Mid has no 60 fps ceiling.",
+     "costGuess": "A hover glow is a 0.5 Hz sine and the label is placed by a pick that is already throttled to 50 ms, so rendering it at 120 fps buys nothing. A GPU that could do 70-100 fps on a 120 Hz screen runs flat out; I estimate 33-60% of the GPU/battery for the same picture at 60 fps."
+    },
+    {
+     "what": "Hotspot picking and hover label. Picking: runs when the pointer moved (at most every 50 ms) AND every 0.25 s while the pointer is anywhere inside the canvas, even when nothing changed. Each pick allocates a Map, arrays and `[...pk.meshes]` copies, tests all pick boxes, raycasts BVH meshes, and `occluded()` walks every occluder mesh (bounding sphere applyMatrix4 each) plus BVH rays. Label: while a hotspot is hovered and the camera moves, onHover runs every frame and calls getBoundingClientRect on every visible panel plus offsetWidth/offsetHeight right after style writes, which forces a layout each frame.",
+     "where": "client/src/app/sect/experience/scene.tsx:1405-1415 (useFrame), pickHotspot about 1255-1330, occluded about 1177-1205; client/src/app/sect/experience/sect-experience.tsx:1498-1524 (onHover)",
+     "when": "picks up to 20/s while moving the mouse, 4/s otherwise; the forced layout every frame while hovering and scrolling (desktop mouse only, a finger never hovers)",
+     "tierBehaviour": "Same on every tier. Touch devices skip the hover path (BVH is skipped on touch, background-work bvhWanted).",
+     "costGuess": "Estimate: 0.2-1 ms per pick, assuming a few dozen occluder meshes; the forced style/layout flush is 0.1-0.5 ms per frame. Neither measured."
+    },
+    {
+     "what": "Separate requestAnimationFrame loops that run every display frame forever, besides the render Driver's own loop: the hold-panel tick (writes opacity/transform on up to 11 panels when u changes, allocates holdPresence arrays) and the portrait-turn tick, which also runs on desktop and does `store.map.holds.find(closure)` each frame. Together with the Driver, that is 3 rAF callbacks per display frame, even at rest.",
+     "where": "client/src/app/sect/experience/sect-experience.tsx:1318-1387 (overlay tick), 1380-1426 (portrait tick); client/src/app/sect/experience/scene.tsx Driver loop (about 1920-1960)",
+     "when": "every display frame (60-120 Hz) while the page is visible",
+     "tierBehaviour": "Same on every tier.",
+     "costGuess": "Under 20 µs per call, so under 0.1 ms per frame. The cost is keeping the main thread awake 180-360 times a second at rest on a phone (power), not frame time."
+    },
+    {
+     "what": "Number of useFrame callbacks. scene.tsx declares 22, of which 2 are DebugProbe (debug only) and 1 is PlainRender or Post, so about 19 in production (Reflections still registers 3 on Low even though they do nothing there). fx.tsx 5 (Petals, ForgeFire, FormationCore, IncenseSmoke, Cranes), life 1, grass 1, waterfall 1, flames 1 per resident chunk.",
+     "where": "scene.tsx:185,528,643,719,905,1059,1405,1447,1466,1570,1673,1680,1695,1708,1963,2025,2084,2106,2131,2209,2210,2261; fx.tsx:145,424,471,585,626; life.tsx:444; grass.tsx:976; waterfall-fx.tsx:651; flames.tsx:967",
+     "when": "each rendered frame",
+     "tierBehaviour": "About 32 on desktop (5 resident chunks), about 30 on phone/Low. Counts do not change with tier.",
+     "costGuess": "Most are a few uniform writes. Together, excluding cloud sort, grass pass and picks, I estimate well under 0.5 ms a frame on a desktop. They are not the problem."
+    },
+    {
+     "what": "React state in the frame loop: essentially none. setAtHold and setActiveArea fire only on change; setHovered bails out on equal values; setLookedBack and setIntroUp run on a 150 ms interval with equal values (no re-render); travel progress is quantised to 2%. Panels and the hover label are moved with direct style writes.",
+     "where": "client/src/app/sect/experience/sect-experience.tsx:690-702, 1318-1387, 1498-1524",
+     "when": "on change only",
+     "tierBehaviour": "n/a",
+     "costGuess": "Negligible. No re-render of the canvas tree: SectCanvas is memoised (scene.tsx:2462)."
+    },
+    {
+     "what": "Planar pond reflection and mirror cube capture. The pond reflection re-submits the loaded sets (mirror area at full detail, others as stand-ins) into a 1/2 (High) or 1/3 (Mid) resolution target on every rendered frame while the pond is on screen and within 320 m, even at rest. The cube capture is amortised: one face a frame, then every 6 s. Also allocates a `signature` string each frame while near the mirror.",
+     "where": "client/src/app/sect/experience/reflect/index.ts:134-160, plan.ts:12-58; scene.tsx:1680-1693",
+     "when": "each rendered frame at the Still Pond stop and its approach",
+     "tierBehaviour": "Low: nothing (Reflections still registers its callbacks). Mid: pond at 1/3, cube 256 px, grass off, stand-ins. High: pond at 1/2, cube 512 px, grass on for the cube.",
+     "costGuess": "Estimate: re-submits the mirror chunk's draws (a chunk is about 1.0-1.5M triangles by the manifest) at about 1/4-1/9 of the pixels; I'd guess 1-3 ms GPU and a similar draw-submission CPU on Mid-class hardware at those stops. Not measured; another area may be covering this."
+    },
+    {
+     "what": "Flames. One useFrame per resident chunk. Each tests every fire against the frustum, sets a few uniforms and recolours the molten-glow materials (`color.copy(base).multiplyScalar`) even for undrawn chunks. Draws per chunk with fires: up to 4 (blaze light, furnace mouths, flame cards, embers). Cards: cauldron 6/5/3, kiln 2/2/1 each, blaze 6/5/4 each. Embers: mouth 18/12/6, kiln 24/16/8, blaze sparks 16/10/5 (+1 glow).",
+     "where": "client/src/app/sect/experience/flames.tsx:967-1031, client/src/lib/sect/flames.ts:165-169 (flameTier); meta.json has 6 fires (3 furnace mouths, 2 chimney kilns, 1 cauldron) plus carved blazes",
+     "when": "every frame; draws only while a fire is in view and its chunk drawn",
+     "tierBehaviour": "Every fire stays on at Low, just thinner: fewer cards, 1 sheet instead of 2, fewer embers, no blaze light. High/Mid differ mostly in embers.",
+     "costGuess": "CPU is tens of microseconds. GPU: the furnace-mouth fragment shader ray-traces a fire box per pixel; it is only a few quads but can fill a big part of the screen at the forge stop. Not measured."
+    },
+    {
+     "what": "Waterfall foot effects. Three draws while a grounded fall is in view and its chunk drawn: foam skirt (one mesh), spray (instanced streaks, 250/160/80 by tier), mist puffs (4 slots x 10 instances always submitted, the shader trims to 10/8/6 per foot). The CPU only sets uniforms and loops at most 8 feet.",
+     "where": "client/src/app/sect/experience/waterfall-fx.tsx:651-690, client/src/lib/sect/water.ts:245-300",
+     "when": "each frame while a foot is in view",
+     "tierBehaviour": "Counts thin by tier; all three draws stay on at Low.",
+     "costGuess": "CPU negligible. GPU fill-rate for large soft mist sprites with a 2-frame flipbook blend. Not measured."
+    },
+    {
+     "what": "Life (birds, motes, butterflies). Three instanced draws whose motion is entirely in the vertex shaders; the CPU does a frustum test per group and sets 3 uniforms each. buildLifeTables runs synchronously inside useMemo at mount.",
+     "where": "client/src/app/sect/experience/life.tsx:398-460, client/src/lib/sect/life.ts:21-30, 187-212, 855-862",
+     "when": "per frame uniform writes; tables once at mount",
+     "tierBehaviour": "Instances are the first N of each rank-ordered table: 100% / 60% / 35%; butterflies are off on Low. Birds, motes and petals stay on at Low.",
+     "costGuess": "By my reading of the LIFE constants (70 motes per hold x 11, 28 per blossom, 20 per pond, 30 relic, qi at falls; 3 flocks of 5-20 birds per hold) it is on the order of 1-2k motes and a few hundred birds at High, all drawn with additive blending. Table build is one-off, not measured. Per-frame CPU is negligible."
+    },
+    {
+     "what": "Petals, cranes, incense, forge fire, formation core. Petals (520 on Mid/High, 260 on Low) and the others are shader-driven and cost one uniform write each. Cranes are the exception: 5 cranes updated on the CPU every frame with 3 DynamicDraw buffer uploads, and cranePose allocates two arrays plus an object per crane per frame, plus a forEach closure.",
+     "where": "client/src/app/sect/experience/fx.tsx:145-148 (petals), 626-640 (cranes), scene.tsx:2395 (petal count by tier); client/src/lib/sect/fx.ts:77-95 (cranePose)",
+     "when": "each frame",
+     "tierBehaviour": "Petals halve on Low; the rest are the same on every tier.",
+     "costGuess": "Cranes: about 15 allocations and 3 tiny uploads per frame, microseconds. Cleanliness more than cost. Everything else: draw count 1 each."
+    },
+    {
+     "what": "Web Audio music. Two things matter: decoded memory and a 100 ms control loop. Each decoded 48 kHz stereo float track is about 38 MB on average (25-52 MB; computed from the durations in public/sect/audio/music.json). Phones and deviceMemory <= 4 keep 2 decoded tracks, desktops 3. The control tick (every 100 ms) runs apply(), which builds several spread arrays and Sets each time. Audio-thread work is 1-2 looping buffer sources plus 3 gain nodes, with latencyHint 'playback' at the file rate (48 kHz), which is negligible.",
+     "where": "client/src/app/sect/experience/music-engine.ts:236-330 (apply), music.tsx:221-240 (100 ms tick), 59-80 (AudioContext options); client/src/lib/sect/music.ts:358-376 (keepPlan, musicBudget)",
+     "when": "memory is held while sound has been turned on; tick every 100 ms",
+     "tierBehaviour": "Not tied to the quality tier. Tied to coarse pointer and deviceMemory only. Nothing downloads before the first gesture with sound on.",
+     "costGuess": "About 76 MB of decoded audio on a phone, about 115 MB on a desktop. CPU is not the issue: decodeAudioData runs off the main thread, the steady mix is about 1-2% of a core, and the 100 ms tick is tens of microseconds plus about 10 small allocations."
+    },
+    {
+     "what": "CSS backdrop-filter over the live canvas. `.sect-panel` has blur(10px) saturate(1.1) at 58% alpha. `.sect-plate` has blur(8px) at 82% alpha and is on at least 15 persistent or hover UI elements (labels, chips, the menu/sound/map buttons, the hint, the hover label, lore card, tooltips). The canvas behind them changes every rendered frame, so the browser's compositor re-captures and re-blurs each one every frame. A panel mid-fade (opacity < 1) also needs an offscreen group.",
+     "where": "client/src/app/sect/sect.css:327-335 (.sect-panel), 375-380 (.sect-plate), 783-794 (orb tooltip), 1318-1337 (.sect-map, blur 3px); element list: overlay.tsx:41,46,131,205,242,295,325,339,371,481,533,561, sound-toggle.tsx:230,277, lore-card.tsx:42",
+     "when": "every composited frame while the element is visible",
+     "tierBehaviour": "Same on every tier; no coarse-pointer or Low switch exists (sect.css has @media only for reduced-motion and sizes).",
+     "costGuess": "Estimate: 6-10 small backdrop passes per frame plus one large hold panel; on a tile-based mobile GPU I'd guess 0.3-1.5 ms of compositor GPU per frame, unmeasured (check Chrome trace 'Composite' and 'Raster' with the page flying). The map's full-screen blur(3px) is over a canvas that has stopped redrawing, so it is cheap."
+    },
+    {
+     "what": "Ink travel and map. The map is DOM/SVG only and the 3D loop stops under it, so nothing runs per frame there. InkTravel builds 3 blot sprites at every travel start on the main thread: 256 px canvases with `filter: blur(1.5px)` and 9 filled 120-point shapes each. Then a half-resolution 2D canvas is redrawn every frame (full fillRect plus radial gradient plus 5 drawImage). At dpr >= 2 the canvas is full CSS resolution (k = 0.5 x dpr clamped 1..2).",
+     "where": "client/src/app/sect/experience/ink-travel.tsx:49-95, 129-160, 183-232; map-view.tsx (no frame loop)",
+     "when": "once per fast-travel, for about 1-2 s",
+     "tierBehaviour": "Same on every tier; reduced motion uses a plain opacity fade.",
+     "costGuess": "Estimate: sprite creation 5-30 ms on a weak phone, landing at the start of the travel; per-frame 2D work is small on a GPU-accelerated canvas, about 1.3M px at 1440x900 and dpr 2. One-off, not per frame."
+    },
+    {
+     "what": "Idle motion (idle.ts). updateIdle recolours a handful of glow materials and re-places a few rigid pieces (forge artifacts, formation core, library scrolls, cranes) for each drawn chunk; tree/banner sway is in the vertex shader on a shared clock.",
+     "where": "client/src/app/sect/experience/idle.ts:901-967, scene.tsx:1447-1458",
+     "when": "each frame per drawn chunk (skipped under reduced motion once rested)",
+     "tierBehaviour": "Same on every tier.",
+     "costGuess": "A few dozen matrix multiplies and colour writes: tens of microseconds. Not a concern."
+    }
+   ]
+  },
+  {
+   "area": "Assets, GPU memory, loading and the page around the canvas",
+   "notes": "What I could not verify. (1) GLB files here are LFS pointers, so I never saw per-file texture counts, pixel sizes or the merged-vs-chunk geometry split. Texture facts come from manifest.json (fileTexBytes shows each full area has 1-2 atlases of 4096x4096 plus its trees texture; low copies are 2048). (2) The bundle numbers are from the main checkout's .next folder (built Oct 25), not rebuilt here, so treat them as close, not exact. (3) All GPU and compositor cost guesses are arithmetic or the owner's own comments in the code, not profiles. I did not run anything. (4) Where bitmaps live in RAM (CPU or GPU process) depends on the browser. (5) Vercel's default Cache-Control for public/ files is from memory; confirm with curl -I. (6) Three's bundled basis transcoder version in r186 was not checked for newer formats (XUASTC); ask before assuming 6x6 ASTC is available. What the code already does well and I did not propose changing: workers for gunzip, meshopt and BVH, 5 ms prepare slices, one texture per frame, bitmap close after upload, UV/colour array release, deferred uploads while moving, the demand frameloop with a 30/20/10 fps idle rate, and pausing the scene under the map and readers (so the map blur and reader blurs cost little once open). The single biggest lever is GPU texture memory (about 1.2 GB on the full window); the single biggest download item is geometry, not textures, so KTX2 trades download for memory and should be tested on one area first. Owner-rule fit: the CSS blur removal, preload, caching, JIT decode, lazy BVH and geometry warm-up are free on every tier; KTX2 and anisotropy are the only ideas that change how any tier looks, and KTX2 should look the same or better.",
+   "drivers": [
+    {
+     "what": "Texture memory on the GPU, High and roomy Medium desktops. Window is 2 areas each side plus 1 spare, so up to 6 areas of 4096 px atlases (RGBA8, so 4 bytes per pixel, plus a third for mips) stay resident.",
+     "where": "streaming.ts:114-119 (STREAM_BUDGETS.full), streaming.ts:174-185; manifest.json texBytes",
+     "when": "resident the whole visit, grows as the visitor scrolls",
+     "tierBehaviour": "High and Medium with 8 GB+ (or 8+ cores) get this window. Nothing else changes between them.",
+     "costGuess": "Worst 6 areas in a row (gate to library) sum to 1,224 MB from the manifest, plus 14.7 MB global = about 1.24 GB of textures. Geometry adds about 0.33 GB (10.8M triangles at about 31 bytes each, the figure streaming.ts:84-86 measured). Total about 1.6 GB. One extra area is kept during a handover, so the real peak is higher (about +250 MB)."
+    },
+    {
+     "what": "Texture memory on the GPU, Medium desktop with less memory (narrow window: 1 each side + 1 spare). Still the 4096 px set.",
+     "where": "streaming.ts:116 (narrow), streaming.ts:181-183",
+     "when": "resident the whole visit",
+     "tierBehaviour": "Smaller window, same texture size",
+     "costGuess": "Worst 4 areas (gate to arena) = 876 MB with global, plus about 0.2 GB geometry = about 1.1 GB. Computed from manifest texBytes."
+    },
+    {
+     "what": "Texture memory on the GPU, Low tier and touch Medium (2048 px set, 1 each side + 1 spare). Touch High keeps 4096 px but only the current area plus 1 spare.",
+     "where": "streaming.ts:117-118; runtime.ts:199-205 (lowTextures true for Low, and for coarse-pointer Mid); sect_pack.py:108,1205-1207 (low copies)",
+     "when": "resident the whole visit",
+     "tierBehaviour": "Low set is 26-45% of the full texture bytes per area (manifest texBytesLow / texBytes)",
+     "costGuess": "Worst 4 low areas (mission window) = 302 MB with global. Touch High worst 2 areas = 487 MB. streaming.ts:89-96 reports 0.6-0.8 GB total on a phone once geometry and script buffers are added."
+    },
+    {
+     "what": "Texture decode path. GLTFLoader uses ImageBitmapLoader on every current browser (only Safari under 17 and Firefox under 98 fall back to HTMLImageElement). Each embedded WebP is wrapped in a Blob and decoded with createImageBitmap, which runs off the main thread. parseAsync waits until ALL of a chunk's textures are decoded, so a whole chunk's bitmaps sit in RAM at once.",
+     "where": "node_modules/three/examples/jsm/loaders/GLTFLoader.js:2654-2660, 3340-3420; assets.ts:476 (parseAsync); assets.ts:1183-1198 (main and _trees files parsed together)",
+     "when": "once per area load; up to 2 area loads in flight (MAX_PARALLEL, streaming.ts:44)",
+     "tierBehaviour": "Same code on every tier. Low decodes the 2048 px copy, so a quarter of the pixels.",
+     "costGuess": "Transient decoded RGBA per area = manifest texBytes minus the mip third, about 180-270 MB on full, 60-75 MB on low. Two loads overlapping could add about 0.4-0.5 GB of process memory on top of what is resident. I could not measure where Chrome keeps the bitmaps (CPU or GPU process); this is arithmetic."
+    },
+    {
+     "what": "Texture upload. One texture per animation frame via gl.initTexture, then the bitmap is closed (prepare.ts:323-333). Mipmaps are generated on the GPU at upload (GLTFLoader sets generateMipmaps for non-compressed textures, GLTFLoader.js:3323). Uploads wait while the camera moves fast, a jump is flying, or the view turns, but never longer than 500 ms per area.",
+     "where": "scene.tsx:835-863 (warm, initTexture at 858, nextFrame at 862); background-work.ts:149-190 (deferUpload, UPLOAD_MAX_WAIT_MS 500)",
+     "when": "once per texture when its area arrives",
+     "tierBehaviour": "Same logic on every tier; Low just uploads 4x fewer pixels.",
+     "costGuess": "6-30 ms stall per 4096 atlas on desktop (the owner's own measurement in background-work.ts:5-6). A 2048 atlas is a quarter of the data, so roughly 1.5-8 ms (my scaling, not measured). A 4096 area has 2-3 big atlases plus tree textures, so 3-6+ frames of uploads."
+    },
+    {
+     "what": "Anisotropic filtering of 8x is forced on every baked texture of every set (min(8, GPU max)), on every tier. The detail texture asks for 8, strands 4, grass clump 4.",
+     "where": "scene.tsx:815-829 (line 819); assets.ts:925, 975; materials.ts:1031",
+     "when": "per pixel, every frame, wherever an atlas is seen at a slant (ground, roofs, walls)",
+     "tierBehaviour": "Same on every tier: nothing reads the tier here.",
+     "costGuess": "Up to 8x more texture taps per fragment at grazing angles, on top of trilinear. On a phone or integrated GPU that is texture bandwidth, but I cannot size it without a GPU profile."
+    },
+    {
+     "what": "Vertex memory. Chunk meshes stay as meshopt output (16-bit positions). Anything merged per spatial cell is rebuilt as plain Float32 for every attribute (position, uv, colour, uv1 on cards). That is about 32-40 bytes per vertex. Only uv, uv1 and colour CPU arrays are freed after upload; positions and indices stay on the CPU for BVH, grass and occlusion.",
+     "where": "prepare.ts:149-167 (toFloat32), prepare.ts:179-233 (mergeSliced wants Float32, not normalized), prepare.ts:435-471 (releaseAfterGpuUpload)",
+     "when": "per area load; resident while the area is",
+     "tierBehaviour": "Same on every tier",
+     "costGuess": "Geometry about 0.25-0.32 GB GPU on the full window and 0.17-0.22 GB on a phone, plus 0.16-0.29 GB of script buffers on a phone (streaming.ts:84-96, the owner's measurements). What share of that is merged geometry I could not tell without the GLBs (they are LFS pointers here)."
+    },
+    {
+     "what": "Geometry upload is not warmed. warm() only uploads textures and compiles programs. Vertex buffers go up when three first renders each mesh, so the first frames after an area becomes drawable upload whatever is in the frustum.",
+     "where": "scene.tsx:835-897 (no geometry step); assets.ts:1239-1243",
+     "when": "first draw of each mesh in an area, in the frames right after it arrives",
+     "tierBehaviour": "Same on every tier",
+     "costGuess": "Per area about 30-45 MB of vertex data (1.0-2.1M triangles at about 31 bytes), a fraction of it in view at first. Plausibly a few ms to 10 ms of driver time in those frames. Unmeasured; check with ?debug=1 frame times at an area boundary."
+    },
+    {
+     "what": "Download size. Each area is 8.7-12.9 MB gzip (full) or 5.7-10.4 MB (low). Global backdrop is 9.6 MB and 1.48M triangles on every tier (no globalLow in the manifest). Whole flight is 111 MB full, 87.5 MB low, plus 9.6 MB global.",
+     "where": "manifest.json bytes / bytesLow / globalBytes; sect_pack.py:666-667 (WebP q82 full, q88 proto), sect_pack.py:559-564 (gzip -9), sect_pack.py:1585 (globalLow only if the global files have a 2048 variant)",
+     "when": "once per area, streamed ahead on desktop, at rest on phones",
+     "tierBehaviour": "Low saves only 16-29% of the bytes (87.5 vs 111 MB total) while saving 65-75% of texture memory, because geometry dominates the download.",
+     "costGuess": "From full-minus-low sizes (23.7 MB total, assuming 2048 WebP is about 45% of the 4096 bytes) textures are about 43 MB of the 111 MB, roughly 0.8 bits per pixel over 417 Mpx. So geometry is about 60% of the download (about 68 MB). This is an inference, not a measurement."
+    },
+    {
+     "what": "Main-thread work when an area arrives. gunzip and meshopt run in workers, and the BVH is built in a worker. What is left on the main thread is the GLTF parse, prepare in 5 ms slices (each slice waits a frame plus a task), the pond scan, the idle plan, and one texture and one compile step per frame. Each BVH job copies position and index arrays on the main thread first.",
+     "where": "assets.ts:355-461 (gunzip worker), assets.ts:1130-1164, prepare.ts:505-542 (PREPARE_SLICE_MS 5), bvh-build.ts:104-126 and 159-202",
+     "when": "per area load",
+     "tierBehaviour": "Same slice budget on every tier; prefetch starts during flight on desktop and at rest on phones (streaming.ts:565).",
+     "costGuess": "Un-sliced prepare was 140-580 ms on a 4x-slowed phone (prepare.ts:501-503 comment). At 5 ms per frame that is about 30-115 frames of trickle, so an area can take 0.5-2 s to become ready on a weak phone. This costs latency, not frame time."
+    },
+    {
+     "what": "Caching. next.config.ts is empty and there is no vercel.json, so /sect/full files get the static-file default (as I understand Vercel's: max-age=0, must-revalidate). manifest, camera, meta and clouds are fetched no-cache on purpose. Every repeat visit sends a conditional request per file before streaming, and the data files cost 2 round trips (manifest first, then the others).",
+     "where": "next.config.ts:1-5; assets.ts:136-166 (fetchJson no-cache)",
+     "when": "every page load, every file",
+     "tierBehaviour": "Same on every tier; worst on slow, high-latency phones",
+     "costGuess": "About 25-30 files per full sweep, each one at least a round trip even when the answer is 304. Verify with curl -I on a .glb.gz."
+    },
+    {
+     "what": "JS and the start-up waterfall. The flight is a dynamic ssr:false chunk set, so no GLB request can start until about 545 KB gzip (1.9 MB raw) of JS has downloaded, parsed and mounted. Measured from the Oct 25 build in the main checkout (.next, not rebuilt here): first-load shell about 135 KB gzip, flight chunks about 545 KB gzip (three alone about 190 KB gzip in two chunks, postprocessing about 24 KB, fiber about 52 KB), map-view 9 KB, page-view 59 KB, Retell SDK 128 KB (lazy, on call), pusher 18 KB (lazy). Vercel Analytics and Speed Insights are in the layout.",
+     "where": "sect-client.tsx:20-21; voice-orb/index.tsx:347; voice-events.ts:133-138; layout.tsx:3-4,148-149; .next/react-loadable-manifest.json (main checkout)",
+     "when": "first visit, before the loading screen can show real progress",
+     "tierBehaviour": "Same on every tier; parse cost is highest on weak phones",
+     "costGuess": "545 KB gzip is about 0.5-1 s of network on a 5-10 Mbps line plus a few hundred ms of parse on a mid phone, during which the 10 MB of global GLBs sit idle (my estimate)."
+    },
+    {
+     "what": "CSS blur over the canvas. backdrop-filter is on .sect-panel (blur 10px + saturate) and .sect-plate (blur 8px; this wins on elements with both). Used on the area panel (large, bottom of screen), the rail, Map, settings and sound buttons, labels, the hint plates, the talisman tooltip (hover only), lore card. The canvas is not idle at rest: it redraws at 30 fps (20 fps after 20 s of no input), so every visible blur is re-done 20-30 times a second at a stop, and every display frame during flight. Pieces with opacity 0 are not painted. All of it is on at every tier; there is no tier hook in the CSS.",
+     "where": "sect.css:333-334 (.sect-panel), :378-379 (.sect-plate), :793-794 (orb tooltip), content.css:1313-1325 (.sc-panel, uses .sect-panel); overlay.tsx:131,205,242,295,325,371,481,533,561; sound-toggle.tsx:230,277; scene.tsx:1729-1733 (IDLE_FPS 30, IDLE_DIM_FPS 20)",
+     "when": "every composited frame the canvas changes, at rest and in flight",
+     "tierBehaviour": "Same on every tier",
+     "costGuess": "One area panel (about 430x330 CSS px) plus rail, buttons and plates is roughly 10-15% of a 1080p screen. A backdrop blur needs a copy plus two blur passes over that area, so about a third to half of a full-screen pass per frame: probably 0.3-1 ms on an integrated GPU, more on a phone at DPR 3 where the panel is about 1M device pixels. My reasoning, no profile."
+    },
+    {
+     "what": "Blur over a mostly opaque fill, where it cannot be seen. The area panel background is 89.5% opaque, the reader sheet 97%, the map card 84%, --sect-panel-strong (plates) 82%, and the one-page header 94%.",
+     "where": "content.css:1322-1324 (.sc-panel .895), content.css:1446-1448 (reader sheet .97), sect.css:1833-1840 (map card .84), sect.css:3 (--sect-panel-strong .82), content.css:1668-1676 (.sc-page-top .94)",
+     "when": "same frames as above",
+     "tierBehaviour": "Same on every tier",
+     "costGuess": "With 10-18% of the backdrop showing through, blurring it changes the picture by almost nothing, but the compositor still pays for the blur. The sticky .sc-page-top blur re-runs on every scroll frame of the page view (it blurs the text scrolling under it), on a page where the 3D scene is paused."
+    },
+    {
+     "what": "Other CSS that keeps the compositor awake. The talisman ripple runs forever (3 s loop). The sound-call ripple runs while sound is on. The hint arrow runs forever. The ring spinner and map/ink fade-ins run only while shown. The map overlay and reader sit over a paused scene (store.modal stops redraws), so their blurs cost little after they open. The ink-travel card has filter: blur(3px) at opacity 0, which is not painted.",
+     "where": "sect.css:744 (talisman ripple), :633 (soundcall ripple), :400 (hint arrow), :1336 (map blur), :1919 (travel card); sect-experience.tsx:1195-1207 (covered = modal or map)",
+     "when": "continuously at rest",
+     "tierBehaviour": "Same on every tier; reduced-motion turns the loading ring off, but I did not see the ripple stopped for low tiers",
+     "costGuess": "Small (a transform/opacity animation on a button), but it stops the page from ever going quiet, so the compositor produces a frame every vsync even when the canvas is at 2-10 fps. Battery more than GPU time."
+    }
+   ]
+  }
+ ]
+}

@@ -111,15 +111,18 @@ export class ProbeSchedule {
   /**
    * The face to render this frame (or -1). `near`: the mirror is close enough to matter; `dt` the
    * frame's length (ms) for the fade; `snap`: a whole capture shows at once (nobody sees it come:
-   * fast travel's ink covers the view).
+   * fast travel's ink covers the view); `moving`: the camera is moving, so the timed refresh waits
+   * (the clouds drift too slowly to show it, and a capture costs frame time while the view is
+   * already changing). Its time stays due, so it runs the first frame at rest. A changed
+   * signature still captures at once.
    */
-  next(now: number, near: boolean, signature: string, dt: number, snap = false): number {
+  next(now: number, near: boolean, signature: string, dt: number, snap = false, moving = false): number {
     if (this.complete) this.fade = snap ? 1 : Math.min(1, this.fade + Math.max(dt, 0) / this.fadeMs);
     if (!near) {
       // A capture under way finishes (it is cheap); none starts.
       return this.face >= 0 ? this.take() : -1;
     }
-    if (this.face < 0 && (signature !== this.signature || now - this.startedAt >= this.refreshMs)) {
+    if (this.face < 0 && (signature !== this.signature || (!moving && now - this.startedAt >= this.refreshMs))) {
       this.signature = signature;
       this.startedAt = now;
       this.face = 0;
@@ -141,6 +144,39 @@ export class ProbeSchedule {
     this.face = f >= 5 ? -1 : f + 1;
     if (f >= 5) this.complete = true;
     return f;
+  }
+}
+
+/**
+ * How often the Medium tier's pond reflection is rendered while the view is at rest: the first
+ * frame, then every PondReuse.every-th idle render, the frames between reusing the last image
+ * (the ripples keep running: they are the water shader's own clock). High renders every frame.
+ */
+export class PondReuse {
+  static readonly every = 3;
+  private key = "";
+  private has = false;
+  private skipped = 0;
+
+  /**
+   * Whether to render the reflection this frame. `key` is everything but the camera pose that
+   * changes the image (drawn areas, quality, target size, pond); `still`: the camera pose and
+   * projection are exactly last frame's; `reuse`: this tier may reuse at all.
+   */
+  shouldRender(key: string, still: boolean, reuse: boolean): boolean {
+    if (!reuse || !still || !this.has || key !== this.key || this.skipped >= PondReuse.every - 1) {
+      this.key = key;
+      this.has = true;
+      this.skipped = 0;
+      return true;
+    }
+    this.skipped++;
+    return false;
+  }
+
+  /** The image is gone or stale (the pond left the screen, the targets were released). */
+  invalidate(): void {
+    this.has = false;
   }
 }
 

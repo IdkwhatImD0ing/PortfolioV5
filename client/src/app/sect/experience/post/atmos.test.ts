@@ -53,3 +53,40 @@ describe("HoldFocusEffect", () => {
     e.dispose();
   });
 });
+
+describe("passes switched off without a recompile", () => {
+  it("cloud shade goes to strength 0 and comes back to the art-directed value", () => {
+    const e = new CloudShadowEffect(new PerspectiveCamera(), fogConstantsFromMeta(meta));
+    const strength = e.strength;
+    e.suspended = true;
+    expect(e.strength).toBe(0);
+    e.suspended = false;
+    expect(e.strength).toBe(strength);
+    e.suspended = false;
+    expect(e.strength).toBe(strength);
+  });
+
+  it("hold focus keeps its weight at 0 while off, and takes weights again after", () => {
+    const e = new HoldFocusEffect();
+    e.weight = 0.7;
+    e.suspended = true;
+    expect(e.weight).toBe(0);
+    e.weight = 1;
+    expect(e.weight).toBe(0);
+    e.suspended = false;
+    e.weight = 0.4;
+    expect(e.weight).toBeCloseTo(0.4);
+    e.dispose();
+  });
+
+  it("the cloud shade tests lit, keep fade and cloud cover before the noise and haze maths", () => {
+    const e = new CloudShadowEffect(new PerspectiveCamera(), fogConstantsFromMeta(meta));
+    const fs = e.getFragmentShader();
+    const at = (s: string) => fs.indexOf(s);
+    const order = ["if ( lit <= 0.0 ) return;", "if ( keepFade <= 0.0 ) return;", "if ( shade <= 0.0 ) return;", "float tr = exp("].map(at);
+    expect(order.every((i) => i >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(at("csClouds( q")).toBeGreaterThan(order[1]);
+    e.dispose();
+  });
+});

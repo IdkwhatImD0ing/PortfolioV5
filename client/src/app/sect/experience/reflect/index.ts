@@ -14,7 +14,7 @@ import { Frustum, Matrix4, Sphere, Vector2, Vector3, type Object3D, type Perspec
 import type { LoadedSet, PondReflection } from "../assets";
 import { SECT_MIRROR, SOFT_DEPTH, type WaterUniforms } from "../materials";
 import { isolateForReflection, type ReflectView } from "./isolate";
-import { REFLECT, type ReflectTier } from "./plan";
+import { PondReuse, REFLECT, type ReflectTier } from "./plan";
 import { PondReflector, type PondImage } from "./pond";
 import { MirrorProbe } from "./probe";
 import type { SpanTimer } from "./timer";
@@ -72,6 +72,10 @@ export class SectReflections {
   private readonly viewProj = new Matrix4();
   private readonly mirrorAt = new Vector3();
   private readonly mirrorSphere = new Sphere();
+  /** Camera and projection matrices at the last update that found the pond's area drawn (rest or motion). */
+  private readonly lastPose = new Float64Array(32);
+  private hasPose = false;
+  private readonly reuse = new PondReuse();
   /** GPU time of the passes (?debug=1 only). */
   timer: SpanTimer | null = null;
   /** Inspection switches (?debug=1): either pass off. */
@@ -109,7 +113,12 @@ export class SectReflections {
     }
     // Away from the mirror's area the targets give their GPU memory back; a later visit captures again.
     if (!loaded && st.allocated) this.release();
-    if (!pond) return st;
+    if (!pond) {
+      this.reuse.invalidate();
+      this.hasPose = false;
+      return st;
+    }
+    const still = this.settlePose(f.camera);
     const mirror = pond.mirror;
     this.viewProj.multiplyMatrices(f.camera.projectionMatrix, f.camera.matrixWorldInverse);
     this.frustum.setFromProjectionMatrix(this.viewProj);
@@ -125,7 +134,7 @@ export class SectReflections {
         : d < REFLECT.mirror.maxDistance;
       const signature = near ? `${f.sets.map((s) => (s.drawn ? s.id : "")).join(",")}|${f.quality}` : "";
       const sched = this.probe.schedule;
-      face = sched.next(f.now, near, signature, f.dt, f.snap === true);
+      face = sched.next(f.now, near, signature, f.dt, f.snap === true, !still);
       st.settling = sched.face >= 0 || face >= 0 || (sched.complete && sched.fade < 1);
     }
     let img: PondImage | null = null;
@@ -133,7 +142,18 @@ export class SectReflections {
       f.gl.getDrawingBufferSize(this.drawing);
       img = this.planar.aim(f.camera, { level: pond.level, min: pond.water.min, max: pond.water.max }, this.drawing);
     }
-    if (face >= 0 || img) {
+    // Medium at rest reuses the last image two idle renders in three (High renders every frame).
+    let drawPond = false;
+    if (img) {
+      const key = `${f.sets.map((s) => (s.drawn ? s.id : "")).join(",")}|${f.quality}|${this.drawing.x}x${this.drawing.y}|${img.texels}`;
+      drawPond = this.reuse.shouldRender(key, still, this.tier === "mid");
+    } else {
+      this.reuse.invalidate();
+    }
+    if (img && !drawPond && face < 0) {
+      this.bindPond(pond, img, f.time);
+      this.applyMirror(pond);
+    } else if (face >= 0 || drawPond) {
       const t0 = performance.now();
       st.allocated = true;
       // Matrices once for both passes (three would update the whole scene graph for each).
@@ -152,13 +172,15 @@ export class SectReflections {
           }
         }
         this.applyMirror(pond);
-        if (img) {
+        if (img && drawPond) {
           const restore = isolateForReflection(f.scene, this.view(f.sets, pond, REFLECT.pond.view));
           try {
             this.renderPond(f, pond, img);
           } finally {
             restore();
           }
+        } else if (img) {
+          this.bindPond(pond, img, f.time);
         }
       } finally {
         SOFT_DEPTH.uHasDepth.value = hadDepth;
@@ -233,17 +255,37 @@ export class SectReflections {
     } finally {
       this.timer?.end();
     }
+    this.bindPond(pond, img, f.time);
+    this.status.pond = true;
+    this.status.pondTexels = img.texels;
+  }
+
+  /** The water reads the planar image (this frame's, or the last one kept) and its ripples' clock advances. */
+  private bindPond(pond: PondReflection, img: PondImage, time: number): void {
     for (const u of pond.uniforms) {
       u.uHasReflect.value = 1;
       u.tReflect.value = this.planar.target.texture;
       (u.uReflectMatrix.value as Matrix4).copy(img.matrix);
       (u.uReflectClamp.value as Vector4).copy(img.clamp);
       (u.uReflectTexel.value as Vector2).copy(img.texel);
-      u.uWaterTime.value = f.time;
+      u.uWaterTime.value = time;
       this.fed.add(u);
     }
-    this.status.pond = true;
-    this.status.pondTexels = img.texels;
+  }
+
+  /** True when the camera's pose and projection are exactly what they were at the last call. */
+  private settlePose(camera: PerspectiveCamera): boolean {
+    camera.updateMatrixWorld();
+    const a = camera.matrixWorld.elements;
+    const b = camera.projectionMatrix.elements;
+    let same = this.hasPose;
+    for (let i = 0; i < 16; i++) {
+      if (this.lastPose[i] !== a[i] || this.lastPose[16 + i] !== b[i]) same = false;
+      this.lastPose[i] = a[i];
+      this.lastPose[16 + i] = b[i];
+    }
+    this.hasPose = true;
+    return same;
   }
 
   /** Frees both targets' GPU memory (three allocates them again on their next use). */
@@ -254,6 +296,7 @@ export class SectReflections {
     this.planar.target.dispose();
     this.probe.target.dispose();
     this.status.allocated = false;
+    this.reuse.invalidate();
     // update() returns early from here on, so the debug status says now that the capture is gone.
     this.status.complete = false;
     this.status.fade = 0;

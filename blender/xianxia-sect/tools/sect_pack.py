@@ -86,6 +86,7 @@ import argparse
 import concurrent.futures as cf
 import glob
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -1640,6 +1641,27 @@ def full_meta_note(meta, a):
     return meta
 
 
+def manifest_revs(man, folder):
+    """{listed file: first 16 hex of the sha256 of its bytes in `folder`} for every file the page fetches through
+    the manifest (data files, detail texture, flyer, global and chunk GLBs, low copies too). The page fetches a
+    file with a rev as <file>?v=<rev>, which the host may cache for a year: a changed file must change its rev."""
+    names = [man[k] for k in ("camera", "meta", "clouds", "flyer", "flyerPath", "detail", "water") if man.get(k)]
+    names += man["global"] + (man["globalLow"] or [])
+    for c in man["chunks"]:
+        names += c["files"] + (c["filesLow"] or [])
+    revs = {}
+    for n in names:
+        with open(os.path.join(folder, n), "rb") as fh:
+            data = fh.read()
+        if n.endswith(".json"):
+            # install_full writes JSON in text mode, which gives CRLF on Windows; git and the host keep LF
+            data = data.replace(b"
+", b"
+")
+        revs[n] = hashlib.sha256(data).hexdigest()[:16]
+    return revs
+
+
 def install_full(stage, man, a):
     """Copies the staged set and the data files into the client folder; removes packed files no longer listed."""
     os.makedirs(FULL_CLIENT, exist_ok=True)
@@ -1665,6 +1687,8 @@ def install_full(stage, man, a):
         else:
             shutil.copyfile(s_, d_ + ".part")
         os.replace(d_ + ".part", d_)
+    # the revs are of the files as installed (meta.json gets its note above), so write them last
+    man["rev"] = manifest_revs(man, FULL_CLIENT)
     with open(os.path.join(FULL_CLIENT, "manifest.json.part"), "w", encoding="utf-8") as fh:
         json.dump(man, fh, indent=1)
     os.replace(os.path.join(FULL_CLIENT, "manifest.json.part"), os.path.join(FULL_CLIENT, "manifest.json"))

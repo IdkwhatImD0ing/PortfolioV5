@@ -324,6 +324,30 @@ export function rangeWeight(p: Vec3, areas: readonly RangeArea[], look: RangeLoo
   return w;
 }
 
+/**
+ * How far past every area's fade a point is: the smallest, over the areas, of (distance to the
+ * area - footprint - pad - fade); a huge number with no areas. Mirrors sectRangeMargin. Positive
+ * means rangeWeight is exactly 1 there. Tree cards compute it per vertex: distance to a point is
+ * convex, so its value interpolated across a triangle can fall short of the true one only by the
+ * triangle's sag (edge^2 / 8 / radius: about 1.4 m for a 20 m edge on a 35 m radius), which
+ * CARD_RANGE_MARGIN covers.
+ */
+export function rangeMargin(p: Vec3, areas: readonly RangeArea[], look: RangeLook = RANGE_LOOK): number {
+  let m = 1e9;
+  for (const [x, y, z, r] of packRangeAreas(areas, look)) {
+    if (r <= 0) continue;
+    m = Math.min(m, Math.hypot(p[0] - x, p[1] - y, p[2] - z) - (r + look.areas.fade));
+  }
+  return m;
+}
+
+/**
+ * Metres of margin (rangeMargin, interpolated across a card) from which a card pixel skips the
+ * per-pixel area loop and takes the range weight as exactly 1. Well above the sag the interpolation
+ * can lose (see rangeMargin), so no pixel that was inside a fade is ever skipped.
+ */
+export const CARD_RANGE_MARGIN = 4;
+
 /** The grade's parameters on foliage with range weight w (0 = the stops' grade, 1 = the range's). */
 export function foliageGradeParams(
   w: number,
@@ -519,6 +543,26 @@ export function flattenPuff(p: CloudPuff, opening: readonly Vec3[] = [], look: R
 
 // ---------------------------------------------------------------------------------------------
 // GLSL
+
+/**
+ * For a tree card's vertex shader: `uniform vec4 uSectAreas[16]` and `float sectRangeMargin( vec3 p )`
+ * (rangeMargin's twin). The fragment shader reads the interpolated margin and runs sectRangeW only
+ * near an area (materials.ts patchMaterial).
+ */
+export function rangeMarginGlsl(look: RangeLook = RANGE_LOOK): string {
+  return /* glsl */ `
+uniform vec4 uSectAreas[ ${RANGE_MAX_AREAS} ];
+float sectRangeMargin( vec3 p ) {
+  float m = 1e9;
+  for ( int i = 0; i < ${RANGE_MAX_AREAS}; i++ ) {
+    vec4 a = uSectAreas[ i ];
+    if ( a.w <= 0.0 ) break;
+    m = min( m, length( p - a.xyz ) - ( a.w + ${glslFloat(look.areas.fade)} ) );
+  }
+  return m;
+}
+`;
+}
 
 /** `uniform vec4 uSectAreas[16]` and `float sectRangeW( vec3 p )` (rangeWeight's twin). */
 export function rangeGlsl(look: RangeLook = RANGE_LOOK): string {

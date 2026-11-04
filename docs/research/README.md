@@ -21,6 +21,8 @@ holds a list of pages with their URL, title and quoted excerpts.
 | `voice-platforms/retell-vs-elevenlabs-agents.md` | April 2026 comparison of Retell AI and ElevenLabs Agents for this voice agent, including how hard a move would be. |
 | `voice-platforms/retell-vs-elevenlabs-agents.json` | The raw research run behind that report, with per-field reasoning and sources. |
 | `visual-audit-2026-09.md` | Design audit of the live site (art3m1s.me), September 24-25, 2026, with ranked fixes. |
+| `low-compute-devices.md` | November 2026 research on running the sect fly-through on weaker devices without visible quality loss: ranked fixes, each checked against the code. |
+| `low-compute-devices-2026-11.json` | The raw output behind that report: code maps, live-site counts per tier, web techniques, candidates and reviewer verdicts. |
 | `guardrail-handoff.md` | Notes from the `server/guardrail.py` evaluation: traps hit, known weaknesses, open decisions. Its branch and PR #19 refer to the old PortfolioV4 repo. |
 
 The fact-audit, devpost and voice-platform files were carried over from

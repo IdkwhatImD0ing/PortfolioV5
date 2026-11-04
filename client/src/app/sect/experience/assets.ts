@@ -44,7 +44,7 @@ import { isCutoutCard } from "@/lib/sect/card-shading";
 import { detailWanted, rockFarOctaves } from "@/lib/sect/detail";
 import { FORMATION_DOME, formationShafts, formationTier, isFormationLinkBeam, type FormationTierName } from "@/lib/sect/formation";
 import { applyLook, lookFogConstants, SECT_LOOK } from "@/lib/sect/look";
-import { parseCameraData, parseClouds, parseFlyerPath, parseManifest, parseMeta, resolveAsset } from "@/lib/sect/parse";
+import { fetchUrl, parseCameraData, parseClouds, parseFlyerPath, parseManifest, parseMeta, resolveAsset } from "@/lib/sect/parse";
 import { combinedProgress, isGzip, meshoptWorkerCount, type Tier } from "@/lib/sect/runtime";
 import type { CameraData, ChunkInfo, CloudPuff, FlyerPath, SectManifest, SectMeta, Vec3, Waterfall } from "@/lib/sect/types";
 import { discFromBox, discFromTriangles, dominantFlatLevel, flatLevelBounds, groundedFalls, mistSpots, quadFromCorners, type WaterSurface } from "@/lib/sect/water";
@@ -133,10 +133,14 @@ export async function withRetries<T>(fn: () => Promise<T>, delays: readonly numb
   }
 }
 
-async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
+/**
+ * A JSON file. `revisioned`: the URL carries ?v=<fingerprint> (lib/sect/parse.ts fetchUrl), so the
+ * browser may keep it and use it as is; without one the file is checked with the server every time.
+ */
+async function fetchJson(url: string, signal?: AbortSignal, revisioned = false): Promise<unknown> {
   return withRetries(
     async () => {
-      const res = await fetch(url, { cache: "no-cache", signal });
+      const res = await fetch(url, revisioned ? { signal } : { cache: "no-cache", signal });
       if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
       return res.json();
     },
@@ -148,12 +152,14 @@ async function fetchJson(url: string, signal?: AbortSignal): Promise<unknown> {
 
 export async function loadSectData(base: string, wantFlyer: boolean, signal?: AbortSignal): Promise<SectData> {
   const manifest = parseManifest(await fetchJson(resolveAsset(base, "manifest.json"), signal));
+  // A file with a fingerprint in the manifest is fetched under a URL that changes with its bytes.
+  const fileJson = (file: string) => fetchJson(fetchUrl(base, file, manifest.rev), signal, manifest.rev?.[file] !== undefined);
   const [cameraRaw, metaRaw, flyerRaw, cloudsRaw] = await Promise.all([
-    fetchJson(resolveAsset(base, manifest.camera), signal),
-    fetchJson(resolveAsset(base, manifest.meta), signal),
-    wantFlyer && manifest.flyer && manifest.flyerPath ? fetchJson(resolveAsset(base, manifest.flyerPath), signal).catch(() => null) : Promise.resolve(null),
+    fileJson(manifest.camera),
+    fileJson(manifest.meta),
+    wantFlyer && manifest.flyer && manifest.flyerPath ? fileJson(manifest.flyerPath).catch(() => null) : Promise.resolve(null),
     // Clouds are decoration: a missing or broken file leaves the sky clear rather than failing.
-    manifest.clouds ? fetchJson(resolveAsset(base, manifest.clouds), signal).catch(() => null) : Promise.resolve(null),
+    manifest.clouds ? fileJson(manifest.clouds).catch(() => null) : Promise.resolve(null),
   ]);
   return {
     base,
@@ -844,7 +850,7 @@ export function createWorldContext(data: SectData, sky: Texture | null, opts: Co
   for (const h of meta.hotspots) hotspotMap.set(h.id, { ...h, uniform: { value: 0 } });
   const detail =
     manifest.detail && detailWanted(manifest.detail, opts)
-      ? loadDetailTexture(resolveAsset(data.base, manifest.detail), {
+      ? loadDetailTexture(fetchUrl(data.base, manifest.detail, manifest.rev), {
           time: waterfallMaterial.uniforms.uTime,
           sunDir,
           rockOctaves: rockFarOctaves(tier),
@@ -1176,13 +1182,15 @@ export async function loadSet(
   opts: SetLoadOptions = {},
 ): Promise<LoadedSet> {
   const { data } = ctx;
+  // `urls` (plain) key the progress callbacks; `fetchUrls` carry the fingerprint the host caches by.
   const urls = files.map((f) => resolveAsset(data.base, f));
+  const fetchUrls = files.map((f) => fetchUrl(data.base, f, data.manifest.rev));
   const decorative = (f: string) => /_trees|_water|(^|\/)water\.glb/i.test(f);
   const retries = opts.retries ?? (id === "global" ? FILE_RETRY_MS : []);
   let bytes = 0;
   const results = await Promise.all(
     urls.map((url, i) =>
-      withRetries(() => loadGlb(url, opts.signal, opts.onBytes ? opts.onBytes(url) : () => {}, opts.calm), retries, opts.signal, files[i])
+      withRetries(() => loadGlb(fetchUrls[i], opts.signal, opts.onBytes ? opts.onBytes(url) : () => {}, opts.calm), retries, opts.signal, files[i])
         .then((r) => {
           bytes += r.bytes;
           opts.onFileDone?.(url);
@@ -1265,7 +1273,7 @@ export async function loadFlyer(ctx: WorldContext, signal?: AbortSignal): Promis
   const { manifest, base } = ctx.data;
   if (!manifest.flyer || !ctx.data.flyerPath) return null;
   try {
-    const { gltf } = await loadGlb(resolveAsset(base, manifest.flyer), signal, () => {});
+    const { gltf } = await loadGlb(fetchUrl(base, manifest.flyer, manifest.rev), signal, () => {});
     const r = prepareScene(gltf.scene, {
       exposure: ctx.exposure,
       shadows: false,

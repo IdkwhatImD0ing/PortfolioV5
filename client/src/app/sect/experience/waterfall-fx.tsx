@@ -68,7 +68,7 @@ import {
   type FallFoot,
 } from "@/lib/sect/water";
 import type { LoadedSet } from "./assets";
-import { getNoiseTexture, SOFT_DEPTH } from "./materials";
+import { enableFogEncodeOnce, getNoiseTexture, SOFT_DEPTH } from "./materials";
 import type { SectStore } from "./store";
 
 const f = glslFloat;
@@ -159,7 +159,7 @@ function skirtMaterial(time: IUniform<number>, feet: number, sunDir: readonly [n
   uniforms.tNoise = { value: getNoiseTexture() };
   uniforms.tFoam = { value: null };
   uniforms.uFootW = { value: new Float32Array(Math.max(feet, 1)) };
-  return new ShaderMaterial({
+  const material = new ShaderMaterial({
     name: "sect.waterfall.skirt",
     transparent: true,
     depthWrite: false,
@@ -255,6 +255,8 @@ void main() {
 }
 `,
   });
+  enableFogEncodeOnce(material);
+  return material;
 }
 
 // ---------------------------------------------------------------------------------------------

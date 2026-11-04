@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ATMOS, atmosFeatures, cloudCover, cloudDeckPoint, holdAt, holdBlur, holdFocusStep, nearestHold } from "./post";
-import { tierQuality } from "./runtime";
+import { ATMOS, atmosFeatures, cloudCover, cloudDeckPoint, holdAt, holdBlur, holdFocusStep, nearestHold, planPipeline } from "./post";
+import { degradeQuality, tierQuality } from "./runtime";
 
 describe("atmosFeatures", () => {
   it("gives High both passes, Medium the cloud shade only, Low nothing", () => {
@@ -106,5 +106,57 @@ describe("bloom", () => {
     expect(read([0.641, 0.604, 0.539])).toBeLessThan(0.8);
     expect(read([0.862, 0.587, 0.415])).toBeLessThan(0.85);
     expect(read([0.854, 0.471, 0.235])).toBeLessThan(0.85);
+  });
+});
+
+describe("planPipeline", () => {
+  const high = { msaa: 4, bloom: true, cloudShadows: true, holdFocus: true };
+
+  it("changes nothing when the chain is as wanted", () => {
+    expect(planPipeline(high, high)).toEqual({ rebuild: false, live: high, settleAtRest: false });
+  });
+
+  it("takes MSAA steps in place, and drops the hold focus with the last of them", () => {
+    const two = planPipeline(high, { ...high, msaa: 2 });
+    expect(two.rebuild).toBe(false);
+    expect(two.live.msaa).toBe(2);
+    expect(two.settleAtRest).toBe(false);
+    const none = planPipeline(high, { ...high, msaa: 0, holdFocus: false });
+    expect(none).toEqual({ rebuild: false, live: { ...high, msaa: 0, holdFocus: false }, settleAtRest: true });
+  });
+
+  it("switches bloom and the cloud shade off in place, to be rebuilt at the next rest", () => {
+    const plan = planPipeline(high, { msaa: 0, bloom: false, cloudShadows: false, holdFocus: false });
+    expect(plan.rebuild).toBe(false);
+    expect(plan.live).toEqual({ msaa: 0, bloom: false, cloudShadows: false, holdFocus: false });
+    expect(plan.settleAtRest).toBe(true);
+  });
+
+  it("switches a pass back on in place while it is still built", () => {
+    const stepped = { msaa: 0, bloom: false, cloudShadows: false, holdFocus: false };
+    const back = planPipeline(high, { ...stepped, bloom: true, cloudShadows: true });
+    expect(back.rebuild).toBe(false);
+    expect(back.live.bloom).toBe(true);
+    expect(back.live.cloudShadows).toBe(true);
+  });
+
+  it("asks for a rebuild when the wanted chain has a pass the built one lacks (a climb)", () => {
+    const built = { msaa: 0, bloom: false, cloudShadows: false, holdFocus: false };
+    expect(planPipeline(built, { ...built, bloom: true, cloudShadows: true }).rebuild).toBe(true);
+    expect(planPipeline({ ...built, msaa: 2 }, high).rebuild).toBe(true);
+  });
+
+  it("follows a real ladder walk from High without ever rebuilding on the way down", () => {
+    const top = tierQuality("high", 1);
+    const built = { msaa: top.msaa, bloom: top.bloom, ...atmosFeatures(top, top) };
+    let q = top;
+    for (let i = 0; i < 12; i++) {
+      const next = degradeQuality(q, 1);
+      if (!next) break;
+      q = next;
+      const want = { msaa: q.msaa, bloom: q.bloom, ...atmosFeatures(top, q) };
+      expect(planPipeline(built, want).rebuild).toBe(false);
+    }
+    expect(q.bloom).toBe(false);
   });
 });

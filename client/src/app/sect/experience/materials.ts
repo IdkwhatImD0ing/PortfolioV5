@@ -38,16 +38,18 @@ import {
   type IUniform,
   type Object3D,
 } from "three";
-import { cardAlphaKind, cardAlphaMapGlsl, cardAlphaTestGlsl, cardRimGlsl, cardSpriteBoostGlsl, cardViewFadeGlsl, isCutoutCard } from "@/lib/sect/card-shading";
+import { cardAlphaKind, cardAlphaMapGlsl, cardAlphaTestGlsl, cardRimGlsl, cardSpriteBoostGlsl, cardTwigApplyGlsl, cardViewFadeGlsl, isCutoutCard } from "@/lib/sect/card-shading";
 import { DETAIL_NOISE, detailApplyGlsl, detailClass, detailGlsl, detailProgramKey, detailVertexGlsl, type DetailClass } from "@/lib/sect/detail";
 import { domeGlsl } from "@/lib/sect/formation";
 import {
   AGX_PUNCHY_GLSL,
   fogChunks,
+  fogDefines,
   fogLibrary,
   glslFloat,
   glslVec3,
   hexToLinear,
+  SECT_FOG_ONCE_DEFINE,
   SCREEN_ADD_GLSL,
   SCREEN_CLIP_GLSL,
   type FogConstants,
@@ -56,6 +58,7 @@ import { heartMirrorGlsl, MIRROR_PART } from "@/lib/sect/heart-mirror";
 import { gradeGlsl, SECT_LOOK, treeLiftGlsl, treeShadeGlsl, unitTint, type SectLook } from "@/lib/sect/look";
 import { clumpField, groundNoise, tilingNoise } from "@/lib/sect/noise";
 import {
+  CARD_RANGE_MARGIN,
   createBuiltGrid,
   foliageGlsl,
   foliageGradeStatements,
@@ -64,6 +67,7 @@ import {
   markBuiltTriangles,
   packRangeAreas,
   rangeGlsl,
+  rangeMarginGlsl,
   rockGlsl,
   rockGradeStatements,
   type BuiltGrid,
@@ -77,6 +81,9 @@ import { REFLECT } from "./reflect/plan";
 
 let installedKey = "";
 
+/** three's own colour-space step, kept so installFog can guard it again with a new key. */
+const THREE_COLORSPACE_FRAGMENT = ShaderChunk.colorspace_fragment;
+
 /** Swaps three's fog shader chunks for the height haze. Call before any material compiles. */
 export function installFog(c: FogConstants): void {
   const key = JSON.stringify(c);
@@ -87,7 +94,28 @@ export function installFog(c: FogConstants): void {
   target.fog_vertex = chunks.fog_vertex;
   target.fog_pars_fragment = chunks.fog_pars_fragment;
   target.fog_fragment = chunks.fog_fragment;
+  // Where the site's fog chunk follows (SECT_FOG_FOLLOWS, set in fog_pars_fragment) it encodes
+  // once at the end, so three's encode before it is skipped. Shaders without the chunk keep it.
+  target.colorspace_fragment = `#ifndef SECT_FOG_FOLLOWS
+${THREE_COLORSPACE_FRAGMENT}
+#endif
+`;
   installedKey = key;
+}
+
+/**
+ * Opts a material whose fragment shader goes
+ * on to `#include <fog_fragment>` into the one-conversion fog path on the Low tier (see fogChunks). Gives it
+ * a linear copy of the scene fog's colour (three only uploads fogColor, already encoded there),
+ * refreshed each draw from scene.fog, which twilight changes.
+ */
+export function enableFogEncodeOnce(material: ShaderMaterial): void {
+  const fogLinear = new Color();
+  material.defines = { ...material.defines, [SECT_FOG_ONCE_DEFINE]: "" };
+  material.uniforms.uSectFogLinear = { value: fogLinear };
+  material.onBeforeRender = (_renderer, scene) => {
+    if (scene.fog) fogLinear.copy(scene.fog.color);
+  };
 }
 
 /**
@@ -737,8 +765,13 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
   // The reflective class is read when the shader compiles (and by the cache key), so a material
   // tagged after loading picks it up at its next compile (needsUpdate).
   const surfaceNow = () => (grade && !water ? sectSurfaceOf(mat) : null);
+  // An alpha-tested tree card (sprite, needle or twig): its grade runs after the cut-out test, so
+  // the pixels the test throws away are never graded, and its range weight comes from the vertices
+  // wherever no area is near (see below). Read at compile time, like the reflective class.
+  const cardGradeNow = () => foliage && !detail && (isCutoutCard(mat.userData) || (mat as MeshBasicMaterial).alphaTest > 0);
   mat.onBeforeCompile = (shader) => {
     const surface = surfaceNow();
+    const cardGrade = cardGradeNow();
     if (hl) {
       shader.uniforms.uSectHighlight = hl;
       shader.uniforms.uSectHover = { value: hover };
@@ -754,14 +787,18 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
     if (needWorld) {
       // Paving also passes its slab coordinates (uv1) on (detail.ts detailVertexGlsl; empty for rock and ground).
       const dv = detail ? detailVertexGlsl(detail.kind) : { pars: "", main: "" };
+      // A card also passes how far its vertices lie past every area's fade (range-look.ts rangeMargin):
+      // the fragment shader skips the per-pixel area loop where that is far enough.
+      const cardPars = cardGrade ? `varying float vSectRm;\n${rangeMarginGlsl()}` : "";
+      const cardMain = cardGrade ? "  vSectRm = sectRangeMargin( vSectWorld );\n" : "";
       shader.vertexShader = shader.vertexShader
-        .replace("#include <common>", `#include <common>\nvarying vec3 vSectWorld;\n${dv.pars}`)
-        .replace("#include <project_vertex>", `#include <project_vertex>\n${WORLD_VARYING_VERTEX}${dv.main}`);
+        .replace("#include <common>", `#include <common>\nvarying vec3 vSectWorld;\n${dv.pars}${cardPars}`)
+        .replace("#include <project_vertex>", `#include <project_vertex>\n${WORLD_VARYING_VERTEX}${dv.main}${cardMain}`);
     }
     let fs = shader.fragmentShader;
     const header = `${lit ? TONE_HELPERS(opts.exposure) : ""}${grade ? GRADE_GLSL : ""}${water ? WATER_PARS : ""}${
       hl ? "uniform float uSectHighlight;\nuniform vec3 uSectHover;\n" : ""
-    }${needWorld ? "varying vec3 vSectWorld;\n" : ""}${range ? RANGE_GLSL : ""}${foliage ? FOLIAGE_GLSL : ""}${rock ? ROCK_GLSL : ""}${
+    }${needWorld ? "varying vec3 vSectWorld;\n" : ""}${cardGrade ? "varying float vSectRm;\n" : ""}${range ? RANGE_GLSL : ""}${foliage ? FOLIAGE_GLSL : ""}${rock ? ROCK_GLSL : ""}${
       detail ? detailGlsl(detail.kind) : ""
     }${wet ? WET_GLSL : ""}${tree ? TREE_LIFT_GLSL : ""}${shade ? TREE_SHADE_GLSL : ""}${
       surface === "mirror" ? MIRROR_PARS : ""
@@ -775,17 +812,29 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
       );
     }
     if (grade) {
+      // A card's grade goes after its cut-out test (<alphatest_fragment>: card-shading.ts), so a pixel
+      // the test discards is never graded; the grade has no screen derivatives, which are the
+      // only thing a discard would break. Everything the cut-out uses (alpha, its sharpening by
+      // fwidth) is already worked out by then and does not read the colour. The twig detail
+      // multiply (cardTwigApplyGlsl) follows the grade either way.
+      const gradeAt = cardGrade ? "#include <alphatest_fragment>" : "#include <color_fragment>";
       fs = fs.replace(
-        "#include <color_fragment>",
+        gradeAt,
         [
-          "#include <color_fragment>",
+          gradeAt,
           // The texel before the grade: the detail's mossy-rock test reads it (the grade tames green).
           "  vec3 sectTexel = diffuseColor.rgb / max( diffuse, vec3( 1e-4 ) );",
           // Near pines: their dark needles lifted toward the far cards' level (look.ts treeLiftLinear).
           tree ? "  sectTexel = sectTreeLift( sectTexel );" : "",
           // 1 on the range, 0 at the stops (range-look.ts sectRangeW; rock also 0 under anything
           // built, sectBuilt: stair piers are rock); the detail's range layers read it too.
-          range ? `  float sectRw = sectRangeW( vSectWorld )${rock ? " * ( 1.0 - sectBuilt( vSectWorld ) )" : ""};` : "",
+          // A card far from every area (its vertices' margin, interpolated, is past CARD_RANGE_MARGIN,
+          // more than the interpolation can lose) is on the range: exactly 1, without the area loop.
+          cardGrade
+            ? `  float sectRw = 1.0;\n  if ( vSectRm < ${glslFloat(CARD_RANGE_MARGIN)} ) sectRw = sectRangeW( vSectWorld );`
+            : range
+              ? `  float sectRw = sectRangeW( vSectWorld )${rock ? " * ( 1.0 - sectBuilt( vSectWorld ) )" : ""};`
+              : "",
           // Foliage, mossy rock and lawns on the range keep more of their green; range rock is paler
           // (range-look.ts foliageGradeStatements, rockGradeStatements, groundGradeStatements).
           foliage ? FOLIAGE_GRADE : rock ? ROCK_GRADE : ground ? GROUND_GRADE : "  vec3 sectGraded = sectGrade( sectTexel );",
@@ -832,7 +881,8 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
   };
   mat.customProgramCacheKey = () => {
     const surface = surfaceNow();
-    return surface ? `${key}|surface-${surface}` : key;
+    const k = cardGradeNow() ? `${key}|cardgrade` : key;
+    return surface ? `${k}|surface-${surface}` : k;
   };
   mat.needsUpdate = true;
 }
@@ -942,9 +992,13 @@ export function patchCardMaterial(mat: MeshBasicMaterial, opts: { alphaToCoverag
     fs = kind
       ? fs.replace("#include <alphamap_fragment>", cardAlphaMapGlsl(kind))
       : fs.replace("#include <map_fragment>", `#include <map_fragment>\n${cardSpriteBoostGlsl()}\n${cardViewFadeGlsl()}`);
-    shader.fragmentShader = fs
+    fs = fs
       .replace("#include <alphatest_fragment>", cardAlphaTestGlsl(kind))
       .replace("#include <opaque_fragment>", `${cardRimGlsl()}\n#include <opaque_fragment>`);
+    // The twig's colour detail goes on after the grade, which patchMaterial puts right after the
+    // cut-out test (the grade is not linear, so the order matters).
+    if (kind === "twig") fs = fs.replace("#include <aomap_fragment>", `${cardTwigApplyGlsl()}\n#include <aomap_fragment>`);
+    shader.fragmentShader = fs;
   };
   // Read at compile time, so the key follows setCardAlphaMode.
   mat.customProgramCacheKey = () => `${prevKey}|card-${kind ?? "sprite"}|${mat.alphaToCoverage ? "a2c" : "at"}`;
@@ -1447,7 +1501,7 @@ ${SCREEN_DITHER_GLSL}
 // Waterfalls: falling streaks from 3D noise in world space (stand-in meshes have no UVs)
 
 export function createWaterfallMaterial(color: string, opacity = 0.85): ShaderMaterial {
-  return new ShaderMaterial({
+  const material = new ShaderMaterial({
     name: "sect.waterfall",
     transparent: true,
     depthWrite: false,
@@ -1503,6 +1557,8 @@ void main() {
 }
 `,
   });
+  enableFogEncodeOnce(material);
+  return material;
 }
 
 export interface SheetOptions {
@@ -1549,7 +1605,7 @@ export function createWaterfallSheetMaterial(
   uniforms.tNoise = { value: getNoiseTexture() };
   uniforms.uTime = time;
   const f = glslFloat;
-  return new ShaderMaterial({
+  const material = new ShaderMaterial({
     name: "sect.waterfall.sheet",
     transparent: true,
     depthWrite: false,
@@ -1675,6 +1731,8 @@ void main() {
 }
 `,
   });
+  enableFogEncodeOnce(material);
+  return material;
 }
 
 /** Points a sheet material at its strand texture, or back to flat grey strands (null). */
@@ -1816,16 +1874,23 @@ attribute vec3 iA0;
 attribute vec3 iA1;
 attribute vec3 iA2;
 attribute float iDensity;
+uniform vec3 uFogColor;
 varying vec2 vUv;
 varying vec3 vR;
 varying vec3 vU;
 varying vec3 vF;
-varying float vDist;
 varying float vDepth;
 varying float vFade;
 varying float vWf;
 varying float vViewZ;
 varying vec2 vSeed;
+// The haze, the cloud layer and the sun glow along the ray to the puff's centre: the same for every
+// pixel of a sprite, so they are worked out once per vertex here, not per pixel in the fragment.
+varying vec3 vHaze;
+varying float vHazeMix;
+varying float vCloudMix;
+varying float vToward;
+${fogLibrary(fog)}
 void main() {
   vec3 toC = iCenter - cameraPosition;
   float dist = max( length( toC ), 1e-3 );
@@ -1846,8 +1911,11 @@ void main() {
   vR = r;
   vU = u;
   vF = f;
-  vDist = dist;
   vWf = wf;
+  vHazeMix = 1.0 - exp( - sectHazeDepth( cameraPosition.y, f.y, dist ) );
+  vHaze = sectHazeColor( uFogColor, f );
+  vCloudMix = 1.0 - exp( - sectCloudDepth( cameraPosition.y, f.y, dist ) );
+  vToward = pow( max( dot( f, SECT_SUN_DIR ), 0.0 ), 5.0 );
   // Optical depth through the middle: Blender's normalised density times the chord length.
   vDepth = iDensity * wf * 2.0;
   vFade = smoothstep( 0.55 * wf, 1.6 * wf, dist );
@@ -1866,21 +1934,23 @@ uniform float uTime;
 uniform vec3 uLit;
 uniform vec3 uShade;
 uniform vec3 uRim;
-uniform vec3 uFogColor;
 uniform float uOpacity;
 uniform float uSoft;
 varying vec2 vUv;
 varying vec3 vR;
 varying vec3 vU;
 varying vec3 vF;
-varying float vDist;
 varying float vDepth;
 varying float vFade;
 varying float vWf;
 varying float vViewZ;
 varying vec2 vSeed;
+varying vec3 vHaze;
+varying float vHazeMix;
+varying float vCloudMix;
+varying float vToward;
 ${SOFT_PARS}
-${fogLibrary(fog)}
+${fogDefines(fog)}
 void main() {
   float q = length( vUv );
   if ( q > 1.0 || vFade < 0.003 ) discard;
@@ -1899,12 +1969,9 @@ void main() {
   float sun = dot( nrm, SECT_SUN_DIR ) * 0.5 + 0.5;
   float light = clamp( sun * 0.6 + ( vUv.y * 0.5 + 0.5 ) * 0.45 + ( n - 0.5 ) * 0.5 - 0.08, 0.0, 1.0 );
   vec3 col = mix( uShade, uLit, smoothstep( 0.1, 0.9, light ) );
-  float toward = pow( max( dot( vF, SECT_SUN_DIR ), 0.0 ), 5.0 );
-  col += uRim * toward * ( 1.0 - edge ) * 0.7;
-  float od = sectHazeDepth( cameraPosition.y, vF.y, vDist );
-  col = mix( col, sectHazeColor( uFogColor, vF ), 1.0 - exp( - od ) );
-  float cd = sectCloudDepth( cameraPosition.y, vF.y, vDist );
-  col = mix( col, SECT_CLOUD_FOG, 1.0 - exp( - cd ) );
+  col += uRim * vToward * ( 1.0 - edge ) * 0.7;
+  col = mix( col, vHaze, vHazeMix );
+  col = mix( col, SECT_CLOUD_FOG, vCloudMix );
   gl_FragColor = vec4( col, clamp( alpha * vFade * uOpacity, 0.0, 1.0 ) );
   #include <colorspace_fragment>
 }
@@ -1932,11 +1999,14 @@ export function createMistMaterial(fog: FogConstants, fogColor: string, time: IU
     vertexShader: /* glsl */ `
 attribute vec3 iCenter;
 attribute float iRadius;
+uniform vec3 uFogColor;
 varying vec2 vUv;
 varying float vViewZ;
 varying float vRadius;
-varying vec3 vDir;
-varying float vDist;
+// The haze along the ray to the sprite's centre, the same for every pixel: worked out once per vertex.
+varying vec3 vHaze;
+varying float vHazeMix;
+${fogLibrary(fog)}
 void main() {
   vec3 toC = iCenter - cameraPosition;
   float dist = max( length( toC ), 1e-3 );
@@ -1946,8 +2016,8 @@ void main() {
   vec3 wp = iCenter + ( r * position.x + u * position.y * 0.7 ) * iRadius;
   vUv = position.xy;
   vRadius = iRadius;
-  vDir = f;
-  vDist = dist;
+  vHazeMix = 1.0 - exp( - sectHazeDepth( cameraPosition.y, f.y, dist ) );
+  vHaze = sectHazeColor( uFogColor, f );
   vec4 mv = viewMatrix * vec4( wp, 1.0 );
   vViewZ = mv.z;
   gl_Position = projectionMatrix * mv;
@@ -1957,14 +2027,12 @@ void main() {
 uniform sampler2D tNoise;
 uniform float uTime;
 uniform vec3 uColor;
-uniform vec3 uFogColor;
 varying vec2 vUv;
 varying float vViewZ;
 varying float vRadius;
-varying vec3 vDir;
-varying float vDist;
+varying vec3 vHaze;
+varying float vHazeMix;
 ${SOFT_PARS}
-${fogLibrary(fog)}
 void main() {
   float q = length( vUv );
   if ( q > 1.0 ) discard;
@@ -1972,8 +2040,7 @@ void main() {
   float a = ( 1.0 - smoothstep( 0.15, 1.0, q + ( n - 0.5 ) * 0.4 ) ) * 0.55;
   a *= sectSoftFade( vViewZ, vRadius * 0.6 );
   vec3 col = uColor;
-  float od = sectHazeDepth( cameraPosition.y, vDir.y, vDist );
-  col = mix( col, sectHazeColor( uFogColor, vDir ), 1.0 - exp( - od ) );
+  col = mix( col, vHaze, vHazeMix );
   gl_FragColor = vec4( col, a );
   #include <colorspace_fragment>
 }

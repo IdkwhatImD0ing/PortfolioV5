@@ -59,8 +59,14 @@ export function packPuffs(
 /**
  * Back-to-front order of the packed puffs as seen from cam (farthest first), so alpha blending of
  * overlapping sprites in one instanced draw comes out right. Writes into order and returns it.
+ *
+ * The result is always: farthest first, equal distances in ascending puff index (what a stable
+ * sort of 0..n-1 gives, which is what this used to do). With `warm` set, `order` must hold the
+ * previous result for these same puffs; it is then fixed up by insertion sort, which is cheap
+ * because a camera that moved a little leaves the list nearly sorted. Otherwise the order is
+ * rebuilt from 0..n-1 and sorted in full.
  */
-export function sortFarToNear(packed: Float32Array, cam: Vec3, order: Uint32Array, scratch: Float32Array): Uint32Array {
+export function sortFarToNear(packed: Float32Array, cam: Vec3, order: Uint32Array, scratch: Float32Array, warm = false): Uint32Array {
   const n = order.length;
   for (let i = 0; i < n; i++) {
     const o = i * PUFF_STRIDE;
@@ -68,9 +74,26 @@ export function sortFarToNear(packed: Float32Array, cam: Vec3, order: Uint32Arra
     const dy = packed[o + 1] - cam[1];
     const dz = packed[o + 2] - cam[2];
     scratch[i] = dx * dx + dy * dy + dz * dz;
-    order[i] = i;
+    if (!warm) order[i] = i;
   }
-  order.sort((a, b) => scratch[b] - scratch[a]);
+  if (!warm) {
+    order.sort((a, b) => scratch[b] - scratch[a] || a - b);
+    return order;
+  }
+  for (let i = 1; i < n; i++) {
+    const v = order[i];
+    const dv = scratch[v];
+    let j = i - 1;
+    while (j >= 0) {
+      const u = order[j];
+      const du = scratch[u];
+      // u stays ahead of v when it is farther, or equally far with the lower index.
+      if (du > dv || (du === dv && u < v)) break;
+      order[j + 1] = u;
+      j--;
+    }
+    order[j + 1] = v;
+  }
   return order;
 }
 

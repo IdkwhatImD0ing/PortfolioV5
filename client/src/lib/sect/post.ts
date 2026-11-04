@@ -34,6 +34,46 @@ export function atmosFeatures(top: Quality, now: Quality): AtmosFeatures {
   };
 }
 
+/** What the post chain is built with: the MSAA samples and which passes are in it. */
+export interface PipelineShape extends AtmosFeatures {
+  msaa: number;
+  bloom: boolean;
+}
+
+export interface PipelinePlan {
+  /** The wanted chain has a pass the built one lacks: build a new one (a shader compile). */
+  rebuild: boolean;
+  /**
+   * What to show on the built chain without a rebuild: the wanted MSAA (the composer reallocates
+   * its two buffers, no shader compile) and the passes that are both built and wanted; the others
+   * are switched off (bloom, cloud shade and hold focus each have an "off" that matches a chain
+   * built without them). Only meaningful when `rebuild` is false.
+   */
+  live: PipelineShape;
+  /**
+   * The built chain still holds a pass that is switched off. Replace it with an exact build of the
+   * wanted shape once the camera rests, so the steady-state cost and picture equal a fresh build.
+   */
+  settleAtRest: boolean;
+}
+
+/**
+ * How to take a pipeline built as `built` to `want`. A step down never needs a new shader: the
+ * MSAA change happens in place and a dropped pass is switched off. Anything the built chain lacks
+ * needs a rebuild (the climbs, which the canvas already holds for a rest).
+ */
+export function planPipeline(built: PipelineShape, want: PipelineShape): PipelinePlan {
+  const rebuild = (want.bloom && !built.bloom) || (want.cloudShadows && !built.cloudShadows) || (want.holdFocus && !built.holdFocus);
+  const live: PipelineShape = {
+    msaa: want.msaa,
+    bloom: want.bloom && built.bloom,
+    cloudShadows: want.cloudShadows && built.cloudShadows,
+    holdFocus: want.holdFocus && built.holdFocus,
+  };
+  const settleAtRest = !rebuild && (built.bloom !== want.bloom || built.cloudShadows !== want.cloudShadows || built.holdFocus !== want.holdFocus);
+  return { rebuild, live, settleAtRest };
+}
+
 export const ATMOS = {
   cloudShadow: {
     /** Darkening at the core of a shadow on a sunlit surface (0.16 = 16% darker). */

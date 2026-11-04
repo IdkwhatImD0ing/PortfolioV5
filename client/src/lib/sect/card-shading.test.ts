@@ -4,6 +4,7 @@ import {
   CARD_LOOK,
   cardAlphaKind,
   cardAlphaMapGlsl,
+  cardTwigApplyGlsl,
   cardAlphaTestGlsl,
   cardCoverage,
   cardEdgePx,
@@ -175,7 +176,11 @@ describe("card GLSL", () => {
     expect(g).toContain("2.0 * sectCut.r - 1.0");
     expect(g).toContain(`smoothstep( ${glslFloat(CARD_LOOK.twig.mipNear)}, ${glslFloat(CARD_LOOK.twig.mipFar)}, sectMip )`);
     expect(g).toContain("vSectCardWorld - cameraPosition");
-    expect(g).toContain("diffuseColor.rgb *= mix( 1.0, sectTd, sectTf )");
+    // Kept as a factor here; the grade runs first and cardTwigApplyGlsl multiplies it in after.
+    expect(g).toContain("sectTwigK = mix( 1.0, sectTd, sectTf );");
+    expect(g).not.toContain("diffuseColor.rgb *=");
+    expect(cardTwigApplyGlsl()).toBe("  diffuseColor.rgb *= sectTwigK;");
+    expect(cardAlphaMapGlsl("needle")).not.toContain("sectTwigK");
   });
 
   it("sharpens needle and twig cut-outs and leaves sprites on three's test", () => {

@@ -61,6 +61,7 @@ listed under "Kept beside the code".
 - [`research/README.md`](research/README.md): What background research backs the site's claims? Fact checks, Devpost award checks and raw search results.
 - [`research/voice-platforms/retell-vs-elevenlabs-agents.md`](research/voice-platforms/retell-vs-elevenlabs-agents.md): Should the voice agent stay on Retell or move to ElevenLabs Agents?
 - [`research/visual-audit-2026-09.md`](research/visual-audit-2026-09.md): What did a design audit of the old one-page site find (September 2026)?
+- [`research/low-compute-devices.md`](research/low-compute-devices.md): How can the fly-through run better on weak laptops and phones without losing quality (November 2026)?
 - [`research/guardrail-handoff.md`](research/guardrail-handoff.md): What did the guardrail evaluation learn, and what was left open?
 
 ## History (superseded, kept for the record)

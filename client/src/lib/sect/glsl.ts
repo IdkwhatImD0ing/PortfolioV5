@@ -435,6 +435,13 @@ export interface FogChunks {
   fog_fragment: string;
 }
 
+/**
+ * The define that opts a shader into the one-conversion fog path (see fog_fragment below): it
+ * declares uSectFogLinear (the fog's colour in linear, kept current by enableFogEncodeOnce in
+ * materials.ts).
+ */
+export const SECT_FOG_ONCE_DEFINE = "SECT_FOG_ONCE";
+
 /** Replacements for THREE.ShaderChunk.fog_*; scene.fog only supplies USE_FOG and fogColor. */
 export function fogChunks(c: FogConstants): FogChunks {
   return {
@@ -453,6 +460,13 @@ export function fogChunks(c: FogConstants): FogChunks {
     fog_pars_fragment: /* glsl */ `
 #ifdef USE_FOG
   uniform vec3 fogColor;
+  // Tells the colorspace_fragment guard (installFog) that fog_fragment follows and encodes once.
+  // Not in fogDefines: the flames, fx, life, puff, mist and sky shaders share that but have no
+  // fog_fragment, so they must keep their own encode.
+  #define SECT_FOG_FOLLOWS
+  #ifdef SECT_FOG_ONCE
+    uniform vec3 uSectFogLinear;
+  #endif
   varying float vFogDepth;
   varying vec3 vFogWorldPos;
   #ifdef FOG_EXP2
@@ -472,7 +486,9 @@ ${FOG_FUNCTIONS}
     // three's fogColor arrive encoded, so they are decoded, fogged in linear like everywhere else,
     // clipped keeping their hue (sectScreenClip: no post pass clips or dithers that frame), encoded
     // again and dithered there. The test is a constant
-    // the compiler folds.
+    // the compiler folds. Three's own encode is skipped when this chunk follows it (installFog), so
+    // the colour arrives linear and is encoded once, at the end; a shader that sets SECT_FOG_ONCE
+    // also gets a linear fog colour, saving that decode too.
     // The cloud layer lies at the far end of a ray that sinks into it, with the haze between it and
     // the camera: cloud first, then the haze over both (as on the cloud sea itself, which is hazed
     // the same way). The other order left the foot of a far cliff in the bare, bright cloud colour, a
@@ -483,8 +499,16 @@ ${FOG_FUNCTIONS}
   float sectT = length( sectRd );
   sectRd /= max( sectT, 1e-4 );
   bool sectEncoded = linearToOutputTexel( vec4( 0.5 ) ).r > 0.6;
-  vec3 sectC = sectEncoded ? sectSrgbDecode( gl_FragColor.rgb ) : gl_FragColor.rgb;
-  vec3 sectBase = sectEncoded ? sectSrgbDecode( fogColor ) : fogColor;
+  // three's colour-space step is skipped whenever this chunk follows (SECT_FOG_FOLLOWS, see
+  // installFog), so the colour is still linear here and nothing is decoded per pixel.
+  vec3 sectC = gl_FragColor.rgb;
+  #ifdef SECT_FOG_ONCE
+    // The fog colour comes in linear too (uSectFogLinear).
+    vec3 sectBase = sectEncoded ? uSectFogLinear : fogColor;
+  #else
+    // Three's built-in materials only have fogColor, uploaded encoded on the sRGB screen.
+    vec3 sectBase = sectEncoded ? sectSrgbDecode( fogColor ) : fogColor;
+  #endif
   sectC = mix( sectC, SECT_CLOUD_FOG, 1.0 - exp( - sectCloudDepth( cameraPosition.y, sectRd.y, sectT ) ) );
   sectC = sectAerial( sectC, sectBase, sectRd, sectHazeDepth( cameraPosition.y, sectRd.y, sectT ) );
   gl_FragColor.rgb = sectEncoded ? sectDitherEncoded( sectSrgbEncode( sectScreenClip( sectC ) ), gl_FragCoord.xy ) : sectC;

@@ -300,6 +300,25 @@ best experience" under it.
 chose the settings before the website loads". On the words: "I still think you occasionally overengineer the
 words to include too many words ... seems long for the sake of being long".
 
+### 2026-11-04 · Weaker devices: cut hidden work, not quality
+
+**Decided.** Eleven changes remove work that never shows in the picture: hover frames render at the resting
+30 per second instead of the screen's full rate; cloud puffs work out their fog once per sprite and re-sort
+from the last order; the cloud sea draws after the solid world; tree cards skip the area loop away from the
+stops and grade only the pixels they keep; ladder steps down switch MSAA and bloom off in place and rebuild
+the post chain at the next rest; the cloud-shadow pass and far rock and lawn detail return early where they
+add nothing; Low converts colour once instead of three times; the area panel drops its backdrop blur; asset
+files are fetched as `<file>?v=<fingerprint>` (the manifest's `rev`) and cached for a year. Medium's pond
+reflection, at rest only, redraws every third idle frame (about 10 per second); High's still redraws every
+frame. Before and after screenshots of 21 views (3 tiers, 7 stops) match within the noise between two
+identical runs. The research and measurements are in
+[`../research/low-compute-devices.md`](../research/low-compute-devices.md).
+
+**Why.** The owner asked for ways "to optimize for lower compute devices, without skimping on quality too
+much", and earlier: "dont priorize optimizations over quality". So only changes that leave every tier's
+picture as it was went in. Removing the HUD plates' blur on Low changes how Low looks, so it waits for the
+owner.
+
 ---
 
 ## Longer write-ups

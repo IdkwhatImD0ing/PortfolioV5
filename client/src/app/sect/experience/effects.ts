@@ -42,7 +42,7 @@ import {
 } from "three";
 import { DITHER_GLSL, type FogConstants } from "@/lib/sect/glsl";
 import { SECT_LOOK } from "@/lib/sect/look";
-import { ATMOS, type AtmosFeatures } from "@/lib/sect/post";
+import { ATMOS, type AtmosFeatures, type PipelineShape } from "@/lib/sect/post";
 import { CloudShadowEffect, glowPrefilter, HoldFocusEffect } from "./post/atmos";
 
 const HUE_CLIP_FRAGMENT = /* glsl */ `
@@ -166,6 +166,30 @@ export class OverlayPass extends Pass {
  */
 export const BLOOM = { luminanceThreshold: 1, luminanceSmoothing: 0.2, intensity: ATMOS.bloom.intensity } as const;
 
+/**
+ * Bloom that can be switched off without a recompile: intensity 0 adds nothing to the frame, and
+ * the luminance pass and mip chain are skipped, so a ladder step down costs no shader compile. The
+ * built chain is replaced by one without bloom once the camera rests (scene.tsx).
+ */
+export class SectBloomEffect extends BloomEffect {
+  private off = false;
+
+  get suspended(): boolean {
+    return this.off;
+  }
+
+  set suspended(off: boolean) {
+    if (off === this.off) return;
+    this.off = off;
+    this.intensity = off ? 0 : BLOOM.intensity;
+  }
+
+  override update(renderer: WebGLRenderer, inputBuffer: WebGLRenderTarget, deltaTime?: number): void {
+    if (this.off) return;
+    super.update(renderer, inputBuffer, deltaTime);
+  }
+}
+
 export interface PipelineOptions {
   msaa: number;
   bloom: boolean;
@@ -185,7 +209,13 @@ export interface Pipeline {
   cloudShadow: CloudShadowEffect | null;
   /** Soft background while resting at a stop (High), or null. */
   holdFocus: HoldFocusEffect | null;
-  bloom: BloomEffect | null;
+  bloom: SectBloomEffect | null;
+  /**
+   * Takes the built chain to `live` without a shader compile (planPipeline): MSAA changes in
+   * place (the composer reallocates its two buffers), and passes not in `live` are switched off.
+   * A pass that was not built cannot be switched on.
+   */
+  setLive(live: PipelineShape): void;
   dispose(): void;
 }
 
@@ -208,7 +238,7 @@ export function createPipeline(
   if (holdFocus) effects.push(holdFocus);
   const cloudShadow = o.atmos?.features.cloudShadows ? new CloudShadowEffect(camera, o.atmos.fog) : null;
   if (cloudShadow) effects.push(cloudShadow);
-  const bloom = o.bloom ? new BloomEffect({ mipmapBlur: true, radius: ATMOS.bloom.radius, ...BLOOM }) : null;
+  const bloom = o.bloom ? new SectBloomEffect({ mipmapBlur: true, radius: ATMOS.bloom.radius, ...BLOOM }) : null;
   if (bloom) {
     glowPrefilter(bloom);
     effects.push(bloom);
@@ -223,6 +253,16 @@ export function createPipeline(
     cloudShadow,
     holdFocus,
     bloom,
+    setLive(live) {
+      // The MSAA 0 step still recompiles the tree card programs (their alpha-to-coverage switch,
+      // assets.ts setCardCoverageOf sets needsUpdate on the card materials). Left as it is: it is
+      // a handful of small programs, and pre-warming the other variant in the shader warm-up was
+      // not judged safe to add here.
+      composer.multisampling = live.msaa;
+      if (bloom) bloom.suspended = !live.bloom;
+      if (cloudShadow) cloudShadow.suspended = !live.cloudShadows;
+      if (holdFocus) holdFocus.suspended = !live.holdFocus;
+    },
     dispose() {
       onDepth(null);
       composer.dispose();

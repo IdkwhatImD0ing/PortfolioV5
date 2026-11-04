@@ -92,7 +92,7 @@ import type { Quality } from "@/lib/sect/runtime";
 import type { SectMeta } from "@/lib/sect/types";
 import { dominantFlatLevel } from "@/lib/sect/water";
 import type { LoadedSet, WorldContext } from "./assets";
-import { getGroundNoiseTexture } from "./materials";
+import { enableFogEncodeOnce, getGroundNoiseTexture } from "./materials";
 import { wake, type SectStore } from "./store";
 
 const f = glslFloat;
@@ -751,6 +751,7 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
       fog: true,
       side: DoubleSide,
     });
+    enableFogEncodeOnce(material);
     material.toneMapped = false;
     return {
       group,
