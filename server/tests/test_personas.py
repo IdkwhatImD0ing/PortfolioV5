@@ -163,8 +163,8 @@ class TestClassicIsUnchanged:
 # 564baed (server 5a990aa, the code live on fastapi-ws). If you mean to change
 # one, change it in prompts.py / guardrail.py and update its hash here.
 CLASSIC_TEXT_SHA256 = {
-    "voice_system_prompt": "4803da6c335a1f15caac48f20181dd180f4c879f1a80c51810e385ed064e3491",
-    "text_system_prompt": "202db96c28358e07336e953406f17e7c35661c51333c822ddf45c031a423e619",
+    "voice_system_prompt": "80dd219c38491eec7e08dc4d55da8afc1982a99850127d209f0876ef14c704ab",
+    "text_system_prompt": "34a0de7ed61ab21b09d8d3fecd978167d76d4a35a089a0eb5c0127ffd508f5ed",
     "begin_sentence": "3d10d1a9b93220d4fa52c3a7d547a1160f24bc3cedfc6c32eb6085bece0270e2",
     "guardrail_refusal_message": "121a6dac7119258eb2950b3306a9d94d43879bf5b7016a4b6b3d9f44628921e5",
     "guardrail_interruption_message": "db660979562d7a5a0273ac4fed3a2a789a711f3b7afd2fa1752ee056e4308bdf",
@@ -416,7 +416,7 @@ SHARED_FACTS = [
     "Currently working at Pinterest as a Software Engineer II (July 2026 - present), building and deploying LLM agent systems.",
     "worked at Scale AI as a forward-deployed Applied AI Engineer (June 2025 - July 2026), shipping multi-agent systems and LLM evaluation frameworks for enterprise customers.",
     "Previously worked at RingCentral (June 2023 - June 2025): joined as a senior AI intern in June 2023, converted to full-time AI Engineer that August, focusing on QA and testing.",
-    "Attended ~50 hackathons and won ~35.",
+    "Entered 59 hackathons and won 36.",
     "Achievements include top placements at UC Berkeley AI Hackathon, HackUTD, LAHacks, and more.",
     "Judged LA Hacks 2026. That's done, so say yes if asked. You don't have its projects or winners on hand.",
     "Separately, confirmed to judge the upcoming LA Hacks AI Hackathon, a different event. It hasn't happened yet, so talk about that one as a future event, never as judging already done.",
@@ -429,7 +429,6 @@ SHARED_FACTS = [
     '"Prepare for the worst, hope for the best."',
     '"Never Split the Difference',
     "Halo, Mass Effect, Stargate",
-    "Next.js 15 + React 19 + shadcn/ui, hosted on Vercel",
     "Pinecone vector database with 52+ project embeddings (text-embedding-3-large)",
     'AdaptEd → "teachme-3p7bw1"',
     'Dispatch AI → "dispatch-ai"',

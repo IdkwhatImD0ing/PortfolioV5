@@ -383,7 +383,7 @@ export const HoverLabel = forwardRef<HTMLDivElement, { label: HotspotLabel | nul
           </p>
           {label.blurb && <p className="mb-0.5 line-clamp-2 text-[0.75rem] leading-snug text-[var(--sect-paper-soft)]">{label.blurb}</p>}
           {note && (
-            <p data-sect-note className="mb-0.5 text-[0.7rem] leading-snug text-[var(--sect-paper-soft)]">
+            <p data-sect-note className="mb-0.5 break-keep text-[0.7rem] leading-snug text-[var(--sect-paper-soft)]">
               {note.zh && (
                 <span lang="zh-Hant" className="sect-zh mr-1.5 tracking-[0.08em] text-[var(--sect-gold)]">
                   {note.zh}

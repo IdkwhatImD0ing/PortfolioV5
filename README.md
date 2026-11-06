@@ -63,8 +63,9 @@ The camera stops at each of these, in order.
 | Layer | Tech | Why |
 |---|---|---|
 | Site | Next.js 15 (App Router), React 19, TypeScript 5, Tailwind v4 | One page that renders the sect, plus the portfolio as text under it for search engines and no-JS browsers |
-| 3D | three.js, React Three Fiber, drei, postprocessing, three-mesh-bvh | The fly-through, clicking things in the scene, and the glow |
+| 3D | three.js, React Three Fiber, postprocessing, three-mesh-bvh | The fly-through, clicking things in the scene, and the glow |
 | Scene build | Blender 5.2 Python, Cycles on a rented cloud GPU, glTF Transform with meshopt, WebP, Git LFS | Every stop is built in Python, with the lighting baked once and loaded in small files |
+| Music | Suno, Web Audio | A track for each stop that crossfades as you fly |
 | Voice and chat | Retell (voice calls), FastAPI, OpenAI Agents SDK, Pusher (page moves and captions) | A streaming agent that can move the page while it talks |
 | Search | Pinecone with `text-embedding-3-large` | Finds a project from a description of what it does |
 | Hosting | Vercel (site), Docker on Cloud Run (backend) | A push to `main` ships the site |
@@ -165,13 +166,22 @@ flowchart TB
   E --> F["Live layers<br/>reflections, banners, water,<br/>clouds, birds, qi motes"]
 ```
 
-1. The whole sect is Python that runs inside Blender: one module per stop, plus shared libraries for buildings, props, trees, rock and water. That is about 70,000 lines, not counting one-off patch scripts. A few free photo textures and two CC BY models, the Divine Condor and the gate's guardian lions, come from outside (see [Credits](#鸣谢--credits)).
+1. The whole sect is Python that runs inside Blender: one module per stop, plus shared libraries for buildings, props, trees, rock and water. That is about 66,000 lines, not counting one-off patch scripts. A few free photo textures and two CC BY models, the Divine Condor and the gate's guardian lions, come from outside (see [Credits](#鸣谢--credits)).
 2. Cycles, Blender's path tracer, bakes the lighting into textures on a rented RTX 5090. A development bake takes about an hour and a half, and the browser only reads the result.
-3. [`sect_pack.py`](blender/xianxia-sect/tools/sect_pack.py) packs each stop into its own glTF files and checks every file before installing it. There are about 60 files, close to 200 MB in all: a full set, plus a lighter set for phones. A visitor downloads only one set, a few stops at a time.
+3. [`sect_pack.py`](blender/xianxia-sect/tools/sect_pack.py) packs each stop into its own glTF files and checks every file before installing it. There are 48 scene files: a full set of about 121 MB and a lighter phone set of about 97 MB. A visitor downloads only one set, a few stops at a time.
 4. three.js shows the baked light and adds live layers on top: real reflections in the Heart-Mirror and its pond, banners that wave, flowing water, drifting clouds, birds, cranes, glowing qi motes and peach petals.
-5. The loading screen picks Low, Medium or High quality from your device, and you can change it. If frames run slow, it steps down. On a desktop, the stop you're at and two on each side stay at full detail.
+5. The loading screen picks Low, Medium or High quality from your device, and you can change it. If frames run slow, it steps down. On a fast desktop, the stop you're at and two on each side stay at full detail. Phones keep one on each side.
 
 Every design choice behind this, with its date and reason, is in the [decisions log](docs/decisions/README.md).
+
+## 音律 · The music
+
+Every stop has its own song. I made the twelve tracks in Suno, one for the loading screen and one for each stop, all instrumental and led by Chinese instruments. They all use the same five notes (D, E, F♯, A and B), so when you fly from one stop to the next the two tracks crossfade without clashing.
+
+- The page plays them with Web Audio and only downloads the track you're at and the next one.
+- Music starts muted until you press Turn on sound. A slider next to the speaker sets the volume.
+- When the voice agent talks, the music drops so you can hear it.
+- The Suno prompts for every track are in [`docs/music/sect-themes/`](docs/music/sect-themes/README.md).
 
 ## 传音 · The voice agent
 

@@ -197,76 +197,80 @@ export const ARCH_HEAD = {
   eyebrow: "HOW THIS SITE WORKS",
   heading: [{ t: "A portfolio that " }, { t: "talks back.", em: true }] as Run[],
   intro:
-    "Ask about a project and the agent looks it up, describes it, and opens it on the page. Retell carries the audio, Deepgram hears you, GPT-5.6 Terra thinks, ElevenLabs talks back. A Python backend runs the agent and tells the browser where to fly.",
+    "I built the whole sect in Blender with Python and baked its light on a rented GPU. Your browser draws it with three.js and plays a different song at each stop. The voice agent runs on Retell and GPT-5.6, and it can fly you to whatever it's talking about.",
 };
 
 export const ARCH_FLOW = [
   {
     k: "01",
-    title: "Mic input",
-    body: "Browser mic → Retell client SDK over WebRTC. Deepgram transcribes the stream as you speak.",
+    title: "Built in code",
+    body: "The sect is Python that runs in Blender 5.2. Each stop has its own script, and shared code builds the halls, cliffs and water. About 66,000 lines in all.",
   },
   {
     k: "02",
-    title: "LLM agent",
-    body: "Retell hands the transcript to a FastAPI backend, where a GPT-5.6 Terra agent (OpenAI Agents SDK) runs with this site's content in context, nine registered tools, and a jailbreak guardrail in front.",
+    title: "Baked and packed",
+    body: "Cycles, Blender's path tracer, bakes all the light and shadow into textures on a rented RTX 5090. Then a script packs each stop into its own compressed files and checks them before they ship.",
   },
   {
     k: "03",
-    title: "Tool calls",
-    body: "Agent emits structured tool calls: display_project(id), display_resume_page(), search_projects(query, ...), and six more.",
+    title: "Drawn live",
+    body: "three.js draws the baked stops in your browser, a few at a time, and adds what a bake can't hold: reflections, waving banners, water, fire, clouds and birds. It picks Low, Medium or High for your device and steps down if frames run slow.",
   },
   {
     k: "04",
-    title: "VoiceBus",
-    body: "navigation.py turns each display_* call into a navigation metadata event; the browser converts it to a bus command. No prop drilling, no router. The sect listens.",
+    title: "A song per stop",
+    body: "Every stop has its own track, made with Suno. They all use the same five notes, so one fades into the next without clashing as you fly. The music dips when the senior disciple speaks.",
   },
   {
     k: "05",
-    title: "Sections react",
-    body: "The sect turns each command into one of its eleven stops and flies there, then opens the section or project it names.",
+    title: "Talks back",
+    body: "Press the talisman to talk, or type instead. Retell runs the call, Deepgram hears you and an ElevenLabs voice answers. A Python server runs a GPT-5.6 agent with 13 tools. It looks up projects in Pinecone, and a guardrail checks each question as it answers.",
   },
   {
     k: "06",
-    title: "Voice reply",
-    body: "The reply streams back through Retell into an ElevenLabs voice while the flight is still landing, so the answer and the view arrive together.",
+    title: "Flies you there",
+    body: "When the agent calls a tool like display_project, the server sends the move to your browser (over Pusher on a voice call). The page fast-travels there under a wash of ink and opens what it asked for.",
   },
 ];
 
 export const ARCH_STACK = [
   {
+    group: "Scene",
+    items: ["Blender 5.2, all Python", "Cycles bake on a rented RTX 5090", "glTF Transform, meshopt, WebP", "Git LFS"],
+  },
+  {
+    group: "Browser",
+    items: ["Next.js 15 + React 19", "three.js + React Three Fiber", "postprocessing + custom GLSL", "three-mesh-bvh for clicks"],
+  },
+  { group: "Music", items: ["12 Suno tracks", "One five-note scale", "Web Audio crossfades"] },
+  {
     group: "Voice",
-    items: ["Retell AI (call runtime, WebRTC)", "Deepgram speech-to-text", "ElevenLabs text-to-speech"],
+    items: ["Retell (voice calls)", "Deepgram speech-to-text", "ElevenLabs text-to-speech", "Pusher (page moves, live captions)"],
   },
   {
     group: "Brain",
     items: [
       "GPT-5.6 Terra (the agent)",
-      "GPT-5.6 Luna (guardrail + call summary)",
-      "OpenAI Agents SDK, nine tools",
-      "Site-grounded system prompt",
+      "GPT-5.6 Luna (guardrail, call summary)",
+      "OpenAI Agents SDK, 13 tools",
+      "Pinecone project search",
     ],
-  },
-  { group: "Frame", items: ["Next.js + React 19", "Three.js + React Three Fiber + GLSL", "A sect modelled and baked in Blender"] },
-  {
-    group: "State",
-    items: ["VoiceBus pub-sub", "URL-driven section anchors", "Per-section local React state"],
   },
 ];
 
 export const ARCH_SNIPPET = `// server: navigation.py turns a display_* tool call into
 // { type: "navigation", page: "project", project_id: "dispatchai" }
+// and voice_events.py sends it on this call's Pusher channel
 
-// browser: metadata event → bus command
-client.on("metadata", ({ metadata }) => {
-  const cmd = metaToNavigationAction(metadata);
-  if (cmd) VoiceBus.emit(cmd);
+// browser: Pusher event → bus command
+subscribeToVoiceEvents(channelId, {
+  onNavigation: (meta) => applyNavigation(meta), // VoiceBus.emit(cmd)
 });
 
-// the sect listens on the same bus and flies there
-VoiceBus.on((cmd) => {
-  const target = commandTarget(cmd); // { area: "forge", item: "project:dispatchai" }
-  if (target) navigate(target);
+// the sect listens on the same bus and travels there by ink
+useVoiceRouting((cmd) => {
+  const t = commandTarget(cmd); // { area: "forge", item: "project:dispatchai" }
+  if (t) travel(t); // ink fast travel, then the reader opens
 });`;
 
 // ---- src/components/sections/personal/personal-section.tsx ---------------------------------

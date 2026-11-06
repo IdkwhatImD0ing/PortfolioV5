@@ -292,17 +292,19 @@ function manualsNote(ms: readonly SteleManual[]): HoverNote {
 
 /**
  * The Ming Sect's five banner brigades (五行旗), one for each part of the site: the formation
- * reader's four Stack groups (content-copy.ts ARCH_STACK) and the core.
+ * reader's five Stack groups (content-copy.ts ARCH_STACK), in the same order. Earth is the mountains
+ * the scene stands on, wood is the frame a hall stands on, metal is bells and gongs (the first of the
+ * eight sounds, 八音), water is speech flowing and fire is the thinking.
  */
 export const STACK_BRIGADES = [
+  { part: "Scene", zh: "厚土", en: "Thick Earth" },
+  { part: "Browser", zh: "巨木", en: "Giant Wood" },
+  { part: "Music", zh: "銳金", en: "Sharp Metal" },
   { part: "Voice", zh: "洪水", en: "Flood Water" },
   { part: "Brain", zh: "烈火", en: "Raging Fire" },
-  { part: "Frame", zh: "巨木", en: "Giant Wood" },
-  { part: "State", zh: "銳金", en: "Sharp Metal" },
-  { part: "core", zh: "厚土", en: "Thick Earth" },
 ] as const;
 
-/** The brigade of a part of the site ("Voice", ..., "core"), or null. */
+/** The brigade of a part of the site ("Scene", ..., "Brain"), or null. */
 export function stackBrigade(part: string): (typeof STACK_BRIGADES)[number] | null {
   return STACK_BRIGADES.find((b) => b.part === part) ?? null;
 }
@@ -318,7 +320,7 @@ const STELES_RECARVED = { id: "dugu-nine-swords" } as const;
  */
 export const HOTSPOT_NOTES: Readonly<Record<string, FixedNote>> = {
   resume: { text: "Verses from Jin Yong's novels" },
-  "arch:6": { zh: "五行旗", text: STACK_BRIGADES.map((b) => `${b.zh} ${b.part === "core" ? "the core" : b.part}`).join(" · ") },
+  "arch:6": { zh: "五行旗", text: STACK_BRIGADES.map((b) => `${b.zh} ${b.part}`).join(" · ") },
   ...Object.fromEntries(
     DIPPER_STARS.map((s, i) => [`role:${i}`, { zh: s.zh, text: `${s.en}, ${s.master}'s star`, needs: DIPPER_AT_MISSION }]),
   ),

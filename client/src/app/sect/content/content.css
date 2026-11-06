@@ -1143,7 +1143,18 @@ img.sc-cover {
 }
 
 .sc-stack {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.sc-stack > .sc-card {
+  flex: 1 1 10.5rem;
+}
+
+@media (max-width: 640px) {
+  .sc-stack > .sc-card {
+    flex-basis: 100%;
+  }
 }
 
 .sc-code {

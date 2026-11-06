@@ -226,12 +226,12 @@ describe("hover notes (a reference a hotspot holds)", () => {
   });
 
   it("names the five banners' brigade of each part of the site on the Stack pillar", () => {
-    // ARCH_STACK's four groups and the core: 洪水 water, 烈火 fire, 巨木 wood, 銳金 metal, 厚土 earth.
-    expect(STACK_BRIGADES.map((b) => b.part)).toEqual([...ARCH_STACK.map((s) => s.group), "core"]);
+    // ARCH_STACK's five groups, one banner each: 厚土 earth, 巨木 wood, 銳金 metal, 洪水 water, 烈火 fire.
+    expect(STACK_BRIGADES.map((b) => b.part)).toEqual(ARCH_STACK.map((s) => s.group));
     expect(stackBrigade("Voice")?.zh).toBe("洪水");
-    expect(stackBrigade("core")?.zh).toBe("厚土");
+    expect(stackBrigade("Scene")?.zh).toBe("厚土");
     expect(stackBrigade("Nope")).toBeNull();
-    expect(hoverNote("arch:6", null)).toEqual({ zh: "五行旗", text: "洪水 Voice · 烈火 Brain · 巨木 Frame · 銳金 State · 厚土 the core" });
+    expect(hoverNote("arch:6", null)).toEqual({ zh: "五行旗", text: "厚土 Scene · 巨木 Browser · 銳金 Music · 洪水 Voice · 烈火 Brain" });
   });
 
   it("keeps every fixed note to about two lines of the label", () => {

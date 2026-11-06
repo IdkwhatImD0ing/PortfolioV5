@@ -191,8 +191,12 @@ export function skillEvidence(group: number, limit = 8): Related[] {
 
 // ---- formation ----------------------------------------------------------------------------------
 
-/** The stack groups behind each flow step (by what the step's text describes). */
-const STEP_STACK: string[][] = [["Voice"], ["Brain"], ["Brain"], ["State"], ["Frame", "State"], ["Voice"]];
+/**
+ * The stack groups behind each flow step (by what the step's text describes), one entry per step:
+ * built and baked (Scene), drawn live (Browser), a song per stop (Music), talks back (Voice and
+ * Brain), flies you there (Voice carries the move, Browser travels). Names match ARCH_STACK groups.
+ */
+const STEP_STACK: string[][] = [["Scene"], ["Scene"], ["Browser"], ["Music"], ["Voice", "Brain"], ["Voice", "Browser"]];
 
 export function stepStack(step: number): { group: string; items: string[] }[] {
   const groups = STEP_STACK[step] ?? [];
