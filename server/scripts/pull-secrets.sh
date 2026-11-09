@@ -5,7 +5,8 @@
 set -euo pipefail
 
 PROJECT="${GCP_PROJECT:-spiritual-storm-469704-n2}"
-SECRETS=(OPENAI_API_KEY RETELL_API_KEY PINECONE_API_KEY OBFUSCATED_WS_PATH)
+SECRETS=(OPENAI_API_KEY RETELL_API_KEY PINECONE_API_KEY OBFUSCATED_WS_PATH MUSIC_SIGNING_SECRET)
+MUSIC_BUCKET="${MUSIC_BUCKET:-art3m1s-sect-music-spiritual-storm-469704-n2}"
 # Pulled when present. The server runs without them (see app_helpers.py).
 OPTIONAL_SECRETS=(PUSHER_SECRET)
 # Kept, never pulled. FireTrace keys are per environment: the production key
@@ -66,6 +67,9 @@ write_env_line() {
     fi
   fi
 }
+
+write_env_line "MUSIC_BUCKET" "$MUSIC_BUCKET"
+echo "  ✓ MUSIC_BUCKET"
 
 for name in "${SECRETS[@]}"; do
   if ! val="$(gcloud secrets versions access latest --secret="$name" --project "$PROJECT" 2>/dev/null)"; then

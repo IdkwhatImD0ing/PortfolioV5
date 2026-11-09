@@ -319,6 +319,29 @@ much", and earlier: "dont priorize optimizations over quality". So only changes 
 picture as it was went in. Removing the HUD plates' blur on Low changes how Low looks, so it waits for the
 owner.
 
+### 2026-11-08 · The soundtrack moves behind the backend and gains timed lyrics
+
+**Decided.** Twelve selected drama and donghua songs replace the loading theme and eleven area themes while
+keeping the existing `loading`, `gate` through `summit` music keys. Prepared MP3s and the eight timed lyric
+files live in private Cloud Storage, not the frontend bundle. FastAPI exposes a metadata manifest and issues
+short-lived capabilities bound to one track and resource type; audio uses HTTP range responses. The browser
+keeps the existing Web Audio loops, memory budget, ducking and equal-power crossfades.
+
+Every track exposes an openable `乐曲 / Music` drawer at the left edge, clear of the map controls.
+It identifies the song, artist, source show and vocal type; instrumentals remain available with a
+no-lyrics note. The eight sung tracks add complete bilingual lyrics and highlight the current
+Chinese and English lines together; source pinyin and word-level karaoke are not displayed. It
+follows the dominant track during a crossfade, remains available when playback is suppressed, and
+hides behind readers, the map, fast travel and page view. Details are in
+[`../music/local-soundtrack.md`](../music/local-soundtrack.md),
+[`../music/backend-soundtrack-delivery.md`](../music/backend-soundtrack-delivery.md) and
+[`../music/karaoke-lyrics.md`](../music/karaoke-lyrics.md).
+
+**Why.** The owner selected one song for each place, supplied the twelve MP3s and character-timed lyric JSON,
+and wanted the files served through the backend instead of shipped as frontend assets. Short-lived capabilities,
+opaque storage names and private storage deter direct static downloads while preserving the existing playback
+quality.
+
 ---
 
 ## Longer write-ups

@@ -2108,6 +2108,9 @@ export default function SectExperience() {
           areas={data?.meta.areas ?? null}
           loading={phase === "data" || phase === "assets" || phase === "loaded"}
           away={fallback !== null || phase === "error"}
+          lyricsHidden={
+            phase === "error" || reader !== null || fallback !== null || mapOpen || travel !== null
+          }
           debug={params.debug}
           extra={showUi && picker ? <QualityButton {...picker} /> : undefined}
           onEngine={setMusic}

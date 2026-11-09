@@ -23,6 +23,7 @@ Runtime secrets live in **GCP Secret Manager** in project `spiritual-storm-46970
 | `OBFUSCATED_WS_PATH` | Hardens the public WebSocket route |
 | `FIRETRACE_API_KEY` | Optional. [FireTrace](https://tracing.art3m1s.me) ingest key; one key per environment (see below) |
 | `PUSHER_SECRET` | Optional, but voice calls need it to move the page and show captions (`voice_events.py`). The app id, key and cluster aren't secret and default in code |
+| `MUSIC_SIGNING_SECRET` | Signs 90-second soundtrack capabilities |
 
 ### How they get loaded
 
@@ -32,6 +33,9 @@ Runtime secrets live in **GCP Secret Manager** in project `spiritual-storm-46970
 | **Cloud Run** | `deploy.sh` passes `--set-secrets` so each one is mounted as an env var by the platform — no `.env` in the container |
 
 The runtime SA `deploy-sa@spiritual-storm-469704-n2.iam.gserviceaccount.com` has `roles/secretmanager.secretAccessor` per-secret.
+
+Soundtrack configuration also uses `MUSIC_BUCKET` in Cloud Run, or `MUSIC_STORAGE_DIR` for local
+prepared files. The runtime account has read-only object access to the private soundtrack bucket.
 
 ### Re-pull secrets
 
@@ -124,6 +128,23 @@ make server                                   # uvicorn :8000
 uv run uvicorn main:app --reload --port 8000
 ```
 
+## Soundtrack delivery
+
+`music.py` serves the metadata manifest, mints origin-checked capabilities, and streams validated
+single-range audio or sanitized timed lyrics. The frontend contains no MP3s.
+
+Prepare and publish media separately from deploying the server:
+
+```bash
+python scripts/prepare_music.py prepare
+python scripts/prepare_music.py upload --bucket "$MUSIC_BUCKET"
+```
+
+The first command requires ffmpeg/ffprobe, writes ignored output under `.music-prepared/`, and updates
+the committed internal manifest. The second uploads immutable objects. See
+[`docs/music/backend-soundtrack-delivery.md`](../docs/music/backend-soundtrack-delivery.md) and
+[`docs/music/soundtrack-assets.md`](../docs/music/soundtrack-assets.md).
+
 ## Deploy
 
 ```bash
@@ -131,7 +152,9 @@ cd server
 bash deploy.sh
 ```
 
-`deploy.sh` builds from source via Cloud Build, deploys to Cloud Run (`us-west1`), wipes any plain env vars from the prior revision, and mounts the secrets above (`FIRETRACE_API_KEY` only when it exists; `PUSHER_SECRET` is required unless you pass `PUSHER=off`).
+`deploy.sh` builds from source via Cloud Build, deploys to Cloud Run (`us-west1`), sets the soundtrack
+bucket, wipes any other plain env vars from the prior revision, and mounts the secrets above
+(`FIRETRACE_API_KEY` only when it exists; `PUSHER_SECRET` is required unless you pass `PUSHER=off`).
 
 - The service is `fastapi-ws-v5` unless `SERVICE_NAME` says otherwise. `fastapi-ws` (behind `portfolio-ws.art3m1s.me`) is the live V4 site's backend, so the script refuses it unless `SHARED_SERVICE_OK=1`.
 - `SERVICE_ACCOUNT=deploy-sa@...` runs a new service as the account `fastapi-ws` uses (it holds the secret access).

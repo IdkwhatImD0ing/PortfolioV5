@@ -18,14 +18,12 @@
  *   the tab is hidden.
  * - Downloads only the current track and the next one along the flight; frees decoded tracks far
  *   from the camera (fewer on phones).
- * - No music.json (or no Web Audio): no music and no toggle, and nothing logged.
+ * - No backend manifest (or no Web Audio): no music and no toggle, and nothing logged.
  *
  * ?debug=1: window.__sect.music.state() (also window.__sectMusic) describes what plays.
  */
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
-  MUSIC_DIR,
-  MUSIC_MANIFEST_URL,
   MUSIC_SAMPLE_RATE,
   activatesAudio,
   areaAtFrame,
@@ -45,9 +43,13 @@ import {
   type Direction,
   type Switcher,
 } from "@/lib/sect/music";
+import { fetchMusicBytes, fetchMusicManifest, fetchTrackLyrics, resolveMusicApiBase } from "@/lib/sect/music-api";
+import type { MusicKey } from "@/lib/sect/music";
+import type { SongLyrics } from "@/lib/sect/lyrics";
 import { readVolume, writeVolume } from "@/lib/sect/volume";
 import { onVideoPlaying, videoPlaying } from "../content/video-watch";
 import { MusicEngine } from "./music-engine";
+import { LyricsPanel } from "./karaoke-lyrics";
 import { SoundToggle } from "./sound-toggle";
 import { isMoving, type SectStore } from "./store";
 
@@ -87,6 +89,7 @@ export function SectMusic({
   areas,
   loading,
   away,
+  lyricsHidden,
   debug,
   extra,
   onEngine,
@@ -98,6 +101,8 @@ export function SectMusic({
   loading: boolean;
   /** The page view (or an error) covers the flight. */
   away: boolean;
+  /** Readers, the map, travel ink and errors cover the soundtrack panel. */
+  lyricsHidden: boolean;
   debug: boolean;
   /** Another control for the sound toggle's place (the graphics button; sound-toggle.tsx). */
   extra?: ReactNode;
@@ -105,6 +110,7 @@ export function SectMusic({
   onEngine?: (engine: MusicEngine | null) => void;
 }) {
   const [engine, setEngine] = useState<MusicEngine | null>(null);
+  const [apiBase, setApiBase] = useState<string | null>(null);
   const onEngineRef = useRef(onEngine);
   onEngineRef.current = onEngine;
   const live = useRef({ store, areas, loading });
@@ -114,15 +120,11 @@ export function SectMusic({
   // The engine, and the track list (no list, no music).
   useEffect(() => {
     const Ctor = audioContextClass();
-    const dir = new URL(MUSIC_DIR, window.location.href);
+    const basePromise = resolveMusicApiBase();
     const e = new MusicEngine(
       {
         createContext: () => (Ctor ? newContext(Ctor) : null),
-        fetchBytes: async (url, signal) => {
-          const r = await fetch(new URL(url, dir), { signal });
-          if (!r.ok) throw new Error(`music ${r.status}`);
-          return r.arrayBuffer();
-        },
+        fetchBytes: async (key, signal) => fetchMusicBytes(await basePromise, key, signal),
         saveMuted: (m) => writeMuted(localStore(), m),
         saveVolume: (v) => writeVolume(localStore(), v),
       },
@@ -132,8 +134,11 @@ export function SectMusic({
     onEngineRef.current?.(e);
     const ac = new AbortController();
     if (Ctor) {
-      fetch(MUSIC_MANIFEST_URL, { signal: ac.signal, cache: "no-cache" })
-        .then((r) => (r.ok ? r.json() : null))
+      basePromise
+        .then((base) => {
+          if (!ac.signal.aborted) setApiBase(base);
+          return fetchMusicManifest(base, ac.signal);
+        })
         .then((j: unknown) => e.setManifest(parseMusicManifest(j)))
         .catch(() => {
           // No list yet (or a broken one): the page stays silent.
@@ -142,10 +147,17 @@ export function SectMusic({
     return () => {
       ac.abort();
       e.dispose();
+      setApiBase(null);
       setEngine((cur) => (cur === e ? null : cur));
       onEngineRef.current?.(null);
     };
   }, []);
+
+  const loadLyrics = useCallback(
+    (key: MusicKey, signal: AbortSignal): Promise<SongLyrics | null> =>
+      apiBase ? fetchTrackLyrics(apiBase, key, signal) : Promise.resolve(null),
+    [apiBase],
+  );
 
   // The first gesture starts the music when sound is on (a returning visitor who turned it on); the
   // toggle's own presses go to the toggle.
@@ -259,5 +271,10 @@ export function SectMusic({
   }, [engine, debug]);
 
   // While the loading screen is up its own SoundPrompt stands in for the toggle (sound-toggle.tsx).
-  return engine ? <SoundToggle engine={engine} loading={loading} extra={extra} /> : null;
+  return engine ? (
+    <>
+      <SoundToggle engine={engine} loading={loading} extra={extra} />
+      {apiBase ? <LyricsPanel engine={engine} loadLyrics={loadLyrics} hidden={lyricsHidden} /> : null}
+    </>
+  ) : null;
 }

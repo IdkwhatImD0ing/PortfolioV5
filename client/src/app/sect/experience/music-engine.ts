@@ -5,7 +5,7 @@
  * crossfade), all into one master gain (the visitor's volume slider, mute, ducking under a voice
  * call, silence under a YouTube demo).
  *
- * Nothing here throws: without Web Audio, without music.json, or when a file fails, the page simply
+ * Nothing here throws: without Web Audio, without a backend manifest, or when a file fails, the page simply
  * has no music. Nothing is downloaded until the visitor's first gesture with sound on, and then only
  * the current track and the next one along the flight.
  */
@@ -22,13 +22,14 @@ import {
   type Fade,
   type MusicKey,
   type MusicManifest,
+  type MusicTrack,
   type VoiceDuck,
 } from "@/lib/sect/music";
 import { DEFAULT_VOLUME, clampVolume } from "@/lib/sect/volume";
 
 /** What the sound toggle shows. */
 export interface MusicUi {
-  /** Web Audio works and music.json lists at least one track: the toggle shows. */
+  /** Web Audio works and the backend manifest lists at least one track: the toggle shows. */
   available: boolean;
   /** Sound is on: the visitor has given a gesture and has not muted. */
   on: boolean;
@@ -41,11 +42,21 @@ export interface MusicDeps {
   /** Makes the AudioContext (called inside a gesture), or null without Web Audio. */
   createContext: () => AudioContext | null;
   /** Downloads a track's bytes. */
-  fetchBytes: (url: string, signal: AbortSignal) => Promise<ArrayBuffer>;
+  fetchBytes: (key: MusicKey, signal: AbortSignal) => Promise<ArrayBuffer>;
   /** Saves the mute choice. */
   saveMuted: (muted: boolean) => void;
   /** Saves the volume slider's share. */
   saveVolume?: (volume: number) => void;
+}
+
+export type MusicSuppression = "none" | "inactive" | "muted" | "volume" | "voice" | "video" | "away" | "hidden";
+
+export interface PlaybackSnapshot {
+  track: MusicKey | null;
+  position: number;
+  gains: Partial<Record<MusicKey, number>>;
+  audible: boolean;
+  suppressed: MusicSuppression;
 }
 
 interface Voice {
@@ -99,6 +110,7 @@ export class MusicEngine {
   private hideTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private readonly listeners = new Set<() => void>();
+  private readonly playbackListeners = new Set<() => void>();
   private ui: MusicUi;
   /** Track changes heard (a crossfade started), newest last: for the debug state. */
   private readonly history: { from: MusicKey | null; to: MusicKey; at: number }[] = [];
@@ -123,6 +135,17 @@ export class MusicEngine {
 
   snapshot = (): MusicUi => this.ui;
 
+  subscribePlayback = (fn: () => void): (() => void) => {
+    this.playbackListeners.add(fn);
+    return () => {
+      this.playbackListeners.delete(fn);
+    };
+  };
+
+  private emitPlayback(): void {
+    for (const fn of this.playbackListeners) fn();
+  }
+
   private emit(): void {
     const next: MusicUi = {
       available: this.supported && this.manifest !== null,
@@ -143,6 +166,14 @@ export class MusicEngine {
     return this.manifest?.tracks[key] !== undefined;
   }
 
+  hasLyrics(key: MusicKey): boolean {
+    return this.manifest?.tracks[key]?.hasLyrics === true;
+  }
+
+  trackInfo(key: MusicKey): MusicTrack | null {
+    return this.manifest?.tracks[key] ?? null;
+  }
+
   setManifest(m: MusicManifest | null): void {
     if (this.disposed) return;
     this.manifest = m;
@@ -150,6 +181,7 @@ export class MusicEngine {
     if (m && this.gestured && !this.muted) this.ensureContext();
     this.apply();
     this.emit();
+    this.emitPlayback();
   }
 
   /** A user gesture anywhere on the page (not on the toggle): start the music unless muted. */
@@ -172,6 +204,7 @@ export class MusicEngine {
     if (!this.muted) this.ensureContext();
     this.apply();
     this.emit();
+    this.emitPlayback();
   }
 
   /**
@@ -189,6 +222,7 @@ export class MusicEngine {
     this.apply();
     this.volumeMoved = false;
     this.emit();
+    this.emitPlayback();
   }
 
   /** A voice call's hold on the music (the talisman's state: see voiceDuck). */
@@ -196,6 +230,7 @@ export class MusicEngine {
     if (v === this.voice) return;
     this.voice = v;
     this.apply();
+    this.emitPlayback();
   }
 
   /**
@@ -206,6 +241,7 @@ export class MusicEngine {
     if (v === this.video) return;
     this.video = v;
     this.apply();
+    this.emitPlayback();
   }
 
   /** The page view (or an error) covers the flight: the music fades out and rests. */
@@ -213,6 +249,7 @@ export class MusicEngine {
     if (v === this.away) return;
     this.away = v;
     this.apply();
+    this.emitPlayback();
   }
 
   /** The tab is hidden: suspend at once (and resume when it shows again). */
@@ -220,6 +257,7 @@ export class MusicEngine {
     if (v === this.hidden) return;
     this.hidden = v;
     this.apply();
+    this.emitPlayback();
   }
 
   /**
@@ -380,6 +418,7 @@ export class MusicEngine {
         if (this.history.length > HISTORY) this.history.shift();
         this.lastStarted = key;
       }
+      this.emitPlayback();
       return v;
     } catch {
       return null;
@@ -405,6 +444,7 @@ export class MusicEngine {
       if (this.history.length > HISTORY) this.history.shift();
       this.lastStarted = v.key;
     }
+    this.emitPlayback();
   }
 
   private stopVoice(v: Voice, now: number): void {
@@ -422,6 +462,7 @@ export class MusicEngine {
     }
     this.voices.delete(v.key);
     if (this.lastStarted === v.key) this.lastStarted = null;
+    this.emitPlayback();
   }
 
   private load(key: MusicKey): void {
@@ -434,7 +475,7 @@ export class MusicEngine {
       if (this.pending.get(key) === ac) this.pending.delete(key);
     };
     this.deps
-      .fetchBytes(track.src, ac.signal)
+      .fetchBytes(key, ac.signal)
       .then((bytes) => decode(ctx, bytes))
       .then((buffer) => {
         done();
@@ -475,6 +516,7 @@ export class MusicEngine {
     this.pending.clear();
     this.buffers.clear();
     this.listeners.clear();
+    this.playbackListeners.clear();
     const ctx = this.ctx;
     const master = this.master;
     this.ctx = null;
@@ -527,6 +569,40 @@ export class MusicEngine {
       loading: [...this.pending.keys()],
       failed: [...this.failed],
       history: this.history.map((h) => ({ ...h })),
+    };
+  }
+
+  /** Exact audio-clock state for the karaoke overlay; reading it does not trigger React work. */
+  playbackSnapshot(): PlaybackSnapshot {
+    const ctx = this.ctx;
+    const now = ctx?.currentTime ?? 0;
+    const gains: Partial<Record<MusicKey, number>> = {};
+    let dominant: Voice | null = null;
+    let dominantGain = -1;
+    for (const voice of this.voices.values()) {
+      const gain = fadeGainAt(voice.fade, now);
+      gains[voice.key] = gain;
+      if (gain > dominantGain || (gain === dominantGain && voice.key === this.lastStarted)) {
+        dominant = voice;
+        dominantGain = gain;
+      }
+    }
+    let suppressed: MusicSuppression = "none";
+    if (!ctx || !this.gestured || !this.manifest) suppressed = "inactive";
+    else if (this.muted) suppressed = "muted";
+    else if (this.volume <= 0) suppressed = "volume";
+    else if (this.away) suppressed = "away";
+    else if (this.video) suppressed = "video";
+    else if (this.hidden) suppressed = "hidden";
+    else if (this.voice !== "none") suppressed = "voice";
+    const position = dominant ? loopPosition(now - dominant.startedAt, dominant.loopStart, dominant.loopEnd) : 0;
+    const planned = this.wanted && this.has(this.wanted) ? this.wanted : null;
+    return {
+      track: dominant?.key ?? planned,
+      position,
+      gains,
+      audible: suppressed === "none" && dominant !== null && dominantGain > 0,
+      suppressed,
     };
   }
 }

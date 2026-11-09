@@ -2,7 +2,13 @@
 
 This folder holds ready-to-paste Suno prompts for the background music of `/sect`, the scroll-driven fly-through of the Sun Moon Divine Sect (日月神教), the sect from Jin Yong's *The Smiling, Proud Wanderer* (until October 2026 the Ming Sect 明教 of *Heaven Sword and Dragon Saber*). There is one file per area, plus one for the loading screen. Every track is instrumental and led by traditional Chinese instruments.
 
-The finished tracks play on the site (`client/public/sect/audio/`, one per area, muted until the visitor turns sound on). These files are how they were made.
+These prompts made the original generated soundtrack. Those files no longer ship in
+`client/public/sect/audio/`; this folder remains as production history. The replacement mapping,
+source handoff, prepared inventory, backend delivery and timed lyrics are documented in
+[`../local-soundtrack.md`](../local-soundtrack.md),
+[`../soundtrack-assets.md`](../soundtrack-assets.md),
+[`../backend-soundtrack-delivery.md`](../backend-soundtrack-delivery.md) and
+[`../karaoke-lyrics.md`](../karaoke-lyrics.md).
 
 ## Files
 
@@ -122,9 +128,10 @@ If you like the command line, ffmpeg can do the loudness step:
 ffmpeg -i gate.wav -af loudnorm=I=-17:TP=-1.5:LRA=11 -b:a 160k gate.mp3
 ```
 
-## File names for the site
+## Historical file names
 
-When you add music to the site, name the files after the area ids already used in `client/src/lib/sect/areas.ts`:
+The generated soundtrack originally shipped under these frontend paths, named after the stable area
+ids in `client/src/lib/sect/areas.ts`:
 
 ```
 client/public/sect/audio/loading.mp3
@@ -141,17 +148,14 @@ client/public/sect/audio/abode.mp3
 client/public/sect/audio/summit.mp3
 ```
 
-That folder does not exist yet. Create it when you have the files.
+Those static MP3s and their manifest were removed when backend soundtrack delivery replaced them.
+The current player still loads only the current track and the next one.
 
-Size check: a 2.5-minute MP3 at 128 kbps is about 2.4 MB. Twelve tracks is roughly 29 MB. The site should load only the current and next area's track, not all twelve at once.
-
-## Playing the music on /sect is a separate step
-
-These prompts do not change the site. Adding playback is its own job. When that happens:
+## Playback behavior
 
 - Start muted, with a visible sound toggle. Browsers block autoplay with sound until the visitor clicks something.
 - Crossfade over 2 to 4 seconds when the camera moves into a new area.
-- Remember the visitor's mute choice.
+- Remember the visitor's mute and volume choices.
 
 ## Rights
 

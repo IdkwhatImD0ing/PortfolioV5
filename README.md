@@ -66,6 +66,7 @@ The camera stops at each of these, in order.
 | 3D | three.js, React Three Fiber, drei, postprocessing, three-mesh-bvh | The fly-through, clicking things in the scene, and the glow |
 | Scene build | Blender 5.2 Python, Cycles on a rented cloud GPU, glTF Transform with meshopt, WebP, Git LFS | Every stop is built in Python, with the lighting baked once and loaded in small files |
 | Voice and chat | Retell (voice calls), FastAPI, OpenAI Agents SDK, Pusher (page moves and captions) | A streaming agent that can move the page while it talks |
+| Soundtrack | Web Audio, FastAPI, private Cloud Storage | Twelve area songs, streamed through short-lived capabilities, with a left-side song-info and timed bilingual lyrics panel |
 | Search | Pinecone with `text-embedding-3-large` | Finds a project from a description of what it does |
 | Hosting | Vercel (site), Docker on Cloud Run (backend) | A push to `main` ships the site |
 | Watching it | Vercel Analytics and Speed Insights, [FireTrace](https://tracing.art3m1s.me) | Real-visitor performance, and one trace per agent run |
@@ -89,7 +90,8 @@ The camera stops at each of these, in order.
 
 ### The site
 
-The fly-through only needs the client.
+The fly-through itself only needs the client. Background music needs the local backend and prepared
+media described under [the soundtrack docs](docs/music/backend-soundtrack-delivery.md).
 
 ```bash
 git lfs install          # the scene files live in Git LFS
@@ -121,6 +123,8 @@ OPENAI_API_KEY=...
 PINECONE_API_KEY=...
 FIRETRACE_API_KEY=...            # optional: records every agent run
 PUSHER_SECRET=...                # voice page moves and live captions (server/README.md, "Voice events")
+MUSIC_SIGNING_SECRET=...         # short-lived soundtrack capabilities
+MUSIC_STORAGE_DIR=...            # local server/.music-prepared path
 
 # client/.env.local (see client/.env.local.example)
 RETELLAI_API_KEY=...             # server-side only, used by the create-web-call proxy
@@ -211,7 +215,7 @@ The details are in [`docs/deploy/`](docs/deploy/README.md). There are no secrets
 | [The scene](docs/README.md#the-scene-blenderxianxia-sect) | The web pipeline, the walking-route audit, asset research, the Jin Yong references |
 | [The voice agent](docs/voice/README.md) | The backend, its endpoints, the agent, the guardrail, search |
 | [Deploy and roll back](docs/deploy/README.md) | Shipping and undoing each part |
-| [Music](docs/music/sect-themes/README.md) | How each stop's music was made |
+| [Music](docs/music/local-soundtrack.md) | The twelve-song replacement soundtrack, backend delivery and universal song-info/timed lyrics panel |
 
 <p align="center">
   <img src=".github/readme/brush-rule.svg" width="56%" alt=""/>

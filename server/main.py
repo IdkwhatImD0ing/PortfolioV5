@@ -29,6 +29,7 @@ from typing import Optional, List
 from socket_manager import manager
 from llm import LlmClient, generate_summary
 from app_helpers import BodySizeLimit, validate_environment_variables
+from music import router as music_router
 from voice_events import VoiceEvents
 
 # Re-export previously module-level public names so existing
@@ -42,6 +43,7 @@ load_dotenv(override=True)
 validate_environment_variables()
 
 app = FastAPI()
+app.include_router(music_router)
 
 app.add_middleware(
     CORSMiddleware,

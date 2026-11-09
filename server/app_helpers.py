@@ -49,6 +49,9 @@ def validate_environment_variables():
         "LLM_DEBUG": "Enable debug logging for LLM (0 or 1, defaults to 0)",
         "FIRETRACE_API_KEY": "FireTrace tracing key (runs are not recorded when unset)",
         "PUSHER_SECRET": "Pusher secret (voice calls can't move the page or show captions when unset)",
+        "MUSIC_BUCKET": "Private soundtrack bucket (required on Cloud Run)",
+        "MUSIC_SIGNING_SECRET": "Soundtrack capability secret (required on Cloud Run)",
+        "MUSIC_STORAGE_DIR": "Local prepared soundtrack folder (development only)",
     }
 
     # This output lands in Cloud Run logs on every boot. Only values known not
@@ -67,6 +70,16 @@ def validate_environment_variables():
         error_msg = "Missing required environment variables:\n" + "\n".join(missing_required)
         error_msg += "\n\nPlease set these variables in your .env file or environment."
         raise ValueError(error_msg)
+
+    if os.getenv("K_SERVICE"):
+        missing_music = [
+            name for name in ("MUSIC_BUCKET", "MUSIC_SIGNING_SECRET") if not os.getenv(name)
+        ]
+        if missing_music:
+            raise ValueError(
+                "Missing required Cloud Run music configuration: "
+                + ", ".join(missing_music)
+            )
 
     # Log optional variables status
     print("Environment variables validated successfully:")
