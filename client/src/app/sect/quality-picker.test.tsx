@@ -2,6 +2,8 @@
  * The graphics picker (loading screen and overlay popover), the loading screen around it, the
  * overlay's graphics button and its place beside the sound toggle.
  */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { Tier } from "@/lib/sect/runtime";
@@ -146,6 +148,46 @@ describe("LoadingScreen with the picker", () => {
     expect(/class="([^"]+)">Read as page</.exec(ready)![1]).not.toContain("bg-[var(--sect-gold)]");
     // No Enter over an error.
     expect(screen({ quality, error: "The scene failed to load.", onEnter: () => {} })).not.toContain("data-sect-enter");
+  });
+
+  it("has the name first and the controls after, in two blocks a short screen sets side by side", () => {
+    const css = readFileSync(path.resolve(__dirname, "sect.css"), "utf8").replace(/\r\n/g, "\n");
+    // Short is the HUD's phone rule (under 31.25rem tall), so every phone on its side gets it.
+    const at = css.indexOf("@media (max-height: 31.24rem) {\n  .sect-veil {");
+    expect(at).toBeGreaterThan(0);
+    const short = css.slice(at, css.indexOf("\n}\n", at));
+    expect(short).toMatch(/\.sect-veil \{\s*flex-direction: row;/);
+    // Each column centres itself with auto margins (they give way when a column is taller than the screen).
+    expect(short).toMatch(/\.sect-veil-head,\s*\.sect-veil-body \{[^}]*margin-block: auto;/);
+    for (const html of [
+      screen({ quality, progress: 1, label: "Ready", onEnter: () => {} }),
+      screen({ quality, error: "The scene failed to load.", onReload: () => {} }),
+    ]) {
+      const head = html.indexOf('class="sect-veil-head');
+      const body = html.indexOf('class="sect-veil-body');
+      expect(head).toBeGreaterThan(0);
+      expect(head).toBeLessThan(html.indexOf("Sun Moon Divine Sect"));
+      expect(html.indexOf("Sun Moon Divine Sect")).toBeLessThan(body);
+      // The controls in the order they show: the bar (or the error), the picker, then the buttons.
+      expect(body).toBeLessThan(html.indexOf("<fieldset"));
+      expect(html.indexOf("<fieldset")).toBeLessThan(html.indexOf("Read as page"));
+    }
+  });
+
+  it("keeps Enter and Read as page side by side on the narrowest phones", () => {
+    const ready = screen({ quality, progress: 1, label: "Ready", onEnter: () => {} });
+    const enterClass = /data-sect-enter="true" class="([^"]+)"/.exec(ready)![1];
+    const offerClass = /class="([^"]+)">Read as page</.exec(ready)![1];
+    for (const c of [enterClass, offerClass]) {
+      expect(c).toContain("min-w-[8.75rem]");
+      expect(c).toContain("[@media(max-width:340px)]:min-w-[7.5rem]");
+    }
+    // The column widens to 88% of a 320 px screen, inside the screen's narrower margin there (and
+    // never past it, a desktop's scrollbar and all).
+    expect(ready).toMatch(/class="sect-veil-body [^"]*\[@media\(max-width:340px\)\]:w-\[min\(88vw,100%\)\]/);
+    expect(ready).toMatch(/class="sect-veil [^"]*\[@media\(max-width:340px\)\]:px-4/);
+    expect(0.88 * 320).toBeLessThanOrEqual(320 - 2 * 16);
+    expect(2 * 7.5 * 16 + 12).toBeLessThan(0.88 * 320);
   });
 });
 

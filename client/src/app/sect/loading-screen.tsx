@@ -69,6 +69,11 @@ function SunMoonEmblem({ className }: { className?: string }) {
  * Without JavaScript the screen is not shown at all: the page shows the portfolio as text instead
  * (app/page.tsx, summary.tsx).
  *
+ * On a short screen (a phone on its side) it is two columns, so Enter is in view without a scroll:
+ * the sect's name and whose portfolio it is on the left, the bar, the settings and the buttons on
+ * the right (sect.css .sect-veil-head and .sect-veil-body; plain CSS, since the screen draws
+ * before the page's scripts run). The error screen takes the same layout.
+ *
  * Dressed as a Wukong loading screen: 日月神教 in the brush hand on a pool of ink wash with the sect's
  * seal (four characters, set smaller than the two of 明教 were), and the progress drawn as a brush
  * stroke filling with gold (ornaments.tsx, sect.css).
@@ -124,7 +129,8 @@ export function LoadingScreen({
   const plain =
     "inline-flex min-h-11 items-center gap-2 rounded-[2px] border border-[var(--sect-gold-soft)] bg-[rgba(14,12,20,0.55)] px-5 text-[0.9375rem] text-[var(--sect-paper)] hover:border-[var(--sect-gold)]";
   // Ready: Enter has the gold, the pair one width. Before that the offer takes it once loading is slow.
-  const pair = "min-w-[8.75rem] justify-center";
+  // The narrowest phones (320 px) take a smaller width, so the pair still sits side by side.
+  const pair = "min-w-[8.75rem] justify-center [@media(max-width:340px)]:min-w-[7.5rem]";
   const offerClass = ready ? `${plain} ${pair}` : slow ? gold : plain;
   const offerText = "Read as page";
   const offer = onReadAsPage ? (
@@ -139,31 +145,37 @@ export function LoadingScreen({
   const picker = quality === "reserve" ? <QualityPickerSpace /> : quality ? <QualityPicker {...quality} layout="row" /> : null;
 
   return (
-    // Short screens (a phone on its side) tighten the spacing; a column still taller than the screen
-    // starts at the top and scrolls (plain centring would push the title out of reach above it). The
-    // first and last items' auto margins centre it too, where `safe` is unknown (Safari before 17.6).
+    // Short screens (a phone on its side) set the name and the controls side by side (sect.css
+    // .sect-veil-head, .sect-veil-body), in this order, so Tab and a screen reader go as the eye
+    // does. A column still taller than the screen starts at the top and scrolls (plain centring would
+    // push the title out of reach above it). The first and last items' auto margins centre it too,
+    // where `safe` is unknown (Safari before 17.6). The narrowest phones (320 px) take narrower margins,
+    // so the wider button column fits and a 640 px screen holds it all; there the title's ink wash,
+    // which reaches past the title, is clipped at the sides rather than scrolling sideways.
     <div
-      className="sect-veil fixed inset-0 z-50 flex flex-col items-center justify-center-safe overflow-y-auto px-6 py-10 text-center transition-opacity duration-700 [@media(max-height:30rem)]:py-5"
+      className="sect-veil fixed inset-0 z-50 flex flex-col items-center justify-center-safe overflow-y-auto px-6 py-10 text-center transition-opacity duration-700 [@media(max-height:31.24rem)]:py-5 [@media(max-width:340px)]:overflow-x-hidden [@media(max-width:340px)]:px-4 [@media(max-width:340px)]:py-8"
       style={{ opacity: visible ? 1 : 0, pointerEvents: visible ? "auto" : "none" }}
       aria-busy={!error && visible && !ready}
     >
       {poster && <Poster />}
-      {/* The emblem sits above the name; short screens (a phone on its side) drop it so the column still fits. */}
-      <SunMoonEmblem className="mt-auto mb-5 h-[clamp(2.75rem,7vw,3.75rem)] w-[clamp(2.75rem,7vw,3.75rem)] shrink-0 [@media(max-height:30rem)]:hidden" />
-      <p className="sect-sealed sect-ink text-[clamp(3rem,9vw,5.4rem)] leading-none text-[var(--sect-paper)] [@media(max-height:30rem)]:mt-auto [@media(max-height:30rem)]:text-[2.7rem]">
-        <BrushName text="日月神教" even={0.1} />
-        <SealStamp />
-      </p>
-      <p className="mt-4 text-[0.75rem] uppercase tracking-[0.42em] text-[var(--sect-gold)]">Sun Moon Divine Sect</p>
-      <p className="mt-5 max-w-md text-[0.9375rem] leading-relaxed text-[var(--sect-paper-soft)]">
-        <span className="font-serif text-[1.35rem] text-[var(--sect-paper)]">{PORTFOLIO.name}</span>
-        <br />
-        {PORTFOLIO.tagline}
-      </p>
+      {/* The emblem sits above the name; short screens (a phone on its side) drop it. */}
+      <SunMoonEmblem className="mt-auto mb-5 h-[clamp(2.75rem,7vw,3.75rem)] w-[clamp(2.75rem,7vw,3.75rem)] shrink-0 [@media(max-height:31.24rem)]:hidden" />
+      <div className="sect-veil-head flex flex-col items-center">
+        <p className="sect-sealed sect-ink text-[clamp(3rem,9vw,5.4rem)] leading-none text-[var(--sect-paper)] [@media(max-height:31.24rem)]:text-[2.7rem]">
+          <BrushName text="日月神教" even={0.1} />
+          <SealStamp />
+        </p>
+        <p className="mt-4 text-[0.75rem] uppercase tracking-[0.42em] text-[var(--sect-gold)]">Sun Moon Divine Sect</p>
+        <p className="mt-5 max-w-md text-[0.9375rem] leading-relaxed text-[var(--sect-paper-soft)]">
+          <span className="font-serif text-[1.35rem] text-[var(--sect-paper)]">{PORTFOLIO.name}</span>
+          <br />
+          {PORTFOLIO.tagline}
+        </p>
+      </div>
       {error ? (
-        <div className="mb-auto mt-10 flex w-[min(28rem,calc(100vw-3rem))] flex-col items-center text-sm leading-relaxed text-[var(--sect-paper-soft)]">
+        <div className="sect-veil-body mb-auto mt-10 flex w-[min(28rem,calc(100vw-3rem))] flex-col items-center text-sm leading-relaxed text-[var(--sect-paper-soft)]">
           <p role="alert">{error}</p>
-          {quality && quality !== "reserve" && <div className="w-[min(22rem,80vw)]">{picker}</div>}
+          {quality && quality !== "reserve" && <div className="w-[min(22rem,80vw)] max-w-full">{picker}</div>}
           <div className="mt-4 flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
             {onReload && (
               <button type="button" onClick={onReload} className={quiet}>
@@ -182,7 +194,7 @@ export function LoadingScreen({
           </div>
         </div>
       ) : (
-        <div className="mb-auto mt-10 flex w-[min(22rem,80vw)] flex-col items-center">
+        <div className="sect-veil-body mb-auto mt-10 flex w-[min(22rem,80vw)] flex-col items-center [@media(max-width:340px)]:w-[min(88vw,100%)]">
           <p className="sr-only" role="status" aria-live="polite">
             {phaseLabel}
           </p>
@@ -195,7 +207,7 @@ export function LoadingScreen({
           </div>
           {picker}
           {sound !== undefined && (
-            <div data-sect-sound-place className="mt-1 flex h-12 w-full items-center justify-center [@media(max-height:30rem)]:mt-0">
+            <div data-sect-sound-place className="mt-1 flex h-12 w-full items-center justify-center [@media(max-height:31.24rem)]:mt-0">
               {sound === "reserve" ? null : sound}
             </div>
           )}

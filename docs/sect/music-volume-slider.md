@@ -34,8 +34,9 @@ It hides:
 ## Design choices
 
 - **Same place as before.** Left of the speaker on wide screens, standing upright under it on
-  phones. When it hides, its space closes up, so the graphics button slides back next to the
-  speaker, where it sat when the music was muted.
+  phones. When it hides, its space closes up. On wider screens the graphics button then slides back
+  next to the speaker, where it sat when the music was muted. Phones have no graphics button there
+  since 2026-11-09: it is in the map's top row (see the decisions log).
 - **Short fade and slide** (0.2 to 0.25 seconds), in the style of the other panels. No motion for
   visitors who ask their system for reduced motion.
 - **Hidden means really gone.** A hidden slider is `inert`: Tab skips it, screen readers skip it,

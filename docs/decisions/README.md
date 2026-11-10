@@ -362,6 +362,17 @@ are in [`../music/karaoke-lyrics.md`](../music/karaoke-lyrics.md).
 **Why.** The owner found the first panel too plain and out of step with the rest of the page, and
 wrote a phrase for each of the eight sung tracks to show with it.
 
+### 2026-11-09 · The Music slip waits for the first stop, and a phone's stop panel is a little smaller
+
+**Decided.** On phones the 乐曲 slip is hidden while the intro's title is up and comes in at the first
+stop. While the sound is off, the soundtrack drawer's eyebrow reads "Soundtrack" and the drawer
+offers "Turn on sound". On wide screens the slip lines up with the other plates. On phones a stop
+panel's title is 1.6rem with a little less padding above it; its text stays whole.
+
+**Why.** From the same clutter audit as the phone HUD entry. The owner saw each change before and
+after and kept all of them, along with moving Read as page and the graphics button into the map on
+phones. A shorter panel would need shorter text, which he left as it is.
+
 ### 2026-11-09 · Lyrics in the brush hand, sung word by word
 
 **Decided.** The Chinese lyric lines are written in Ma Shan Zheng, the brush hand of the place names,
@@ -372,6 +383,33 @@ of limited height with a bare cross to close it, and an instrumental's card ends
 
 **Why.** The owner asked for word-by-word highlighting and a Chinese face closer to wuxia and
 xianxia titles; the system serif the lines fell back to read as plain.
+
+### 2026-11-09 · A phone's HUD keeps to what fits
+
+**Decided.** On phones (every screen without the side rail: under 768 px wide, or under 500 px tall,
+so a phone on its side too) five things moved. Tablets and desktops look and behave as before.
+
+- The top bar is the seal and the name. "Read as page" left it. It stays as a skip link that shows
+  only when the keyboard reaches it, and the map's All places tab now starts with a "Read it all as
+  one page" row. The loading screen, the error screen and the end of every reader still offer it.
+  On a phone on its side the art3m1s.me text hides too (screen readers still read it).
+- The graphics button left its spot under the sound toggle for the map's top row, left of the close
+  button. Escape with its menu open closes only the menu. When the loading screen goes, a focus
+  left in its graphics picker moves to the Map button.
+- At a stop, the place's name under the row of diamonds hides, since the stop's panel already names
+  the place. It comes back during a voice call on an upright phone, where the voice panel covers the
+  stop's panel. The look hint takes the name's spot, stays about 11 seconds instead of 25, and stops
+  showing after a turn of the view or once it has shown on two visits.
+- The loading and error screens fit small phones: two columns on a phone on its side, and Enter and
+  Read as page side by side at 320 px wide.
+- The map's place card at 320 px stays above the Map and All places tabs (it was measured before its
+  width was set, then grew), and drops its small emblem there.
+
+**Why.** The owner found the phone UI cluttered. An audit of the home page at five screen sizes
+ranked these first. At 320 px "Read as page" ended 3 px from the Map button. On a phone on its side
+the name plate took almost half the top row, and Enter sat below the bottom edge of the loading
+screen. At a stop, three plates stacked under the diamonds. The graphics menu covered the stop's
+panel, and the map's place card ran over its tabs.
 
 ---
 

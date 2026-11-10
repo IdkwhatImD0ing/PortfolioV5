@@ -11,12 +11,13 @@
  * it comes back to the slip when the drawer closes the same way. Its Escape is one Escape, one thing:
  * it closes the drawer and the view stays turned (scene.tsx keysTaken).
  */
-import { type CSSProperties, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type CSSProperties, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MusicKey, MusicTrack } from "@/lib/sect/music";
 import { lyricLineAt, lyricUnitProgress, lyricWordAt, type LyricLine, type SongLyrics } from "@/lib/sect/lyrics";
 import { hasHan, songCredits, songNote, type SongNote } from "@/lib/sect/song-notes";
 import { BrushName, InkRing, SealedName } from "../ornaments";
 import type { MusicEngine } from "./music-engine";
+import { SoundCall, serverSnapshot } from "./sound-toggle";
 
 interface ActiveLine {
   track: MusicKey;
@@ -56,6 +57,8 @@ export function LyricsPanel({
   panelLyricsRef.current = panelLyrics;
   const slipRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  // Whether the visitor has the sound on: silent, the drawer names the soundtrack and offers the sound.
+  const ui = useSyncExternalStore(engine.subscribe, engine.snapshot, serverSnapshot);
   const openRef = useRef(false);
   openRef.current = open;
   // The brush hand is asked for from the first opening on (sect.css [data-brush]): the font is
@@ -225,7 +228,12 @@ export function LyricsPanel({
           </svg>
         </button>
         <div className="sect-lyrics-body">
-          <SongHead track={trackInfo} note={note} />
+          <SongHead track={trackInfo} note={note} playing={ui.on} />
+          {ui.available && !ui.on ? (
+            <div className="sect-lyrics-sound">
+              <SoundCall on={false} onToggle={() => engine.toggle()} />
+            </div>
+          ) : null}
           <p className="sr-only" aria-live="polite" aria-atomic="true">
             {activeLine ? `${activeLine.line.text}. ${activeLine.line.en || ""}` : ""}
           </p>
@@ -284,13 +292,22 @@ export function LyricsPanel({
  * the sect's seal beside it, a Latin one in the stops' serif), the gold brush stroke, the credits in
  * one or two quiet lines, then the owner's note on the song, set off by a brush rule like a colophon.
  */
-export function SongHead({ track, note }: { track: Pick<MusicTrack, "title" | "show" | "artist" | "language">; note: SongNote | null }) {
+export function SongHead({
+  track,
+  note,
+  playing = true,
+}: {
+  track: Pick<MusicTrack, "title" | "show" | "artist" | "language">;
+  note: SongNote | null;
+  /** The sound is on. Off (every visitor starts muted), the eyebrow does not claim a song is playing. */
+  playing?: boolean;
+}) {
   const credits = songCredits(track);
   const zhTitle = hasHan(track.title);
   return (
     <>
       <header className="sect-lyrics-head">
-        <p className="sect-lyrics-eyebrow">Now playing</p>
+        <p className="sect-lyrics-eyebrow">{playing ? "Now playing" : "Soundtrack"}</p>
         <h2 className={`sect-lyrics-title${zhTitle ? " sect-lyrics-title-zh" : ""}`}>
           {zhTitle ? <SealedName text={track.title} /> : track.title}
         </h2>

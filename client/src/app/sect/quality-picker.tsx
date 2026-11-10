@@ -35,7 +35,7 @@ export interface QualityPickerProps {
  * The loading screen's picker takes this much height, whatever it shows; QualityPickerSpace keeps
  * it before the picker can mount, so the centred column never jumps.
  */
-const ROW_BOX = "mt-7 h-[6.5rem] w-full [@media(max-height:30rem)]:mt-4";
+const ROW_BOX = "mt-7 h-[6.5rem] w-full [@media(max-height:31.24rem)]:mt-4";
 
 function Diamond({ on }: { on: boolean }) {
   return (

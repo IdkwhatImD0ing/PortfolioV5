@@ -74,7 +74,9 @@ block in `client/src/app/sect/sect.css`.
   blur, as on the stops' panels. Its close button is a bare cross in the corner (a second framed
   box inside the frame looked crowded). It fades in and slides a short way from the left. On wide
   screens it is a card at most 37rem tall, not a wall down the screen.
-- **The head.** A "Now playing" eyebrow, then the song's title. A Chinese title is written in the
+- **The head.** A "Now playing" eyebrow ("Soundtrack" while the sound is off, which is how every
+  visitor starts; the drawer then offers a "Turn on sound" button under the note), then the song's
+  title. A Chinese title is written in the
   brush hand with the red seal beside it; a Latin title (*Throne of Glory*) is in the stops' serif. A
   gold brush stroke under it, then one or two quiet lines: the show (in the lyrics' brush hand), then
   the artist and "Sung in Chinese", "Sung in English" or "Instrumental". An artist given as "Not credited" is left out. The credits are a
@@ -112,6 +114,10 @@ lacks. After the songs or their lyrics change, rerun
 `client/scripts/subset-lyrics-font.mjs <MaShanZheng-Regular.ttf> <server/.music-prepared>`.
 
 ### Where it sits
+
+On phones the slip waits while the intro's title is up and comes in at the first stop (it sat over
+the title's plate). On wide screens it lines up with the other plates, 1.25rem from the left edge.
+On a phone held sideways it starts at 4.25rem, clear of the top bar.
 
 - **Phone held upright:** the slip under the place row, level with the sound toggle on the right.
   The drawer starts under the place row and keeps left of the sound toggle's column.
