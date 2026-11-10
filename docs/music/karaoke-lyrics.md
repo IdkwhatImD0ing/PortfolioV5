@@ -79,8 +79,11 @@ block in `client/src/app/sect/sect.css`.
   gold brush stroke under it, then one or two quiet lines: the show (in the lyrics' brush hand), then
   the artist and "Sung in Chinese", "Sung in English" or "Instrumental". An artist given as "Not credited" is left out. The credits are a
   `dl` whose terms (From, Artist, Vocals) are only for screen readers.
-- **The note.** The owner's note on a sung track (below) comes next, in italic serif between two
-  brush rules. Instrumentals have none: their card ends at the credits.
+- **The note.** The owner's note on a sung track (below) comes next, centred, in italic serif between
+  two brush rules. It is a button: a press fades the English out and its Chinese in (in the lyrics'
+  brush hand), and a second press brings the English back. Each song starts in English. The Chinese
+  versions sit beside the English in `song-notes.ts`. Instrumentals have none: their card ends at
+  the credits.
 - **The lyrics.** The complete ordered song. A Chinese line is in the brush hand with `lang="zh"` (below), its
   English under it, smaller, in the body face. An English-only line is one line in the serif, never
   the same text twice. Pinyin is not shown.
@@ -101,10 +104,10 @@ block in `client/src/app/sect/sect.css`.
 (`BRUSH_EXTRA` in `client/src/lib/sect/brush.ts`). After a song changes, add its title there and
 rerun `client/scripts/subset-brush-font.mjs` with the full Ma Shan Zheng TTF.
 
-The lyric lines and the shows' names use a second cut of the same font, `sect-lyrics-brush.woff2`
-("Sect Lyric Brush" in `sect.css`): every Chinese character in the lyric files and the manifest,
-678 of them, about 290 KB. It is not preloaded; the browser fetches it the first time the open
-drawer writes a Chinese line, and the CJK serif stands in until then and for any character it
+The lyric lines, the shows' names and the notes' Chinese use a second cut of the same font, `sect-lyrics-brush.woff2`
+("Sect Lyric Brush" in `sect.css`): every Chinese character in the lyric files, the manifest and
+`song-notes.ts`, about 300 KB. It is not preloaded; the browser fetches it the first time the drawer
+is opened (`data-brush`, which then stays on so a closing drawer keeps its hand), and the CJK serif stands in until then and for any character it
 lacks. After the songs or their lyrics change, rerun
 `client/scripts/subset-lyrics-font.mjs <MaShanZheng-Regular.ttf> <server/.music-prepared>`.
 

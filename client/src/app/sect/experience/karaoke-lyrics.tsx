@@ -14,7 +14,7 @@
 import { type CSSProperties, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MusicKey, MusicTrack } from "@/lib/sect/music";
 import { lyricLineAt, lyricUnitProgress, lyricWordAt, type LyricLine, type SongLyrics } from "@/lib/sect/lyrics";
-import { hasHan, songCredits, songNote } from "@/lib/sect/song-notes";
+import { hasHan, songCredits, songNote, type SongNote } from "@/lib/sect/song-notes";
 import { BrushName, InkRing, SealedName } from "../ornaments";
 import type { MusicEngine } from "./music-engine";
 
@@ -58,6 +58,10 @@ export function LyricsPanel({
   const closeRef = useRef<HTMLButtonElement>(null);
   const openRef = useRef(false);
   openRef.current = open;
+  // The brush hand is asked for from the first opening on (sect.css [data-brush]): the font is
+  // fetched only then, and a closing drawer keeps its hand while it fades.
+  const [brush, setBrush] = useState(false);
+  if (open && !brush) setBrush(true);
   /** The words of the line being sung, and the one the ink last reached (sect.css --p). */
   const wordNodes = useRef<(HTMLSpanElement | null)[]>([]);
   const inked = useRef<{ track: MusicKey; line: number; word: number } | null>(null);
@@ -186,7 +190,7 @@ export function LyricsPanel({
   };
 
   return (
-    <div className="sect-lyrics" data-open={open ? "" : undefined}>
+    <div className="sect-lyrics" data-open={open ? "" : undefined} data-brush={brush ? "" : undefined}>
       <button
         ref={slipRef}
         type="button"
@@ -280,7 +284,7 @@ export function LyricsPanel({
  * the sect's seal beside it, a Latin one in the stops' serif), the gold brush stroke, the credits in
  * one or two quiet lines, then the owner's note on the song, set off by a brush rule like a colophon.
  */
-export function SongHead({ track, note }: { track: Pick<MusicTrack, "title" | "show" | "artist" | "language">; note: string | null }) {
+export function SongHead({ track, note }: { track: Pick<MusicTrack, "title" | "show" | "artist" | "language">; note: SongNote | null }) {
   const credits = songCredits(track);
   const zhTitle = hasHan(track.title);
   return (
@@ -311,9 +315,34 @@ export function SongHead({ track, note }: { track: Pick<MusicTrack, "title" | "s
       {note ? (
         <>
           <span aria-hidden className="sect-brushrule sect-lyrics-rule" />
-          <p className="sect-lyrics-note">{note}</p>
+          <SongNoteText key={note.en} note={note} />
         </>
       ) : null}
     </>
+  );
+}
+
+/**
+ * The owner's note, centred. A press swaps its English for its Chinese and back: the one showing
+ * fades out, then the other fades in over the same place (both are laid in one cell, so the drawer
+ * keeps its height). It starts in English for each song.
+ */
+export function SongNoteText({ note }: { note: SongNote }) {
+  const [zh, setZh] = useState(false);
+  return (
+    <button
+      type="button"
+      className="sect-lyrics-note"
+      data-lang={zh ? "zh" : "en"}
+      title={zh ? "English" : "中文"}
+      onClick={() => setZh((v) => !v)}
+    >
+      <span className="sect-lyrics-note-face" lang="en" aria-hidden={zh || undefined}>
+        {note.en}
+      </span>
+      <span className="sect-lyrics-note-face" lang="zh" aria-hidden={!zh || undefined}>
+        {note.zh}
+      </span>
+    </button>
   );
 }

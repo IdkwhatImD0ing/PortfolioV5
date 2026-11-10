@@ -13,7 +13,10 @@ describe("song notes", () => {
   });
 
   it("cover the eight sung tracks, and no instrumental", () => {
-    for (const key of VOCAL_KEYS) expect(songNote(key)?.length, key).toBeGreaterThan(0);
+    for (const key of VOCAL_KEYS) {
+      expect(songNote(key)?.en.length, key).toBeGreaterThan(0);
+      expect(hasHan(songNote(key)?.zh ?? ""), key).toBe(true);
+    }
     for (const key of MUSIC_KEYS.filter((k) => !VOCAL_KEYS.includes(k))) expect(songNote(key), key).toBeNull();
   });
 
@@ -30,7 +33,7 @@ describe("song notes", () => {
   });
 
   it("keep the owner's curly apostrophe", () => {
-    expect(songNote("mirror")).toContain("it’s better");
+    expect(songNote("mirror")?.en).toContain("it’s better");
   });
 });
 

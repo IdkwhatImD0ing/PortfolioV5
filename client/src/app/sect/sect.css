@@ -2165,7 +2165,7 @@ body:has(.sect-veil) .sect-lyrics-slip {
   font-size: 0.9375rem;
   letter-spacing: 0.04em;
 }
-.sect-lyrics[data-open] .sect-lyrics-from dd[lang="zh"] {
+.sect-lyrics[data-brush] .sect-lyrics-from dd[lang="zh"] {
   font-family: var(--sect-lyric-brush);
   font-size: 1.125rem;
   line-height: 1.2;
@@ -2184,17 +2184,56 @@ body:has(.sect-veil) .sect-lyrics-slip {
   margin: 1rem 1.4rem 0;
 }
 
-/* The owner's note on the song: a quiet inscription, like the colophon at a scroll's end. */
+/*
+ * The owner's note on the song: a quiet inscription, centred, like the colophon at a scroll's end.
+ * It is a button: a press swaps the English for the Chinese (karaoke-lyrics.tsx SongNoteText). Both
+ * are laid in the same cell; the one showing fades out, then the other fades in.
+ */
 .sect-lyrics-note {
+  display: grid;
   flex: none;
+  width: 100%;
   margin: 0.85rem 0 0;
   padding: 0 1.4rem;
+  border: 0;
+  background: none;
+  color: var(--sect-paper-soft);
+  text-align: center;
+  cursor: pointer;
+}
+.sect-lyrics-note:hover {
+  color: var(--sect-paper);
+}
+.sect-lyrics-note-face {
+  grid-area: 1 / 1;
+  align-self: center;
   font-family: var(--font-instrument-serif), "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   font-size: 1.125rem;
   font-style: italic;
   line-height: 1.45;
-  color: var(--sect-paper-soft);
-  text-wrap: pretty;
+  text-wrap: balance;
+  opacity: 0;
+  transition:
+    opacity 0.3s ease,
+    color 0.2s ease;
+}
+.sect-lyrics-note-face[lang="zh"] {
+  font-family: var(--sect-zh);
+  font-size: 1.0625rem;
+  font-style: normal;
+  line-height: 1.7;
+  letter-spacing: 0.04em;
+}
+.sect-lyrics[data-brush] .sect-lyrics-note-face[lang="zh"] {
+  font-family: var(--sect-lyric-brush);
+  font-size: 1.3rem;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+}
+.sect-lyrics-note[data-lang="en"] .sect-lyrics-note-face[lang="en"],
+.sect-lyrics-note[data-lang="zh"] .sect-lyrics-note-face[lang="zh"] {
+  opacity: 1;
+  transition-delay: 0.3s, 0s;
 }
 
 /* Loading (the turning ink ring) and an instrumental's one line. */
@@ -2267,11 +2306,12 @@ body:has(.sect-veil) .sect-lyrics-slip {
   letter-spacing: 0.04em;
 }
 /*
- * The Chinese lines in the brush hand (Sect Lyric Brush, below): asked for only while the drawer is
- * open, so a visitor who never opens it never downloads the font. Until it is in, and for a
+ * The Chinese lines in the brush hand (Sect Lyric Brush, below): asked for from the drawer's first
+ * opening on, so a visitor who never opens it never downloads the font, and a closing drawer keeps
+ * its hand while it fades. Until it is in, and for a
  * character it lacks, the serif writes the line.
  */
-.sect-lyrics[data-open] .sect-lyrics-line[lang="zh"] {
+.sect-lyrics[data-brush] .sect-lyrics-line[lang="zh"] {
   font-family: var(--sect-lyric-brush);
   font-size: 1.4rem;
   line-height: 1.35;
@@ -2368,6 +2408,18 @@ body:has(.sect-veil) .sect-lyrics-slip {
   }
 }
 
+/* Short screens (a phone on its side): the stops' panels keep clear of the slip's column. */
+@media (max-height: 31.24rem) and (max-width: 47.99rem) {
+  .sect-root .sect-panel.sc-panel {
+    left: calc(max(0.5rem, env(safe-area-inset-left)) + 3.25rem);
+  }
+}
+@media (max-height: 31.24rem) and (min-width: 48rem) {
+  .sect-root .sect-panel.sc-panel.sc-panel-left {
+    left: calc(max(0.5rem, env(safe-area-inset-left)) + 3rem);
+  }
+}
+
 /* Wide and tall enough for the side rail: the slip a third of the way down, the drawer under the top bar. */
 @media (min-width: 48rem) and (min-height: 31.25rem) {
   .sect-lyrics-slip {
@@ -2408,6 +2460,8 @@ body:has(.sect-veil) .sect-lyrics-slip {
   .sect-lyrics[data-open] .sect-lyrics-drawer,
   .sect-lyrics-row,
   .sect-lyrics-row::before,
+  .sect-lyrics-note-face,
+  .sect-lyrics-note[data-lang] .sect-lyrics-note-face,
   .sect-lyrics-line,
   .sect-lyrics-en,
   .sect-root .sect-panel.sc-panel.sc-panel-left {

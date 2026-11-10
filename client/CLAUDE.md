@@ -58,6 +58,15 @@ make test     # backend + frontend (lint + typecheck + vitest, matching CI)
 make pull-secrets   # pulls server/.env from GCP Secret Manager (needs gcloud auth)
 ```
 
+## Testing in a browser: keep the site muted
+
+Bill is at this PC and must not hear the site while you (or any subagent) test it. This applies to every browser: the in-app pane, Playwright, and his Chrome.
+
+- Before the first click on the page, set `localStorage["sect.music.muted"] = "1"` (the key is `MUTE_KEY` in `src/lib/sect/music.ts`) and reload. A saved `"0"` from an earlier run starts the music on the first click, tap or key.
+- Never press "Turn on sound" or the speaker toggle to unmute. If a check truly needs playing audio (the word-by-word lyric fill only runs while a track is audible), mute the tab or browser itself instead (for Playwright, launch with `--mute-audio`), or ask Bill first.
+- When you finish, leave the saved choice at muted.
+- Put this rule in every subagent or workflow brief that opens the site.
+
 ## Architecture: the voice → navigation pipeline
 
 The non-obvious core of this project is a contract that spans the browser, the backend, and a Pusher channel. Reading any one file in isolation won't show it.
