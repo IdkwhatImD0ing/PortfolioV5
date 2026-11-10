@@ -44,7 +44,7 @@
       "artist": "Xian Ke",
       "language": "en",
       "audioObject": "audio/mirror-815721bfdf787ce7.mp3",
-      "lyricsObject": "lyrics/mirror-6ecf3db8463ea418.json",
+      "lyricsObject": "lyrics/mirror-3080c6ad3555f301.json",
       "duration": 230.869333,
       "loopStart": 0,
       "loopEnd": 230.869333,
@@ -52,7 +52,7 @@
       "lufs": -17.0,
       "bytes": 4618604,
       "audioSha256": "815721bfdf787ce7f2e628451fba0dc03711e4a84bc52cf8cc432cf5e30f757a",
-      "lyricsSha256": "6ecf3db8463ea418227bc846fbcc26099afc8fb9899acc5a127faec3c90c1bac",
+      "lyricsSha256": "3080c6ad3555f301774d7786b28451af4969d8055b9b20008e6205b4e9d27f28",
       "revision": "20261108-1"
     },
     "forge": {
@@ -80,7 +80,7 @@
       "artist": "Qi You (祁游)",
       "language": "zh",
       "audioObject": "audio/arena-013255ab2d296a7b.mp3",
-      "lyricsObject": "lyrics/arena-703cb9b549708a88.json",
+      "lyricsObject": "lyrics/arena-84c4d2bb6b3f7b38.json",
       "duration": 239.691563,
       "loopStart": 0,
       "loopEnd": 239.691563,
@@ -88,7 +88,7 @@
       "lufs": -17.0,
       "bytes": 4795244,
       "audioSha256": "013255ab2d296a7ba4a66d7bfb90182a4873e48592fb3f04d3a3abb42c29bdec",
-      "lyricsSha256": "703cb9b549708a8871fc975e5956a7857afd09139522d274afe59ae0e2ea43d0",
+      "lyricsSha256": "84c4d2bb6b3f7b38dd3e375cf6a98024f9f0ba3d21473eebf777796c350851b9",
       "revision": "20261108-1"
     },
     "mission": {
@@ -98,7 +98,7 @@
       "artist": "Zhou Shen (周深)",
       "language": "zh",
       "audioObject": "audio/mission-e28610be966aea7c.mp3",
-      "lyricsObject": "lyrics/mission-097501536a32119a.json",
+      "lyricsObject": "lyrics/mission-30f107ca2fe45ffb.json",
       "duration": 273.725938,
       "loopStart": 0,
       "loopEnd": 273.725938,
@@ -106,7 +106,7 @@
       "lufs": -17.0,
       "bytes": 5475884,
       "audioSha256": "e28610be966aea7cac25263d86eb8f10e850a5f83dae481b5c03c236be483f00",
-      "lyricsSha256": "097501536a32119a5b14790c383da94e7de8f388864e73bcf3763a2e33ec6992",
+      "lyricsSha256": "30f107ca2fe45ffbf31403104ef4ebb878bd12fc39d1833aa2f066b3f2204181",
       "revision": "20261108-1"
     },
     "library": {
@@ -116,7 +116,7 @@
       "artist": "Yang Zixi (杨子熙)",
       "language": "zh",
       "audioObject": "audio/library-1cc060024ae032ef.mp3",
-      "lyricsObject": "lyrics/library-3aa5cc6087f784b4.json",
+      "lyricsObject": "lyrics/library-8194a1d2b45bbfc3.json",
       "duration": 266.63475,
       "loopStart": 0,
       "loopEnd": 266.63475,
@@ -124,7 +124,7 @@
       "lufs": -17.0,
       "bytes": 5333804,
       "audioSha256": "1cc060024ae032ef6c0117bee6edc1c7112f542f8b000448795792b2f60d80b6",
-      "lyricsSha256": "3aa5cc6087f784b47f8fa9cdc4b4b03d61ee299e863009907b6afd6e094ab800",
+      "lyricsSha256": "8194a1d2b45bbfc35af9e04eeff0b3915f398565d3485b34b2660c42f7fff062",
       "revision": "20261108-1"
     },
     "steles": {
@@ -134,7 +134,7 @@
       "artist": "GALA",
       "language": "zh",
       "audioObject": "audio/steles-8e3d1666dd51ab92.mp3",
-      "lyricsObject": "lyrics/steles-d2c02ed13f53ec8a.json",
+      "lyricsObject": "lyrics/steles-a38f787ead66cd18.json",
       "duration": 236.363646,
       "loopStart": 0,
       "loopEnd": 236.363646,
@@ -142,7 +142,7 @@
       "lufs": -17.0,
       "bytes": 4728524,
       "audioSha256": "8e3d1666dd51ab92d0658c999a08b83ef909c0bff1c7f1e27986c191a1c7ee89",
-      "lyricsSha256": "d2c02ed13f53ec8a3c04b982c254319e5a331c81f7eb8d13766981da293349b0",
+      "lyricsSha256": "a38f787ead66cd1884532765b42c8334b8aaefab1a808830f2d94d017b1ccb52",
       "revision": "20261108-1"
     },
     "scroll": {
@@ -152,7 +152,7 @@
       "artist": "Zhang Jie (张杰)",
       "language": "zh",
       "audioObject": "audio/scroll-1549d83a544380d2.mp3",
-      "lyricsObject": "lyrics/scroll-7075a0650abb3e6e.json",
+      "lyricsObject": "lyrics/scroll-9edb184606d3cfee.json",
       "duration": 223.125333,
       "loopStart": 0,
       "loopEnd": 223.125333,
@@ -160,7 +160,7 @@
       "lufs": -17.0,
       "bytes": 4463564,
       "audioSha256": "1549d83a544380d27d4315ce5c021a490f0c55a665bbd62c52aa955ce13b024f",
-      "lyricsSha256": "7075a0650abb3e6e59c93e58314cab23c8592903a5eabba5ea0b58aacb76ae48",
+      "lyricsSha256": "9edb184606d3cfee35ce9d748ffc2e8e816db7fab971d41dfb07a96c72a866e7",
       "revision": "20261108-1"
     },
     "formation": {
@@ -188,7 +188,7 @@
       "artist": "Wallace Huo (霍建华)",
       "language": "zh",
       "audioObject": "audio/abode-7f12323ae6ac631e.mp3",
-      "lyricsObject": "lyrics/abode-e4603073c1d0b0b7.json",
+      "lyricsObject": "lyrics/abode-e6f48af17ebaeafa.json",
       "duration": 265.102229,
       "loopStart": 0,
       "loopEnd": 265.102229,
@@ -196,7 +196,7 @@
       "lufs": -17.0,
       "bytes": 5303084,
       "audioSha256": "7f12323ae6ac631e4730dfe374210c3c4f2a037c2832baf034fae83c5c152344",
-      "lyricsSha256": "e4603073c1d0b0b7723fcc512edc8d0cd01f144dcd6579f0973cf9039e76d34f",
+      "lyricsSha256": "e6f48af17ebaeafae5a967948bf00569b4854df99f2c6022b6ba208ca68cd58e",
       "revision": "20261108-1"
     },
     "summit": {
@@ -206,7 +206,7 @@
       "artist": "Angela Zhang (张韶涵)",
       "language": "zh",
       "audioObject": "audio/summit-d80ab29767bf39b6.mp3",
-      "lyricsObject": "lyrics/summit-498cf45ae12a37fa.json",
+      "lyricsObject": "lyrics/summit-c45f187260964d8e.json",
       "duration": 211.522188,
       "loopStart": 0,
       "loopEnd": 211.522188,
@@ -214,7 +214,7 @@
       "lufs": -17.0,
       "bytes": 4231724,
       "audioSha256": "d80ab29767bf39b60a27585f3349888fc05fb0c2cb028d4c12e21053417971ad",
-      "lyricsSha256": "498cf45ae12a37fa22d3d94a7d81631309a2e6b98e48745771a9f5e8157be48c",
+      "lyricsSha256": "c45f187260964d8ea8dc694049927fd761788ca191011c680c1f43bbf6fde644",
       "revision": "20261108-1"
     }
   }
