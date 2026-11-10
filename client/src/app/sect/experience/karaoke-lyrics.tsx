@@ -13,7 +13,7 @@
  */
 import { type CSSProperties, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MusicKey, MusicTrack } from "@/lib/sect/music";
-import { lyricLineAt, type LyricLine, type SongLyrics } from "@/lib/sect/lyrics";
+import { lyricLineAt, lyricUnitProgress, lyricWordAt, type LyricLine, type SongLyrics } from "@/lib/sect/lyrics";
 import { hasHan, songCredits, songNote } from "@/lib/sect/song-notes";
 import { BrushName, InkRing, SealedName } from "../ornaments";
 import type { MusicEngine } from "./music-engine";
@@ -56,6 +56,11 @@ export function LyricsPanel({
   panelLyricsRef.current = panelLyrics;
   const slipRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const openRef = useRef(false);
+  openRef.current = open;
+  /** The words of the line being sung, and the one the ink last reached (sect.css --p). */
+  const wordNodes = useRef<(HTMLSpanElement | null)[]>([]);
+  const inked = useRef<{ track: MusicKey; line: number; word: number } | null>(null);
   /** Where the focus goes once the drawer has opened or closed (keyboard only). */
   const focusNext = useRef<"close" | "slip" | null>(null);
 
@@ -105,6 +110,20 @@ export function LyricsPanel({
         } else {
           if (!current || current.track !== playback.track || current.index !== match.index) {
             setActive({ track: playback.track, index: match.index, line: match.line });
+            inked.current = null;
+          } else if (openRef.current) {
+            // Word by word: the words already sung are full of gold ink (--p 1), the one being sung
+            // fills from its left as its time passes, the rest wait in paper white. Written straight
+            // to the spans, so a sung word costs no render.
+            const words = match.line.words;
+            const nodes = wordNodes.current;
+            const at = lyricWordAt(words, playback.position);
+            const last = inked.current;
+            if (!last || last.track !== playback.track || last.line !== match.index || last.word !== at) {
+              for (let i = 0; i < nodes.length; i++) nodes[i]?.style.setProperty("--p", i < at ? "1" : "0");
+              inked.current = { track: playback.track, line: match.index, word: at };
+            }
+            if (words[at]) nodes[at]?.style.setProperty("--p", lyricUnitProgress(words[at], playback.position).toFixed(3));
           }
         }
       }
@@ -195,7 +214,7 @@ export function LyricsPanel({
           type="button"
           onClick={(e) => close(fromKeys(e))}
           aria-label="Close soundtrack details"
-          className="sect-lyrics-close sect-panel sect-plate sect-ctl grid h-11 w-11 shrink-0 place-items-center rounded-[3px] text-[var(--sect-paper-soft)] hover:text-[var(--sect-gold)] md:h-10 md:w-10"
+          className="sect-lyrics-close grid h-11 w-11 shrink-0 place-items-center rounded-[3px] text-[var(--sect-paper-soft)] hover:text-[var(--sect-gold)] md:h-10 md:w-10"
         >
           <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
             <path d="M2 2l12 12M14 2L2 14" stroke="currentColor" strokeWidth="1.5" />
@@ -206,6 +225,7 @@ export function LyricsPanel({
           <p className="sr-only" aria-live="polite" aria-atomic="true">
             {activeLine ? `${activeLine.line.text}. ${activeLine.line.en || ""}` : ""}
           </p>
+          {trackInfo.hasLyrics ? <span aria-hidden className="sect-brushrule sect-lyrics-rule" /> : null}
           {panelLyrics ? (
             <ol className="sect-lyrics-list" data-singing={activeLine ? "" : undefined}>
               {panelLyrics.lines.map((line, index) => {
@@ -223,7 +243,20 @@ export function LyricsPanel({
                     }}
                   >
                     <p className="sect-lyrics-line" lang={hasHan(line.text) ? "zh" : undefined}>
-                      {line.text}
+                      {isActive && line.words.length > 0
+                        ? line.words.map((word, w) => (
+                            <span
+                              className="sect-lyrics-word"
+                              key={w}
+                              ref={(node) => {
+                                wordNodes.current[w] = node;
+                                if (w === 0) wordNodes.current.length = line.words.length;
+                              }}
+                            >
+                              {word.w}
+                            </span>
+                          ))
+                        : line.text}
                     </p>
                     {translation ? <p className="sect-lyrics-en">{translation}</p> : null}
                   </li>
@@ -235,9 +268,7 @@ export function LyricsPanel({
               <InkRing className="sect-lyrics-ring" />
               Loading
             </p>
-          ) : (
-            <p className="sect-lyrics-state">Instrumental</p>
-          )}
+          ) : null}
         </div>
       </aside>
     </div>
@@ -271,19 +302,16 @@ export function SongHead({ track, note }: { track: Pick<MusicTrack, "title" | "s
               <dd>{credits.artist}</dd>
             </div>
           ) : null}
-          {credits.sung ? (
-            <div className="sect-lyrics-by">
-              <dt className="sr-only">Vocals</dt>
-              <dd>{credits.sung}</dd>
-            </div>
-          ) : null}
+          <div className="sect-lyrics-by">
+            <dt className="sr-only">Vocals</dt>
+            <dd>{credits.sung}</dd>
+          </div>
         </dl>
       </header>
-      <span aria-hidden className="sect-brushrule sect-lyrics-rule" />
       {note ? (
         <>
-          <p className="sect-lyrics-note">{note}</p>
           <span aria-hidden className="sect-brushrule sect-lyrics-rule" />
+          <p className="sect-lyrics-note">{note}</p>
         </>
       ) : null}
     </>

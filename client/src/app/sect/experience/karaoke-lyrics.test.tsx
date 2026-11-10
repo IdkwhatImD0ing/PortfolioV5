@@ -28,7 +28,7 @@ describe("SongHead", () => {
     );
     expect(html).toMatch(/<h2 class="sect-lyrics-title">Throne of Glory<\/h2>/);
     expect(html).not.toContain("sect-seal");
-    expect(text(html)).toContain("it’s better to let the glory go on and rest.");
+    expect(text(html)).toContain("it’s better to let the glory go on without you and rest.");
   });
 
   it("leaves out an uncredited artist, and the note's place for an instrumental", () => {
@@ -38,7 +38,8 @@ describe("SongHead", () => {
     expect(html).not.toContain("Not credited");
     expect(html).not.toContain("Sung in");
     expect(html).not.toContain("sect-lyrics-note");
-    // One brush rule under the head, none for a missing note.
-    expect(html.match(/sect-brushrule/g)).toHaveLength(1);
+    expect(text(html)).toContain("Instrumental");
+    // No note, so no brush rule to set one off.
+    expect(html).not.toContain("sect-brushrule");
   });
 });

@@ -39,7 +39,7 @@ describe("songCredits", () => {
     expect(songCredits({ show: "射雕英雄传 2017", artist: "Not credited", language: null })).toEqual({
       show: "射雕英雄传 2017",
       artist: null,
-      sung: null,
+      sung: "Instrumental",
     });
   });
 

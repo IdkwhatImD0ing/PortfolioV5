@@ -10,7 +10,7 @@ import type { MusicKey, MusicTrack } from "./music";
 export const SONG_NOTES: Partial<Record<MusicKey, string>> = {
   // Throne of Glory
   mirror:
-    "Everyone wants to reach the throne, but only by reaching the throne does one know how empty it is. Maybe only sadness is what the throne gives, so it’s better to let the glory go on and rest.",
+    "Everyone wants to reach the throne, but only the one who gets there finds out how empty it is. Maybe sadness is all it gives, so it’s better to let the glory go on without you and rest.",
   // 降临
   arena:
     "Trouble finds a person whether or not he is ready for it. Since it comes either way, one may as well walk into the arena on purpose and stay standing until it is over.",
@@ -47,8 +47,8 @@ export interface SongCredits {
   show: string;
   /** Who sings or plays it; null when the source names no one. */
   artist: string | null;
-  /** The language it is sung in, in words; null for an instrumental. */
-  sung: string | null;
+  /** The language it is sung in, in words; "Instrumental" when no one sings. */
+  sung: string;
 }
 
 /** The credit line under the song's title: no "Not credited", and no language for an instrumental. */
@@ -57,7 +57,7 @@ export function songCredits(track: Pick<MusicTrack, "show" | "artist" | "languag
   return {
     show: track.show,
     artist: artist && artist.toLowerCase() !== UNCREDITED_ARTIST.toLowerCase() ? artist : null,
-    sung: track.language === "zh" ? "Sung in Chinese" : track.language === "en" ? "Sung in English" : null,
+    sung: track.language === "zh" ? "Sung in Chinese" : track.language === "en" ? "Sung in English" : "Instrumental",
   };
 }
 

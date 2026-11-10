@@ -1986,6 +1986,22 @@ body[data-sect-travel] .sect-orb > div:not([role="dialog"]) {
  * the panel's words stay on top. The open drawer is over everything but the voice panel: a stop's
  * panel on the left moves over beside it where there is room, and steps away where there is not.
  */
+/*
+ * The lyrics' brush hand: Ma Shan Zheng (assets/OFL-MaShanZheng.txt) cut down to the songs' own
+ * characters by scripts/subset-lyrics-font.mjs (about 290 KB). Not preloaded: the browser fetches it
+ * the first time the open drawer writes a Chinese line.
+ */
+@font-face {
+  font-family: "Sect Lyric Brush";
+  src: url("./assets/sect-lyrics-brush.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+.sect-lyrics {
+  --sect-lyric-brush: "Sect Lyric Brush", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, serif;
+}
+
 .sect-lyrics-slip {
   position: fixed;
   z-index: 19;
@@ -2048,7 +2064,7 @@ body:has(.sect-veil) .sect-lyrics-slip {
   width: min(23rem, calc(100vw - 4.375rem));
   max-height: calc(100vh - 8.25rem - max(1rem, env(safe-area-inset-bottom)));
   max-height: calc(100dvh - 8.25rem - max(1rem, env(safe-area-inset-bottom)));
-  padding-bottom: 0.9rem;
+  padding-bottom: 1.2rem;
   border-radius: 3px;
   background:
     url("./assets/paper.webp") 0 0 / 256px 256px,
@@ -2077,17 +2093,19 @@ body:has(.sect-veil) .sect-lyrics-slip {
 }
 
 /* The close button, drawn as the map's. */
+/* A bare cross in the corner: the drawer's own frame is ornament enough. */
 .sect-lyrics-close {
   position: absolute;
   z-index: 1;
-  top: 0.75rem;
-  right: 0.75rem;
+  top: 0.5rem;
+  right: 0.5rem;
+  transition: color 0.2s ease;
 }
 
 /* The song: eyebrow, title, brush stroke, credits; the right padding keeps clear of the close button. */
 .sect-lyrics-head {
   flex: none;
-  padding: 1.25rem 4rem 0 1.4rem;
+  padding: 1.25rem 3.25rem 0 1.4rem;
 }
 .sect-lyrics-eyebrow {
   margin: 0;
@@ -2146,6 +2164,12 @@ body:has(.sect-veil) .sect-lyrics-slip {
   font-family: var(--sect-zh);
   font-size: 0.9375rem;
   letter-spacing: 0.04em;
+}
+.sect-lyrics[data-open] .sect-lyrics-from dd[lang="zh"] {
+  font-family: var(--sect-lyric-brush);
+  font-size: 1.125rem;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
   color: var(--sect-paper);
 }
 .sect-lyrics-by + .sect-lyrics-by::before {
@@ -2197,7 +2221,7 @@ body:has(.sect-veil) .sect-lyrics-slip {
 }
 .sect-lyrics-row {
   position: relative;
-  padding: 0.5rem 0 0.5rem 1rem;
+  padding: 0.5rem 0;
   opacity: 0.72;
   transition: opacity 0.35s ease;
 }
@@ -2214,7 +2238,7 @@ body:has(.sect-veil) .sect-lyrics-slip {
   position: absolute;
   top: 0.7rem;
   bottom: 0.7rem;
-  left: -1px;
+  left: -0.85rem;
   width: 5px;
   background: var(--sect-gold);
   -webkit-mask: var(--sect-brush-rule-v) center / 100% 100% no-repeat;
@@ -2242,6 +2266,17 @@ body:has(.sect-veil) .sect-lyrics-slip {
   line-height: 1.6;
   letter-spacing: 0.04em;
 }
+/*
+ * The Chinese lines in the brush hand (Sect Lyric Brush, below): asked for only while the drawer is
+ * open, so a visitor who never opens it never downloads the font. Until it is in, and for a
+ * character it lacks, the serif writes the line.
+ */
+.sect-lyrics[data-open] .sect-lyrics-line[lang="zh"] {
+  font-family: var(--sect-lyric-brush);
+  font-size: 1.4rem;
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+}
 /* Its English, under it in the body face. */
 .sect-lyrics-en {
   margin: 0.1rem 0 0;
@@ -2251,8 +2286,21 @@ body:has(.sect-veil) .sect-lyrics-slip {
   text-wrap: pretty;
   transition: color 0.35s ease;
 }
+/*
+ * The line being sung, word by word (karaoke-lyrics.tsx sets --p on each word, 0 to 1): gold ink
+ * runs through a word from its left as it is sung, over the paper white of what is still to come.
+ */
 .sect-lyrics-row[data-active] .sect-lyrics-line {
-  color: var(--sect-gold);
+  color: var(--sect-paper);
+}
+.sect-lyrics-word {
+  --fill: calc(var(--p, 0) * 100%);
+  background: linear-gradient(90deg, var(--sect-gold) var(--fill), var(--sect-paper) var(--fill));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 .sect-lyrics-row[data-active] .sect-lyrics-en {
   color: var(--sect-paper);
@@ -2325,11 +2373,12 @@ body:has(.sect-veil) .sect-lyrics-slip {
   .sect-lyrics-slip {
     top: clamp(8rem, 30vh, 18rem);
   }
+  /* A card of a few lines, clear of the look hint under the top bar; not a wall down the screen. */
   .sect-panel.sect-lyrics-drawer {
-    top: 6rem;
+    top: 6.75rem;
     left: max(1.25rem, env(safe-area-inset-left));
-    max-height: calc(100vh - 6rem - 4.75rem);
-    max-height: calc(100dvh - 6rem - 4.75rem);
+    max-height: min(37rem, calc(100vh - 6.75rem - 4.75rem));
+    max-height: min(37rem, calc(100dvh - 6.75rem - 4.75rem));
   }
 }
 
@@ -2393,6 +2442,10 @@ body:has(.sect-veil) .sect-lyrics-slip {
   .sect-lyrics-row[data-active]::before {
     forced-color-adjust: none;
     background: Highlight;
+  }
+  .sect-lyrics-word {
+    background: none;
+    color: inherit;
   }
 }
 

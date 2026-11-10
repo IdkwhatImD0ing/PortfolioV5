@@ -3,7 +3,8 @@
 Every soundtrack track has an openable left-side panel dressed like the stops' panels. It names the
 song, its show, its artist and whether it is sung, and carries the owner's note on each sung track.
 The eight vocal tracks also show the complete song and follow the Web Audio clock, marking the
-current original and English lines together. Pinyin and word-level karaoke are not displayed.
+current original and English lines together, with the line being sung filling word by word. Pinyin
+is not displayed.
 
 ## Data contract
 
@@ -52,8 +53,8 @@ A bad or missing lyric file never stops its music track.
 
 For audio time `t`, the current line satisfies `start <= t < end`. Gaps display nothing.
 
-Word timings remain in the source and served schema so the alignment can be regenerated without a
-format migration, but the interface uses line timing only. Timing is checked against the final
+The line is chosen by line timing. Inside it, each word's own `start` and `end` drive the word by
+word fill (`lyricWordAt`, `lyricUnitProgress`). Timing is checked against the final
 normalized MP3 because processing or replacing audio can move the decoded timeline.
 
 The music engine exposes an imperative playback snapshot with the dominant track, exact looped
@@ -70,34 +71,42 @@ block in `client/src/app/sect/sect.css`.
   screen's and the instrumentals' too. It reports its state with `aria-expanded` and steps aside
   while the drawer is open (the drawer covers its place).
 - **The drawer.** Rice paper over ink, 3 px corners, the large gold cloud corners and no backdrop
-  blur, as on the stops' panels. Its close button is drawn like the map's. It fades in and slides a
-  short way from the left.
+  blur, as on the stops' panels. Its close button is a bare cross in the corner (a second framed
+  box inside the frame looked crowded). It fades in and slides a short way from the left. On wide
+  screens it is a card at most 37rem tall, not a wall down the screen.
 - **The head.** A "Now playing" eyebrow, then the song's title. A Chinese title is written in the
   brush hand with the red seal beside it; a Latin title (*Throne of Glory*) is in the stops' serif. A
-  gold brush stroke under it, then one or two quiet lines: the show, then the artist and "Sung in
-  Chinese" or "Sung in English". An artist given as "Not credited" is left out. The credits are a
+  gold brush stroke under it, then one or two quiet lines: the show (in the lyrics' brush hand), then
+  the artist and "Sung in Chinese", "Sung in English" or "Instrumental". An artist given as "Not credited" is left out. The credits are a
   `dl` whose terms (From, Artist, Vocals) are only for screen readers.
 - **The note.** The owner's note on a sung track (below) comes next, in italic serif between two
-  brush rules. Instrumentals have none and show nothing in its place.
-- **The lyrics.** The complete ordered song. A Chinese line is in the CJK serif with `lang="zh"`, its
+  brush rules. Instrumentals have none: their card ends at the credits.
+- **The lyrics.** The complete ordered song. A Chinese line is in the brush hand with `lang="zh"` (below), its
   English under it, smaller, in the body face. An English-only line is one line in the serif, never
   the same text twice. Pinyin is not shown.
-- **The line being sung** turns gold, its English turns paper white, and a short gold brush stroke
-  is drawn down at its left. The other lines fade the farther they are from it. With nothing being
+- **The line being sung** fills with gold ink word by word, over paper white for the words still to
+  come: the words already sung are gold, and the one being sung fills from its left as its time
+  passes. Its English turns paper white, and a short gold brush stroke is drawn down in the margin
+  at its left (the lines themselves sit flush with the head). The other lines fade the farther they are from it. With nothing being
   sung (a gap, muted, before the first line) every line rests at the same middle strength. The line
   being sung scrolls toward the middle.
 - **What scrolls.** On tall screens only the lyrics scroll, under the head, with both edges fading
   out. On phones and short screens the whole drawer scrolls, so the head goes up out of sight while
   a song plays. The scroll bar is a thin gold one.
-- **Instrumentals** show "Instrumental" where the lyrics would be. While lyrics load, the turning
-  ink ring and "Loading".
+- While lyrics load, the turning ink ring and "Loading".
 - During a crossfade, the panel follows the track with the greater audible gain and keeps the
   current track on an exact tie.
 
 乐曲 and the songs' Chinese titles are in the brush font's character list
 (`BRUSH_EXTRA` in `client/src/lib/sect/brush.ts`). After a song changes, add its title there and
-rerun `client/scripts/subset-brush-font.mjs` with the full Ma Shan Zheng TTF. A title with Latin
-letters in it (*刀剑如梦 (erhu and guzheng)*) stays in the CJK serif.
+rerun `client/scripts/subset-brush-font.mjs` with the full Ma Shan Zheng TTF.
+
+The lyric lines and the shows' names use a second cut of the same font, `sect-lyrics-brush.woff2`
+("Sect Lyric Brush" in `sect.css`): every Chinese character in the lyric files and the manifest,
+678 of them, about 290 KB. It is not preloaded; the browser fetches it the first time the open
+drawer writes a Chinese line, and the CJK serif stands in until then and for any character it
+lacks. After the songs or their lyrics change, rerun
+`client/scripts/subset-lyrics-font.mjs <MaShanZheng-Regular.ttf> <server/.music-prepared>`.
 
 ### Where it sits
 
@@ -124,7 +133,7 @@ The owner wrote a short note for each sung track. They live in
 
 | Key | Song | Note |
 |---|---|---|
-| `mirror` | Throne of Glory | Everyone wants to reach the throne, but only by reaching the throne does one know how empty it is. Maybe only sadness is what the throne gives, so it’s better to let the glory go on and rest. |
+| `mirror` | Throne of Glory | Everyone wants to reach the throne, but only the one who gets there finds out how empty it is. Maybe sadness is all it gives, so it’s better to let the glory go on without you and rest. |
 | `arena` | 降临 | Trouble finds a person whether or not he is ready for it. Since it comes either way, one may as well walk into the arena on purpose and stay standing until it is over. |
 | `mission` | 璀璨冒险人 | People who say to take the safe way round mostly mean well, but they do not have to live your life. A few scars are worth it to see what the world is really like. |
 | `library` | 化凡 | To grow, a person sometimes has to put down what he has and live plain for a long while. A teacher can only hand over so much, and the rest is learned out in the world. |

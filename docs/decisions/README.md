@@ -362,6 +362,17 @@ are in [`../music/karaoke-lyrics.md`](../music/karaoke-lyrics.md).
 **Why.** The owner found the first panel too plain and out of step with the rest of the page, and
 wrote a phrase for each of the eight sung tracks to show with it.
 
+### 2026-11-09 · Lyrics in the brush hand, sung word by word
+
+**Decided.** The Chinese lyric lines are written in Ma Shan Zheng, the brush hand of the place names,
+from a second cut of the font that holds every character of the songs (about 290 KB, fetched only
+when the drawer is first opened). The line being sung fills with gold word by word from the lyric
+files' word timings. This replaces the earlier choice to show line timing only. The drawer is a card
+of limited height with a bare cross to close it, and an instrumental's card ends at its credits.
+
+**Why.** The owner asked for word-by-word highlighting and a Chinese face closer to wuxia and
+xianxia titles; the system serif the lines fell back to read as plain.
+
 ---
 
 ## Longer write-ups
