@@ -1969,235 +1969,430 @@ body[data-sect-travel] .sect-orb > div:not([role="dialog"]) {
   }
 }
 
-/* Soundtrack details and timed lyrics live in a left-side drawer, clear of the map controls. */
-.sect-lyrics {
-  --lyrics-width: min(23rem, calc(100vw - 5rem));
+/*
+ * The soundtrack panel (experience/karaoke-lyrics.tsx, docs/music/karaoke-lyrics.md), in the stops'
+ * panel dress: a title slip at the left edge (乐曲 upright, "Music" under it, on a control's plate)
+ * opens a drawer of rice paper over ink with the gold cloud corners, the song's title as its hero,
+ * the owner's note on the song set off by brush rules, and the lyrics. The line being sung is marked
+ * in ink and gold (gold characters, a short upright stroke at its left), and the lines fade the
+ * farther they are from it (--d, set on each row: 0 to 4).
+ *
+ * Phones and short screens (the compact place row along the top): the drawer starts under that row
+ * and keeps left of the sound toggle's column; the slip hangs under the row on a phone held upright,
+ * under the top bar on a short screen. Wider screens: the slip a third of the way down, the drawer
+ * under the top bar and its hint, stopping above the Recentre button.
+ *
+ * The slip sits under the stops' panels (z-index 20): where a long panel reaches it on a small screen,
+ * the panel's words stay on top. The open drawer is over everything but the voice panel: a stop's
+ * panel on the left moves over beside it where there is room, and steps away where there is not.
+ */
+.sect-lyrics-slip {
+  position: fixed;
+  z-index: 19;
+  top: 8.25rem;
+  left: max(0.5rem, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 2.75rem;
+  padding: 0.8rem 0 0.7rem;
+  border-radius: 3px;
+  color: var(--sect-paper-soft);
+  transition:
+    color 0.2s ease,
+    opacity 0.2s ease,
+    visibility 0s;
+}
+.sect-lyrics-slip > [lang="zh"] {
+  font-size: 1.25rem;
+  line-height: 1.05;
+  color: var(--sect-gold);
+}
+.sect-lyrics-slip-label {
+  font-size: 0.5rem;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.sect-lyrics-slip:hover {
+  color: var(--sect-gold);
+}
+/* Over the loading screen: up over its veil, and on a phone in the top corner, clear of its column. */
+body:has(.sect-veil) .sect-lyrics-slip {
+  z-index: 51;
+}
+@media (max-width: 47.99rem) {
+  body:has(.sect-veil) .sect-lyrics-slip {
+    top: max(0.75rem, env(safe-area-inset-top));
+  }
+}
+/* The drawer covers its place: it steps aside, and comes back when the drawer goes. */
+.sect-lyrics[data-open] .sect-lyrics-slip {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    color 0.2s ease,
+    opacity 0.2s ease,
+    visibility 0s 0.2s;
+}
+
+.sect-panel.sect-lyrics-drawer {
   position: fixed;
   z-index: 51;
-  inset: 0;
-  pointer-events: none;
-}
-
-.sect-lyrics__toggle {
-  position: absolute;
-  top: 46%;
-  left: max(0.75rem, env(safe-area-inset-left));
-  display: grid;
-  gap: 0.18rem;
-  min-width: 3.25rem;
-  padding: 0.7rem 0.55rem;
-  border: 1px solid rgba(233, 199, 126, 0.42);
-  border-radius: 0.2rem;
-  background: rgba(12, 12, 15, 0.82);
-  color: var(--sect-paper);
-  font-size: 0.67rem;
-  letter-spacing: 0.08em;
-  line-height: 1.1;
-  text-align: center;
-  pointer-events: auto;
-  backdrop-filter: blur(8px);
-  transition: left 0.3s ease, border-color 0.2s ease;
-}
-
-.sect-lyrics__toggle span:first-child {
-  color: var(--sect-gold);
-  font-size: 1rem;
-  letter-spacing: 0.14em;
-}
-
-.sect-lyrics[data-open] .sect-lyrics__toggle {
-  left: calc(var(--lyrics-width) + max(1.25rem, env(safe-area-inset-left)));
-  border-color: rgba(233, 199, 126, 0.7);
-}
-
-.sect-lyrics__panel {
-  position: absolute;
-  top: max(5rem, env(safe-area-inset-top));
-  left: max(0.75rem, env(safe-area-inset-left));
-  bottom: max(4.75rem, env(safe-area-inset-bottom));
-  width: var(--lyrics-width);
-  overflow: hidden;
-  border: 1px solid rgba(233, 199, 126, 0.34);
-  border-radius: 0.3rem;
+  top: 8.25rem;
+  left: max(0.5rem, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  width: min(23rem, calc(100vw - 4.375rem));
+  max-height: calc(100vh - 8.25rem - max(1rem, env(safe-area-inset-bottom)));
+  max-height: calc(100dvh - 8.25rem - max(1rem, env(safe-area-inset-bottom)));
+  padding-bottom: 0.9rem;
+  border-radius: 3px;
   background:
-    linear-gradient(180deg, rgba(20, 20, 23, 0.92), rgba(8, 8, 11, 0.96)),
-    rgba(8, 8, 11, 0.96);
-  box-shadow: 0.8rem 0 2.5rem rgba(0, 0, 0, 0.38);
+    url("./assets/paper.webp") 0 0 / 256px 256px,
+    rgba(13, 10, 19, 0.895);
+  /* The stops' panels' paper and ink (content.css .sc-panel), and no backdrop blur, as there: the
+     canvas under it redraws every frame. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   color: var(--sect-paper);
   opacity: 0;
-  pointer-events: none;
-  transform: translateX(calc(-100% - 1.5rem));
-  transition: transform 0.3s ease, opacity 0.2s ease;
-  backdrop-filter: blur(12px);
+  visibility: hidden;
+  transform: translateX(-0.75rem);
+  transition:
+    opacity 0.25s ease,
+    transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1),
+    visibility 0s 0.3s;
 }
-
-.sect-lyrics[data-open] .sect-lyrics__panel {
+.sect-lyrics[data-open] .sect-lyrics-drawer {
   opacity: 1;
-  pointer-events: auto;
-  transform: translateX(0);
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 0.25s ease,
+    transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1),
+    visibility 0s;
 }
 
-.sect-lyrics__header {
+/* The close button, drawn as the map's. */
+.sect-lyrics-close {
+  position: absolute;
+  z-index: 1;
+  top: 0.75rem;
+  right: 0.75rem;
+}
+
+/* The song: eyebrow, title, brush stroke, credits; the right padding keeps clear of the close button. */
+.sect-lyrics-head {
+  flex: none;
+  padding: 1.25rem 4rem 0 1.4rem;
+}
+.sect-lyrics-eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--sect-gold);
+}
+.sect-lyrics-title {
+  margin: 0.6rem 0 0;
+  font-family: var(--font-instrument-serif), "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: clamp(1.8rem, 2.6vw, 2.2rem);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--sect-paper);
+}
+.sect-lyrics-title-zh {
+  font-size: 1.9rem;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+.sect-lyrics-title :is(.sect-brushname, .sect-zh) {
+  letter-spacing: 0.08em;
+}
+.sect-lyrics-title .sect-sealedname {
+  gap: 0.5rem;
+}
+.sect-lyrics-title .sect-seal {
+  font-size: 1.4rem;
+}
+.sect-lyrics-stroke {
+  margin-top: 0.8rem;
+}
+.sect-lyrics-credits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.45rem;
+  margin: 0.8rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--sect-paper-soft);
+}
+.sect-lyrics-credits > div {
+  display: flex;
+  align-items: baseline;
+}
+.sect-lyrics-credits dd {
+  margin: 0;
+}
+.sect-lyrics-from {
+  flex-basis: 100%;
+}
+.sect-lyrics-from dd[lang="zh"] {
+  font-family: var(--sect-zh);
+  font-size: 0.9375rem;
+  letter-spacing: 0.04em;
+  color: var(--sect-paper);
+}
+.sect-lyrics-by + .sect-lyrics-by::before {
+  content: "·";
+  content: "·" / "";
+  margin-right: 0.45rem;
+  color: var(--sect-gold);
+}
+
+.sect-lyrics-rule {
+  flex: none;
+  margin: 1rem 1.4rem 0;
+}
+
+/* The owner's note on the song: a quiet inscription, like the colophon at a scroll's end. */
+.sect-lyrics-note {
+  flex: none;
+  margin: 0.85rem 0 0;
+  padding: 0 1.4rem;
+  font-family: var(--font-instrument-serif), "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1.125rem;
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--sect-paper-soft);
+  text-wrap: pretty;
+}
+
+/* Loading (the turning ink ring) and an instrumental's one line. */
+.sect-lyrics-state {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.8rem 0.9rem;
-  border-bottom: 1px solid rgba(233, 199, 126, 0.22);
-  color: var(--sect-gold);
-  font-size: 0.72rem;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.sect-lyrics__close {
-  display: grid;
-  width: 2rem;
-  height: 2rem;
-  place-items: center;
-  border: 0;
-  background: transparent;
-  color: var(--sect-paper);
-  font-size: 1.4rem;
-  line-height: 1;
-}
-
-.sect-lyrics__body {
-  height: calc(100% - 3.7rem);
-  padding: 0.65rem 0.5rem 1rem;
-  overflow-y: auto;
-  text-wrap: balance;
-  scrollbar-color: rgba(233, 199, 126, 0.38) transparent;
-}
-
-.sect-lyrics__body p {
+  gap: 0.75rem;
   margin: 0;
-}
-
-.sect-lyrics__about {
-  margin: 0 0.35rem 0.8rem;
-  padding: 0.65rem 0.5rem 1rem;
-  border-bottom: 1px solid rgba(233, 199, 126, 0.22);
-}
-
-.sect-lyrics__title {
-  color: var(--sect-gold);
-  font-family: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
-  font-size: clamp(1.35rem, 2vw, 1.7rem);
-  line-height: 1.2;
-}
-
-.sect-lyrics__meta {
-  display: grid;
-  gap: 0.45rem;
-  margin: 0.75rem 0 0;
-}
-
-.sect-lyrics__meta div {
-  display: grid;
-  grid-template-columns: 3.5rem 1fr;
-  gap: 0.65rem;
-}
-
-.sect-lyrics__meta dt {
-  color: rgba(233, 199, 126, 0.62);
-  font-size: 0.66rem;
-  letter-spacing: 0.12em;
+  padding: 1rem 1.4rem 0.4rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.26em;
   text-transform: uppercase;
+  color: var(--sect-paper-soft);
+}
+.sect-lyrics-ring {
+  font-size: 0.95rem;
 }
 
-.sect-lyrics__meta dd {
+.sect-lyrics-list {
+  flex: none;
   margin: 0;
-  color: rgba(245, 236, 220, 0.82);
-  font-size: 0.82rem;
+  padding: 0.75rem 1.4rem 1.75rem;
+  list-style: none;
 }
-
-.sect-lyrics__list {
-  display: grid;
-  gap: 0.18rem;
+.sect-lyrics-row {
+  position: relative;
+  padding: 0.5rem 0 0.5rem 1rem;
+  opacity: 0.72;
+  transition: opacity 0.35s ease;
 }
-
-.sect-lyrics__row {
-  padding: 0.75rem 0.85rem;
-  border-left: 2px solid transparent;
-  border-radius: 0.15rem;
-  opacity: 0.48;
-  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+/* While a line is sung: the others fade with their distance from it. */
+.sect-lyrics-list[data-singing] .sect-lyrics-row {
+  opacity: max(0.3, calc(0.95 - var(--d, 4) * 0.16));
 }
-
-.sect-lyrics__row[data-active] {
-  border-left-color: var(--sect-gold);
-  background: rgba(233, 199, 126, 0.1);
+.sect-lyrics-list[data-singing] .sect-lyrics-row[data-active] {
   opacity: 1;
 }
-
-.sect-lyrics__line {
-  color: rgba(245, 236, 220, 0.86);
-  font-family: var(--font-instrument-serif), "Instrument Serif", Georgia, serif;
-  font-size: clamp(1.12rem, 1.6vw, 1.35rem);
-  line-height: 1.35;
+/* The line being sung: a short upright stroke of gold at its left, drawn down as it starts. */
+.sect-lyrics-row::before {
+  content: "";
+  position: absolute;
+  top: 0.7rem;
+  bottom: 0.7rem;
+  left: -1px;
+  width: 5px;
+  background: var(--sect-gold);
+  -webkit-mask: var(--sect-brush-rule-v) center / 100% 100% no-repeat;
+  mask: var(--sect-brush-rule-v) center / 100% 100% no-repeat;
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 0.35s ease;
+}
+.sect-lyrics-row[data-active]::before {
+  transform: none;
+}
+/* The sung line: Chinese in the CJK serif, an English song's in the stops' serif. */
+.sect-lyrics-line {
+  margin: 0;
+  font-family: var(--font-instrument-serif), "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1.25rem;
+  line-height: 1.3;
+  color: var(--sect-paper);
+  text-wrap: pretty;
+  transition: color 0.35s ease;
+}
+.sect-lyrics-line[lang="zh"] {
+  font-family: var(--sect-zh);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+}
+/* Its English, under it in the body face. */
+.sect-lyrics-en {
+  margin: 0.1rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--sect-paper-soft);
+  text-wrap: pretty;
+  transition: color 0.35s ease;
+}
+.sect-lyrics-row[data-active] .sect-lyrics-line {
+  color: var(--sect-gold);
+}
+.sect-lyrics-row[data-active] .sect-lyrics-en {
+  color: var(--sect-paper);
 }
 
-.sect-lyrics__translation {
-  margin-top: 0.2rem !important;
-  color: rgba(245, 236, 220, 0.66);
-  font-size: clamp(0.78rem, 1.05vw, 0.92rem);
-  line-height: 1.4;
+/*
+ * What scrolls: the whole drawer on phones and short screens (the active line comes to the middle and
+ * the song's head goes up out of sight); the lyrics alone where the drawer is tall, the head held
+ * still above them. The scrolled edge fades out, and the bar is a thin gold one.
+ */
+.sect-lyrics-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-mask: linear-gradient(#000 calc(100% - 1.25rem), transparent);
+  mask: linear-gradient(#000 calc(100% - 1.25rem), transparent);
 }
-
-.sect-lyrics__row[data-active] .sect-lyrics__line,
-.sect-lyrics__row[data-active] .sect-lyrics__translation {
-  color: #f1ce82;
+.sect-lyrics-body,
+.sect-lyrics-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sect-gold-soft) transparent;
 }
-
-.sect-lyrics__gap {
-  padding: 1.25rem 0.85rem;
-  color: rgba(233, 199, 126, 0.42);
-  font-size: 0.82rem;
-  letter-spacing: 0.05em;
-  text-align: center;
+.sect-lyrics-body::-webkit-scrollbar,
+.sect-lyrics-list::-webkit-scrollbar {
+  width: 6px;
 }
-
-@media (max-width: 42rem) {
-  .sect-lyrics {
-    --lyrics-width: min(21rem, calc(100vw - 4.25rem));
+.sect-lyrics-body::-webkit-scrollbar-thumb,
+.sect-lyrics-list::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--sect-gold-soft);
+}
+@media (min-height: 43rem) {
+  .sect-lyrics-body {
+    overflow: visible;
+    -webkit-mask: none;
+    mask: none;
   }
-
-  .sect-lyrics__toggle {
-    left: max(0.45rem, env(safe-area-inset-left));
-    min-width: 3rem;
+  .sect-lyrics-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-mask: linear-gradient(transparent, #000 1.75rem, #000 calc(100% - 2.5rem), transparent);
+    mask: linear-gradient(transparent, #000 1.75rem, #000 calc(100% - 2.5rem), transparent);
   }
+}
 
-  .sect-lyrics[data-open] .sect-lyrics__toggle {
-    left: calc(var(--lyrics-width) + max(0.7rem, env(safe-area-inset-left)));
+@media (min-width: 48rem) {
+  .sect-lyrics-slip {
+    width: 2.5rem;
+    padding: 0.75rem 0 0.65rem;
   }
+}
 
-  .sect-lyrics__panel {
-    top: max(4.25rem, env(safe-area-inset-top));
-    left: max(0.45rem, env(safe-area-inset-left));
-    bottom: max(4.25rem, env(safe-area-inset-bottom));
+/*
+ * Short screens (a phone on its side): every stop's panel takes the left, reaching up near the top
+ * bar, so the slip hangs right under the bar, beside the place row; 乐曲 stays in sight over a panel.
+ */
+@media (max-height: 31.24rem) {
+  .sect-lyrics-slip {
+    top: 3.75rem;
+  }
+}
+
+/* Wide and tall enough for the side rail: the slip a third of the way down, the drawer under the top bar. */
+@media (min-width: 48rem) and (min-height: 31.25rem) {
+  .sect-lyrics-slip {
+    top: clamp(8rem, 30vh, 18rem);
+  }
+  .sect-panel.sect-lyrics-drawer {
+    top: 6rem;
+    left: max(1.25rem, env(safe-area-inset-left));
+    max-height: calc(100vh - 6rem - 4.75rem);
+    max-height: calc(100dvh - 6rem - 4.75rem);
+  }
+}
+
+/*
+ * A stop's panel and the open drawer: where there is room for both, a panel on the left moves over
+ * beside it; where there is not, the panel steps away until the drawer closes, as it does behind a
+ * reader (content.css: the engine fades panels with inline styles, hence !important).
+ */
+@media (max-width: 59.99rem) {
+  body[data-sect-lyrics] .sect-panel.sc-panel {
+    visibility: hidden !important;
+  }
+}
+@media (min-width: 60rem) {
+  .sect-root .sect-panel.sc-panel.sc-panel-left {
+    transition: left 0.35s ease;
+  }
+  body[data-sect-lyrics] .sect-panel.sc-panel.sc-panel-left {
+    left: 25.5rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sect-lyrics__toggle,
-  .sect-lyrics__panel,
-  .sect-lyrics__row {
+  .sect-lyrics-slip,
+  .sect-lyrics[data-open] .sect-lyrics-slip,
+  .sect-lyrics .sect-lyrics-drawer,
+  .sect-lyrics[data-open] .sect-lyrics-drawer,
+  .sect-lyrics-row,
+  .sect-lyrics-row::before,
+  .sect-lyrics-line,
+  .sect-lyrics-en,
+  .sect-root .sect-panel.sc-panel.sc-panel-left {
     transition: none;
+  }
+  .sect-lyrics .sect-lyrics-drawer {
+    transform: none;
   }
 }
 
+/* Forced colours: plain frames, every line at full strength, the sung one in the highlight colour. */
 @media (forced-colors: active) {
-  .sect-lyrics__panel,
-  .sect-lyrics__toggle {
+  .sect-panel.sect-lyrics-drawer,
+  .sect-lyrics-slip {
     border: 1px solid CanvasText;
     background: Canvas;
-    color: CanvasText;
-    forced-color-adjust: none;
   }
-
-  .sect-lyrics__row[data-active] .sect-lyrics__line,
-  .sect-lyrics__row[data-active] .sect-lyrics__translation {
+  .sect-lyrics-body,
+  .sect-lyrics-list {
+    -webkit-mask: none;
+    mask: none;
+  }
+  .sect-lyrics-row,
+  .sect-lyrics-list[data-singing] .sect-lyrics-row {
+    opacity: 1;
+  }
+  .sect-lyrics-row[data-active] .sect-lyrics-line,
+  .sect-lyrics-row[data-active] .sect-lyrics-en {
+    forced-color-adjust: none;
     color: Highlight;
+  }
+  .sect-lyrics-row[data-active]::before {
+    forced-color-adjust: none;
+    background: Highlight;
   }
 }
 

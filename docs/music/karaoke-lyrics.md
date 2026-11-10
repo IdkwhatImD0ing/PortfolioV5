@@ -1,9 +1,9 @@
 # Soundtrack and timed lyrics panel
 
-Every soundtrack track has an openable left-side panel with its title, artist, source show and
-vocal type. The eight vocal tracks also show the complete song and follow the Web Audio clock,
-highlighting the current original and English lines together. Pinyin and word-level karaoke are not
-displayed.
+Every soundtrack track has an openable left-side panel dressed like the stops' panels. It names the
+song, its show, its artist and whether it is sung, and carries the owner's note on each sung track.
+The eight vocal tracks also show the complete song and follow the Web Audio clock, marking the
+current original and English lines together. Pinyin and word-level karaoke are not displayed.
 
 ## Data contract
 
@@ -62,22 +62,79 @@ position, crossfade gains and suppression state. The panel samples that clock wi
 
 ## Display
 
-- Every track, including loading-screen and instrumental music, exposes a compact `乐曲 / Music`
-  button at the left edge.
-- The button opens a left-side drawer and reports its state with `aria-expanded`.
-- The drawer begins with the song title, artist, source show and whether it is instrumental,
-  Chinese vocals or English vocals.
-- The drawer contains the complete ordered lyrics, not only the current line.
-- Each row contains the original Chinese line and its English translation; pinyin is not shown.
-- The active row highlights both languages at the same time and scrolls toward the centre.
-- English-only lines and songs show one English line instead of duplicating the same text.
-- Instrumentals keep the same metadata panel and state that the track has no lyrics. During vocal
-  lyric gaps the full list remains visible with no highlighted row.
+The panel is `client/src/app/sect/experience/karaoke-lyrics.tsx`, styled by the `.sect-lyrics-*`
+block in `client/src/app/sect/sect.css`.
+
+- **The slip.** A title slip at the left edge opens the drawer: 乐曲 written upright in gold, "Music"
+  under it, on a control's plate with the small gold cloud corners. Every track has it, the loading
+  screen's and the instrumentals' too. It reports its state with `aria-expanded` and steps aside
+  while the drawer is open (the drawer covers its place).
+- **The drawer.** Rice paper over ink, 3 px corners, the large gold cloud corners and no backdrop
+  blur, as on the stops' panels. Its close button is drawn like the map's. It fades in and slides a
+  short way from the left.
+- **The head.** A "Now playing" eyebrow, then the song's title. A Chinese title is written in the
+  brush hand with the red seal beside it; a Latin title (*Throne of Glory*) is in the stops' serif. A
+  gold brush stroke under it, then one or two quiet lines: the show, then the artist and "Sung in
+  Chinese" or "Sung in English". An artist given as "Not credited" is left out. The credits are a
+  `dl` whose terms (From, Artist, Vocals) are only for screen readers.
+- **The note.** The owner's note on a sung track (below) comes next, in italic serif between two
+  brush rules. Instrumentals have none and show nothing in its place.
+- **The lyrics.** The complete ordered song. A Chinese line is in the CJK serif with `lang="zh"`, its
+  English under it, smaller, in the body face. An English-only line is one line in the serif, never
+  the same text twice. Pinyin is not shown.
+- **The line being sung** turns gold, its English turns paper white, and a short gold brush stroke
+  is drawn down at its left. The other lines fade the farther they are from it. With nothing being
+  sung (a gap, muted, before the first line) every line rests at the same middle strength. The line
+  being sung scrolls toward the middle.
+- **What scrolls.** On tall screens only the lyrics scroll, under the head, with both edges fading
+  out. On phones and short screens the whole drawer scrolls, so the head goes up out of sight while
+  a song plays. The scroll bar is a thin gold one.
+- **Instrumentals** show "Instrumental" where the lyrics would be. While lyrics load, the turning
+  ink ring and "Loading".
 - During a crossfade, the panel follows the track with the greater audible gain and keeps the
   current track on an exact tie.
 
-The drawer slides from the left on desktop and phones, away from the map and voice controls on the
-right. It stays clear of the compact top rail and lower controls and respects safe-area insets.
+The brush font is cut down to the place names' characters (`client/src/lib/sect/brush.ts`), so 乐曲
+and the song titles draw in the CJK serif for now. To write them in the brush hand, add their
+characters to `brush.ts` and rerun `client/scripts/subset-brush-font.mjs`, which needs the full Ma
+Shan Zheng TTF.
+
+### Where it sits
+
+- **Phone held upright:** the slip under the place row, level with the sound toggle on the right.
+  The drawer starts under the place row and keeps left of the sound toggle's column.
+- **Short screen (a phone on its side):** the slip right under the top bar, so 乐曲 stays in sight
+  over a stop's panel. The drawer starts under the place row.
+- **Wider screens:** the slip about a third of the way down. The drawer starts under the top bar and
+  its hint and stops above the Recentre button.
+- **Loading screen:** the slip comes up over the veil. On a phone it moves to the top-left corner,
+  clear of the screen's centred column.
+- **Stops' panels.** The closed slip sits under them, so where a long panel reaches it on a small
+  screen, the panel's words stay on top. While the drawer is open, a panel on the left moves over
+  beside it on screens 60rem (960 px) wide or more. On narrower screens there is no room for both, so
+  the stop's panel steps away until the drawer closes, as it does behind a reader.
+
+Checked on 2026-11-09 at 320×568, 375×812, 768×1024, 1440×900, 812×375 and 667×375, with the music
+API stubbed.
+
+## Song notes
+
+The owner wrote a short note for each sung track. They live in
+`client/src/lib/sect/song-notes.ts` and must stay word for word, curly apostrophe included.
+
+| Key | Song | Note |
+|---|---|---|
+| `mirror` | Throne of Glory | Everyone wants to reach the throne, but only by reaching the throne does one know how empty it is. Maybe only sadness is what the throne gives, so it’s better to let the glory go on and rest. |
+| `arena` | 降临 | Trouble finds a person whether or not he is ready for it. Since it comes either way, one may as well walk into the arena on purpose and stay standing until it is over. |
+| `mission` | 璀璨冒险人 | People who say to take the safe way round mostly mean well, but they do not have to live your life. A few scars are worth it to see what the world is really like. |
+| `library` | 化凡 | To grow, a person sometimes has to put down what he has and live plain for a long while. A teacher can only hand over so much, and the rest is learned out in the world. |
+| `steles` | 光之少年 | A hero is just an ordinary person who kept going after getting hurt. Skills come the same way, by trying again until something works. |
+| `scroll` | 浩瀚 | Being looked down on matters little to someone who already knows what he is good for. The belief has to come before there is any proof of it. |
+| `abode` | 逍遥 | Fame and money are easier to let go of once you see how quickly the years pass. Success means little with no one to share it, and one person to grow old with is worth more than all of it. |
+| `summit` | 破茧 | The world does not stop when you lose someone. It still expects you to get up and keep going. The only way through is to hold on to someone, and to be that person for somebody else too. |
+
+`song-notes.test.ts` checks that every key is a music key and that the notes cover exactly the
+tracks `server/music_manifest.json` serves lyrics for.
 
 ## When it hides
 
@@ -89,9 +146,14 @@ view, behind readers or the map, during fast travel, and on error screens.
 
 - Mark the active bilingual row with `aria-current`.
 - Announce only the active complete line through a visually hidden polite live region.
-- Make the closed drawer inert so its close button and text are not focusable.
-- Reduced-motion mode disables drawer, row and auto-scroll animation.
-- Forced-colour mode preserves the distinction between active and inactive rows.
+- Make the closed drawer inert and `aria-hidden` so its close button and text are not focusable.
+- Opened from the keyboard (Enter or Space on the slip), the focus moves to the drawer's close
+  button. Escape, with the focus in the drawer, or the close button pressed from the keyboard closes
+  it and puts the focus back on the slip. That Escape only closes the drawer: the view stays turned
+  (one Escape, one thing, as for the volume slider). A mouse or touch open leaves the focus alone.
+- Reduced-motion mode disables drawer, slip, row and auto-scroll animation.
+- Forced-colour mode drops the fades, shows every line at full strength and marks the active line
+  in the highlight colour.
 
 ## QA
 

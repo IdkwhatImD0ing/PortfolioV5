@@ -342,6 +342,26 @@ and wanted the files served through the backend instead of shipped as frontend a
 opaque storage names and private storage deter direct static downloads while preserving the existing playback
 quality.
 
+### 2026-11-09 · The soundtrack drawer takes the stops' dress and a note for each song
+
+**Decided.** The soundtrack drawer is dressed like the stops' panels: rice paper over ink, gold cloud
+corners, the title as the hero (a Chinese one with the red seal), a brush stroke under it and brush
+rules in place of lines. Its opener is a title slip at the left edge, 乐曲 written upright on a
+control's plate; the left edge stays. The credits shrink to one or two quiet lines and leave out an
+artist the source does not name. The line being sung is marked in gold with a short brush stroke,
+and the other lines fade with their distance from it.
+
+Each sung track carries the owner's note on it, set as a small inscription between the credits and
+the lyrics, word for word (`client/src/lib/sect/song-notes.ts`). Instrumentals show nothing there.
+
+The closed slip sits under the stops' panels, so it never covers their words. While the drawer is
+open, a stop's panel on the left moves over beside it where the screen is at least 60rem wide;
+narrower, the stop's panel steps away until the drawer closes, as it does behind a reader. Details
+are in [`../music/karaoke-lyrics.md`](../music/karaoke-lyrics.md).
+
+**Why.** The owner found the first panel too plain and out of step with the rest of the page, and
+wrote a phrase for each of the eight sung tracks to show with it.
+
 ---
 
 ## Longer write-ups
