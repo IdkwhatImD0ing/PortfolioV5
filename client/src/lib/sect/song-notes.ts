@@ -5,7 +5,8 @@
  * The English notes are the owner's own words: keep them exactly as written (the curly apostrophe
  * too). Each has a Chinese version beside it; scripts/subset-lyrics-font.mjs reads this file so the
  * brush font carries its characters. The
- * instrumentals have none, and the panel shows nothing in a note's place for them.
+ * instrumentals have none, and neither does a sung track he has not written one for yet
+ * (formation, 曙光): the panel shows nothing in a note's place for them.
  */
 import type { MusicKey, MusicTrack } from "./music";
 
@@ -71,7 +72,7 @@ export const SONG_TITLES_EN: Partial<Record<MusicKey, string>> = {
   library: "Becoming Mortal", // 化凡
   steles: "Child of Light", // 光之少年
   scroll: "Boundless", // 浩瀚
-  formation: "Heaven's Wrath Awakens", // 天谴觉醒
+  formation: "Dawn", // 曙光
   abode: "Carefree", // 逍遥
   summit: "Breaking the Cocoon", // 破茧
 };
@@ -81,7 +82,7 @@ export function songTitleEn(key: MusicKey): string | null {
   return SONG_TITLES_EN[key] ?? null;
 }
 
-/** The owner's note on this track, or null (the instrumentals). */
+/** The owner's note on this track, or null (the instrumentals, and a song with no note yet). */
 export function songNote(key: MusicKey): SongNote | null {
   return SONG_NOTES[key] ?? null;
 }

@@ -2133,7 +2133,7 @@ body[data-sect-travel] .sect-orb > div:not([role="dialog"]) {
  */
 /*
  * The lyrics' brush hand: Ma Shan Zheng (assets/OFL-MaShanZheng.txt) cut down to the songs' own
- * characters by scripts/subset-lyrics-font.mjs (about 290 KB). Not preloaded: the browser fetches it
+ * characters by scripts/subset-lyrics-font.mjs (about 340 KB). Not preloaded: the browser fetches it
  * the first time the open drawer writes a Chinese line.
  */
 @font-face {

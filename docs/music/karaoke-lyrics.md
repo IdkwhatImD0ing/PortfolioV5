@@ -2,7 +2,7 @@
 
 Every soundtrack track has an openable left-side panel dressed like the stops' panels. It names the
 song, its show, its artist and whether it is sung, and carries the owner's note on each sung track.
-The eight vocal tracks also show the complete song and follow the Web Audio clock, marking the
+The nine vocal tracks also show the complete song and follow the Web Audio clock, marking the
 current original and English lines together, with the line being sung filling word by word. Pinyin
 is not displayed.
 
@@ -184,6 +184,6 @@ view, behind readers or the map, during fast travel, and on error screens.
 
 ## QA
 
-Listen through all eight tracks before release. Priorities are the estimated *Throne of Glory*
+Listen through all nine tracks before release. Priorities are the estimated *Throne of Glory*
 lines, near-zero units, loop wrap, pause/resume, and the two corrected English translations in
 `降临` near 2:13 and 2:17.

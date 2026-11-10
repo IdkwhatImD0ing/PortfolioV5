@@ -16,9 +16,12 @@ track plays on the loading screen and one at each of the eleven stops.
 | `library` | Scripture Pavilion | 化凡 | Yang Zixi (杨子熙) | 仙逆 | `r2a-1S3xNQY` | Chinese |
 | `steles` | Stele Forest | 光之少年 | GALA | 神印王座 | `jFXCp-kc4h8` | Chinese |
 | `scroll` | Jade Slip Pavilion | 浩瀚 | Zhang Jie (张杰) | 神雕侠侣 2014 | `i2CER52gUVc` | Chinese |
-| `formation` | Grand Formation | 天谴觉醒 | Not credited | 神印王座 | `ll17o0KFV-Q` | Instrumental |
+| `formation` | Grand Formation | 曙光 | Chen Bing (陈冰) | 神印王座 | `mrI49InwKpo` | Chinese |
 | `abode` | Cave Abode | 逍遥 | Wallace Huo (霍建华) | 笑傲江湖 2013 | `dQONNl1YOeY` | Chinese |
 | `summit` | Moon-Gazing Summit | 破茧 | Angela Zhang (张韶涵) | 斗罗大陆 | `TjvrbPqfBxI` | Chinese |
+
+曙光 replaced the instrumental 天谴觉醒 (`ll17o0KFV-Q`) at the Grand Formation on 2026-11-10; the old
+file stays in the handoff folder and in storage.
 
 The stable keys remain the keys in `client/src/lib/sect/music.ts`. The display names and long source
 filenames never become runtime identifiers.
@@ -36,7 +39,7 @@ E:\Github\personal\youtube-mp3-downloader\downloads\website-music\
     lyrics-preview.html
 ```
 
-There are twelve 192 kbps MP3s and eight timed lyric files. Import tooling finds an MP3 by the ID in
+There are twelve 192 kbps MP3s and nine timed lyric files. Import tooling finds an MP3 by the ID in
 square brackets and a lyric file by `<id>.json`, then writes opaque storage object names.
 
 ## Listening references
@@ -50,14 +53,14 @@ square brackets and a lyric file by `<id>.json`, then writes opaque storage obje
 - 化凡: https://www.youtube.com/watch?v=r2a-1S3xNQY
 - 光之少年: https://www.youtube.com/watch?v=jFXCp-kc4h8
 - 浩瀚: https://www.youtube.com/watch?v=i2CER52gUVc
-- 天谴觉醒: https://www.youtube.com/watch?v=ll17o0KFV-Q
+- 曙光: https://www.youtube.com/watch?v=mrI49InwKpo
 - 逍遥: https://www.youtube.com/watch?v=dQONNl1YOeY
 - 破茧: https://www.youtube.com/watch?v=TjvrbPqfBxI
 
 ## Lyric references
 
 These pages were used to prepare the bilingual source lines. *Throne of Glory* is sung in English;
-the other seven pages provide Chinese, pinyin and English.
+the other eight pages provide Chinese, pinyin and English.
 
 - [Throne of Glory](https://chinesemusicwiki.com/throne-of-glory-throne-of-seal-ost-by-xian-ke/)
 - [降临](https://chinesemusicwiki.com/descent-jiang-lin-throne-of-seal-ost-by-qi-you/)
@@ -65,6 +68,7 @@ the other seven pages provide Chinese, pinyin and English.
 - [化凡](https://chinesemusicwiki.com/mortify-to-mortal-yang-zixi/)
 - [光之少年](https://chinesemusicwiki.com/the-boy-of-light-guang-zhi-shao-nian-throne-of-seal-ost-by-gala-band/)
 - [浩瀚](https://chinesemusicwiki.com/vast%e6%b5%a9%e7%80%9ahao-han-romance-of-the-condor-heroes-ost-by-jason-zhang-jie%e5%bc%a0%e6%9d%b0/)
+- [曙光](https://chinesemusicwiki.com/dawn-shu-guang-throne-of-seal-ost-by-chen-bing/)
 - [逍遥](https://chinesemusicwiki.com/free-and-unfettered-xiao-yao-swordsman-ost-by-wallace-huo-chien-hwa/)
 - [破茧](https://chinesemusicwiki.com/break-the-cocoon%e7%a0%b4%e8%8c%a7po-jian-soul-land-ost-by-angela-chang%e5%bc%a0%e9%9f%b6%e6%b6%b5/)
 

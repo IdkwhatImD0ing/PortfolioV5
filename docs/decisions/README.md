@@ -442,6 +442,16 @@ picks up where it was, and a song still fading out when the camera turns back ca
 
 **Why.** The owner: "going to each area, the song should restart".
 
+### 2026-11-10 · The Grand Formation plays 曙光
+
+**Decided.** The Grand Formation's song is 曙光 (Dawn) by Chen Bing (陈冰), from 神印王座, in place of the
+instrumental 天谴觉醒. It is the ninth sung track, with timed Chinese and English lyrics. It has no
+owner's note yet, so the drawer shows none. Three garbled English lines and four broken line timings
+in its lyric file were corrected before it was prepared; the timings in its last third are still as
+transcribed and have not been checked by ear.
+
+**Why.** The owner asked to replace the formation song with it.
+
 ---
 
 ## Longer write-ups

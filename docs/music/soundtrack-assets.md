@@ -17,7 +17,7 @@ All audio is MP3 at 48 kHz and 160 kbps, normalized to `-17 LUFS` with a `-1.5 d
 | `library` | 化凡 | Yang Zixi (杨子熙) | 4:26.635 | 5.33 MB | Chinese + English | Full track |
 | `steles` | 光之少年 | GALA | 3:56.364 | 4.73 MB | Chinese + English | Full track |
 | `scroll` | 浩瀚 | Zhang Jie (张杰) | 3:43.125 | 4.46 MB | Chinese + English | Full track |
-| `formation` | 天谴觉醒 | Not credited | 3:23.483 | 4.07 MB | No | 0.300–3:23.183 |
+| `formation` | 曙光 | Chen Bing (陈冰) | 4:05.569 | 4.91 MB | Chinese + English | Full track |
 | `abode` | 逍遥 | Wallace Huo (霍建华) | 4:25.102 | 5.30 MB | Chinese + English | Full track |
 | `summit` | 破茧 | Angela Zhang (张韶涵) | 3:31.522 | 4.23 MB | Chinese + English | Full track |
 

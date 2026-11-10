@@ -54,7 +54,7 @@ TRACKS = (
     TrackSpec("library", "r2a-1S3xNQY", "化凡", "仙逆", "Yang Zixi (杨子熙)", "zh"),
     TrackSpec("steles", "jFXCp-kc4h8", "光之少年", "神印王座", "GALA", "zh"),
     TrackSpec("scroll", "i2CER52gUVc", "浩瀚", "神雕侠侣 2014", "Zhang Jie (张杰)", "zh"),
-    TrackSpec("formation", "ll17o0KFV-Q", "天谴觉醒", "神印王座", "Not credited"),
+    TrackSpec("formation", "mrI49InwKpo", "曙光", "神印王座", "Chen Bing (陈冰)", "zh"),
     TrackSpec("abode", "dQONNl1YOeY", "逍遥", "笑傲江湖 2013", "Wallace Huo (霍建华)", "zh"),
     TrackSpec("summit", "TjvrbPqfBxI", "破茧", "斗罗大陆", "Angela Zhang (张韶涵)", "zh"),
 )

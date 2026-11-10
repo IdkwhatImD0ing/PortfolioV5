@@ -29,7 +29,7 @@ export const BRUSH_EXTRA = [
   "化凡",
   "光之少年",
   "浩瀚",
-  "天谴觉醒",
+  "曙光",
   "逍遥",
   "破茧",
   "刀剑如梦",
@@ -39,7 +39,7 @@ export const BRUSH_EXTRA = [
  * Every character the font subset carries, once each, in brushText() order. A test holds this to
  * brushText() and to the font file; scripts/subset-brush-font.mjs reads this line.
  */
-export const BRUSH_GLYPHS = "山门心镜台炼器峰论剑任务殿藏经阁碑林玉简护宗大阵洞府望月日神教全图传音符乐曲风舞铁血丹降临璀璨冒险人化凡光之少年浩瀚天谴觉醒逍遥破茧刀如梦";
+export const BRUSH_GLYPHS = "山门心镜台炼器峰论剑任务殿藏经阁碑林玉简护宗大阵洞府望月日神教全图传音符乐曲风舞铁血丹降临璀璨冒险人化凡光之少年浩瀚曙逍遥破茧刀如梦";
 
 /** The characters the brush hand is asked to write (the place names, then BRUSH_EXTRA), each once. */
 export function brushText(): string {
