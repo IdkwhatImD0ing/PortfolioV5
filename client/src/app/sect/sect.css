@@ -2190,10 +2190,11 @@ body:has(.sect-veil) .sect-lyrics-slip {
 }
 /*
  * Phones: the slip waits while the intro's title is up (it sat over the start of the SUN MOON DIVINE
- * SECT plate) and comes in at the first stop. Not on the loading screen, where it has its own corner.
+ * SECT plate) and comes in at the first stop. Not on the loading screen, where it has its own corner;
+ * once that screen starts to fade after Enter (data-leaving) the slip goes.
  */
 @media not ((min-width: 48rem) and (min-height: 31.25rem)) {
-  body:not(:has(.sect-veil)) .sect-root:has(.sect-intro:not([style*="hidden"])) .sect-lyrics-slip {
+  body:not(:has(.sect-veil:not([data-leaving]))) .sect-root:has(.sect-intro:not([style*="hidden"])) .sect-lyrics-slip {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -2242,6 +2243,10 @@ body:has(.sect-veil) .sect-lyrics-slip {
     opacity 0.25s ease,
     transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1),
     visibility 0s 0.3s;
+}
+/* It takes the focus when opened by a click or a tap, only so its Escape is heard: no ring. */
+.sect-lyrics-drawer:focus {
+  outline: none;
 }
 .sect-lyrics[data-open] .sect-lyrics-drawer {
   opacity: 1;

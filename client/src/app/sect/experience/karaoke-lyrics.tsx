@@ -8,8 +8,10 @@
  *
  * The slip steps aside while the drawer is open (the drawer covers its place); the drawer's own close
  * button and Escape put it away. Opened from the keyboard, the focus goes to that close button, and
- * it comes back to the slip when the drawer closes the same way. Its Escape is one Escape, one thing:
- * it closes the drawer and the view stays turned (scene.tsx keysTaken).
+ * it comes back to the slip when the drawer closes the same way. Opened by a click or a tap, the
+ * focus goes to the drawer itself (the slip that held it is hidden), so Escape still reaches it.
+ * Its Escape is one Escape, one thing: it closes the drawer and the view stays turned (scene.tsx
+ * keysTaken).
  */
 import { type CSSProperties, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MusicKey, MusicTrack } from "@/lib/sect/music";
@@ -57,6 +59,7 @@ export function LyricsPanel({
   panelLyricsRef.current = panelLyrics;
   const slipRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
   // Whether the visitor has the sound on: silent, the drawer names the soundtrack and offers the sound.
   const ui = useSyncExternalStore(engine.subscribe, engine.snapshot, serverSnapshot);
   const openRef = useRef(false);
@@ -68,13 +71,14 @@ export function LyricsPanel({
   /** The words of the line being sung, and the one the ink last reached (sect.css --p). */
   const wordNodes = useRef<(HTMLSpanElement | null)[]>([]);
   const inked = useRef<{ track: MusicKey; line: number; word: number } | null>(null);
-  /** Where the focus goes once the drawer has opened or closed (keyboard only). */
-  const focusNext = useRef<"close" | "slip" | null>(null);
+  /** Where the focus goes once the drawer has opened or closed. */
+  const focusNext = useRef<"close" | "drawer" | "slip" | null>(null);
 
   useEffect(() => {
     let frame = 0;
     let alive = true;
     const controller = new AbortController();
+    const waiting = pending.current;
 
     const getLyrics = (key: MusicKey): SongLyrics | null => {
       if (!engine.hasLyrics(key)) {
@@ -83,11 +87,15 @@ export function LyricsPanel({
       }
       if (cache.current.has(key)) return cache.current.get(key) ?? null;
       if (!pending.current.has(key)) {
-        const request = loadLyrics(key, controller.signal)
+        // A request this effect's cleanup cut short (the panel hid mid-fetch) is not an answer: it is
+        // left out of the cache, so the next showing asks again. It also leaves a newer request's
+        // place in `pending` alone.
+        const signal = controller.signal;
+        const request: Promise<SongLyrics | null> = loadLyrics(key, signal)
           .catch(() => null)
           .then((lyrics) => {
-            pending.current.delete(key);
-            cache.current.set(key, lyrics);
+            if (pending.current.get(key) === request) pending.current.delete(key);
+            if (lyrics || !signal.aborted) cache.current.set(key, lyrics);
             return lyrics;
           });
         pending.current.set(key, request);
@@ -145,6 +153,8 @@ export function LyricsPanel({
     return () => {
       alive = false;
       controller.abort();
+      // Its requests are cut short: the next run asks afresh rather than wait on them.
+      waiting.clear();
       unsubscribe();
       cancelAnimationFrame(frame);
     };
@@ -163,6 +173,7 @@ export function LyricsPanel({
     const next = focusNext.current;
     focusNext.current = null;
     if (next === "close" && open) closeRef.current?.focus({ preventScroll: true });
+    else if (next === "drawer" && open) drawerRef.current?.focus({ preventScroll: true });
     else if (next === "slip" && !open) slipRef.current?.focus({ preventScroll: true });
   }, [open]);
 
@@ -201,7 +212,7 @@ export function LyricsPanel({
         aria-controls="sect-lyrics-panel"
         aria-expanded={open}
         onClick={(e) => {
-          focusNext.current = fromKeys(e) ? "close" : null;
+          focusNext.current = fromKeys(e) ? "close" : "drawer";
           setOpen(true);
         }}
       >
@@ -209,7 +220,9 @@ export function LyricsPanel({
         <span className="sect-lyrics-slip-label">Music</span>
       </button>
       <aside
+        ref={drawerRef}
         id="sect-lyrics-panel"
+        tabIndex={-1}
         className="sect-lyrics-drawer sect-panel sect-panel-lg"
         aria-hidden={!open}
         inert={!open}
@@ -230,7 +243,12 @@ export function LyricsPanel({
         <div className="sect-lyrics-body">
           <SongHead track={trackInfo} note={note} playing={ui.on} />
           {ui.available && !ui.on ? (
-            <div className="sect-lyrics-sound">
+            // The button goes once the sound is on: the focus it held moves on first (from the
+            // keyboard to the close button, else to the drawer), so it stays in the drawer.
+            <div
+              className="sect-lyrics-sound"
+              onClick={(e) => (fromKeys(e) ? closeRef : drawerRef).current?.focus({ preventScroll: true })}
+            >
               <SoundCall on={false} onToggle={() => engine.toggle()} />
             </div>
           ) : null}

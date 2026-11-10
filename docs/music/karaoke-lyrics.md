@@ -126,7 +126,8 @@ On a phone held sideways it starts at 4.25rem, clear of the top bar.
 - **Wider screens:** the slip about a third of the way down. The drawer starts under the top bar and
   its hint and stops above the Recentre button.
 - **Loading screen:** the slip comes up over the veil. On a phone it moves to the top-left corner,
-  clear of the screen's centred column.
+  clear of the screen's centred column. On a phone it goes as soon as the screen starts to fade
+  after Enter (`data-leaving` on the veil), so it is not left over the intro.
 - **Stops' panels.** The closed slip sits under them, so where a long panel reaches it on a small
   screen, the panel's words stay on top. While the drawer is open, a panel on the left moves over
   beside it on screens 60rem (960 px) wide or more. On narrower screens there is no room for both, so
@@ -168,7 +169,12 @@ view, behind readers or the map, during fast travel, and on error screens.
 - Opened from the keyboard (Enter or Space on the slip), the focus moves to the drawer's close
   button. Escape, with the focus in the drawer, or the close button pressed from the keyboard closes
   it and puts the focus back on the slip. That Escape only closes the drawer: the view stays turned
-  (one Escape, one thing, as for the volume slider). A mouse or touch open leaves the focus alone.
+  (one Escape, one thing, as for the volume slider). A mouse or touch open puts the focus on the
+  drawer itself, with no ring (the slip that held it is hidden), so Escape still closes it.
+- "Turn on sound" in the drawer goes away once the sound is on. Its focus moves first: to the close
+  button from the keyboard, to the drawer from a click or tap.
+- Lyrics whose request was cut short (the panel hid while they loaded) are asked for again the next
+  time the panel shows. Only a finished answer is kept.
 - Reduced-motion mode disables drawer, slip, row and auto-scroll animation.
 - Forced-colour mode drops the fades, shows every line at full strength and marks the active line
   in the highlight colour.

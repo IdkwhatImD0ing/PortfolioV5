@@ -155,6 +155,8 @@ export function LoadingScreen({
     <div
       className="sect-veil fixed inset-0 z-50 flex flex-col items-center justify-center-safe overflow-y-auto px-6 py-10 text-center transition-opacity duration-700 [@media(max-height:31.24rem)]:py-5 [@media(max-width:340px)]:overflow-x-hidden [@media(max-width:340px)]:px-4 [@media(max-width:340px)]:py-8"
       style={{ opacity: visible ? 1 : 0, pointerEvents: visible ? "auto" : "none" }}
+      // Fading out after Enter: sect.css stops treating the screen as up (the Music slip).
+      data-leaving={visible ? undefined : ""}
       aria-busy={!error && visible && !ready}
     >
       {poster && <Poster />}
