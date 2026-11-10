@@ -4,15 +4,15 @@ import { describe, expect, it } from "vitest";
 import { MUSIC_KEYS, isMusicKey, type MusicKey } from "./music";
 import { SONG_NOTES, SONG_TITLES_EN, hasHan, songCredits, songNote, songTitleEn } from "./song-notes";
 
-/** The eight sung tracks the owner has written a note for (docs/music/local-soundtrack.md). */
-const VOCAL_KEYS: readonly MusicKey[] = ["mirror", "arena", "mission", "library", "steles", "scroll", "abode", "summit"];
+/** The nine sung tracks (docs/music/local-soundtrack.md). */
+const VOCAL_KEYS: readonly MusicKey[] = ["mirror", "arena", "mission", "library", "steles", "scroll", "formation", "abode", "summit"];
 
 describe("song notes", () => {
   it("are keyed by real music keys", () => {
     for (const key of Object.keys(SONG_NOTES)) expect(isMusicKey(key), key).toBe(true);
   });
 
-  it("cover the eight sung tracks with a note, and no other", () => {
+  it("cover the nine sung tracks, and no instrumental", () => {
     for (const key of VOCAL_KEYS) {
       expect(songNote(key)?.en.length, key).toBeGreaterThan(0);
       expect(hasHan(songNote(key)?.zh ?? ""), key).toBe(true);
@@ -29,8 +29,7 @@ describe("song notes", () => {
       .filter(([, t]) => t.lyricsObject)
       .map(([key]) => key)
       .sort();
-    // formation (曙光) is sung too; the owner has not written its note yet.
-    expect(sung).toEqual([...VOCAL_KEYS, "formation"].sort());
+    expect(sung).toEqual([...VOCAL_KEYS].sort());
   });
 
   it("keep the owner's curly apostrophe", () => {

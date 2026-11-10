@@ -5,8 +5,7 @@
  * The English notes are the owner's own words: keep them exactly as written (the curly apostrophe
  * too). Each has a Chinese version beside it; scripts/subset-lyrics-font.mjs reads this file so the
  * brush font carries its characters. The
- * instrumentals have none, and neither does a sung track he has not written one for yet
- * (formation, 曙光): the panel shows nothing in a note's place for them.
+ * instrumentals have none, and the panel shows nothing in a note's place for them.
  */
 import type { MusicKey, MusicTrack } from "./music";
 
@@ -47,6 +46,11 @@ export const SONG_NOTES: Partial<Record<MusicKey, SongNote>> = {
     en: "Being looked down on matters little to someone who already knows what he is good for. The belief has to come before there is any proof of it.",
     zh: "一个人若早已知道自己的斤两，旁人看不起，也就算不得什么。这份相信，得先于任何证明。",
   },
+  // 曙光
+  formation: {
+    en: "Many small sparks can come together into one towering light, the way a formation does. I believe progress is the same, and small steps kept up long enough turn into something awe inspiring.",
+    zh: "点点星火聚在一起，能成万丈光芒，就像一座大阵。我相信进步也是这样，一小步一小步走下去，终会变成让人惊叹的东西。",
+  },
   // 逍遥
   abode: {
     en: "Fame and money are easier to let go of once you see how quickly the years pass. Success means little with no one to share it, and one person to grow old with is worth more than all of it.",
@@ -82,7 +86,7 @@ export function songTitleEn(key: MusicKey): string | null {
   return SONG_TITLES_EN[key] ?? null;
 }
 
-/** The owner's note on this track, or null (the instrumentals, and a song with no note yet). */
+/** The owner's note on this track, or null (the instrumentals). */
 export function songNote(key: MusicKey): SongNote | null {
   return SONG_NOTES[key] ?? null;
 }
