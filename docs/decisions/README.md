@@ -423,6 +423,25 @@ the name plate took almost half the top row, and Enter sat below the bottom edge
 screen. At a stop, three plates stacked under the diamonds. The graphics menu covered the stop's
 panel, and the map's place card ran over its tabs.
 
+### 2026-11-10 · A Chinese song title carries its English
+
+**Decided.** In the soundtrack drawer a Chinese title is followed by a short gold dash, its English
+in italics and then the red seal, which moved from beside the Chinese name to the end of the line.
+The eleven English names are in `client/src/lib/sect/song-notes.ts`. *Throne of Glory* is already
+English and stays as it was.
+
+**Why.** The owner asked for "the chinese name - english translation" on each song, then for the
+stamp to come after.
+
+### 2026-11-10 · A place's song starts from the top
+
+**Decided.** Arriving at a place starts its song from the beginning. Before, a song picked up where
+it had stopped on an earlier visit. A pause in the same place (mute, a video, a hidden tab) still
+picks up where it was, and a song still fading out when the camera turns back carries on
+(`client/src/app/sect/experience/music-engine.ts` `setPlan`).
+
+**Why.** The owner: "going to each area, the song should restart".
+
 ---
 
 ## Longer write-ups

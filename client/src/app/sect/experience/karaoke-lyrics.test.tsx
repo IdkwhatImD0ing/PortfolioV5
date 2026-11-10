@@ -22,6 +22,19 @@ describe("SongHead", () => {
     expect(html).toContain('<dd lang="zh">神印王座</dd>');
   });
 
+  it("writes a Chinese title's English after it, and none for a Latin title", () => {
+    const zh = renderToStaticMarkup(
+      <SongHead track={{ title: "降临", show: "神印王座", artist: "Qi You", language: "zh" }} note={null} titleEn="Descent" />,
+    );
+    // The Chinese name, the English, then the seal last.
+    expect(zh).toMatch(/<h2[^>]*>.*sect-lyrics-title-en.*Descent.*sect-seal.*<\/h2>/);
+    expect(zh.indexOf("sect-seal")).toBeGreaterThan(zh.indexOf("Descent"));
+    const en = renderToStaticMarkup(
+      <SongHead track={{ title: "Throne of Glory", show: "神印王座", artist: "Xian Ke", language: "en" }} note={null} titleEn="Descent" />,
+    );
+    expect(en).not.toContain("sect-lyrics-title-en");
+  });
+
   it("writes a Latin title in the serif, with no seal", () => {
     const html = renderToStaticMarkup(
       <SongHead track={{ title: "Throne of Glory", show: "神印王座", artist: "Xian Ke", language: "en" }} note={songNote("mirror")} />,

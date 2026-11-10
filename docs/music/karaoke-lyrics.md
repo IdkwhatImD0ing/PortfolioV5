@@ -77,7 +77,10 @@ block in `client/src/app/sect/sect.css`.
 - **The head.** A "Now playing" eyebrow ("Soundtrack" while the sound is off, which is how every
   visitor starts; the drawer then offers a "Turn on sound" button under the note), then the song's
   title. A Chinese title is written in the
-  brush hand with the red seal beside it; a Latin title (*Throne of Glory*) is in the stops' serif. A
+  brush hand, then a short gold dash, its English in italics (`SONG_TITLES_EN` in
+  `client/src/lib/sect/song-notes.ts`) and the red seal closing the line. Where they do not fit on
+  one line, the dash, the English and the seal take the next line together. A Latin title (*Throne
+  of Glory*) is in the stops' serif, with no seal. A
   gold brush stroke under it, then one or two quiet lines: the show (in the lyrics' brush hand), then
   the artist and "Sung in Chinese", "Sung in English" or "Instrumental". An artist given as "Not credited" is left out. The credits are a
   `dl` whose terms (From, Artist, Vocals) are only for screen readers.

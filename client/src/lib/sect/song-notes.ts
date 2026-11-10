@@ -58,6 +58,29 @@ export const SONG_NOTES: Partial<Record<MusicKey, SongNote>> = {
   },
 };
 
+/**
+ * A Chinese song title in English, written after it in the panel ("降临 – Descent"). A track whose
+ * title is already English (mirror, Throne of Glory) has none.
+ */
+export const SONG_TITLES_EN: Partial<Record<MusicKey, string>> = {
+  loading: "Wind Dance", // 风舞
+  gate: "Iron Blood, Loyal Heart", // 铁血丹心
+  forge: "Swords Like a Dream", // 刀剑如梦
+  arena: "Descent", // 降临
+  mission: "The Brilliant Adventurer", // 璀璨冒险人
+  library: "Becoming Mortal", // 化凡
+  steles: "Child of Light", // 光之少年
+  scroll: "Boundless", // 浩瀚
+  formation: "Heaven's Wrath Awakens", // 天谴觉醒
+  abode: "Carefree", // 逍遥
+  summit: "Breaking the Cocoon", // 破茧
+};
+
+/** The English for this track's Chinese title, or null. */
+export function songTitleEn(key: MusicKey): string | null {
+  return SONG_TITLES_EN[key] ?? null;
+}
+
 /** The owner's note on this track, or null (the instrumentals). */
 export function songNote(key: MusicKey): SongNote | null {
   return SONG_NOTES[key] ?? null;

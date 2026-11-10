@@ -2290,9 +2290,40 @@ body:has(.sect-veil) .sect-lyrics-slip {
   color: var(--sect-paper);
 }
 .sect-lyrics-title-zh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.6rem;
   font-size: 1.9rem;
   line-height: 1.15;
   letter-spacing: 0;
+}
+/*
+ * A Chinese title's English, after a short gold dash, and the seal closing the line as on a signed
+ * scroll: "降临 – Descent 印". Where the two do not fit on one line, the dash, the English and the
+ * seal take the next line together.
+ */
+.sect-lyrics-title-en {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  font-size: 1.25rem;
+  font-style: italic;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--sect-paper-soft);
+}
+.sect-lyrics-title-en::before {
+  content: "";
+  flex: none;
+  width: 0.9rem;
+  height: 1px;
+  background: var(--sect-gold);
+}
+.sect-lyrics-title .sect-lyrics-title-en .sect-seal {
+  margin-left: 0.1rem;
+  font-size: 1.2rem;
 }
 .sect-lyrics-title :is(.sect-brushname, .sect-zh) {
   letter-spacing: 0.08em;

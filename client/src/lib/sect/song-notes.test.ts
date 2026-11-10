@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MUSIC_KEYS, isMusicKey, type MusicKey } from "./music";
-import { SONG_NOTES, hasHan, songCredits, songNote } from "./song-notes";
+import { SONG_NOTES, SONG_TITLES_EN, hasHan, songCredits, songNote, songTitleEn } from "./song-notes";
 
 /** The eight sung tracks (docs/music/local-soundtrack.md). */
 const VOCAL_KEYS: readonly MusicKey[] = ["mirror", "arena", "mission", "library", "steles", "scroll", "abode", "summit"];
@@ -34,6 +34,20 @@ describe("song notes", () => {
 
   it("keep the owner's curly apostrophe", () => {
     expect(songNote("mirror")?.en).toContain("it’s better");
+  });
+});
+
+describe("song titles in English", () => {
+  it("cover every track but the one already titled in English", () => {
+    for (const key of Object.keys(SONG_TITLES_EN)) expect(isMusicKey(key), key).toBe(true);
+    for (const key of MUSIC_KEYS) {
+      if (key === "mirror") expect(songTitleEn(key)).toBeNull();
+      else expect(songTitleEn(key)?.length, key).toBeGreaterThan(0);
+    }
+  });
+
+  it("are plain English", () => {
+    for (const title of Object.values(SONG_TITLES_EN)) expect(hasHan(title ?? "")).toBe(false);
   });
 });
 

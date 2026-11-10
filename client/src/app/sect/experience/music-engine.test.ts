@@ -273,6 +273,28 @@ describe("MusicEngine", () => {
     expect(r.engine.playbackSnapshot()).toMatchObject({ track: "gate", audible: false, suppressed: "voice" });
   });
 
+  it("starts a place's song from the top on coming back to it", async () => {
+    const r = rig();
+    r.engine.setManifest(MANIFEST);
+    const all: MusicKey[] = ["gate", "forge"];
+    plan(r.engine, "gate", all, all);
+    r.engine.gesture();
+    await settle();
+    r.ctx!.currentTime = 40;
+    plan(r.engine, "forge", all, all);
+    await settle();
+    // The gate's fade-out ends and it stops, 43 s in.
+    r.ctx!.currentTime = 43;
+    r.engine.tick();
+    expect(r.ctx!.playing("gate")).toHaveLength(0);
+    r.ctx!.currentTime = 60;
+    plan(r.engine, "gate", all, all);
+    await settle();
+    const again = r.ctx!.playing("gate");
+    expect(again).toHaveLength(1);
+    expect(again[0].started![1]).toBe(0);
+  });
+
   it("reverses a fade part way, from where it is", async () => {
     const r = rig();
     r.engine.setManifest(MANIFEST);

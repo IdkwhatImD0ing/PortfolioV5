@@ -99,6 +99,8 @@ export class MusicEngine {
   private away = false;
   private hidden = false;
   private wanted: MusicKey | null = null;
+  /** The last track the camera wanted (a null plan in between does not count as leaving). */
+  private lastWanted: MusicKey | null = null;
   private loadKeys: MusicKey[] = [];
   private keepKeys: MusicKey[] = [];
   private readonly buffers = new Map<MusicKey, AudioBuffer>();
@@ -265,6 +267,13 @@ export class MusicEngine {
    * which decoded buffers to keep.
    */
   setPlan(wanted: MusicKey | null, load: readonly MusicKey[], keep: readonly MusicKey[]): void {
+    // Arriving at a place starts its song from the top: where it stopped on an earlier visit is
+    // forgotten. A pause in the same place (mute, a video, a hidden tab) still picks up where it
+    // was, and a track still fading out when the camera turns back carries on from where it is.
+    if (wanted && wanted !== this.lastWanted) {
+      this.positions.delete(wanted);
+      this.lastWanted = wanted;
+    }
     this.wanted = wanted;
     this.loadKeys = [...load];
     this.keepKeys = [...keep];

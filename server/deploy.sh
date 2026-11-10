@@ -148,7 +148,6 @@ gcloud run deploy "$SERVICE_NAME" \
   --timeout "${TIMEOUT}s" \
   --execution-environment gen2 \
   --cpu-boost \
-  --clear-env-vars \
   --set-env-vars "MUSIC_BUCKET=$MUSIC_BUCKET" \
   --set-secrets "$SECRETS" \
   ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"} \

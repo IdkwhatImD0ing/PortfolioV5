@@ -16,8 +16,8 @@
 import { type CSSProperties, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MusicKey, MusicTrack } from "@/lib/sect/music";
 import { lyricLineAt, lyricUnitProgress, lyricWordAt, type LyricLine, type SongLyrics } from "@/lib/sect/lyrics";
-import { hasHan, songCredits, songNote, type SongNote } from "@/lib/sect/song-notes";
-import { BrushName, InkRing, SealedName } from "../ornaments";
+import { hasHan, songCredits, songNote, songTitleEn, type SongNote } from "@/lib/sect/song-notes";
+import { BrushName, InkRing, SealStamp, SealedName } from "../ornaments";
 import type { MusicEngine } from "./music-engine";
 import { SoundCall, serverSnapshot } from "./sound-toggle";
 
@@ -241,7 +241,7 @@ export function LyricsPanel({
           </svg>
         </button>
         <div className="sect-lyrics-body">
-          <SongHead track={trackInfo} note={note} playing={ui.on} />
+          <SongHead track={trackInfo} note={note} titleEn={songTitleEn(panelTrack)} playing={ui.on} />
           {ui.available && !ui.on ? (
             // The button goes once the sound is on: the focus it held moves on first (from the
             // keyboard to the close button, else to the drawer), so it stays in the drawer.
@@ -307,16 +307,20 @@ export function LyricsPanel({
 
 /**
  * The drawer's head: an eyebrow, the song's title as the hero (a Chinese title in the brush hand with
- * the sect's seal beside it, a Latin one in the stops' serif), the gold brush stroke, the credits in
+ * its English after a short gold dash and the sect's seal closing the line, a Latin one in the
+ * stops' serif), the gold brush stroke, the credits in
  * one or two quiet lines, then the owner's note on the song, set off by a brush rule like a colophon.
  */
 export function SongHead({
   track,
   note,
+  titleEn = null,
   playing = true,
 }: {
   track: Pick<MusicTrack, "title" | "show" | "artist" | "language">;
   note: SongNote | null;
+  /** A Chinese title's English, written after it; none for a title already in English. */
+  titleEn?: string | null;
   /** The sound is on. Off (every visitor starts muted), the eyebrow does not claim a song is playing. */
   playing?: boolean;
 }) {
@@ -327,7 +331,20 @@ export function SongHead({
       <header className="sect-lyrics-head">
         <p className="sect-lyrics-eyebrow">{playing ? "Now playing" : "Soundtrack"}</p>
         <h2 className={`sect-lyrics-title${zhTitle ? " sect-lyrics-title-zh" : ""}`}>
-          {zhTitle ? <SealedName text={track.title} /> : track.title}
+          {!zhTitle ? (
+            track.title
+          ) : titleEn ? (
+            // The Chinese name, its English, then the seal closing the line as on a signed scroll.
+            <>
+              <BrushName text={track.title} />
+              <span className="sect-lyrics-title-en" lang="en">
+                <span className="sect-lyrics-title-en-text">{titleEn}</span>
+                <SealStamp />
+              </span>
+            </>
+          ) : (
+            <SealedName text={track.title} />
+          )}
         </h2>
         <span aria-hidden className="sect-brushstroke sect-lyrics-stroke" />
         <dl className="sect-lyrics-credits">
