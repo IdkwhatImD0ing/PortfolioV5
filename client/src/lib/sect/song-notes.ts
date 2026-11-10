@@ -48,8 +48,8 @@ export const SONG_NOTES: Partial<Record<MusicKey, SongNote>> = {
   },
   // 曙光
   formation: {
-    en: "Many small sparks can come together into one towering light, the way a formation does. I believe progress is the same, and small steps kept up long enough turn into something awe inspiring.",
-    zh: "点点星火聚在一起，能成万丈光芒，就像一座大阵。我相信进步也是这样，一小步一小步走下去，终会变成让人惊叹的东西。",
+    en: "Many small sparks can come together into one towering light. I believe progress is the same, and small steps kept up long enough turn into something awe inspiring.",
+    zh: "点点星火聚在一起，能成万丈光芒。我相信进步也是这样，一小步一小步走下去，终会变成让人惊叹的东西。",
   },
   // 逍遥
   abode: {

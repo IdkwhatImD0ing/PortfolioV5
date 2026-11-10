@@ -447,7 +447,7 @@ picks up where it was, and a song still fading out when the camera turns back ca
 **Decided.** The Grand Formation's song is 曙光 (Dawn) by Chen Bing (陈冰), from 神印王座, in place of the
 instrumental 天谴觉醒. It is the ninth sung track, with timed Chinese and English lyrics. Its
 note is the owner's thought on the song, put into two sentences: many sparks gathering into one
-light, like a formation, and small steps adding up the same way. Three garbled English lines and four broken line timings
+light, and small steps adding up the same way. It does not name the formation. Three garbled English lines and four broken line timings
 in its lyric file were corrected before it was prepared; the timings in its last third are still as
 transcribed and have not been checked by ear.
 
