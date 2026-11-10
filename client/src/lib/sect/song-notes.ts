@@ -3,7 +3,7 @@
  * lyrics: the owner's note on each sung track, and the credit line under the title.
  *
  * The English notes are the owner's own words: keep them exactly as written (the curly apostrophe
- * too). Each has a Chinese version beside it; scripts/subset-lyrics-font.mjs reads this file so the
+ * too). None is in the first person: no "I", "my" or 我. Each has a Chinese version beside it; scripts/subset-lyrics-font.mjs reads this file so the
  * brush font carries its characters. The
  * instrumentals have none, and the panel shows nothing in a note's place for them.
  */
@@ -48,8 +48,8 @@ export const SONG_NOTES: Partial<Record<MusicKey, SongNote>> = {
   },
   // 曙光
   formation: {
-    en: "Many small sparks can come together into one towering light. I believe progress is the same, and small steps kept up long enough turn into something awe inspiring.",
-    zh: "点点星火聚在一起，能成万丈光芒。我相信进步也是这样，一小步一小步走下去，终会变成让人惊叹的东西。",
+    en: "Many small sparks can come together into one towering light. Progress is the same, and small steps kept up long enough turn into something awe inspiring.",
+    zh: "点点星火聚在一起，能成万丈光芒。进步也是这样，一小步一小步走下去，终会变成让人惊叹的东西。",
   },
   // 逍遥
   abode: {

@@ -32,6 +32,13 @@ describe("song notes", () => {
     expect(sung).toEqual([...VOCAL_KEYS].sort());
   });
 
+  it("are never in the first person", () => {
+    for (const note of Object.values(SONG_NOTES)) {
+      expect(note?.en).not.toMatch(/(I|my|me|mine|myself)/);
+      expect(note?.zh).not.toContain("我");
+    }
+  });
+
   it("keep the owner's curly apostrophe", () => {
     expect(songNote("mirror")?.en).toContain("it’s better");
   });
