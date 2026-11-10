@@ -123,7 +123,7 @@ describe("hotspotLabel", () => {
     expect(hotspotLabel("role:0").title).toBe("Software Engineer II · Pinterest");
     expect(hotspotLabel("school:0").title).toBe(EDUCATION[0].full);
     expect(hotspotLabel("skills:0").title).toBe("voice-first");
-    expect(hotspotLabel("arch:0").title).toBe("01 Mic input");
+    expect(hotspotLabel("arch:0").title).toBe("01 Built in code");
     expect(hotspotLabel("arch:6").title).toBe("Stack");
     expect(hotspotLabel("arch:7").title).toBe("Code");
     expect(hotspotLabel("fact:0").title).toBe("Finished a 4-year CS degree in 2.5 years");

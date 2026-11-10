@@ -150,7 +150,7 @@ describe("the hover label's quiet line", () => {
   });
 
   it("gives the Stack pillar the five banners' brigades", () => {
-    expect(textOf(label("arch:6", null))).toContain("五行旗 洪水 Voice · 烈火 Brain · 巨木 Frame · 銳金 State · 厚土 the core");
+    expect(textOf(label("arch:6", null))).toContain("五行旗 厚土 Scene · 巨木 Browser · 銳金 Music · 洪水 Voice · 烈火 Brain");
   });
 
   it("names the Black Iron Heavy Sword on the arena's landmark", () => {

@@ -222,7 +222,7 @@ export function formationItems(): { id: string; title: string; blurb: string }[]
   return [
     ...ARCH_FLOW.map((f, i) => ({ id: `arch:${i}`, title: `${f.k} ${f.title}`, blurb: f.body })),
     { id: "arch:6", title: "Stack", blurb: ARCH_STACK.map((s) => s.group).join(" · ") },
-    { id: "arch:7", title: "Code", blurb: "metadata event → bus command → flight" },
+    { id: "arch:7", title: "Code", blurb: "Pusher event → bus command → ink travel" },
   ];
 }
 

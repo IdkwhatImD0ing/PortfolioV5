@@ -319,6 +319,18 @@ much", and earlier: "dont priorize optimizations over quality". So only changes 
 picture as it was went in. Removing the HUD plates' blur on Low changes how Low looks, so it waits for the
 owner.
 
+### 2026-11-06 · "How this site works" covers the whole site
+
+**Decided.** The Grand Formation's reader now explains the whole site in six steps: the sect built in Blender with
+Python, the light baked and packed, three.js drawing it live, a song per stop, the voice agent, and how the agent
+flies you to a stop. The Stack pillar has five groups (Scene, Browser, Music, Voice, Brain), one for each of the
+Five Element banners. The facts were checked against the code. The agent has 13 tools (the old copy said nine), and
+page moves reach the browser over Pusher (the old code sample showed a Retell event that v3 calls no longer send).
+The speech side stays as it was: the owner confirmed Retell uses an ElevenLabs voice, with Deepgram hearing you.
+
+**Why.** The owner: "I think its time to update how this site works with the 3d model and blender and music and
+everything now". The old copy came from the one-page site and only described the voice agent.
+
 ### 2026-11-08 · The soundtrack moves behind the backend and gains timed lyrics
 
 **Decided.** Twelve selected drama and donghua songs replace the loading theme and eleven area themes while

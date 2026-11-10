@@ -118,8 +118,8 @@ function Snippet() {
 const formationItem = (it: string) => itemIndex(it, "arch") !== null;
 const STACK_ITEM = "arch:6";
 const CODE_ITEM = "arch:7";
-/** Flow steps the code snippet carries out: the tool call, the bus, the sections. */
-const CODE_STEPS = [2, 3, 4];
+/** Flow steps the code snippet carries out: the agent's tool call (05) and the move to the page (06). */
+const CODE_STEPS = [4, 5];
 
 export function FormationBody(props: BodyProps) {
   const { onHighlight } = props;
@@ -201,7 +201,7 @@ function StackGrid({ d }: { d?: ItemDetail }) {
 /** The six steps in a row, the ones given lit; each opens its pillar. */
 function FlowChain({ d, lit }: { d: ItemDetail; lit: number[] }) {
   return (
-    <ol className="sc-chain" aria-label="The flow, voice to page">
+    <ol className="sc-chain" aria-label="The six steps, Blender to voice">
       {ARCH_FLOW.map((f, i) => (
         <li key={f.k}>
           <button type="button" className="sc-chain-step" aria-current={lit.includes(i) ? "step" : undefined} onClick={() => d.open(`arch:${i}`)}>
@@ -227,10 +227,7 @@ function StepView({ d, i }: { d: ItemDetail; i: number }) {
     >
       <p className="sc-intro">{f.body}</p>
       <FlowChain d={d} lit={[i]} />
-      {i === 4 && (
-        <p className="sc-note">On this 3D page the camera flies to the place the agent names, and the place opens.</p>
-      )}
-      {i === 3 && <Snippet />}
+      {i === 5 && <Snippet />}
     </DetailFrame>
   );
 }

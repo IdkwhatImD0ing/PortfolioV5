@@ -25,7 +25,7 @@ Every piece of content and every interaction on the old page (the one-page portf
 | abode | Cave Abode (洞府) | Off the clock (#personal) |
 | summit | Moon-Gazing Terrace (望月台) | Contact (#footer) |
 
-166 entries: 117 carried, 19 adapted (same content, different presentation), 8 handled by the 3D page, 22 not carried (each with its reason).
+167 entries: 118 carried, 19 adapted (same content, different presentation), 8 handled by the 3D page, 22 not carried (each with its reason).
 
 ## Page shell (layout.tsx, page.tsx) (3)
 
@@ -218,61 +218,62 @@ Reader: Jade Slip Pavilion (玉简阁). Scroll (or use the area rail) to the Jad
 - [x] **C-127** Get in touch: billzhangsc@gmail.com, github.com/IdkwhatImD0ing, linkedin.com/in/bill-zhang1. *carried.* Jade Slip Pavilion reader.
 - [ ] **C-128** Voice tip “Send me your resume.” → opens the download. *not carried.* Not in the sect. Cut to keep the reader short.
 
-## Architecture (#architecture) (12)
+## Architecture (#architecture) (13)
 
 Reader: Grand Sect-Protecting Formation (护宗大阵). Scroll (or use the area rail) to the Grand Sect-Protecting Formation and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "How this site works" in the one-page view (#architecture).
 
 - [x] **C-129** Eyebrow "HOW THIS SITE WORKS", heading "A portfolio that talks back." and intro. *adapted.* Grand Sect-Protecting Formation reader. The eyebrow and heading are left out; the reader's title names the section.
-- [x] **C-130** Flow step 01: Mic input. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:0.
-- [x] **C-131** Flow step 02: LLM agent. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:1.
-- [x] **C-132** Flow step 03: Tool calls. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:2.
-- [x] **C-133** Flow step 04: VoiceBus. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:3.
-- [x] **C-134** Flow step 05: Sections react. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:4.
-- [x] **C-135** Flow step 06: Voice reply. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:5.
-- [x] **C-136** Stack group Voice: Retell AI (call runtime, WebRTC), Deepgram speech-to-text, ElevenLabs text-to-speech. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
-- [x] **C-137** Stack group Brain: GPT-5.6 Terra (the agent), GPT-5.6 Luna (guardrail + call summary), OpenAI Agents SDK, nine tools, Site-grounded system prompt. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
-- [x] **C-138** Stack group Frame: Next.js + React 19, Three.js + React Three Fiber + GLSL, A sect modelled and baked in Blender. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
-- [x] **C-139** Stack group State: VoiceBus pub-sub, URL-driven section anchors, Per-section local React state. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
-- [x] **C-140** Code snippet (navigation metadata → VoiceBus → scroll), syntax highlighted. *carried.* Grand Sect-Protecting Formation reader. The code is pillar hotspot arch:7.
+- [x] **C-130** Flow step 01: Built in code. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:0.
+- [x] **C-131** Flow step 02: Baked and packed. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:1.
+- [x] **C-132** Flow step 03: Drawn live. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:2.
+- [x] **C-133** Flow step 04: A song per stop. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:3.
+- [x] **C-134** Flow step 05: Talks back. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:4.
+- [x] **C-135** Flow step 06: Flies you there. *carried.* Grand Sect-Protecting Formation reader. Its array-flag pillar is hotspot arch:5.
+- [x] **C-136** Stack group Scene: Blender 5.2, all Python, Cycles bake on a rented RTX 5090, glTF Transform, meshopt, WebP, Git LFS. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
+- [x] **C-137** Stack group Browser: Next.js 15 + React 19, three.js + React Three Fiber, postprocessing + custom GLSL, three-mesh-bvh for clicks. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
+- [x] **C-138** Stack group Music: 12 Suno tracks, One five-note scale, Web Audio crossfades. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
+- [x] **C-139** Stack group Voice: Retell (voice calls), Deepgram speech-to-text, ElevenLabs text-to-speech, Pusher (page moves, live captions). *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
+- [x] **C-140** Stack group Brain: GPT-5.6 Terra (the agent), GPT-5.6 Luna (guardrail, call summary), OpenAI Agents SDK, 13 tools, Pinecone project search. *carried.* Grand Sect-Protecting Formation reader. The stack is pillar hotspot arch:6.
+- [x] **C-141** Code snippet (Pusher event → VoiceBus → ink travel), syntax highlighted. *carried.* Grand Sect-Protecting Formation reader. The code is pillar hotspot arch:7.
 
 ## Personal (#personal) (11)
 
 Reader: Cave Abode (洞府). Scroll (or use the area rail) to the Cave Abode and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Off the clock" in the one-page view (#personal).
 
-- [ ] **C-141** Eyebrow "OFF THE CLOCK" and heading "A few true things." *not carried.* Not in the sect. The reader's title already says Off the clock.
-- [ ] **C-142** Watermark lines behind the section. *not carried.* Not in the sect. Decoration.
-- [x] **C-143** Photo (/profile-joshua-tree.webp, alt "Bill Zhang") with caption "SHOT · 2025 · LA". *carried.* Cave Abode reader. The moon gate (hotspot abode) opens the reader.
-- [x] **C-144** Fact 1: Finished a 4-year CS degree in 2.5 years. *carried.* Cave Abode reader. Its object in the abode is the waterfall (hotspot fact:0).
-- [x] **C-145** Fact 2: Won my first hackathon at 17. *carried.* Cave Abode reader. Its object in the abode is the peach tree (hotspot fact:1).
-- [x] **C-146** Fact 3: Speaks Mandarin and English; building agents in both. *carried.* Cave Abode reader. Its object in the abode is the cliff inscription (hotspot fact:2).
-- [x] **C-147** Fact 4: Plays drums and piano when the laptop is closed. *carried.* Cave Abode reader. Its object in the abode is the qin table of the 笑傲江湖 duet (hotspot fact:3).
-- [x] **C-148** Fact 5: Still chasing the best bowl of noodles in San Francisco. *carried.* Cave Abode reader. Its object in the abode is the tea table (hotspot fact:4).
-- [x] **C-149** Fact 6: Convinced everyone gets a personal Jarvis eventually: an AI you just talk to, in real time. Building toward it. *carried.* Cave Abode reader. Its object in the abode is the crane (hotspot fact:5).
-- [x] **C-150** Fact 7: Would rather talk to software than tap through it. Hence this site. *carried.* Cave Abode reader. Its object in the abode is the koi pool (hotspot fact:6).
-- [ ] **C-151** Tip "Try asking the orb: “What does Bill do for fun?”". *not carried.* Not in the sect. The Ask a senior disciple button does the same.
+- [ ] **C-142** Eyebrow "OFF THE CLOCK" and heading "A few true things." *not carried.* Not in the sect. The reader's title already says Off the clock.
+- [ ] **C-143** Watermark lines behind the section. *not carried.* Not in the sect. Decoration.
+- [x] **C-144** Photo (/profile-joshua-tree.webp, alt "Bill Zhang") with caption "SHOT · 2025 · LA". *carried.* Cave Abode reader. The moon gate (hotspot abode) opens the reader.
+- [x] **C-145** Fact 1: Finished a 4-year CS degree in 2.5 years. *carried.* Cave Abode reader. Its object in the abode is the waterfall (hotspot fact:0).
+- [x] **C-146** Fact 2: Won my first hackathon at 17. *carried.* Cave Abode reader. Its object in the abode is the peach tree (hotspot fact:1).
+- [x] **C-147** Fact 3: Speaks Mandarin and English; building agents in both. *carried.* Cave Abode reader. Its object in the abode is the cliff inscription (hotspot fact:2).
+- [x] **C-148** Fact 4: Plays drums and piano when the laptop is closed. *carried.* Cave Abode reader. Its object in the abode is the qin table of the 笑傲江湖 duet (hotspot fact:3).
+- [x] **C-149** Fact 5: Still chasing the best bowl of noodles in San Francisco. *carried.* Cave Abode reader. Its object in the abode is the tea table (hotspot fact:4).
+- [x] **C-150** Fact 6: Convinced everyone gets a personal Jarvis eventually: an AI you just talk to, in real time. Building toward it. *carried.* Cave Abode reader. Its object in the abode is the crane (hotspot fact:5).
+- [x] **C-151** Fact 7: Would rather talk to software than tap through it. Hence this site. *carried.* Cave Abode reader. Its object in the abode is the koi pool (hotspot fact:6).
+- [ ] **C-152** Tip "Try asking the orb: “What does Bill do for fun?”". *not carried.* Not in the sect. The Ask a senior disciple button does the same.
 
 ## Footer / contact (11)
 
 Reader: Moon-Gazing Terrace (望月台). Scroll (or use the area rail) to the Moon-Gazing Terrace and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Contact" in the one-page view (#footer).
 
-- [ ] **C-152** Eyebrow "CONTACT", heading "Let's talk. (Literally.)" and "Tap the talisman and a senior disciple of the sect will answer. Or, if you're old-school, send a normal email. I read every one." *not carried.* Not in the sect. The reader's title already says Contact; the email and the talk button follow.
-- [x] **C-153** Direct: email billzhangsc@gmail.com. *carried.* Moon-Gazing Terrace reader. The summit panel also has an Email button.
-- [x] **C-154** Direct: "Ask a senior disciple". *carried.* Moon-Gazing Terrace reader. Starts a call through onTalk (left out without it). Clicking the moon (hotspot moon) does the same on the 3D page.
-- [x] **C-155** Elsewhere: GitHub (https://github.com/IdkwhatImD0ing). *carried.* Moon-Gazing Terrace reader.
-- [x] **C-156** Elsewhere: LinkedIn (https://www.linkedin.com/in/bill-zhang1/). *carried.* Moon-Gazing Terrace reader.
-- [x] **C-157** Elsewhere: Devpost (https://devpost.com/IdkwhatImD0ing). *carried.* Moon-Gazing Terrace reader.
-- [ ] **C-158** Index: Projects (jumps to #projects). *not carried.* Not in the sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
-- [ ] **C-159** Index: Hackathons (jumps to #hackathons). *not carried.* Not in the sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
-- [ ] **C-160** Index: Experience (jumps to #experience). *not carried.* Not in the sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
-- [x] **C-161** "© 2026 BILL ZHANG". *carried.* Moon-Gazing Terrace reader.
-- [x] **C-162** Location "San Francisco, CA" (portfolio data; the old page shows it only as "SF" in the top bar). *carried.* Moon-Gazing Terrace reader.
+- [ ] **C-153** Eyebrow "CONTACT", heading "Let's talk. (Literally.)" and "Tap the talisman and a senior disciple of the sect will answer. Or, if you're old-school, send a normal email. I read every one." *not carried.* Not in the sect. The reader's title already says Contact; the email and the talk button follow.
+- [x] **C-154** Direct: email billzhangsc@gmail.com. *carried.* Moon-Gazing Terrace reader. The summit panel also has an Email button.
+- [x] **C-155** Direct: "Ask a senior disciple". *carried.* Moon-Gazing Terrace reader. Starts a call through onTalk (left out without it). Clicking the moon (hotspot moon) does the same on the 3D page.
+- [x] **C-156** Elsewhere: GitHub (https://github.com/IdkwhatImD0ing). *carried.* Moon-Gazing Terrace reader.
+- [x] **C-157** Elsewhere: LinkedIn (https://www.linkedin.com/in/bill-zhang1/). *carried.* Moon-Gazing Terrace reader.
+- [x] **C-158** Elsewhere: Devpost (https://devpost.com/IdkwhatImD0ing). *carried.* Moon-Gazing Terrace reader.
+- [ ] **C-159** Index: Projects (jumps to #projects). *not carried.* Not in the sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
+- [ ] **C-160** Index: Hackathons (jumps to #hackathons). *not carried.* Not in the sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
+- [ ] **C-161** Index: Experience (jumps to #experience). *not carried.* Not in the sect. The reader's Previous / Next and the map (its seals and its list of places) already move between areas.
+- [x] **C-162** "© 2026 BILL ZHANG". *carried.* Moon-Gazing Terrace reader.
+- [x] **C-163** Location "San Francisco, CA" (portfolio data; the old page shows it only as "SF" in the top bar). *carried.* Moon-Gazing Terrace reader.
 
 ## Public files (4)
 
 Reader: Jade Slip Pavilion (玉简阁). Scroll (or use the area rail) to the Jade Slip Pavilion and press "Open" on its panel; or Previous / Next from a neighbouring reader; or "Resume" in the one-page view (#resume).
 
-- [x] **C-163** /resume.pdf (preview, open in new tab, download). *carried.* Jade Slip Pavilion panel and reader; gate reader (Download PDF).
-- [x] **C-164** Project posters (15 in /project-posters/). *carried.* Forge reader cards and the detail view's video cover.
-- [x] **C-165** School logos (/usc.png, /ucsc.png, /lynbrook.png). *carried.* Scripture Pavilion reader.
-- [ ] **C-166** github.svg, linkedin.svg, devpost.svg, rocket.png, llms.txt, data.json. *not carried.* Not in the sect. The old page did not use them either.
+- [x] **C-164** /resume.pdf (preview, open in new tab, download). *carried.* Jade Slip Pavilion panel and reader; gate reader (Download PDF).
+- [x] **C-165** Project posters (15 in /project-posters/). *carried.* Forge reader cards and the detail view's video cover.
+- [x] **C-166** School logos (/usc.png, /ucsc.png, /lynbrook.png). *carried.* Scripture Pavilion reader.
+- [ ] **C-167** github.svg, linkedin.svg, devpost.svg, rocket.png, llms.txt, data.json. *not carried.* Not in the sect. The old page did not use them either.
 

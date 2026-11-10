@@ -620,7 +620,7 @@ export function contentInventory(): InventoryEntry[] {
   }
   add({
     section: arch,
-    what: "Code snippet (navigation metadata → VoiceBus → scroll), syntax highlighted",
+    what: "Code snippet (Pusher event → VoiceBus → ink travel), syntax highlighted",
     status: "carried",
     area: "formation",
     texts: [ARCH_SNIPPET],

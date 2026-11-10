@@ -44,7 +44,7 @@ The first three are one family saga, the Condor Trilogy. Wanderer stands alone, 
 Lines on hotspot labels that are not references of their own (`HOTSPOT_NOTES` in `lore.ts`):
 
 - The jade slip: "Verses from Jin Yong's novels".
-- The Stack pillar (arch:6): the five banners' brigades, 洪水 Voice · 烈火 Brain · 巨木 Frame · 銳金 State · 厚土 the core.
+- The Stack pillar (arch:6): the five banners' brigades, 厚土 Scene · 巨木 Browser · 銳金 Music · 洪水 Voice · 烈火 Brain.
 - Each role tablet in the Mission Hall: its star, in the wall's order, bowl then handle: 天樞 Ma Yu, 天璇 Tan Chuduan, 天璣 Liu Chuxuan, 天權 Qiu Chuji (Dispatch AI), 玉衡 Wang Chuyi, 開陽 Hao Datong, 搖光 Sun Bu'er. Shown only once meta.json has the Dipper at the Mission Hall.
 - Each stele row: the manual its front steles carry. voice-first 獅子吼 Lion's Roar and 清心普善咒 Pure Heart Chant; agents 吸星大法; latency 天羅地網勢; keeping a human in the loop 玉女心經; when the model is wrong 乾坤大挪移. Shown only once meta.json has 獨孤九劍 (the same re-carving).
 

@@ -33,6 +33,11 @@ server/
 ├── music.py             # Soundtrack manifest, capabilities, ranges and lyrics
 ├── music_manifest.json  # Internal media-object mapping and playback metadata
 ├── prompts.py           # System prompt and persona
+├── prompts_sect.py      # The senior disciple's prompt for the sect
+├── personas.py          # Picks the classic or sect persona for a call
+├── model_config.py      # Which model runs the agent, the guardrail and the call summary
+├── navigation.py        # Turns a display_* tool call into a navigation message
+├── voice_events.py      # Publishes navigation and live captions to the call's Pusher channel
 ├── custom_types.py      # Pydantic type definitions
 ├── socket_manager.py    # WebSocket connection manager
 ├── Dockerfile           # Container configuration
@@ -46,7 +51,14 @@ User Speech → Retell Platform → WebSocket → main.py
     → LlmClient.draft_response() → OpenAI Agents SDK
     → Tool calls → Pinecone (if search)
     → Streaming response → WebSocket → Retell → Voice
+
+Page moves take a second path:
+    display_* tool call → navigation.py → voice_events.py
+    → Pusher channel voice-<uuid> → pusher-js in the browser → the page flies there
+Live captions take the same Pusher channel, starting from Retell's transcript updates (main.py → voice_events.py).
 ```
+
+The browser makes up the channel id, subscribes to it, and passes it to Retell in the call's `metadata.events_channel`. The server only accepts a lowercase UUID as the id.
 
 ## Environment Variables
 
