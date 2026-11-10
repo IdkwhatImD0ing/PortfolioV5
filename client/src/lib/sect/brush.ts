@@ -14,13 +14,30 @@ import INK from "./brush-ink.json";
  * Divine Sect; its 神 is the red seal's, ornaments.tsx SealStamp), the map's title, and the voice
  * talisman (传音符, the sound-transmission talisman: sect.css writes it, and the 音 seal on it).
  */
-export const BRUSH_EXTRA = ["日月神教", "日月神教全图", "传音符"] as const;
+export const BRUSH_EXTRA = [
+  "日月神教",
+  "日月神教全图",
+  "传音符",
+  // The soundtrack panel (experience/karaoke-lyrics.tsx): its slip, then the songs' Chinese titles
+  // (server/music_manifest.json; a title with Latin in it stays in the serif).
+  "乐曲",
+  "风舞",
+  "铁血丹心",
+  "降临",
+  "璀璨冒险人",
+  "化凡",
+  "光之少年",
+  "浩瀚",
+  "天谴觉醒",
+  "逍遥",
+  "破茧",
+] as const;
 
 /**
  * Every character the font subset carries, once each, in brushText() order. A test holds this to
  * brushText() and to the font file; scripts/subset-brush-font.mjs reads this line.
  */
-export const BRUSH_GLYPHS = "山门心镜台炼器峰论剑任务殿藏经阁碑林玉简护宗大阵洞府望月日神教全图传音符";
+export const BRUSH_GLYPHS = "山门心镜台炼器峰论剑任务殿藏经阁碑林玉简护宗大阵洞府望月日神教全图传音符乐曲风舞铁血丹降临璀璨冒险人化凡光之少年浩瀚天谴觉醒逍遥破茧";
 
 /** The characters the brush hand is asked to write (the place names, then BRUSH_EXTRA), each once. */
 export function brushText(): string {

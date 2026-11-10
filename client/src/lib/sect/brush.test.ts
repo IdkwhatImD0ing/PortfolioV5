@@ -130,6 +130,7 @@ describe("the brush hand", () => {
     const points = woff2CodePoints(file);
     // A failure here: run scripts/subset-brush-font.mjs after changing a name.
     for (const ch of BRUSH_GLYPHS) expect(points.has(ch.codePointAt(0)!), ch).toBe(true);
-    expect(file.length).toBeLessThan(24 * 1024);
+    // 66 characters since the soundtrack panel (the slip and the song titles) came in at about 30 KB.
+    expect(file.length).toBeLessThan(40 * 1024);
   });
 });

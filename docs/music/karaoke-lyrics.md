@@ -94,10 +94,10 @@ block in `client/src/app/sect/sect.css`.
 - During a crossfade, the panel follows the track with the greater audible gain and keeps the
   current track on an exact tie.
 
-The brush font is cut down to the place names' characters (`client/src/lib/sect/brush.ts`), so 乐曲
-and the song titles draw in the CJK serif for now. To write them in the brush hand, add their
-characters to `brush.ts` and rerun `client/scripts/subset-brush-font.mjs`, which needs the full Ma
-Shan Zheng TTF.
+乐曲 and the songs' Chinese titles are in the brush font's character list
+(`BRUSH_EXTRA` in `client/src/lib/sect/brush.ts`). After a song changes, add its title there and
+rerun `client/scripts/subset-brush-font.mjs` with the full Ma Shan Zheng TTF. A title with Latin
+letters in it (*刀剑如梦 (erhu and guzheng)*) stays in the CJK serif.
 
 ### Where it sits
 
