@@ -6,7 +6,9 @@ AI agent documentation for the FastAPI backend of Bill Zhang's voice portfolio.
 
 ## Overview
 
-This is a FastAPI WebSocket server that bridges Retell's voice platform with OpenAI's LLM. It handles real-time voice conversations, executes navigation tools, and performs semantic search via Pinecone.
+This is a FastAPI server that bridges Retell's voice platform with OpenAI's LLM. It handles real-time
+voice conversations, navigation tools, semantic search through Pinecone, and private soundtrack
+streaming from Cloud Storage.
 
 ## Tech Stack
 
@@ -17,6 +19,7 @@ This is a FastAPI WebSocket server that bridges Retell's voice platform with Ope
 | OpenAI Agents | 0.2.7 | LLM integration |
 | Pinecone | 7.3.0 | Vector database |
 | Retell SDK | 4.40.0 | Webhook verification |
+| Google Cloud Storage | 3.4.1 | Private soundtrack objects |
 | Python | 3.11 | Runtime |
 
 ## Architecture
@@ -27,6 +30,8 @@ server/
 ├── llm.py               # LLM client, tools, guardrails
 ├── firetrace.py         # FireTrace exporter: one trace per completed run
 ├── project_search.py    # Pinecone search functions
+├── music.py             # Soundtrack manifest, capabilities, ranges and lyrics
+├── music_manifest.json  # Internal media-object mapping and playback metadata
 ├── prompts.py           # System prompt and persona
 ├── prompts_sect.py      # The senior disciple's prompt for the sect
 ├── personas.py          # Picks the classic or sect persona for a call
@@ -65,6 +70,9 @@ The browser makes up the channel id, subscribes to it, and passes it to Retell i
 | `OBFUSCATED_WS_PATH` | No | `ws-default` | Secret WebSocket path (value never logged; startup warns if unset) |
 | `LLM_DEBUG` | No | `0` | Debug logging |
 | `FIRETRACE_API_KEY` | No | - | Records every run at tracing.art3m1s.me; one key per environment |
+| `MUSIC_BUCKET` | Cloud Run | - | Private soundtrack bucket |
+| `MUSIC_SIGNING_SECRET` | Cloud Run | - | Signs short-lived soundtrack capabilities |
+| `MUSIC_STORAGE_DIR` | Local only | - | Prepared local soundtrack directory |
 
 ## Development Commands
 

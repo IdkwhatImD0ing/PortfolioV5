@@ -15,7 +15,8 @@ ALLOW_UNAUTH="${ALLOW_UNAUTH:-1}"             # 1 = public URL
 KEY_FILE="${KEY_FILE:-./gcloud.json}"         # your SA key path (optional if using personal account)
 FIRETRACE="${FIRETRACE:-auto}"                # auto = mount FIRETRACE_API_KEY if the secret exists; off = never
 PUSHER="${PUSHER:-auto}"                      # auto = mount PUSHER_SECRET if the secret exists; off = never
-SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-}"        # run as this account (fastapi-ws runs as deploy-sa@...); empty = keep/gcloud default
+MUSIC_BUCKET="${MUSIC_BUCKET:-art3m1s-sect-music-spiritual-storm-469704-n2}"
+SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-deploy-sa@spiritual-storm-469704-n2.iam.gserviceaccount.com}"
 NO_TRAFFIC="${NO_TRAFFIC:-0}"                 # 1 = new revision gets no traffic (existing services only); test it at its tag URL
 TAG="${TAG:-}"                                # revision tag, e.g. v5 -> https://v5---<service>-<hash>.run.app
 CUSTOM_DOMAIN="${CUSTOM_DOMAIN:-}"            # map this domain to the service if it has no mapping yet; empty = no mapping
@@ -54,8 +55,8 @@ echo "▶ Setting project & region…"
 gcloud --quiet config set project "$PROJECT_ID" >/dev/null
 gcloud --quiet config set run/region "$REGION" >/dev/null
 
-echo "▶ Enabling APIs (Run, Build, Artifact Registry)…"
-gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com --project "$PROJECT_ID" \
+echo "▶ Enabling APIs (Run, Build, Artifact Registry, Storage)…"
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com storage.googleapis.com --project "$PROJECT_ID" \
   || echo "Skipping API enable (no permission or already enabled)."
 
 # Choose min instances based on KEEP_WARM
@@ -75,7 +76,8 @@ fi
 SECRETS="OPENAI_API_KEY=OPENAI_API_KEY:latest,\
 RETELL_API_KEY=RETELL_API_KEY:latest,\
 PINECONE_API_KEY=PINECONE_API_KEY:latest,\
-OBFUSCATED_WS_PATH=OBFUSCATED_WS_PATH:latest"
+OBFUSCATED_WS_PATH=OBFUSCATED_WS_PATH:latest,\
+MUSIC_SIGNING_SECRET=MUSIC_SIGNING_SECRET:latest"
 
 # FireTrace (tracing.art3m1s.me) is optional. The key mounted here is the
 # production one for this service: FireTrace stamps the environment from the
@@ -146,7 +148,7 @@ gcloud run deploy "$SERVICE_NAME" \
   --timeout "${TIMEOUT}s" \
   --execution-environment gen2 \
   --cpu-boost \
-  --clear-env-vars \
+  --set-env-vars "MUSIC_BUCKET=$MUSIC_BUCKET" \
   --set-secrets "$SECRETS" \
   ${EXTRA_FLAGS[@]+"${EXTRA_FLAGS[@]}"} \
   $AUTH_FLAG

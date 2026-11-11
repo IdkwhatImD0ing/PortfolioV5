@@ -1345,6 +1345,17 @@ img.sc-cover {
   line-height: 1.02;
 }
 
+/* Phones: the panel is the largest thing on screen, so its title and top padding are a little smaller. */
+@media (max-width: 47.99rem) {
+  .sect-panel.sc-panel {
+    padding-top: 1rem;
+  }
+  .sc-panel-title {
+    margin-top: 0.5rem;
+    font-size: 1.6rem;
+  }
+}
+
 /* Under the title: the gold brush stroke (sect.css .sect-brushstroke). */
 .sc-rule {
   margin-top: 0.85rem;

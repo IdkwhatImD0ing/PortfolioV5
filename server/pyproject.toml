@@ -16,6 +16,8 @@ dependencies = [
     "websockets>=15.0.1",
     "pusher>=3.3.4",
     "certifi>=2026.1.4",
+    "google-cloud-storage==3.4.1",
+    "itsdangerous==2.2.0",
 ]
 
 [project.optional-dependencies]

@@ -52,7 +52,12 @@ const SPANS: AreaSpan[] = [
 ];
 
 const track = (key: string, extra: Record<string, unknown> = {}) => ({
-  src: `/sect/audio/${key}.mp3`,
+  title: key,
+  artist: "Test artist",
+  show: "Test show",
+  language: "zh",
+  hasLyrics: true,
+  revision: "0123456789abcdef",
   duration: 160,
   loopStart: 2,
   loopEnd: 150,
@@ -70,29 +75,43 @@ describe("music keys", () => {
 
 describe("parseMusicManifest", () => {
   it("reads the contract's shape", () => {
-    const m = parseMusicManifest({ version: 1, tracks: { gate: track("gate"), loading: track("loading") } });
-    expect(m?.tracks.gate).toEqual({ src: "/sect/audio/gate.mp3", duration: 160, loopStart: 2, loopEnd: 150, bpm: 84, lufs: -17, bytes: 3_000_000 });
+    const m = parseMusicManifest({ version: 2, tracks: { gate: track("gate"), loading: track("loading") } });
+    expect(m?.tracks.gate).toEqual({
+      title: "gate",
+      artist: "Test artist",
+      show: "Test show",
+      language: "zh",
+      hasLyrics: true,
+      revision: "0123456789abcdef",
+      duration: 160,
+      loopStart: 2,
+      loopEnd: 150,
+      bpm: 84,
+      lufs: -17,
+      bytes: 3_000_000,
+    });
     expect(Object.keys(m!.tracks).sort()).toEqual(["gate", "loading"]);
   });
 
   it("returns null for anything that is not a usable list", () => {
     expect(parseMusicManifest(null)).toBeNull();
     expect(parseMusicManifest("x")).toBeNull();
-    expect(parseMusicManifest({ version: 2, tracks: { gate: track("gate") } })).toBeNull();
-    expect(parseMusicManifest({ version: 1 })).toBeNull();
-    expect(parseMusicManifest({ version: 1, tracks: {} })).toBeNull();
-    expect(parseMusicManifest({ version: 1, tracks: { nowhere: track("nowhere") } })).toBeNull();
+    expect(parseMusicManifest({ version: 1, tracks: { gate: track("gate") } })).toBeNull();
+    expect(parseMusicManifest({ version: 2 })).toBeNull();
+    expect(parseMusicManifest({ version: 2, tracks: {} })).toBeNull();
+    expect(parseMusicManifest({ version: 2, tracks: { nowhere: track("nowhere") } })).toBeNull();
   });
 
-  it("drops tracks with another origin, a scheme or no duration", () => {
+  it("drops tracks with invalid metadata or no duration", () => {
     const m = parseMusicManifest({
-      version: 1,
+      version: 2,
       tracks: {
-        gate: track("gate", { src: "https://evil.example/x.mp3" }),
-        mirror: track("mirror", { src: "//evil.example/x.mp3" }),
-        forge: track("forge", { src: "javascript:alert(1)" }),
+        gate: track("gate", { title: "" }),
+        mirror: track("mirror", { language: "jp" }),
+        forge: track("forge", { revision: "../escape" }),
         arena: track("arena", { duration: 0 }),
         mission: track("mission", { duration: "160" }),
+        steles: track("steles", { artist: "" }),
         summit: track("summit"),
       },
     });
@@ -101,7 +120,7 @@ describe("parseMusicManifest", () => {
 
   it("loops the whole track when the loop points make no sense", () => {
     const m = parseMusicManifest({
-      version: 1,
+      version: 2,
       tracks: {
         gate: track("gate", { loopStart: 50, loopEnd: 40 }),
         mirror: track("mirror", { loopEnd: 400 }),

@@ -106,11 +106,24 @@ class FakeContext {
 }
 
 const MANIFEST = parseMusicManifest({
-  version: 1,
+  version: 2,
   tracks: Object.fromEntries(
     ["loading", "gate", "mirror", "forge", "arena", "mission"].map((k) => [
       k,
-      { src: `/sect/audio/${k}.mp3`, duration: 160, loopStart: 2.5, loopEnd: 150, bpm: 84, lufs: -17, bytes: 1 },
+      {
+        title: k,
+        artist: "Test artist",
+        show: "Test show",
+        language: "zh",
+        hasLyrics: true,
+        revision: "0123456789abcdef",
+        duration: 160,
+        loopStart: 2.5,
+        loopEnd: 150,
+        bpm: 84,
+        lufs: -17,
+        bytes: 1,
+      },
     ]),
   ),
 })!;
@@ -144,10 +157,9 @@ function rig(opts: { muted?: boolean; noAudio?: boolean; volume?: number } = {})
         r.ctx = new FakeContext();
         return r.ctx as unknown as AudioContext;
       },
-      fetchBytes: (url, signal) => {
-        r.fetched.push(url);
-        signal.addEventListener("abort", () => r.aborted.push(url));
-        const key = url.replace(/^.*\/(\w+)\.mp3$/, "$1");
+      fetchBytes: (key, signal) => {
+        r.fetched.push(key);
+        signal.addEventListener("abort", () => r.aborted.push(key));
         if (r.missing.has(key)) return Promise.reject(new Error("404"));
         return Promise.resolve(new TextEncoder().encode(key).buffer as ArrayBuffer);
       },
@@ -186,9 +198,9 @@ describe("MusicEngine", () => {
     expect(r.engine.snapshot().on).toBe(true);
     expect(r.ctx!.master.gain.aim).toBe(MASTER_GAIN);
     // One download at a time, the current track first.
-    expect(r.fetched).toEqual(["/sect/audio/gate.mp3"]);
+    expect(r.fetched).toEqual(["gate"]);
     await settle();
-    expect(r.fetched).toEqual(["/sect/audio/gate.mp3", "/sect/audio/mirror.mp3"]);
+    expect(r.fetched).toEqual(["gate", "mirror"]);
 
     const [src] = r.ctx!.playing("gate");
     expect(src.loop).toBe(true);
@@ -235,6 +247,52 @@ describe("MusicEngine", () => {
       [null, "gate"],
       ["gate", "forge"],
     ]);
+  });
+
+  it("exposes planned metadata before playback and the exact dominant audio-clock position", async () => {
+    const r = rig();
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "gate");
+    expect(r.engine.trackInfo("gate")).toMatchObject({ title: "gate", artist: "Test artist" });
+    expect(r.engine.playbackSnapshot()).toMatchObject({
+      track: "gate",
+      position: 0,
+      audible: false,
+      suppressed: "inactive",
+    });
+    r.engine.gesture();
+    await settle();
+    r.ctx!.currentTime = 151;
+    expect(r.engine.playbackSnapshot()).toMatchObject({
+      track: "gate",
+      position: 3.5,
+      audible: true,
+      suppressed: "none",
+    });
+    r.engine.setVoice("call");
+    expect(r.engine.playbackSnapshot()).toMatchObject({ track: "gate", audible: false, suppressed: "voice" });
+  });
+
+  it("starts a place's song from the top on coming back to it", async () => {
+    const r = rig();
+    r.engine.setManifest(MANIFEST);
+    const all: MusicKey[] = ["gate", "forge"];
+    plan(r.engine, "gate", all, all);
+    r.engine.gesture();
+    await settle();
+    r.ctx!.currentTime = 40;
+    plan(r.engine, "forge", all, all);
+    await settle();
+    // The gate's fade-out ends and it stops, 43 s in.
+    r.ctx!.currentTime = 43;
+    r.engine.tick();
+    expect(r.ctx!.playing("gate")).toHaveLength(0);
+    r.ctx!.currentTime = 60;
+    plan(r.engine, "gate", all, all);
+    await settle();
+    const again = r.ctx!.playing("gate");
+    expect(again).toHaveLength(1);
+    expect(again[0].started![1]).toBe(0);
   });
 
   it("reverses a fade part way, from where it is", async () => {
@@ -410,7 +468,7 @@ describe("MusicEngine", () => {
     r.engine.toggle();
     expect(r.saved).toEqual([false]);
     expect(r.engine.snapshot().on).toBe(true);
-    expect(r.fetched).toEqual(["/sect/audio/gate.mp3"]);
+    expect(r.fetched).toEqual(["gate"]);
   });
 
   it("the toggle is also the first gesture: sound on, not off", () => {
@@ -492,8 +550,8 @@ describe("MusicEngine", () => {
     r.engine.gesture();
     // Still downloading (no settle): the camera is suddenly far away.
     plan(r.engine, "mission", ["mission"], ["mission"]);
-    expect(r.aborted).toEqual(["/sect/audio/gate.mp3"]);
-    expect(r.fetched.at(-1)).toBe("/sect/audio/mission.mp3");
+    expect(r.aborted).toEqual(["gate"]);
+    expect(r.fetched.at(-1)).toBe("mission");
   });
 
   it("cancels a download for a place just left, even one it would keep once decoded", () => {
@@ -504,8 +562,8 @@ describe("MusicEngine", () => {
     // Still downloading the gate's track (a slow line) when the camera reaches the mirror: the
     // gate is the track just passed (kept if it were decoded) but no longer worth the wait.
     plan(r.engine, "mirror", ["mirror", "forge"], ["mirror", "forge", "gate"]);
-    expect(r.aborted).toEqual(["/sect/audio/gate.mp3"]);
-    expect(r.fetched.at(-1)).toBe("/sect/audio/mirror.mp3");
+    expect(r.aborted).toEqual(["gate"]);
+    expect(r.fetched.at(-1)).toBe("mirror");
   });
 
   it("without Web Audio there is no toggle and nothing throws", () => {

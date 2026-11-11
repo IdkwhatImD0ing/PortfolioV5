@@ -61,6 +61,9 @@ docker run -p 8080:8080 \
   -e OPENAI_API_KEY=your_key \
   -e PINECONE_API_KEY=your_key \
   -e OBFUSCATED_WS_PATH=your_path \
+  -e MUSIC_SIGNING_SECRET=local_only_value \
+  -e MUSIC_STORAGE_DIR=/media \
+  -v "$PWD/.music-prepared:/media:ro" \
   portfolio-server
 ```
 
@@ -130,11 +133,12 @@ chmod +x deploy.sh
 
 ### Environment Variables
 
-Set in Cloud Run console or via CLI:
+`deploy.sh` sets `MUSIC_BUCKET`, mounts `MUSIC_SIGNING_SECRET` from Secret Manager, and runs the
+container as a service account with read-only access to the private media bucket. Use the script so
+these settings stay paired with the other runtime secrets.
 
 ```bash
-gcloud run services update portfolio-server \
-  --set-env-vars="RETELL_API_KEY=xxx,OPENAI_API_KEY=xxx,PINECONE_API_KEY=xxx"
+NO_TRAFFIC=1 TAG=music-v2 bash deploy.sh
 ```
 
 ### Custom Domain

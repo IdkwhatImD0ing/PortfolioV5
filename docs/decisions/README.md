@@ -331,6 +331,140 @@ The speech side stays as it was: the owner confirmed Retell uses an ElevenLabs v
 **Why.** The owner: "I think its time to update how this site works with the 3d model and blender and music and
 everything now". The old copy came from the one-page site and only described the voice agent.
 
+### 2026-11-08 · The soundtrack moves behind the backend and gains timed lyrics
+
+**Decided.** Twelve selected drama and donghua songs replace the loading theme and eleven area themes while
+keeping the existing `loading`, `gate` through `summit` music keys. Prepared MP3s and the eight timed lyric
+files live in private Cloud Storage, not the frontend bundle. FastAPI exposes a metadata manifest and issues
+short-lived capabilities bound to one track and resource type; audio uses HTTP range responses. The browser
+keeps the existing Web Audio loops, memory budget, ducking and equal-power crossfades.
+
+Every track exposes an openable `乐曲 / Music` drawer at the left edge, clear of the map controls.
+It identifies the song, artist, source show and vocal type; instrumentals remain available with a
+no-lyrics note. The eight sung tracks add complete bilingual lyrics and highlight the current
+Chinese and English lines together; source pinyin and word-level karaoke are not displayed. It
+follows the dominant track during a crossfade, remains available when playback is suppressed, and
+hides behind readers, the map, fast travel and page view. Details are in
+[`../music/local-soundtrack.md`](../music/local-soundtrack.md),
+[`../music/backend-soundtrack-delivery.md`](../music/backend-soundtrack-delivery.md) and
+[`../music/karaoke-lyrics.md`](../music/karaoke-lyrics.md).
+
+**Why.** The owner selected one song for each place, supplied the twelve MP3s and character-timed lyric JSON,
+and wanted the files served through the backend instead of shipped as frontend assets. Short-lived capabilities,
+opaque storage names and private storage deter direct static downloads while preserving the existing playback
+quality.
+
+### 2026-11-09 · The soundtrack drawer takes the stops' dress and a note for each song
+
+**Decided.** The soundtrack drawer is dressed like the stops' panels: rice paper over ink, gold cloud
+corners, the title as the hero (a Chinese one with the red seal), a brush stroke under it and brush
+rules in place of lines. Its opener is a title slip at the left edge, 乐曲 written upright on a
+control's plate; the left edge stays. The credits shrink to one or two quiet lines and leave out an
+artist the source does not name. The line being sung is marked in gold with a short brush stroke,
+and the other lines fade with their distance from it.
+
+Each sung track carries the owner's note on it, set as a small inscription between the credits and
+the lyrics, word for word (`client/src/lib/sect/song-notes.ts`). Instrumentals show nothing there.
+
+The closed slip sits under the stops' panels, so it never covers their words. While the drawer is
+open, a stop's panel on the left moves over beside it where the screen is at least 60rem wide;
+narrower, the stop's panel steps away until the drawer closes, as it does behind a reader. Details
+are in [`../music/karaoke-lyrics.md`](../music/karaoke-lyrics.md).
+
+**Why.** The owner found the first panel too plain and out of step with the rest of the page, and
+wrote a phrase for each of the eight sung tracks to show with it.
+
+### 2026-11-09 · The Music slip waits for the first stop, and a phone's stop panel is a little smaller
+
+**Decided.** On phones the 乐曲 slip is hidden while the intro's title is up and comes in at the first
+stop. While the sound is off, the soundtrack drawer's eyebrow reads "Soundtrack" and the drawer
+offers "Turn on sound". On wide screens the slip lines up with the other plates. On phones a stop
+panel's title is 1.6rem with a little less padding above it; its text stays whole.
+
+**Why.** From the same clutter audit as the phone HUD entry. The owner saw each change before and
+after and kept all of them, along with moving Read as page and the graphics button into the map on
+phones. A shorter panel would need shorter text, which he left as it is.
+
+### 2026-11-09 · Lyrics in the brush hand, sung word by word
+
+**Decided.** The Chinese lyric lines are written in Ma Shan Zheng, the brush hand of the place names,
+from a second cut of the font that holds every character of the songs (about 290 KB, fetched only
+when the drawer is first opened). The line being sung fills with gold word by word from the lyric
+files' word timings. This replaces the earlier choice to show line timing only. The drawer is a card
+of limited height with a bare cross to close it, and an instrumental's card ends at its credits.
+
+**Why.** The owner asked for word-by-word highlighting and a Chinese face closer to wuxia and
+xianxia titles; the system serif the lines fell back to read as plain.
+
+### 2026-11-09 · A phone's HUD keeps to what fits
+
+**Decided.** On phones (every screen without the side rail: under 768 px wide, or under 500 px tall,
+so a phone on its side too) five things moved. Tablets and desktops look and behave as before.
+
+- The top bar is the seal and the name. "Read as page" left it. It stays as a skip link that shows
+  only when the keyboard reaches it, and the map's All places tab now starts with a "Read it all as
+  one page" row. The loading screen, the error screen and the end of every reader still offer it.
+  On a phone on its side the art3m1s.me text hides too (screen readers still read it).
+- The graphics button left its spot under the sound toggle for the map's top row, left of the close
+  button. Escape with its menu open closes only the menu. When the loading screen goes, a focus
+  left in its graphics picker moves to the Map button.
+- At a stop, the place's name under the row of diamonds hides, since the stop's panel already names
+  the place. It comes back during a voice call on an upright phone, where the voice panel covers the
+  stop's panel. The look hint takes the name's spot, stays about 11 seconds instead of 25, and stops
+  showing after a turn of the view or once it has shown on two visits.
+- The loading and error screens fit small phones: two columns on a phone on its side, and Enter and
+  Read as page side by side at 320 px wide.
+- The map's place card at 320 px stays above the Map and All places tabs (it was measured before its
+  width was set, then grew), and drops its small emblem there.
+
+**Why.** The owner found the phone UI cluttered. An audit of the home page at five screen sizes
+ranked these first. At 320 px "Read as page" ended 3 px from the Map button. On a phone on its side
+the name plate took almost half the top row, and Enter sat below the bottom edge of the loading
+screen. At a stop, three plates stacked under the diamonds. The graphics menu covered the stop's
+panel, and the map's place card ran over its tabs.
+
+### 2026-11-10 · A Chinese song title carries its English
+
+**Decided.** In the soundtrack drawer a Chinese title is followed by a short gold dash, its English
+in italics and then the red seal, which moved from beside the Chinese name to the end of the line.
+The eleven English names are in `client/src/lib/sect/song-notes.ts`. *Throne of Glory* is already
+English and stays as it was.
+
+**Why.** The owner asked for "the chinese name - english translation" on each song, then for the
+stamp to come after.
+
+### 2026-11-10 · A place's song starts from the top
+
+**Decided.** Arriving at a place starts its song from the beginning. Before, a song picked up where
+it had stopped on an earlier visit. A pause in the same place (mute, a video, a hidden tab) still
+picks up where it was, and a song still fading out when the camera turns back carries on
+(`client/src/app/sect/experience/music-engine.ts` `setPlan`).
+
+**Why.** The owner: "going to each area, the song should restart".
+
+### 2026-11-10 · The Grand Formation plays 曙光
+
+**Decided.** The Grand Formation's song is 曙光 (Dawn) by Chen Bing (陈冰), from 神印王座, in place of the
+instrumental 天谴觉醒. It is the ninth sung track, with timed Chinese and English lyrics. Its
+note is the owner's own: many sparks joining into one light, and a little each day adding up the
+same way. Three garbled English lines and four broken line timings
+in its lyric file were corrected before it was prepared; the timings in its last third are still as
+transcribed and have not been checked by ear.
+
+**Why.** The owner asked to replace the formation song with it.
+
+### 2026-11-10 · Enter waits on the loading screen, greyed out
+
+**Decided.** The loading screen shows Enter from the start, beside Read as page. While the scene
+loads it is dim and cannot be pressed. When the scene is ready it takes the gold and the keyboard
+focus. Both buttons are plates like the Map button's: ink, a gold line, cloud curls at the corners
+and small spaced capitals. Enter carries the diamond of the rail and the graphics picker, hollow
+while it waits and full when it is ready. The solid gold rectangle is gone from this screen.
+
+**Why.** The owner: "the start button shouldn't just appear after it's finished loading. It should
+be like grayed out or something." He then found the solid box out of step with the page's other
+controls.
+
 ---
 
 ## Longer write-ups

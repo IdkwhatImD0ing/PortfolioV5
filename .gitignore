@@ -50,6 +50,8 @@ node_modules
 .playwright-mcp/
 # Screenshots that browser tools drop at the repo root.
 /*.png
+# Prepared soundtrack objects are uploaded to private storage, never committed.
+server/.music-prepared/
 
 # ---------------------------------------------------------------------------
 # Blender project (blender/xianxia-sect)

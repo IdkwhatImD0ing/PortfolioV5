@@ -35,6 +35,8 @@ $TIMEOUT       = if ($env:TIMEOUT)       { $env:TIMEOUT }       else { "3600" }
 $KEEP_WARM     = if ($env:KEEP_WARM)     { $env:KEEP_WARM }     else { "0" }
 $ALLOW_UNAUTH  = if ($env:ALLOW_UNAUTH)  { $env:ALLOW_UNAUTH }  else { "1" }
 $KEY_FILE      = if ($env:KEY_FILE)      { $env:KEY_FILE }      else { "./gcloud.json" }
+$MUSIC_BUCKET  = if ($env:MUSIC_BUCKET)  { $env:MUSIC_BUCKET }  else { "art3m1s-sect-music-spiritual-storm-469704-n2" }
+$SERVICE_ACCOUNT = if ($env:SERVICE_ACCOUNT) { $env:SERVICE_ACCOUNT } else { "deploy-sa@spiritual-storm-469704-n2.iam.gserviceaccount.com" }
 ### =================================
 
 # Check for service account key
@@ -77,6 +79,9 @@ Invoke-Gcloud run deploy $SERVICE_NAME `
     --timeout "${TIMEOUT}s" `
     --execution-environment gen2 `
     --cpu-boost `
+    --service-account $SERVICE_ACCOUNT `
+    --set-env-vars "MUSIC_BUCKET=$MUSIC_BUCKET" `
+    --set-secrets "OPENAI_API_KEY=OPENAI_API_KEY:latest,RETELL_API_KEY=RETELL_API_KEY:latest,PINECONE_API_KEY=PINECONE_API_KEY:latest,OBFUSCATED_WS_PATH=OBFUSCATED_WS_PATH:latest,MUSIC_SIGNING_SECRET=MUSIC_SIGNING_SECRET:latest" `
     $AUTH_FLAG
 
 Write-Host "`nDeployed. Default URL:"

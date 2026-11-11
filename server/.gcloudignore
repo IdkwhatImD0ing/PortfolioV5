@@ -19,3 +19,5 @@ docs/
 # Secret backups written by scripts/pull-secrets.sh.
 .env.*
 *.ipynb
+# Prepared audio and lyrics (scripts/prepare_music.py): served from Cloud Storage, never from the image.
+.music-prepared/

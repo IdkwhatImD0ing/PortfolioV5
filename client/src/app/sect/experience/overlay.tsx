@@ -69,6 +69,14 @@ export interface RailStop {
   section: string;
 }
 
+/**
+ * The screens with the side rail (SectionRail): at least 768 px wide and 500 px tall. Every other
+ * screen is a phone here (held upright, or on its side): the compact place row runs along the top,
+ * and the HUD keeps to what fits there (TopLinks, the graphics button in the map, the look hint at
+ * a stop). The rails' classes spell the same rule out for Tailwind.
+ */
+export const WIDE_HUD = "(min-width: 48rem) and (min-height: 31.25rem)";
+
 /** What a rail button does now: open the reader of the place the camera holds at, or fly there. */
 function railLabel(s: RailStop, on: boolean, atHold: boolean): string {
   return on && atHold ? `${s.label}, ${s.section}: open` : `Fly to ${s.label}, ${s.section}`;
@@ -152,6 +160,11 @@ export const SectionRail = memo(function SectionRail({
 /**
  * Phones and short screens: a row of eleven diamonds under the top bar, with the current place's name
  * beneath. Its buttons narrow to 28 px on the smallest phones (320 px), so the row fits.
+ *
+ * The name shows only between stops. While the camera holds at one, the stop's panel names the place
+ * twice already, and the name's spot goes to the look hint (LookHint). On a phone held upright the
+ * voice panel covers the stop's panel during a call: there the name comes back (sect.css, by
+ * data-hold), as the only place name on screen.
  */
 export const CompactRail = memo(function CompactRail({
   stops,
@@ -172,6 +185,7 @@ export const CompactRail = memo(function CompactRail({
   onJump: (id: string) => void;
 }) {
   const cur = stops.find((s) => s.id === active);
+  const hidden = labelHidden || atHold;
   return (
     <nav
       aria-label="Places along the flight"
@@ -202,7 +216,8 @@ export const CompactRail = memo(function CompactRail({
       {cur && (
         <p
           aria-hidden
-          className={`sect-plate rounded-[2px] px-2.5 py-0.5 text-[0.68rem] uppercase tracking-[0.22em] text-[var(--sect-paper)] transition-opacity duration-500 ${labelHidden ? "opacity-0" : "opacity-100"}`}
+          data-hold={!labelHidden && atHold ? true : undefined}
+          className={`sect-rail-place sect-plate rounded-[2px] px-2.5 py-0.5 text-[0.68rem] uppercase tracking-[0.22em] text-[var(--sect-paper)] transition-opacity duration-500 ${hidden ? "opacity-0" : "opacity-100"}`}
         >
           {cur.section} <BrushName text={cur.zh} className="ml-1 text-[0.9rem] leading-none text-[var(--sect-gold)]" />
         </p>
@@ -227,10 +242,31 @@ export interface PlaceGroup {
  * The top bar's Map button (in the old Places button's place): opens the map of the sect
  * (map-view.tsx), which holds every place and item too. `onPrefetch`: the pointer or the focus came
  * to it, so the map's files can start loading before the click.
+ *
+ * `takesPickerFocus` (phones, where the graphics button is in the map): once the loading screen
+ * goes, a focus left in its graphics picker comes here (it would drop to the page), as it goes to
+ * the graphics button on wider screens.
  */
-export const MapButton = memo(function MapButton({ open, onOpen, onPrefetch }: { open: boolean; onOpen: () => void; onPrefetch?: () => void }) {
+export const MapButton = memo(function MapButton({
+  open,
+  onOpen,
+  onPrefetch,
+  takesPickerFocus = false,
+}: {
+  open: boolean;
+  onOpen: () => void;
+  onPrefetch?: () => void;
+  takesPickerFocus?: boolean;
+}) {
+  const ref = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (takesPickerFocus && document.activeElement?.closest(".sect-veil [data-sect-picker]")) ref.current?.focus({ preventScroll: true });
+    // Once, on mount (as the loading screen goes).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return (
     <button
+      ref={ref}
       type="button"
       data-sect-places
       onClick={onOpen}
@@ -250,15 +286,25 @@ export const MapButton = memo(function MapButton({ open, onOpen, onPrefetch }: {
   );
 });
 
+export interface QualityButtonProps {
+  tier: Tier;
+  recommended: Tier;
+  onPick: (tier: Tier) => void;
+}
+
 /**
- * The graphics button, in the sound toggle's place (sound-toggle.tsx): the loading screen's picker
- * in a small popover. A pick that keeps the textures applies at once and the popover stays open, so
- * the visitor can compare; one that needs other textures brings the loading screen back
- * (sect-experience.tsx). Escape or a press outside closes it, and the focus returns to the button.
+ * The graphics button: the loading screen's picker in a small popover. A pick that keeps the
+ * textures applies at once and the popover stays open, so the visitor can compare; one that needs
+ * other textures brings the loading screen back (sect-experience.tsx). Escape or a press outside
+ * closes it, and the focus returns to the button.
  *
- * Once the loading screen goes, a focus left in its picker comes here (it would drop to the page).
+ * Where the side rail shows (WIDE_HUD), it sits in the sound toggle's place (sound-toggle.tsx), and
+ * once the loading screen goes, a focus left in its picker comes here (it would drop to the page).
+ * On phones it is not drawn there: the map's top row has it, left of the close button (map-view.tsx,
+ * where an open menu takes the first Escape and the map stays), and the Map button takes that focus.
+ * Visitors choose the graphics on the loading screen, and on a phone a change loads the scene again.
  */
-export function QualityButton({ tier, recommended, onPick }: { tier: Tier; recommended: Tier; onPick: (tier: Tier) => void }) {
+export function QualityButton({ tier, recommended, onPick }: QualityButtonProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -502,35 +548,19 @@ function focusVisible(el: HTMLElement): boolean {
   }
 }
 
-const LOOK_HINT_KEY = "sect.lookHint";
-
-/** The visitor has turned the view before (on this browser): the free-look hint stays away. */
-export function lookHintSeen(): boolean {
-  try {
-    return window.localStorage.getItem(LOOK_HINT_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-export function markLookHintSeen(): void {
-  try {
-    window.localStorage.setItem(LOOK_HINT_KEY, "1");
-  } catch {
-    // Storage blocked (private window): the hint just shows again next visit.
-  }
-}
-
 /**
- * Free look's one quiet hint, under the top-left plate on a wide screen and under the place row on a
- * phone (the page shows it there once the intro has gone). A touch screen is told to swipe: sideways,
- * that turns the view toward items a narrow screen leaves out. The page hides it after the first turn.
+ * Free look's one quiet hint, under the top-left plate on a wide screen. On a phone held upright it
+ * takes the place name's spot under the place row, at a stop, where the name hides (CompactRail);
+ * the page shows it there once the intro has gone, and during a voice call it steps away for the
+ * name (sect.css). A touch screen is told to swipe: sideways, that turns the view toward items a
+ * narrow screen leaves out. The page hides it after the first turn, or after a while
+ * (lib/sect/look-hint.ts).
  */
 export function LookHint({ visible, touch = false }: { visible: boolean; touch?: boolean }) {
   return (
     <p
       aria-hidden
-      className="sect-plate pointer-events-none fixed left-1/2 top-[8.2rem] z-20 -translate-x-1/2 whitespace-nowrap rounded-[2px] px-2.5 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--sect-paper-soft)] transition-opacity duration-500 md:left-5 md:top-[4.4rem] md:translate-x-0"
+      className="sect-lookhint sect-plate pointer-events-none fixed left-1/2 top-[6.6rem] z-20 -translate-x-1/2 whitespace-nowrap rounded-[2px] px-2.5 py-1 text-[0.62rem] uppercase tracking-[0.24em] text-[var(--sect-paper-soft)] transition-opacity duration-500 md:left-5 md:top-[4.4rem] md:translate-x-0"
       style={{ opacity: visible ? 1 : 0 }}
     >
       {touch ? "Swipe to look around" : "Drag to look around"}
@@ -554,23 +584,29 @@ export const DebugHud = forwardRef<HTMLDivElement>(function DebugHud(_, ref) {
  * Top-left, on an ink plate: whose portfolio this is, with the sect's seal pressed before the name
  * (a label: the sect is the whole site, so there is no main page to go back to), and the one-page
  * view of everything.
+ *
+ * Phones (every screen without the side rail, WIDE_HUD) keep only the seal and the name: the top
+ * bar is the tightest strip there. "Read as page" stays as a skip link, out of sight until the
+ * keyboard reaches it, then shown under the plate (sect.css .sect-toplinks-page); the map's All
+ * places tab offers the page view instead, as do the loading screen and every reader's end. On a
+ * phone on its side the domain hides too (screen readers still read it).
  */
 export function TopLinks({ onReadAsPage }: { onReadAsPage: () => void }) {
   return (
-    <header className="fixed left-3 top-3 z-20 md:left-5 md:top-4">
+    <header className="sect-toplinks fixed left-3 top-3 z-20 md:left-5 md:top-4">
       <div className="sect-panel sect-plate relative flex items-stretch rounded-[3px]">
         <p className="m-0 flex min-h-11 items-center gap-2.5 rounded-[2px] px-2.5 text-[var(--sect-paper)] md:min-h-10 md:px-4 [@media(max-width:340px)]:px-2">
           <SectLogo className="sect-toplinks-seal" />
           <span className="font-serif text-[1.05rem] leading-none tracking-[0.01em]">Bill Zhang</span>
-          <span className="sr-only text-[0.68rem] uppercase tracking-[0.22em] text-[var(--sect-paper-soft)] md:not-sr-only">
+          <span className="sr-only text-[0.68rem] uppercase tracking-[0.22em] text-[var(--sect-paper-soft)] [@media(min-width:48rem)_and_(min-height:31.25rem)]:not-sr-only">
             art3m1s.me
           </span>
         </p>
-        <span aria-hidden className="sect-brushrule-v my-2" />
+        <span aria-hidden className="sect-toplinks-rule sect-brushrule-v my-2" />
         <button
           type="button"
           onClick={onReadAsPage}
-          className="sect-ctl flex min-h-11 items-center rounded-[2px] px-2.5 text-[0.62rem] uppercase tracking-[0.14em] text-[var(--sect-paper)] hover:text-[var(--sect-gold)] md:min-h-10 md:px-4 md:text-[0.72rem] md:tracking-[0.24em] [@media(max-width:340px)]:px-2 [@media(max-width:340px)]:tracking-[0.06em]"
+          className="sect-toplinks-page sect-ctl flex min-h-11 items-center rounded-[2px] px-2.5 text-[0.62rem] uppercase tracking-[0.14em] text-[var(--sect-paper)] hover:text-[var(--sect-gold)] md:min-h-10 md:px-4 md:text-[0.72rem] md:tracking-[0.24em] [@media(max-width:340px)]:px-2 [@media(max-width:340px)]:tracking-[0.06em]"
         >
           Read as page
         </button>

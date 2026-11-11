@@ -23,7 +23,8 @@
  * remembered per visitor. Muted, it steps away and the toggle stands alone.
  *
  * `extra` (the graphics button) shares its place once the loading screen is gone: under the toggle,
- * or left of it in the top row beside the Map button. It shows without Web Audio too.
+ * or left of it in the top row beside the Map button. It shows without Web Audio too. Phones (no side
+ * rail) pass none: their graphics button is in the map's top row (map-view.tsx).
  */
 import {
   type CSSProperties,
@@ -44,7 +45,8 @@ import { REVEAL_START, revealReducer, tapShows } from "@/lib/sect/volume-reveal"
 import type { MusicEngine, MusicUi } from "./music-engine";
 
 const OFF: MusicUi = { available: false, on: false, muted: false, volume: 1 };
-const serverSnapshot = () => OFF;
+/** What the server renders (and the first client paint): no music yet. Shared with karaoke-lyrics.tsx. */
+export const serverSnapshot = () => OFF;
 
 /**
  * Wide but short screens: the place rail is centred on the right edge and reaches up under the Map

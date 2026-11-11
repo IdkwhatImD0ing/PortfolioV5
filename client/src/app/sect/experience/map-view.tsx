@@ -15,6 +15,9 @@
  *   medium (a tablet, a short window): the title over the map, the list beside it;
  *   phone: the map under the title, the chosen place docked under the map with its Travel button,
  *     and the list as the other tab.
+ * On phones (every screen without the side rail, a phone on its side too: overlay.tsx WIDE_HUD) the
+ * map also holds what the HUD has no room for: the graphics button in the top row, left of the close
+ * button (an open menu takes the first Escape), and the page view at the top of the list.
  *
  * Every place and item (the old Places list) works as it always has: an item flies there and opens
  * its reader.
@@ -65,7 +68,7 @@ import type { CameraData, SectMeta } from "@/lib/sect/types";
 import { flightFocusFallback, trapTab, useModalLifecycle } from "../content/modal";
 import { BrushName, SealStamp } from "../ornaments";
 import { Emblem, HereGlyph } from "./map-emblems";
-import type { PlaceGroup, RailStop } from "./overlay";
+import { QualityButton, type PlaceGroup, type QualityButtonProps, type RailStop } from "./overlay";
 
 /** map.json, once per visit (a failed load is tried again on the next opening). */
 let mapLoad: { base: string; promise: Promise<SectMap> } | null = null;
@@ -129,6 +132,13 @@ export interface MapViewProps {
   /** The list's items light up their objects in the scene, as before. */
   onFocusPlace: (id: string | null) => void;
   onSelectPlace: (id: string) => void;
+  /**
+   * Phones: the page view, offered at the top of the All places tab (the top bar has no room for its
+   * button there). It closes the map.
+   */
+  onReadAsPage?: () => void;
+  /** Phones: the graphics button, in the top row left of the close button (the HUD has no room for it). */
+  quality?: QualityButtonProps;
 }
 
 type Shown = { id: AreaId; how: "hover" | "focus" | "tap" } | null;
@@ -155,6 +165,8 @@ export default function MapView({
   onOpenHere,
   onFocusPlace,
   onSelectPlace,
+  onReadAsPage,
+  quality,
 }: MapViewProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -319,7 +331,9 @@ export default function MapView({
 
   // The plate follows the shown seal (measured, then placed inside the stage): beside it, or on a
   // phone docked under the map (where it covers no other seal), or over the map's foot when the
-  // screen is too short for that.
+  // screen is too short for that. It is measured again whenever its size changes: a docked plate
+  // takes the map's width once placed, and on the narrowest phones its name then wraps and the plate
+  // grows (measured only once, it ran down over the tabs); a late font does the same.
   const shownIndex = shown ? seals.findIndex((s) => s.id === shown.id) : -1;
   useLayoutEffect(() => {
     const el = plateRef.current;
@@ -327,20 +341,27 @@ export default function MapView({
       setPlateAt(null);
       return;
     }
-    let p: { left: number; top: number };
-    if (phone) {
-      const room = stage.h + (stageRef.current ? parseFloat(getComputedStyle(stageRef.current).paddingBottom) || 0 : 0);
-      p = { left: fit.x, top: Math.max(fit.y, Math.min(fit.y + fit.h + 22, room - el.offsetHeight - 4)) };
-    } else {
-      const [x, y] = sealPx[shownIndex];
-      // Clear of the other seals and the visitor's mark where it can be.
-      const avoid = sealPx.filter((_, i) => i !== shownIndex).map(([sx, sy]) => ({ x: fit.x + sx, y: fit.y + sy, r: seal / 2 + 2 }));
-      if (herePx) avoid.push({ x: fit.x + herePx[0], y: fit.y + herePx[1], r: HERE_R });
-      // It may reach out over the list beside the stage (it is gone again with the pointer).
-      const view = { w: Math.max(stage.w, window.innerWidth - stage.left - 8), h: stage.h };
-      p = platePosition([fit.x + x, fit.y + y], seal / 2 + 2, { w: el.offsetWidth, h: el.offsetHeight }, view, avoid, 10, 8);
-    }
-    setPlateAt((cur) => (cur && cur.left === p.left && cur.top === p.top ? cur : { left: p.left, top: p.top }));
+    const place = () => {
+      let p: { left: number; top: number };
+      if (phone) {
+        const room = stage.h + (stageRef.current ? parseFloat(getComputedStyle(stageRef.current).paddingBottom) || 0 : 0);
+        p = { left: fit.x, top: Math.max(fit.y, Math.min(fit.y + fit.h + 22, room - el.offsetHeight - 4)) };
+      } else {
+        const [x, y] = sealPx[shownIndex];
+        // Clear of the other seals and the visitor's mark where it can be.
+        const avoid = sealPx.filter((_, i) => i !== shownIndex).map(([sx, sy]) => ({ x: fit.x + sx, y: fit.y + sy, r: seal / 2 + 2 }));
+        if (herePx) avoid.push({ x: fit.x + herePx[0], y: fit.y + herePx[1], r: HERE_R });
+        // It may reach out over the list beside the stage (it is gone again with the pointer).
+        const view = { w: Math.max(stage.w, window.innerWidth - stage.left - 8), h: stage.h };
+        p = platePosition([fit.x + x, fit.y + y], seal / 2 + 2, { w: el.offsetWidth, h: el.offsetHeight }, view, avoid, 10, 8);
+      }
+      setPlateAt((cur) => (cur && cur.left === p.left && cur.top === p.top ? cur : { left: p.left, top: p.top }));
+    };
+    place();
+    const ro = new ResizeObserver(() => place());
+    // Its outer size: the placing goes by offsetHeight.
+    ro.observe(el, { box: "border-box" });
+    return () => ro.disconnect();
   }, [shownIndex, sealPx, herePx, fit, stage, seal, phone, shown?.how]);
 
   const travel = useCallback(
@@ -378,6 +399,9 @@ export default function MapView({
 
   const onKeyDown = (e: ReactKeyboardEvent<HTMLDivElement>) => {
     if (e.key === "Escape") {
+      // One Escape, one thing: an open graphics menu (phones) closes first, by its own listener on
+      // the window (overlay.tsx QualityButton), and the map stays.
+      if (rootRef.current?.querySelector('[data-sect-quality] [aria-expanded="true"]')) return;
       e.preventDefault();
       e.stopPropagation();
       if (shown?.how === "tap") setShown(null);
@@ -426,6 +450,7 @@ export default function MapView({
       }}
       data-pane={pane}
       data-layout={layout}
+      data-tools={quality ? true : undefined}
       className="sect-map"
     >
       <div className="sect-map-head">
@@ -437,6 +462,13 @@ export default function MapView({
           Map of the sect
         </h2>
       </div>
+
+      {/* Phones: the graphics button, left of the close button; its menu opens down over the map. */}
+      {quality && (
+        <div className="sect-map-tools">
+          <QualityButton {...quality} />
+        </div>
+      )}
 
       <button
         type="button"
@@ -594,7 +626,11 @@ export default function MapView({
           <div
             ref={plateRef}
             className={`sect-map-plate sect-panel sect-plate rounded-[3px] ${docked ? "sect-map-dock pointer-events-auto" : "pointer-events-none"}`}
-            style={plateAt && unrolled ? { left: plateAt.left, top: plateAt.top, width: docked && fit ? fit.w : undefined } : { left: 0, top: 0, visibility: "hidden" }}
+            style={{
+              ...(plateAt && unrolled ? { left: plateAt.left, top: plateAt.top } : { left: 0, top: 0, visibility: "hidden" }),
+              // Docked, it is measured at the width it will have.
+              width: docked && fit ? fit.w : undefined,
+            }}
             aria-hidden={docked ? undefined : true}
           >
             {docked && <Emblem id={shownStop.id as AreaId} className="sect-map-dock-emblem" />}
@@ -650,15 +686,27 @@ export default function MapView({
         </div>
       </div>
 
-      <PlacesIndex
-        groups={groups}
-        active={active}
-        onItem={(id) => {
-          setItem(id);
-          onFocusPlace(id);
-        }}
-        onSelect={onSelectPlace}
-      />
+      {/* The list of every place, and on phones the page view above it (outside the list's landmark). */}
+      <div className="sect-map-aside sect-panel sect-panel-lg sect-scroll">
+        {onReadAsPage && (
+          <>
+            <button type="button" onClick={onReadAsPage} className="sect-map-page sect-ctl">
+              Read it all as one page
+              <span aria-hidden>→</span>
+            </button>
+            <span aria-hidden className="sect-brushrule mx-2 mb-1 mt-1.5" />
+          </>
+        )}
+        <PlacesIndex
+          groups={groups}
+          active={active}
+          onItem={(id) => {
+            setItem(id);
+            onFocusPlace(id);
+          }}
+          onSelect={onSelectPlace}
+        />
+      </div>
 
       {/* Phones: the map and the list share the screen, one at a time. The gap in the middle is the
           voice orb's (sect.css moves it there while a dialog is open). */}
@@ -738,7 +786,7 @@ const PlacesIndex = memo(function PlacesIndex({
   onSelect: (id: string) => void;
 }) {
   return (
-    <nav aria-label="Every place" className="sect-map-aside sect-panel sect-panel-lg sect-scroll">
+    <nav aria-label="Every place">
       {groups.map((g, i) => (
         <section key={g.id} aria-labelledby={`sect-places-${g.id}`} className="py-1.5">
           <h3

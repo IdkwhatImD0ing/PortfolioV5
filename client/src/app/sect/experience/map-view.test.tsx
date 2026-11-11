@@ -1,7 +1,8 @@
 /**
- * The map's markup before its files arrive (the dialog, its list of every place, the phone tabs),
- * its seals' emblems, the Map button, and fast travel's ink card. The placing itself is
- * lib/sect/map.test.ts; the travel's shapes lib/sect/travel.test.ts.
+ * The map's markup before its files arrive (the dialog, its list of every place, the phone tabs and
+ * what phones keep in the map: the graphics button and the page view), its seals' emblems, the Map
+ * button, and fast travel's ink card. The placing itself is lib/sect/map.test.ts; the travel's
+ * shapes lib/sect/travel.test.ts.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -12,7 +13,7 @@ import { SECTION_NAMES } from "@/lib/sect/content";
 import { parseCameraData, parseMeta } from "@/lib/sect/parse";
 import { InkTravel } from "./ink-travel";
 import { EMBLEMS, Emblem, HereGlyph } from "./map-emblems";
-import MapView from "./map-view";
+import MapView, { type MapViewProps } from "./map-view";
 import { MapButton, type PlaceGroup, type RailStop } from "./overlay";
 
 const PUBLIC = path.resolve(__dirname, "../../../../public/sect/full");
@@ -30,7 +31,7 @@ const groups: PlaceGroup[] = AREAS.map((a) => ({
 }));
 const noop = () => {};
 
-const view = (active: string | null) =>
+const view = (active: string | null, phone: Partial<Pick<MapViewProps, "onReadAsPage" | "quality">> = {}) =>
   renderToStaticMarkup(
     <MapView
       base="/sect/map"
@@ -46,6 +47,7 @@ const view = (active: string | null) =>
       onOpenHere={noop}
       onFocusPlace={noop}
       onSelectPlace={noop}
+      {...phone}
     />,
   );
 
@@ -87,6 +89,38 @@ describe("MapView", () => {
     expect(html).toMatch(/aria-pressed="true"[^>]*>Map</);
     expect(html).toMatch(/aria-pressed="false"[^>]*>All places</);
     expect(html).toContain('data-pane="map"');
+  });
+
+  it("phones: offers the page view at the top of the list, outside the list's landmark", () => {
+    const html = view("forge", { onReadAsPage: noop });
+    const row = html.indexOf(">Read it all as one page");
+    expect(row).toBeGreaterThan(0);
+    expect(html).toMatch(/<button type="button" class="sect-map-page sect-ctl">Read it all as one page<span aria-hidden="true">→<\/span><\/button>/);
+    // In the list's panel (the All places tab), before its <nav>, so not one of the places.
+    expect(html.lastIndexOf('class="sect-map-aside', row)).toBeGreaterThan(0);
+    expect(row).toBeLessThan(html.indexOf('<nav aria-label="Every place">'));
+    expect(html.indexOf('<nav aria-label="Every place">')).toBeLessThan(html.indexOf('id="sect-places-gate"'));
+  });
+
+  it("wider screens: no page view row, the list as it was", () => {
+    const html = view("forge");
+    expect(html).not.toContain("Read it all as one page");
+    expect(html).toMatch(/<div class="sect-map-aside sect-panel sect-panel-lg sect-scroll"><nav aria-label="Every place">/);
+  });
+
+  it("phones: the graphics button sits in the top row, left of the close button", () => {
+    const html = view("forge", { quality: { tier: "mid", recommended: "high", onPick: noop } });
+    expect(html).toMatch(/<div role="dialog"[^>]*data-tools="true"/);
+    const head = html.indexOf('class="sect-map-head"');
+    const tools = html.indexOf('class="sect-map-tools"');
+    const close = html.indexOf('aria-label="Close the map"');
+    expect(head).toBeLessThan(tools);
+    expect(tools).toBeLessThan(close);
+    expect(html).toContain('aria-label="Graphics: Medium"');
+    expect(html).toContain("data-sect-quality");
+    // Wider screens have it beside the sound toggle instead.
+    expect(view("forge")).not.toContain("data-sect-quality");
+    expect(view("forge")).not.toContain("data-tools");
   });
 });
 

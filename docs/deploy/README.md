@@ -31,7 +31,8 @@ old site working.
 - **Ship with a safety net.** Deploy with `server/deploy.sh` (options in
   [`../../server/README.md`](../../server/README.md), "Deploy"). On the shared service:
   1. Deploy a new revision that gets no traffic, with a tag (`NO_TRAFFIC=1 TAG=...`).
-  2. Test it at its tag URL: the health check, then a text chat with and without the sect persona.
+  2. Test it at its tag URL: the health check, text chat with and without the sect persona, the music
+     manifest, an allowed-origin capability request, a full track response, a valid range and a lyric response.
   3. Move the traffic to it with `gcloud run services update-traffic`.
   4. Keep the previous revision.
 - **Roll back.** Send all traffic back to the previous revision:
@@ -41,6 +42,18 @@ old site working.
   old client; a new client may need the new server.
 
 More: [`docker.md`](docker.md) (the image and Cloud Run settings).
+
+## The soundtrack
+
+- `server/scripts/prepare_music.py prepare` validates and normalizes the handoff, writes ignored
+  prepared objects, and updates the internal manifest.
+- `prepare_music.py upload` publishes immutable audio and sanitized lyric objects to private storage.
+- Media upload and backend deploy are separate. Deploy the matching backend manifest before the
+  frontend that reads it.
+- Roll back by restoring the previous Cloud Run revision and its manifest. Keep old immutable objects
+  until that rollback window closes.
+- The runtime service account needs read-only object access; the bucket keeps Public Access
+  Prevention and uniform bucket-level access enabled.
 
 ## The voice agent (Retell)
 

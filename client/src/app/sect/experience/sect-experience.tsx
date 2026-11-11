@@ -49,7 +49,7 @@
  * ("ready"); meanwhile the next areas stream in. A load again for a new tier after that, and the
  * screenshot views (?ui=0, ?frame=N), go straight on.
  */
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import type { Object3D } from "three";
 import { AREAS, areaInfo, isAreaId, type AreaId } from "@/lib/sect/areas";
 import { sampleCamera } from "@/lib/sect/camera-path";
@@ -61,6 +61,7 @@ import { composeLook, isDragging, isLookingBack, isTurned, type LookOffset } fro
 import { PageHistory } from "@/lib/sect/history";
 import { plainUrl, readHistoryState, readerUrl, resolveDeepLink } from "@/lib/sect/links";
 import { lookFogConstants } from "@/lib/sect/look";
+import { countLookHintShown, LOOK_HINT_MS, lookHintRetired, retireLookHint } from "@/lib/sect/look-hint";
 import { hoverNote, loreByArea } from "@/lib/sect/lore";
 import { flightSeconds, navKeyIntent, navKeyTarget, nearestHold, panelSide } from "@/lib/sect/nav";
 import { downloadFraction, flickStop, PORTRAIT_TURN_SECONDS, portraitTurn, posterMatches, type FileProgress } from "@/lib/sect/opening";
@@ -135,15 +136,14 @@ import {
   HoverLabel,
   IntroTitle,
   LookHint,
-  lookHintSeen,
   MapButton,
-  markLookHintSeen,
   Notice,
   placeHoverLabel,
   QualityButton,
   RecentreButton,
   SectionRail,
   TopLinks,
+  WIDE_HUD,
   type PlaceGroup,
   type RailStop,
 } from "./overlay";
@@ -238,6 +238,15 @@ function tierLook(t: Tier, probe: Probe): Quality {
 function maxScroll(): number {
   return Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
 }
+
+/** The screen has the side rail (overlay.tsx WIDE_HUD); every other screen is a phone here. */
+function subscribeWideHud(onChange: () => void): () => void {
+  const mq = window.matchMedia(WIDE_HUD);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+const wideHudNow = () => window.matchMedia(WIDE_HUD).matches;
+const wideHudOnServer = () => true;
 
 function instantScrollTo(top: number): void {
   window.scrollTo({ top, behavior: "instant" as ScrollBehavior });
@@ -370,8 +379,13 @@ export default function SectExperience() {
   // Without WebGL the page view is the page: it opens where the link points (?open= too).
   const [fallback, setFallback] = useState<FallbackState | null>(probe.webgl2 ? null : { initial: deep?.target ?? null, key: 0 });
   const [gathering, setGathering] = useState<AreaId | null>(null);
-  /** Free look's hint (drag with a mouse, swipe sideways on a touch screen), until the first turn. */
-  const lookHintOn = useMemo(() => !lookHintSeen(), []);
+  /**
+   * A phone here: no side rail, so the place row runs along the top, and the HUD keeps to what fits
+   * (the graphics button and the page view move into the map, the look hint shows at a stop).
+   */
+  const phone = !useSyncExternalStore(subscribeWideHud, wideHudNow, wideHudOnServer);
+  /** Free look's hint (drag with a mouse, swipe sideways on a touch screen), until it retires (lib/sect/look-hint.ts). */
+  const lookHintOn = useMemo(() => !lookHintRetired(localStore()), []);
   const [lookHint, setLookHint] = useState(true);
   /** The view is turned round (free look past 90 degrees): the Recentre button shows. */
   const [lookedBack, setLookedBack] = useState(false);
@@ -1479,16 +1493,19 @@ export default function SectExperience() {
   const onLookDrag = useCallback(() => {
     if (dragged.current) return;
     dragged.current = true;
-    markLookHintSeen();
+    retireLookHint(localStore());
     setLookHint(false);
   }, []);
-  // On a touch screen it waits for the intro to go (it sits where the intro's hint was).
-  const lookHintUp = lookHintOn && lookHint && phase === "ready" && (!probe.coarse || !introUp);
+  // A touch screen or a phone waits for the intro to go (there the hint sat on the intro's title or
+  // its hint). On a phone it shows only at a stop, in the place name's spot under the place row
+  // (the name hides there).
+  const lookHintUp = lookHintOn && lookHint && phase === "ready" && (!(probe.coarse || phone) || !introUp) && (!phone || atHold);
+  // Wider screens: it fades 25 s after it could first show.
   useEffect(() => {
-    if (!lookHintUp) return;
-    const t = window.setTimeout(() => setLookHint(false), 25000);
+    if (phone || !lookHintUp) return;
+    const t = window.setTimeout(() => setLookHint(false), LOOK_HINT_MS.wide);
     return () => window.clearTimeout(t);
-  }, [lookHintUp]);
+  }, [phone, lookHintUp]);
 
   const talk = useCallback(() => {
     if (readerRef.current) closeReader();
@@ -1953,11 +1970,27 @@ export default function SectExperience() {
   const gatherInfo = gathering ? areaInfo(gathering) : null;
   const showUi = phase === "ready" && params.ui;
   // A phone on its side (wide but short): the compact place row runs along the top (overlay.tsx), so
-  // every panel takes the bottom-left corner (a top-right one would sit on the row), and the row's
-  // place name hides while a panel names the place.
+  // every panel takes the bottom-left corner (a top-right one would sit on the row).
   const shortScreen = track.width >= 768 && track.height < 500;
   // The graphics picker (loading screen) and button (overlay); none with ?tier= (testing).
   const picker = source !== "link" && probe.webgl2 ? { tier, recommended: probe.tier, onPick: pick } : null;
+
+  // Free look's hint on screen now. Not on a phone on its side: the place row fills its spot, and
+  // the wide view needs it least.
+  const lookHintShown = lookHintOn && !shortScreen && lookHintUp && !modalOpen && !gatherInfo && !notice && !lookedBack;
+  // Phones: from its first showing (not under the map) it stays about 11 s (flying on to the next stop
+  // does not start it over), and that showing counts: the second visit that shows it is its last.
+  const [phoneHintEnd, setPhoneHintEnd] = useState<number | null>(null);
+  useEffect(() => {
+    if (!phone || !lookHintShown || mapOpen || phoneHintEnd !== null) return;
+    countLookHintShown(localStore());
+    setPhoneHintEnd(performance.now() + LOOK_HINT_MS.phone);
+  }, [phone, lookHintShown, mapOpen, phoneHintEnd]);
+  useEffect(() => {
+    if (phoneHintEnd === null) return;
+    const t = window.setTimeout(() => setLookHint(false), Math.max(0, phoneHintEnd - performance.now()));
+    return () => window.clearTimeout(t);
+  }, [phoneHintEnd]);
 
   return (
     <>
@@ -2022,9 +2055,9 @@ export default function SectExperience() {
             )}
           </main>
           <SectionRail stops={railStops} active={activeArea} atHold={atHold} onJump={onRail} />
-          <CompactRail stops={railStops} active={activeArea} atHold={atHold} labelHidden={introUp || (shortScreen && atHold)} onJump={onRail} />
+          <CompactRail stops={railStops} active={activeArea} atHold={atHold} labelHidden={introUp} onJump={onRail} />
           <div className="fixed right-[4.6rem] top-3 z-30 md:right-6 md:top-4">
-            <MapButton open={mapOpen} onOpen={openMap} onPrefetch={prefetchMap} />
+            <MapButton open={mapOpen} onOpen={openMap} onPrefetch={prefetchMap} takesPickerFocus={phone} />
           </div>
           {mapOpen && data && store && (
             <Suspense fallback={<div aria-hidden className="sect-map" />}>
@@ -2042,6 +2075,8 @@ export default function SectExperience() {
                 onOpenHere={openHere}
                 onFocusPlace={focusPlace}
                 onSelectPlace={selectPlace}
+                onReadAsPage={phone ? readAsPage : undefined}
+                quality={phone && picker ? picker : undefined}
               />
             </Suspense>
           )}
@@ -2051,10 +2086,7 @@ export default function SectExperience() {
           {/* Fast travel's ink says it is gathering itself. */}
           {gatherInfo && !travel && <Gathering label={gatherInfo.label} />}
           {notice && <Notice text={notice} onDismiss={() => setNotice(null)} />}
-          {/* Not on a phone on its side: the place row fills its spot, and the wide view needs it least. */}
-          {lookHintOn && !shortScreen && (
-            <LookHint visible={lookHintUp && !modalOpen && !gatherInfo && !notice && !lookedBack} touch={probe.coarse} />
-          )}
+          {lookHintOn && !shortScreen && <LookHint visible={lookHintShown} touch={probe.coarse} />}
           {/* Not over the intro, the Gathering status or a notice: they share its place on phones. */}
           <RecentreButton visible={lookedBack && !introUp && !gatherInfo && !notice && !modalOpen && !mapOpen && !travel} onRecentre={recentre} />
           <HoverLabel ref={hoverRef} label={hoverLabel} note={hoverLabelNote} />
@@ -2101,15 +2133,20 @@ export default function SectExperience() {
 
       {/* ?ui=0 shows the scene alone (screenshots): no orb either. */}
       {params.ui && <SectVoice />}
-      {/* Background music and its sound toggle (none without WebGL: no flight to follow). */}
+      {/* Background music and its sound toggle (none without WebGL: no flight to follow), with the
+          graphics button beside the toggle. Phones have that button in the map's top row instead: it
+          is not drawn here at all, so its focus logic never aims at a hidden button. */}
       {params.ui && phase !== "nowebgl" && (
         <SectMusic
           store={store}
           areas={data?.meta.areas ?? null}
           loading={phase === "data" || phase === "assets" || phase === "loaded"}
           away={fallback !== null || phase === "error"}
+          lyricsHidden={
+            phase === "error" || reader !== null || fallback !== null || mapOpen || travel !== null
+          }
           debug={params.debug}
-          extra={showUi && picker ? <QualityButton {...picker} /> : undefined}
+          extra={showUi && picker && !phone ? <QualityButton {...picker} /> : undefined}
           onEngine={setMusic}
         />
       )}

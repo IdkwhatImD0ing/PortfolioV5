@@ -55,6 +55,10 @@ listed under "Kept beside the code".
 ## Music
 
 - [`music/sect-themes/README.md`](music/sect-themes/README.md): How was each stop's music made? The Suno method and the shared five-note scale. One prompt file per stop sits beside it.
+- [`music/local-soundtrack.md`](music/local-soundtrack.md): Which twelve songs replace the original themes, and where are the source files?
+- [`music/soundtrack-assets.md`](music/soundtrack-assets.md): What are the prepared artist, duration, size, lyric and loop values for the current soundtrack revision?
+- [`music/backend-soundtrack-delivery.md`](music/backend-soundtrack-delivery.md): How do private storage, short-lived capabilities and range responses deliver the soundtrack?
+- [`music/karaoke-lyrics.md`](music/karaoke-lyrics.md): How does the universal left-side song-info and timed Chinese/English lyrics panel behave?
 
 ## Research
 

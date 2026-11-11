@@ -4,9 +4,7 @@
  * and the page wiring app/sect/experience/music.tsx.
  *
  * One track per area (the area ids of ./areas.ts) plus "loading" for the loading screen, all in
- * public/sect/audio/<key>.mp3 and listed in public/sect/audio/music.json with their loop points
- * (docs/music/sect-themes/README.md). Every track is in the same five notes, so two can overlap during a
- * crossfade without clashing.
+ * served by the FastAPI backend with their loop points (docs/music/backend-soundtrack-delivery.md).
  */
 import { AREA_IDS, isAreaId, type AreaId } from "./areas";
 import { DEFAULT_VOLUME, volumeGain } from "./volume";
@@ -21,12 +19,9 @@ export function isMusicKey(value: string): value is MusicKey {
 }
 
 /**
- * Where the page reads the track list: app/sect/music.json/route.ts serves
- * public/sect/audio/music.json (written by the audio pipeline next to the files), or an empty list.
+ * Backend path for the metadata-only track list.
  */
-export const MUSIC_MANIFEST_URL = "/sect/music.json";
-/** The folder the tracks' paths are relative to (they are normally absolute: "/sect/audio/gate.mp3"). */
-export const MUSIC_DIR = "/sect/audio/";
+export const MUSIC_MANIFEST_PATH = "/music/manifest";
 /**
  * The files' sample rate, and the AudioContext's. decodeAudioData resamples to the context's rate,
  * and a context left at the sound card's default (96 kHz on some machines) doubles every decoded
@@ -35,8 +30,12 @@ export const MUSIC_DIR = "/sect/audio/";
 export const MUSIC_SAMPLE_RATE = 48000;
 
 export interface MusicTrack {
-  /** Same-site path of the MP3 ("/sect/audio/gate.mp3"). */
-  src: string;
+  title: string;
+  artist: string;
+  show: string;
+  language: "zh" | "en" | null;
+  hasLyrics: boolean;
+  revision: string;
   /** Seconds, as decodeAudioData returns the file. */
   duration: number;
   /** The loop: playback runs from 0 into the loop, then repeats loopStart..loopEnd seamlessly. */
@@ -48,7 +47,7 @@ export interface MusicTrack {
 }
 
 export interface MusicManifest {
-  version: 1;
+  version: 2;
   tracks: Partial<Record<MusicKey, MusicTrack>>;
 }
 
@@ -56,41 +55,50 @@ function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-/** A path on this site: "/sect/audio/x.mp3" or "audio/x.mp3"; never another origin or a scheme. */
-function sitePath(v: unknown): string | null {
-  if (typeof v !== "string") return null;
-  const s = v.trim();
-  if (s.length === 0 || s.length > 200) return null;
-  if (s.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(s) || s.includes("\\")) return null;
-  return s;
-}
-
 /**
- * Reads music.json. Tracks with a bad path or duration are dropped; a track whose loop points make
+ * Reads the backend manifest. Tracks with incomplete metadata are dropped; a track whose loop points make
  * no sense loops whole. Returns null when nothing usable is left (no music then, and no toggle).
  */
 export function parseMusicManifest(raw: unknown): MusicManifest | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as { version?: unknown; tracks?: unknown };
-  if (r.version !== 1 || !r.tracks || typeof r.tracks !== "object") return null;
+  if (r.version !== 2 || !r.tracks || typeof r.tracks !== "object") return null;
   const tracks: Partial<Record<MusicKey, MusicTrack>> = {};
   let n = 0;
   for (const [key, value] of Object.entries(r.tracks as Record<string, unknown>)) {
     if (!isMusicKey(key) || !value || typeof value !== "object") continue;
     const t = value as Record<string, unknown>;
-    const src = sitePath(t.src);
     const duration = num(t.duration);
-    if (!src || duration === null || duration <= 0) continue;
+    const title = typeof t.title === "string" ? t.title.trim() : "";
+    const artist = typeof t.artist === "string" ? t.artist.trim() : "";
+    const show = typeof t.show === "string" ? t.show.trim() : "";
+    const language = t.language === "zh" || t.language === "en" ? t.language : t.language === null ? null : undefined;
+    const revision =
+      typeof t.revision === "string" && /^[a-zA-Z0-9._-]{1,32}$/.test(t.revision) ? t.revision : "";
+    if (!title || !artist || !show || language === undefined || !revision || duration === null || duration <= 0) continue;
     let loopStart = num(t.loopStart) ?? 0;
     let loopEnd = num(t.loopEnd) ?? duration;
     if (loopStart < 0 || loopEnd <= loopStart || loopEnd > duration + 0.05) {
       loopStart = 0;
       loopEnd = duration;
     }
-    tracks[key] = { src, duration, loopStart, loopEnd, bpm: num(t.bpm), lufs: num(t.lufs), bytes: num(t.bytes) };
+    tracks[key] = {
+      title,
+      artist,
+      show,
+      language,
+      hasLyrics: t.hasLyrics === true,
+      revision,
+      duration,
+      loopStart,
+      loopEnd,
+      bpm: num(t.bpm),
+      lufs: num(t.lufs),
+      bytes: num(t.bytes),
+    };
     n++;
   }
-  return n > 0 ? { version: 1, tracks } : null;
+  return n > 0 ? { version: 2, tracks } : null;
 }
 
 /** Shortest loop worth looping; anything shorter loops the whole buffer. */

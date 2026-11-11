@@ -146,6 +146,44 @@
   }
 }
 
+/*
+ * Phones (every screen without the side rail: overlay.tsx WIDE_HUD): the top bar is the seal and the
+ * name. At 320 px "Read as page" ended 3 px from the Map button, and on a phone on its side the plate
+ * took almost half the row. It stays as a skip link: out of sight (as .sr-only) until the keyboard
+ * reaches it, then shown on its own plate under the bar, over the place row. The map's All places
+ * tab, the loading screen and every reader's end offer the page view to everyone else.
+ */
+@media (max-width: 47.99rem), (max-height: 31.24rem) {
+  /* Scoped to the bar: .sect-brushrule-v, later in this file, would otherwise show it again. */
+  .sect-toplinks .sect-toplinks-rule {
+    display: none;
+  }
+  .sect-toplinks-page:not(:focus) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .sect-toplinks-page:focus {
+    position: absolute;
+    top: calc(100% + 0.375rem);
+    left: 0;
+    white-space: nowrap;
+    border: 1px solid var(--sect-gold-soft);
+    border-radius: 3px;
+    background: var(--sect-panel-strong);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .sect-toplinks:focus-within {
+    z-index: 31;
+  }
+}
+
 /* Under a title: a short gold brush stroke (in the old thin rule's place). */
 .sect-brushstroke {
   display: block;
@@ -312,6 +350,20 @@
   }
 }
 
+/*
+ * The place row's name (overlay.tsx CompactRail) hides while the camera holds at a stop: the stop's
+ * panel names the place, and the look hint takes the name's spot. On a phone held upright the voice
+ * panel covers the stop's panel during a call, so there the name comes back and the hint steps away.
+ */
+@media (max-width: 47.99rem) {
+  body:has(.sect-orb [role="dialog"]) .sect-rail-place[data-hold] {
+    opacity: 1;
+  }
+  body:has(.sect-orb [role="dialog"]) .sect-lookhint {
+    visibility: hidden;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sect-enso {
     animation: none;
@@ -322,6 +374,43 @@
   background:
     radial-gradient(60% 50% at 50% 42%, rgba(233, 199, 126, 0.14), transparent 70%),
     linear-gradient(180deg, #1b1826 0%, #0e0c14 100%);
+}
+
+/*
+ * The loading and error screens (loading-screen.tsx) on a short screen (a phone on its side): two
+ * columns, so Enter and Read as page are in view without a scroll. The sect's name and whose
+ * portfolio this is on the left, the bar, the settings and the buttons on the right, in the page's
+ * own order. Each column centres itself with auto margins, which give way to the top when a column
+ * is taller than the screen, so it still scrolls. The name's column gives up its width first: the
+ * controls keep enough for Enter and Read as page side by side. The sides keep clear of the Music
+ * slip on the left and the voice talisman on the right (in the top corner under 768 px wide, in the
+ * bottom one from there, beside the buttons). Plain CSS: the screen draws before scripts run.
+ * Short means the HUD's phone rule (under 31.25rem tall, overlay.tsx WIDE_HUD), as in loading-screen.tsx.
+ */
+@media (max-height: 31.24rem) {
+  .sect-veil {
+    flex-direction: row;
+    column-gap: clamp(1.5rem, 5vw, 3.5rem);
+    padding-left: max(3.75rem, env(safe-area-inset-left));
+    padding-right: max(4.5rem, env(safe-area-inset-right));
+  }
+  .sect-veil-head,
+  .sect-veil-body {
+    margin-block: auto;
+  }
+  .sect-veil-head {
+    flex: 0 1 20rem;
+    min-width: 0;
+  }
+  .sect-veil-body {
+    flex: 0 1 22rem;
+    min-width: 18.5rem;
+  }
+}
+@media (max-height: 31.24rem) and (min-width: 48rem) {
+  .sect-veil {
+    padding-right: max(7rem, env(safe-area-inset-right));
+  }
 }
 
 .sect-panel {
@@ -419,6 +508,82 @@
 }
 
 /* The loading screen's graphics picker comes in softly over the place kept for it. */
+/*
+ * The loading screen's buttons (loading-screen.tsx): plates like the Map button's, with its cloud
+ * curls and small spaced capitals. The one that leads ([data-lead]: Enter once the scene is ready,
+ * or Read as page while loading is slow) takes the gold line, gold letters and a faint gold wash.
+ * Enter waits dim, with a hollow diamond that fills when it is ready.
+ */
+.sect-veil-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 2.75rem;
+  padding: 0 1.1rem 0 1.25rem;
+  border-radius: 3px;
+  color: var(--sect-paper);
+  font-size: 0.72rem;
+  line-height: 1;
+  letter-spacing: 0.24em;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    color 0.4s ease,
+    border-color 0.4s ease,
+    background-color 0.4s ease,
+    box-shadow 0.4s ease;
+}
+.sect-veil-btn:hover:not(:disabled) {
+  border-color: var(--sect-gold);
+  color: var(--sect-gold);
+}
+.sect-panel.sect-plate.sect-veil-btn[data-lead] {
+  border-color: var(--sect-gold);
+  background:
+    linear-gradient(rgba(233, 199, 126, 0.14), rgba(233, 199, 126, 0.14)),
+    var(--sect-panel-strong);
+  color: var(--sect-gold);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 0 26px rgba(233, 199, 126, 0.2),
+    0 18px 50px rgba(0, 0, 0, 0.35);
+}
+.sect-panel.sect-plate.sect-veil-btn[data-lead]:hover {
+  background:
+    linear-gradient(rgba(233, 199, 126, 0.24), rgba(233, 199, 126, 0.24)),
+    var(--sect-panel-strong);
+}
+.sect-veil-btn:disabled {
+  border-color: rgba(233, 199, 126, 0.18);
+  color: rgba(245, 236, 220, 0.42);
+  cursor: not-allowed;
+}
+.sect-veil-btn:disabled::before,
+.sect-veil-btn:disabled::after {
+  opacity: 0.4;
+}
+/* The diamond of the rail and the graphics picker: hollow while Enter waits, full when it leads. */
+.sect-veil-btn-mark {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid currentColor;
+  transform: rotate(45deg);
+  transition: background-color 0.4s ease;
+}
+.sect-veil-btn[data-lead] .sect-veil-btn-mark {
+  background: currentColor;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sect-veil-btn,
+  .sect-veil-btn-mark {
+    transition: none;
+  }
+}
+
 .sect-fade-in {
   animation: sect-fade-in 0.45s ease-out both;
 }
@@ -1377,6 +1542,56 @@ body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   margin: 0.75rem 0.75rem 0 0;
 }
 
+/*
+ * Phones (overlay.tsx WIDE_HUD): the graphics button (QualityButton) in the top row, left of the
+ * close button, its menu opening down over the map. Held upright, the row gives it a column of its
+ * own; on its side it shares the close button's corner over the list.
+ */
+.sect-map-tools {
+  position: relative;
+  z-index: 20;
+  grid-area: tools;
+  align-self: start;
+  margin: 0.75rem 0.5rem 0 0;
+}
+@media (max-width: 767.98px) {
+  .sect-map[data-tools] {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "head tools close"
+      "main main main"
+      "tabs tabs tabs";
+  }
+}
+@media (min-width: 768px) {
+  .sect-map-tools {
+    grid-area: close;
+    justify-self: end;
+    margin: 0.75rem 3rem 0 0;
+  }
+}
+
+/* Phones: the page view at the top of the All places tab, a row of the list's in gold, a rule under it. */
+.sect-map-page {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 2px;
+  font-size: 0.86rem;
+  line-height: 1.375;
+  text-align: left;
+  color: var(--sect-gold);
+}
+.sect-map-page:hover,
+.sect-map-page:focus-visible {
+  background: var(--sect-gold-soft);
+  color: var(--sect-paper);
+}
+
 /* The wide layout's left column: the chosen place's card, then the legend and the keys under it. */
 .sect-map-side {
   grid-area: side;
@@ -1610,6 +1825,12 @@ body:has(.sc-page) .sect-orb > div:not([role="dialog"]) > div:first-child {
   width: 2.4rem;
   height: 2.4rem;
   color: var(--sect-gold);
+}
+/* The narrowest phones need its room for the name (the seal on the map still shows the emblem). */
+@media (max-width: 340px) {
+  .sect-map-dock-emblem {
+    display: none;
+  }
 }
 
 /* The Travel buttons: a gold fill with dark ink, like the panels' Open. */
@@ -1966,6 +2187,595 @@ body[data-sect-travel] .sect-orb > div:not([role="dialog"]) {
   }
   .sect-travel-card {
     filter: none;
+  }
+}
+
+/*
+ * The soundtrack panel (experience/karaoke-lyrics.tsx, docs/music/karaoke-lyrics.md), in the stops'
+ * panel dress: a title slip at the left edge (乐曲 upright, "Music" under it, on a control's plate)
+ * opens a drawer of rice paper over ink with the gold cloud corners, the song's title as its hero,
+ * the owner's note on the song set off by brush rules, and the lyrics. The line being sung is marked
+ * in ink and gold (gold characters, a short upright stroke at its left), and the lines fade the
+ * farther they are from it (--d, set on each row: 0 to 4).
+ *
+ * Phones and short screens (the compact place row along the top): the drawer starts under that row
+ * and keeps left of the sound toggle's column; the slip hangs under the row on a phone held upright,
+ * under the top bar on a short screen. Wider screens: the slip a third of the way down, the drawer
+ * under the top bar and its hint, stopping above the Recentre button.
+ *
+ * The slip sits under the stops' panels (z-index 20): where a long panel reaches it on a small screen,
+ * the panel's words stay on top. The open drawer is over everything but the voice panel: a stop's
+ * panel on the left moves over beside it where there is room, and steps away where there is not.
+ */
+/*
+ * The lyrics' brush hand: Ma Shan Zheng (assets/OFL-MaShanZheng.txt) cut down to the songs' own
+ * characters by scripts/subset-lyrics-font.mjs (about 340 KB). Not preloaded: the browser fetches it
+ * the first time the open drawer writes a Chinese line.
+ */
+@font-face {
+  font-family: "Sect Lyric Brush";
+  src: url("./assets/sect-lyrics-brush.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+.sect-lyrics {
+  --sect-lyric-brush: "Sect Lyric Brush", "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, serif;
+}
+
+.sect-lyrics-slip {
+  position: fixed;
+  z-index: 19;
+  top: 8.25rem;
+  left: max(0.5rem, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 2.75rem;
+  padding: 0.8rem 0 0.7rem;
+  border-radius: 3px;
+  color: var(--sect-paper-soft);
+  transition:
+    color 0.2s ease,
+    opacity 0.2s ease,
+    visibility 0s;
+}
+.sect-lyrics-slip > [lang="zh"] {
+  font-size: 1.25rem;
+  line-height: 1.05;
+  color: var(--sect-gold);
+}
+.sect-lyrics-slip-label {
+  font-size: 0.5rem;
+  line-height: 1;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.sect-lyrics-slip:hover {
+  color: var(--sect-gold);
+}
+/* Over the loading screen: up over its veil, and on a phone in the top corner, clear of its column. */
+body:has(.sect-veil) .sect-lyrics-slip {
+  z-index: 51;
+}
+@media (max-width: 47.99rem) {
+  body:has(.sect-veil) .sect-lyrics-slip {
+    top: max(0.75rem, env(safe-area-inset-top));
+  }
+}
+/*
+ * Phones: the slip waits while the intro's title is up (it sat over the start of the SUN MOON DIVINE
+ * SECT plate) and comes in at the first stop. Not on the loading screen, where it has its own corner;
+ * once that screen starts to fade after Enter (data-leaving) the slip goes.
+ */
+@media not ((min-width: 48rem) and (min-height: 31.25rem)) {
+  body:not(:has(.sect-veil:not([data-leaving]))) .sect-root:has(.sect-intro:not([style*="hidden"])) .sect-lyrics-slip {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+}
+/* Silent, the drawer offers the sound under the song's credits (sound-toggle.tsx SoundCall). */
+.sect-lyrics-sound {
+  flex: none;
+  padding: 0.75rem 1.4rem 0;
+}
+/* The drawer covers its place: it steps aside, and comes back when the drawer goes. */
+.sect-lyrics[data-open] .sect-lyrics-slip {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    color 0.2s ease,
+    opacity 0.2s ease,
+    visibility 0s 0.2s;
+}
+
+.sect-panel.sect-lyrics-drawer {
+  position: fixed;
+  z-index: 51;
+  top: 8.25rem;
+  left: max(0.5rem, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+  width: min(23rem, calc(100vw - 4.375rem));
+  max-height: calc(100vh - 8.25rem - max(1rem, env(safe-area-inset-bottom)));
+  max-height: calc(100dvh - 8.25rem - max(1rem, env(safe-area-inset-bottom)));
+  padding-bottom: 1.2rem;
+  border-radius: 3px;
+  background:
+    url("./assets/paper.webp") 0 0 / 256px 256px,
+    rgba(13, 10, 19, 0.895);
+  /* The stops' panels' paper and ink (content.css .sc-panel), and no backdrop blur, as there: the
+     canvas under it redraws every frame. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: var(--sect-paper);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(-0.75rem);
+  transition:
+    opacity 0.25s ease,
+    transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1),
+    visibility 0s 0.3s;
+}
+/* It takes the focus when opened by a click or a tap, only so its Escape is heard: no ring. */
+.sect-lyrics-drawer:focus {
+  outline: none;
+}
+.sect-lyrics[data-open] .sect-lyrics-drawer {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 0.25s ease,
+    transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1),
+    visibility 0s;
+}
+
+/* The close button, drawn as the map's. */
+/* A bare cross in the corner: the drawer's own frame is ornament enough. */
+.sect-lyrics-close {
+  position: absolute;
+  z-index: 1;
+  top: 0.5rem;
+  right: 0.5rem;
+  transition: color 0.2s ease;
+}
+
+/* The song: eyebrow, title, brush stroke, credits; the right padding keeps clear of the close button. */
+.sect-lyrics-head {
+  flex: none;
+  padding: 1.25rem 3.25rem 0 1.4rem;
+}
+.sect-lyrics-eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--sect-gold);
+}
+.sect-lyrics-title {
+  margin: 0.6rem 0 0;
+  font-family: var(--font-instrument-serif), "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: clamp(1.8rem, 2.6vw, 2.2rem);
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--sect-paper);
+}
+.sect-lyrics-title-zh {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.6rem;
+  font-size: 1.9rem;
+  line-height: 1.15;
+  letter-spacing: 0;
+}
+/*
+ * A Chinese title's English, after a short gold dash, and the seal closing the line as on a signed
+ * scroll: "降临 – Descent 印". Where the two do not fit on one line, the dash, the English and the
+ * seal take the next line together.
+ */
+.sect-lyrics-title-en {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  font-size: 1.25rem;
+  font-style: italic;
+  line-height: 1.2;
+  letter-spacing: 0;
+  color: var(--sect-paper-soft);
+}
+.sect-lyrics-title-en::before {
+  content: "";
+  flex: none;
+  width: 0.9rem;
+  height: 1px;
+  background: var(--sect-gold);
+}
+.sect-lyrics-title .sect-lyrics-title-en .sect-seal {
+  margin-left: 0.1rem;
+  font-size: 1.2rem;
+}
+.sect-lyrics-title :is(.sect-brushname, .sect-zh) {
+  letter-spacing: 0.08em;
+}
+.sect-lyrics-title .sect-sealedname {
+  gap: 0.5rem;
+}
+.sect-lyrics-title .sect-seal {
+  font-size: 1.4rem;
+}
+.sect-lyrics-stroke {
+  margin-top: 0.8rem;
+}
+.sect-lyrics-credits {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.45rem;
+  margin: 0.8rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--sect-paper-soft);
+}
+.sect-lyrics-credits > div {
+  display: flex;
+  align-items: baseline;
+}
+.sect-lyrics-credits dd {
+  margin: 0;
+}
+.sect-lyrics-from {
+  flex-basis: 100%;
+}
+.sect-lyrics-from dd[lang="zh"] {
+  font-family: var(--sect-zh);
+  font-size: 0.9375rem;
+  letter-spacing: 0.04em;
+}
+.sect-lyrics[data-brush] .sect-lyrics-from dd[lang="zh"] {
+  font-family: var(--sect-lyric-brush);
+  font-size: 1.125rem;
+  line-height: 1.2;
+  letter-spacing: 0.06em;
+  color: var(--sect-paper);
+}
+.sect-lyrics-by + .sect-lyrics-by::before {
+  content: "·";
+  content: "·" / "";
+  margin-right: 0.45rem;
+  color: var(--sect-gold);
+}
+
+.sect-lyrics-rule {
+  flex: none;
+  margin: 1rem 1.4rem 0;
+}
+
+/*
+ * The owner's note on the song: a quiet inscription, centred, like the colophon at a scroll's end.
+ * It is a button: a press swaps the English for the Chinese (karaoke-lyrics.tsx SongNoteText). Both
+ * are laid in the same cell; the one showing fades out, then the other fades in.
+ */
+.sect-lyrics-note {
+  display: grid;
+  flex: none;
+  width: 100%;
+  margin: 0.85rem 0 0;
+  padding: 0 1.4rem;
+  border: 0;
+  background: none;
+  color: var(--sect-paper-soft);
+  text-align: center;
+  cursor: pointer;
+}
+.sect-lyrics-note:hover {
+  color: var(--sect-paper);
+}
+.sect-lyrics-note-face {
+  grid-area: 1 / 1;
+  align-self: center;
+  font-family: var(--font-instrument-serif), "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1.125rem;
+  font-style: italic;
+  line-height: 1.45;
+  text-wrap: balance;
+  opacity: 0;
+  transition:
+    opacity 0.3s ease,
+    color 0.2s ease;
+}
+.sect-lyrics-note-face[lang="zh"] {
+  font-family: var(--sect-zh);
+  font-size: 1.0625rem;
+  font-style: normal;
+  line-height: 1.7;
+  letter-spacing: 0.04em;
+}
+.sect-lyrics[data-brush] .sect-lyrics-note-face[lang="zh"] {
+  font-family: var(--sect-lyric-brush);
+  font-size: 1.3rem;
+  line-height: 1.5;
+  letter-spacing: 0.06em;
+}
+.sect-lyrics-note[data-lang="en"] .sect-lyrics-note-face[lang="en"],
+.sect-lyrics-note[data-lang="zh"] .sect-lyrics-note-face[lang="zh"] {
+  opacity: 1;
+  transition-delay: 0.3s, 0s;
+}
+
+/* Loading (the turning ink ring) and an instrumental's one line. */
+.sect-lyrics-state {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 1rem 1.4rem 0.4rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--sect-paper-soft);
+}
+.sect-lyrics-ring {
+  font-size: 0.95rem;
+}
+
+.sect-lyrics-list {
+  flex: none;
+  margin: 0;
+  padding: 0.75rem 1.4rem 1.75rem;
+  list-style: none;
+}
+.sect-lyrics-row {
+  position: relative;
+  padding: 0.5rem 0;
+  opacity: 0.72;
+  transition: opacity 0.35s ease;
+}
+/* While a line is sung: the others fade with their distance from it. */
+.sect-lyrics-list[data-singing] .sect-lyrics-row {
+  opacity: max(0.3, calc(0.95 - var(--d, 4) * 0.16));
+}
+.sect-lyrics-list[data-singing] .sect-lyrics-row[data-active] {
+  opacity: 1;
+}
+/* The line being sung: a short upright stroke of gold at its left, drawn down as it starts. */
+.sect-lyrics-row::before {
+  content: "";
+  position: absolute;
+  top: 0.7rem;
+  bottom: 0.7rem;
+  left: -0.85rem;
+  width: 5px;
+  background: var(--sect-gold);
+  -webkit-mask: var(--sect-brush-rule-v) center / 100% 100% no-repeat;
+  mask: var(--sect-brush-rule-v) center / 100% 100% no-repeat;
+  transform: scaleY(0);
+  transform-origin: top;
+  transition: transform 0.35s ease;
+}
+.sect-lyrics-row[data-active]::before {
+  transform: none;
+}
+/* The sung line: Chinese in the CJK serif, an English song's in the stops' serif. */
+.sect-lyrics-line {
+  margin: 0;
+  font-family: var(--font-instrument-serif), "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  font-size: 1.25rem;
+  line-height: 1.3;
+  color: var(--sect-paper);
+  text-wrap: pretty;
+  transition: color 0.35s ease;
+}
+.sect-lyrics-line[lang="zh"] {
+  font-family: var(--sect-zh);
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  letter-spacing: 0.04em;
+}
+/*
+ * The Chinese lines in the brush hand (Sect Lyric Brush, below): asked for from the drawer's first
+ * opening on, so a visitor who never opens it never downloads the font, and a closing drawer keeps
+ * its hand while it fades. Until it is in, and for a
+ * character it lacks, the serif writes the line.
+ */
+.sect-lyrics[data-brush] .sect-lyrics-line[lang="zh"] {
+  font-family: var(--sect-lyric-brush);
+  font-size: 1.4rem;
+  line-height: 1.35;
+  letter-spacing: 0.06em;
+}
+/* Its English, under it in the body face. */
+.sect-lyrics-en {
+  margin: 0.1rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--sect-paper-soft);
+  text-wrap: pretty;
+  transition: color 0.35s ease;
+}
+/*
+ * The line being sung, word by word (karaoke-lyrics.tsx sets --p on each word, 0 to 1): gold ink
+ * runs through a word from its left as it is sung, over the paper white of what is still to come.
+ */
+.sect-lyrics-row[data-active] .sect-lyrics-line {
+  color: var(--sect-paper);
+}
+.sect-lyrics-word {
+  --fill: calc(var(--p, 0) * 100%);
+  background: linear-gradient(90deg, var(--sect-gold) var(--fill), var(--sect-paper) var(--fill));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.sect-lyrics-row[data-active] .sect-lyrics-en {
+  color: var(--sect-paper);
+}
+
+/*
+ * What scrolls: the whole drawer on phones and short screens (the active line comes to the middle and
+ * the song's head goes up out of sight); the lyrics alone where the drawer is tall, the head held
+ * still above them. The scrolled edge fades out, and the bar is a thin gold one.
+ */
+.sect-lyrics-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-mask: linear-gradient(#000 calc(100% - 1.25rem), transparent);
+  mask: linear-gradient(#000 calc(100% - 1.25rem), transparent);
+}
+.sect-lyrics-body,
+.sect-lyrics-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sect-gold-soft) transparent;
+}
+.sect-lyrics-body::-webkit-scrollbar,
+.sect-lyrics-list::-webkit-scrollbar {
+  width: 6px;
+}
+.sect-lyrics-body::-webkit-scrollbar-thumb,
+.sect-lyrics-list::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: var(--sect-gold-soft);
+}
+@media (min-height: 43rem) {
+  .sect-lyrics-body {
+    overflow: visible;
+    -webkit-mask: none;
+    mask: none;
+  }
+  .sect-lyrics-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-mask: linear-gradient(transparent, #000 1.75rem, #000 calc(100% - 2.5rem), transparent);
+    mask: linear-gradient(transparent, #000 1.75rem, #000 calc(100% - 2.5rem), transparent);
+  }
+}
+
+@media (min-width: 48rem) {
+  .sect-lyrics-slip {
+    width: 2.5rem;
+    padding: 0.75rem 0 0.65rem;
+  }
+}
+
+/*
+ * Short screens (a phone on its side): every stop's panel takes the left, reaching up near the top
+ * bar, so the slip hangs right under the bar, beside the place row; 乐曲 stays in sight over a panel.
+ */
+@media (max-height: 31.24rem) {
+  /* Clear of the top bar's plate (it ended 2 px above the slip). */
+  .sect-lyrics-slip {
+    top: 4.25rem;
+  }
+}
+
+/* Short screens (a phone on its side): the stops' panels keep clear of the slip's column. */
+@media (max-height: 31.24rem) and (max-width: 47.99rem) {
+  .sect-root .sect-panel.sc-panel {
+    left: calc(max(0.5rem, env(safe-area-inset-left)) + 3.25rem);
+  }
+}
+@media (max-height: 31.24rem) and (min-width: 48rem) {
+  .sect-root .sect-panel.sc-panel.sc-panel-left {
+    left: calc(max(0.5rem, env(safe-area-inset-left)) + 3rem);
+  }
+}
+
+/* Wide and tall enough for the side rail: the slip a third of the way down, the drawer under the top bar. */
+@media (min-width: 48rem) and (min-height: 31.25rem) {
+  /* In line with the other plates' left edge (the top bar's, the drawer's). */
+  .sect-lyrics-slip {
+    top: clamp(8rem, 30vh, 18rem);
+    left: max(1.25rem, env(safe-area-inset-left));
+  }
+  /* A card of a few lines, clear of the look hint under the top bar; not a wall down the screen. */
+  .sect-panel.sect-lyrics-drawer {
+    top: 6.75rem;
+    left: max(1.25rem, env(safe-area-inset-left));
+    max-height: min(37rem, calc(100vh - 6.75rem - 4.75rem));
+    max-height: min(37rem, calc(100dvh - 6.75rem - 4.75rem));
+  }
+}
+
+/*
+ * A stop's panel and the open drawer: where there is room for both, a panel on the left moves over
+ * beside it; where there is not, the panel steps away until the drawer closes, as it does behind a
+ * reader (content.css: the engine fades panels with inline styles, hence !important).
+ */
+@media (max-width: 59.99rem) {
+  body[data-sect-lyrics] .sect-panel.sc-panel {
+    visibility: hidden !important;
+  }
+}
+@media (min-width: 60rem) {
+  .sect-root .sect-panel.sc-panel.sc-panel-left {
+    transition: left 0.35s ease;
+  }
+  body[data-sect-lyrics] .sect-panel.sc-panel.sc-panel-left {
+    left: 25.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sect-lyrics-slip,
+  .sect-lyrics[data-open] .sect-lyrics-slip,
+  .sect-lyrics .sect-lyrics-drawer,
+  .sect-lyrics[data-open] .sect-lyrics-drawer,
+  .sect-lyrics-row,
+  .sect-lyrics-row::before,
+  .sect-lyrics-note-face,
+  .sect-lyrics-note[data-lang] .sect-lyrics-note-face,
+  .sect-lyrics-line,
+  .sect-lyrics-en,
+  .sect-root .sect-panel.sc-panel.sc-panel-left {
+    transition: none;
+  }
+  .sect-lyrics .sect-lyrics-drawer {
+    transform: none;
+  }
+}
+
+/* Forced colours: plain frames, every line at full strength, the sung one in the highlight colour. */
+@media (forced-colors: active) {
+  .sect-panel.sect-lyrics-drawer,
+  .sect-lyrics-slip {
+    border: 1px solid CanvasText;
+    background: Canvas;
+  }
+  .sect-lyrics-body,
+  .sect-lyrics-list {
+    -webkit-mask: none;
+    mask: none;
+  }
+  .sect-lyrics-row,
+  .sect-lyrics-list[data-singing] .sect-lyrics-row {
+    opacity: 1;
+  }
+  .sect-lyrics-row[data-active] .sect-lyrics-line,
+  .sect-lyrics-row[data-active] .sect-lyrics-en {
+    forced-color-adjust: none;
+    color: Highlight;
+  }
+  .sect-lyrics-row[data-active]::before {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+  .sect-lyrics-word {
+    background: none;
+    color: inherit;
   }
 }
 
