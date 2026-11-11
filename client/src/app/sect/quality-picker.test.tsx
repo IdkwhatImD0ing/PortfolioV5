@@ -133,12 +133,17 @@ describe("LoadingScreen with the picker", () => {
     expect(screen({ quality: "reserve", error: "The scene failed to load." })).not.toMatch(/aria-hidden="true" class="mt-7/);
   });
 
-  it("offers Enter once the scene is ready, after the settings, with the gold", () => {
+  it("shows Enter greyed out while loading, then gold once the scene is ready, after the settings", () => {
     const loading = screen({ quality });
+    // There from the start, but disabled and not gold; nothing treats it as the live Enter yet.
+    expect(loading).toMatch(/<button type="button" disabled=""[^>]*>Enter<\/button>/);
+    expect(/disabled="" class="([^"]+)">Enter</.exec(loading)![1]).not.toContain("bg-[var(--sect-gold)]");
     expect(loading).not.toContain("data-sect-enter");
+    expect(loading.indexOf(">Enter<")).toBeLessThan(loading.indexOf("Read as page"));
     expect(loading).toContain('aria-busy="true"');
     const ready = screen({ quality, progress: 1, label: "Ready", onEnter: () => {} });
     expect(ready).toMatch(/<button type="button" data-sect-enter="true"[^>]*>Enter<\/button>/);
+    expect(ready).not.toContain('disabled=""');
     expect(ready.indexOf("<fieldset")).toBeLessThan(ready.indexOf("data-sect-enter"));
     expect(ready.indexOf("data-sect-enter")).toBeLessThan(ready.indexOf("Read as page"));
     expect(ready).toContain('aria-busy="false"');

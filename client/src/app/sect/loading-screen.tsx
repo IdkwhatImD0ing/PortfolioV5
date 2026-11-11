@@ -100,7 +100,7 @@ export function LoadingScreen({
   onReload?: () => void;
   /** Opens the one-page view in place; without it the offer links to /?view=page. */
   onReadAsPage?: () => void;
-  /** The scene is ready: "Enter" shows, and starts the flight. */
+  /** The scene is ready: "Enter" turns gold and starts the flight. Until then it waits, greyed out. */
   onEnter?: () => void;
   /** The graphics picker, or "reserve" for its empty place (it is coming); none without either. */
   quality?: QualityPickerProps | "reserve";
@@ -128,10 +128,13 @@ export function LoadingScreen({
     "inline-flex min-h-11 items-center gap-2 rounded-[2px] border border-[var(--sect-gold)] bg-[var(--sect-gold)] px-5 text-[0.9375rem] font-semibold text-[#1a1306] hover:bg-[#f3d89a]";
   const plain =
     "inline-flex min-h-11 items-center gap-2 rounded-[2px] border border-[var(--sect-gold-soft)] bg-[rgba(14,12,20,0.55)] px-5 text-[0.9375rem] text-[var(--sect-paper)] hover:border-[var(--sect-gold)]";
-  // Ready: Enter has the gold, the pair one width. Before that the offer takes it once loading is slow.
-  // The narrowest phones (320 px) take a smaller width, so the pair still sits side by side.
+  // Enter is there from the start, greyed out and unpressable until the scene is ready, so it does
+  // not pop in at the end. Ready: Enter has the gold. Before that the offer takes it once loading is slow.
+  // The pair is one width; the narrowest phones (320 px) take a smaller one, so it still sits side by side.
   const pair = "min-w-[8.75rem] justify-center [@media(max-width:340px)]:min-w-[7.5rem]";
-  const offerClass = ready ? `${plain} ${pair}` : slow ? gold : plain;
+  const waiting =
+    "inline-flex min-h-11 cursor-not-allowed items-center gap-2 rounded-[2px] border border-[rgba(245,236,220,0.22)] bg-[rgba(14,12,20,0.4)] px-5 text-[0.9375rem] font-semibold text-[rgba(245,236,220,0.42)]";
+  const offerClass = `${!ready && slow ? gold : plain} ${pair}`;
   const offerText = "Read as page";
   const offer = onReadAsPage ? (
     <button type="button" onClick={onReadAsPage} className={offerClass}>
@@ -217,14 +220,10 @@ export function LoadingScreen({
             {/* Its line is always kept (hidden until slow), so the centred column and the picker above
                 don't jump up 15 px under a finger when it shows. */}
             <p className={`text-[0.875rem] text-[var(--sect-paper)] ${slow && !ready ? "" : "invisible"}`}>Slow connection?</p>
-            {ready ? (
-              <div className="flex flex-wrap items-center justify-center gap-3">
-                <EnterButton onEnter={onEnter} className={`sect-fade-in ${gold} ${pair}`} />
-                {offer}
-              </div>
-            ) : (
-              offer
-            )}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <EnterButton onEnter={onEnter} className={`transition-colors duration-500 ${ready ? gold : waiting} ${pair}`} />
+              {offer}
+            </div>
           </div>
         </div>
       )}
@@ -233,17 +232,20 @@ export function LoadingScreen({
 }
 
 /**
- * "Enter". It takes the focus when it comes, unless the visitor has put it somewhere (the
- * picker, the sound prompt), so the keyboard's Enter starts the flight.
+ * "Enter". It waits greyed out while the scene loads (no onEnter yet) and cannot be pressed. Once
+ * the scene is ready it takes the focus, unless the visitor has put it somewhere (the picker, the
+ * sound prompt), so the keyboard's Enter starts the flight.
  */
-function EnterButton({ onEnter, className }: { onEnter: () => void; className: string }) {
+function EnterButton({ onEnter, className }: { onEnter?: () => void; className: string }) {
   const ref = useRef<HTMLButtonElement>(null);
+  const ready = onEnter !== undefined;
   useEffect(() => {
+    if (!ready) return;
     const a = document.activeElement;
     if (!a || a === document.body) ref.current?.focus({ preventScroll: true });
-  }, []);
+  }, [ready]);
   return (
-    <button ref={ref} type="button" data-sect-enter onClick={onEnter} className={className}>
+    <button ref={ref} type="button" data-sect-enter={ready || undefined} disabled={!ready} onClick={onEnter} className={className}>
       Enter
     </button>
   );

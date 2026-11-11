@@ -453,6 +453,15 @@ transcribed and have not been checked by ear.
 
 **Why.** The owner asked to replace the formation song with it.
 
+### 2026-11-10 · Enter waits on the loading screen, greyed out
+
+**Decided.** The loading screen shows Enter from the start, beside Read as page. While the scene
+loads it is greyed out and cannot be pressed. When the scene is ready it turns gold and takes the
+keyboard focus, as before.
+
+**Why.** The owner: "the start button shouldn't just appear after it's finished loading. It should
+be like grayed out or something."
+
 ---
 
 ## Longer write-ups
