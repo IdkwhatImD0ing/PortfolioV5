@@ -170,7 +170,7 @@
       "artist": "Chen Bing (陈冰)",
       "language": "zh",
       "audioObject": "audio/formation-9199296038a75a5b.mp3",
-      "lyricsObject": "lyrics/formation-c28d4cc74160c2ba.json",
+      "lyricsObject": "lyrics/formation-0a9b3031117f9780.json",
       "duration": 245.568979,
       "loopStart": 0,
       "loopEnd": 245.568979,
@@ -178,7 +178,7 @@
       "lufs": -17.0,
       "bytes": 4912844,
       "audioSha256": "9199296038a75a5b67b40ef01a6389f9c817c680f17d3719a05266e135971729",
-      "lyricsSha256": "c28d4cc74160c2ba241646277a6679bb8820905ffaab67786775adc7a6ca40a8",
+      "lyricsSha256": "0a9b3031117f9780011e726511721ed67b93f4a1918a05cb57b02c8e4c388891",
       "revision": "20261108-1"
     },
     "abode": {
