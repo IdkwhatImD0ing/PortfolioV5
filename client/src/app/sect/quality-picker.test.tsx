@@ -133,24 +133,28 @@ describe("LoadingScreen with the picker", () => {
     expect(screen({ quality: "reserve", error: "The scene failed to load." })).not.toMatch(/aria-hidden="true" class="mt-7/);
   });
 
-  it("shows Enter greyed out while loading, then gold once the scene is ready, after the settings", () => {
+  it("shows Enter dim while loading, then leading in gold once the scene is ready, after the settings", () => {
     const loading = screen({ quality });
-    // There from the start, but disabled and not gold; nothing treats it as the live Enter yet.
-    expect(loading).toMatch(/<button type="button" disabled=""[^>]*>Enter<\/button>/);
-    expect(/disabled="" class="([^"]+)">Enter</.exec(loading)![1]).not.toContain("bg-[var(--sect-gold)]");
+    // There from the start, but disabled and not leading; nothing treats it as the live Enter yet.
+    const waiting = /<button type="button" disabled="" class="([^"]+)"><span[^>]*class="sect-veil-btn-mark"><\/span>Enter<\/button>/.exec(loading);
+    expect(waiting).not.toBeNull();
+    expect(waiting![1]).toContain("sect-veil-btn");
+    expect(loading).not.toContain("data-lead");
     expect(loading).not.toContain("data-sect-enter");
     expect(loading.indexOf(">Enter<")).toBeLessThan(loading.indexOf("Read as page"));
     expect(loading).toContain('aria-busy="true"');
     const ready = screen({ quality, progress: 1, label: "Ready", onEnter: () => {} });
-    expect(ready).toMatch(/<button type="button" data-sect-enter="true"[^>]*>Enter<\/button>/);
+    expect(ready).toMatch(/<button type="button" data-sect-enter="true" data-lead=""[^>]*>.*?Enter<\/button>/);
     expect(ready).not.toContain('disabled=""');
     expect(ready.indexOf("<fieldset")).toBeLessThan(ready.indexOf("data-sect-enter"));
     expect(ready.indexOf("data-sect-enter")).toBeLessThan(ready.indexOf("Read as page"));
     expect(ready).toContain('aria-busy="false"');
-    // Only Enter is gold; "Read as page" steps back beside it.
-    const enterClass = /data-sect-enter="true" class="([^"]+)"/.exec(ready)![1];
-    expect(enterClass).toContain("bg-[var(--sect-gold)]");
-    expect(/class="([^"]+)">Read as page</.exec(ready)![1]).not.toContain("bg-[var(--sect-gold)]");
+    // Only Enter leads (sect.css [data-lead]: the gold); "Read as page" is the same plate beside it.
+    expect(ready.match(/data-lead=""/g)).toHaveLength(1);
+    const enterClass = /data-sect-enter="true" data-lead="" class="([^"]+)"/.exec(ready)![1];
+    expect(/class="([^"]+)">Read as page</.exec(ready)![1].split(" ").sort()).toEqual(enterClass.split(" ").sort());
+    // The plates are the Map button's: ink, the gold line and its cloud curls.
+    for (const k of ["sect-panel", "sect-plate", "sect-ctl", "sect-veil-btn"]) expect(enterClass.split(" ")).toContain(k);
     // No Enter over an error.
     expect(screen({ quality, error: "The scene failed to load.", onEnter: () => {} })).not.toContain("data-sect-enter");
   });
@@ -181,7 +185,7 @@ describe("LoadingScreen with the picker", () => {
 
   it("keeps Enter and Read as page side by side on the narrowest phones", () => {
     const ready = screen({ quality, progress: 1, label: "Ready", onEnter: () => {} });
-    const enterClass = /data-sect-enter="true" class="([^"]+)"/.exec(ready)![1];
+    const enterClass = /data-sect-enter="true" data-lead="" class="([^"]+)"/.exec(ready)![1];
     const offerClass = /class="([^"]+)">Read as page</.exec(ready)![1];
     for (const c of [enterClass, offerClass]) {
       expect(c).toContain("min-w-[8.75rem]");

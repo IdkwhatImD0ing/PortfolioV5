@@ -456,11 +456,14 @@ transcribed and have not been checked by ear.
 ### 2026-11-10 · Enter waits on the loading screen, greyed out
 
 **Decided.** The loading screen shows Enter from the start, beside Read as page. While the scene
-loads it is greyed out and cannot be pressed. When the scene is ready it turns gold and takes the
-keyboard focus, as before.
+loads it is dim and cannot be pressed. When the scene is ready it takes the gold and the keyboard
+focus. Both buttons are plates like the Map button's: ink, a gold line, cloud curls at the corners
+and small spaced capitals. Enter carries the diamond of the rail and the graphics picker, hollow
+while it waits and full when it is ready. The solid gold rectangle is gone from this screen.
 
 **Why.** The owner: "the start button shouldn't just appear after it's finished loading. It should
-be like grayed out or something."
+be like grayed out or something." He then found the solid box out of step with the page's other
+controls.
 
 ---
 

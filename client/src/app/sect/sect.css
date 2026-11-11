@@ -508,6 +508,82 @@
 }
 
 /* The loading screen's graphics picker comes in softly over the place kept for it. */
+/*
+ * The loading screen's buttons (loading-screen.tsx): plates like the Map button's, with its cloud
+ * curls and small spaced capitals. The one that leads ([data-lead]: Enter once the scene is ready,
+ * or Read as page while loading is slow) takes the gold line, gold letters and a faint gold wash.
+ * Enter waits dim, with a hollow diamond that fills when it is ready.
+ */
+.sect-veil-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  min-height: 2.75rem;
+  padding: 0 1.1rem 0 1.25rem;
+  border-radius: 3px;
+  color: var(--sect-paper);
+  font-size: 0.72rem;
+  line-height: 1;
+  letter-spacing: 0.24em;
+  text-decoration: none;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    color 0.4s ease,
+    border-color 0.4s ease,
+    background-color 0.4s ease,
+    box-shadow 0.4s ease;
+}
+.sect-veil-btn:hover:not(:disabled) {
+  border-color: var(--sect-gold);
+  color: var(--sect-gold);
+}
+.sect-panel.sect-plate.sect-veil-btn[data-lead] {
+  border-color: var(--sect-gold);
+  background:
+    linear-gradient(rgba(233, 199, 126, 0.14), rgba(233, 199, 126, 0.14)),
+    var(--sect-panel-strong);
+  color: var(--sect-gold);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.25),
+    0 0 26px rgba(233, 199, 126, 0.2),
+    0 18px 50px rgba(0, 0, 0, 0.35);
+}
+.sect-panel.sect-plate.sect-veil-btn[data-lead]:hover {
+  background:
+    linear-gradient(rgba(233, 199, 126, 0.24), rgba(233, 199, 126, 0.24)),
+    var(--sect-panel-strong);
+}
+.sect-veil-btn:disabled {
+  border-color: rgba(233, 199, 126, 0.18);
+  color: rgba(245, 236, 220, 0.42);
+  cursor: not-allowed;
+}
+.sect-veil-btn:disabled::before,
+.sect-veil-btn:disabled::after {
+  opacity: 0.4;
+}
+/* The diamond of the rail and the graphics picker: hollow while Enter waits, full when it leads. */
+.sect-veil-btn-mark {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid currentColor;
+  transform: rotate(45deg);
+  transition: background-color 0.4s ease;
+}
+.sect-veil-btn[data-lead] .sect-veil-btn-mark {
+  background: currentColor;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sect-veil-btn,
+  .sect-veil-btn-mark {
+    transition: none;
+  }
+}
+
 .sect-fade-in {
   animation: sect-fade-in 0.45s ease-out both;
 }
