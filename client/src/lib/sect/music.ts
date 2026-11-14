@@ -389,15 +389,15 @@ export function musicBudget(device: { deviceMemory?: number; coarse: boolean }):
 export const MUTE_KEY = "sect.music.muted";
 
 /**
- * Whether the music starts muted. docs/music/sect-themes/README.md: "Start muted, with a visible sound
- * toggle", so it is muted unless this visitor turned it on before (saved "0"); they then hear it
- * again from their first click, tap or key. Muted too when storage is blocked.
+ * Whether the music starts muted. Sound is on by default (docs/music/sect-themes/README.md), so it
+ * is muted only if this visitor muted it before (saved "1"). Otherwise the music starts on their
+ * first click, tap or key (browsers allow sound only after one). On too when storage is blocked.
  */
 export function readMuted(storage: Pick<Storage, "getItem"> | null | undefined): boolean {
   try {
-    return storage?.getItem(MUTE_KEY) !== "0";
+    return storage?.getItem(MUTE_KEY) === "1";
   } catch {
-    return true;
+    return false;
   }
 }
 

@@ -183,7 +183,7 @@ Every design choice behind this, with its date and reason, is in the [decisions 
 Every stop has its own song. I made the twelve tracks in Suno, one for the loading screen and one for each stop, all instrumental and led by Chinese instruments. They all use the same five notes (D, E, F♯, A and B), so when you fly from one stop to the next the two tracks crossfade without clashing.
 
 - The page plays them with Web Audio and only downloads the track you're at and the next one.
-- Music starts muted until you press Turn on sound. A slider next to the speaker sets the volume.
+- Music is on by default and starts when you first click. The speaker mutes it and a slider next to it sets the volume.
 - When the voice agent talks, the music drops so you can hear it.
 - The Suno prompts for every track are in [`docs/music/sect-themes/`](docs/music/sect-themes/README.md).
 

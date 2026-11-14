@@ -321,7 +321,7 @@ export function SongHead({
   note: SongNote | null;
   /** A Chinese title's English, written after it; none for a title already in English. */
   titleEn?: string | null;
-  /** The sound is on. Off (every visitor starts muted), the eyebrow does not claim a song is playing. */
+  /** The sound is on. Off (muted, or before the first click), the eyebrow does not claim a song is playing. */
   playing?: boolean;
 }) {
   const credits = songCredits(track);

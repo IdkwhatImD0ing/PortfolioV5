@@ -465,6 +465,16 @@ while it waits and full when it is ready. The solid gold rectangle is gone from 
 be like grayed out or something." He then found the solid box out of step with the page's other
 controls.
 
+### 2026-11-13 · Sound is on by default
+
+**Decided.** A visitor who has never muted the music hears it. Browsers still allow sound only
+after a press, so it starts on the first click, tap or key: Enter on the loading screen, the
+graphics picker, or anything else. Until then the loading screen's sound button reads "Turn on
+sound"; after the first press it reads "Sound on", and pressing it (or the speaker in the corner)
+mutes. A mute is remembered as before. Visitors whose browser blocks storage get sound on too.
+
+**Why.** The owner: "Can we have it so by default audio is on?"
+
 ---
 
 ## Longer write-ups
