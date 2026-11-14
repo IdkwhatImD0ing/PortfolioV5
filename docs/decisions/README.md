@@ -475,6 +475,20 @@ mutes. A mute is remembered as before. Visitors whose browser blocks storage get
 
 **Why.** The owner: "Can we have it so by default audio is on?"
 
+### 2026-11-13 · An English lyric line changes only when it is broken
+
+**Decided.** Nine English lyric lines were corrected: one in 璀璨冒险人, two in 光之少年, five in 曙光
+and one in 化凡. Each was broken English or read wrong, and each fix keeps the words of the Chinese.
+Every other line stays as it was. From here on an English line is changed only when it is broken or
+says the wrong thing. A number, a name or an image from the story is translated as it stands. The
+rule and where the nine lines sit are in
+[`../music/karaoke-lyrics.md`](../music/karaoke-lyrics.md).
+
+**Why.** The owner found that some English lines "dont feel the same as the chinese lyrics". The
+first rewrites were too literal: he kept 逍遥's "A pot of wine to drown our dreams". The next set
+explained the story behind a line, and he turned those down too. On 破茧's 重回到十九层深渊: "19th
+llevel of abyss is the correct translation".
+
 ---
 
 ## Longer write-ups

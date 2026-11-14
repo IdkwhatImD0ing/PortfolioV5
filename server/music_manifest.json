@@ -98,7 +98,7 @@
       "artist": "Zhou Shen (周深)",
       "language": "zh",
       "audioObject": "audio/mission-e28610be966aea7c.mp3",
-      "lyricsObject": "lyrics/mission-30f107ca2fe45ffb.json",
+      "lyricsObject": "lyrics/mission-569534988c910cc3.json",
       "duration": 273.725938,
       "loopStart": 0,
       "loopEnd": 273.725938,
@@ -106,7 +106,7 @@
       "lufs": -17.0,
       "bytes": 5475884,
       "audioSha256": "e28610be966aea7cac25263d86eb8f10e850a5f83dae481b5c03c236be483f00",
-      "lyricsSha256": "30f107ca2fe45ffbf31403104ef4ebb878bd12fc39d1833aa2f066b3f2204181",
+      "lyricsSha256": "569534988c910cc3c2cfe8ca629edba27c61b128d8720f8f2ceb5d3d67538214",
       "revision": "20261108-1"
     },
     "library": {
@@ -116,7 +116,7 @@
       "artist": "Yang Zixi (杨子熙)",
       "language": "zh",
       "audioObject": "audio/library-1cc060024ae032ef.mp3",
-      "lyricsObject": "lyrics/library-8194a1d2b45bbfc3.json",
+      "lyricsObject": "lyrics/library-e5d9dded2c5cc407.json",
       "duration": 266.63475,
       "loopStart": 0,
       "loopEnd": 266.63475,
@@ -124,7 +124,7 @@
       "lufs": -17.0,
       "bytes": 5333804,
       "audioSha256": "1cc060024ae032ef6c0117bee6edc1c7112f542f8b000448795792b2f60d80b6",
-      "lyricsSha256": "8194a1d2b45bbfc35af9e04eeff0b3915f398565d3485b34b2660c42f7fff062",
+      "lyricsSha256": "e5d9dded2c5cc4070eac8381f50fbf9a9bb8368b53d379859db0515818da80ed",
       "revision": "20261108-1"
     },
     "steles": {
@@ -134,7 +134,7 @@
       "artist": "GALA",
       "language": "zh",
       "audioObject": "audio/steles-8e3d1666dd51ab92.mp3",
-      "lyricsObject": "lyrics/steles-a38f787ead66cd18.json",
+      "lyricsObject": "lyrics/steles-881704f03c66dbe0.json",
       "duration": 236.363646,
       "loopStart": 0,
       "loopEnd": 236.363646,
@@ -142,7 +142,7 @@
       "lufs": -17.0,
       "bytes": 4728524,
       "audioSha256": "8e3d1666dd51ab92d0658c999a08b83ef909c0bff1c7f1e27986c191a1c7ee89",
-      "lyricsSha256": "a38f787ead66cd1884532765b42c8334b8aaefab1a808830f2d94d017b1ccb52",
+      "lyricsSha256": "881704f03c66dbe0550e6c4209e30c37559738b472a573b321eec8b3c960b6ea",
       "revision": "20261108-1"
     },
     "scroll": {
@@ -170,7 +170,7 @@
       "artist": "Chen Bing (陈冰)",
       "language": "zh",
       "audioObject": "audio/formation-9199296038a75a5b.mp3",
-      "lyricsObject": "lyrics/formation-0a9b3031117f9780.json",
+      "lyricsObject": "lyrics/formation-365ddf67610cf999.json",
       "duration": 245.568979,
       "loopStart": 0,
       "loopEnd": 245.568979,
@@ -178,7 +178,7 @@
       "lufs": -17.0,
       "bytes": 4912844,
       "audioSha256": "9199296038a75a5b67b40ef01a6389f9c817c680f17d3719a05266e135971729",
-      "lyricsSha256": "0a9b3031117f9780011e726511721ed67b93f4a1918a05cb57b02c8e4c388891",
+      "lyricsSha256": "365ddf67610cf999f06b92e61328ac054272579626445eda60a49e5c32613f82",
       "revision": "20261108-1"
     },
     "abode": {

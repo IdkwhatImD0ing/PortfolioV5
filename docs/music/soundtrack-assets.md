@@ -35,6 +35,17 @@ and word timings, strips private handoff metadata from the served lyric copies, 
 writes immutable object names, and updates `server/music_manifest.json`. `upload` publishes the
 prepared objects but does not deploy the server.
 
+The handoff folder also keeps the retired 天谴觉醒 MP3 and a hidden sync marker in `lyrics\`.
+`prepare` stops on either one, because it checks for exactly the twelve MP3s and nine lyric files.
+Copy those twelve and nine to a clean folder and point `prepare` at it:
+
+```bash
+python scripts/prepare_music.py prepare --source <clean copy>
+```
+
+A change to lyrics alone gives the audio the same object names as before, so `upload` adds only the
+new lyric files (checked on 2026-11-13 with ffmpeg 8.0.1).
+
 After publishing, deploy the matching backend manifest before the frontend. Rollback restores the
 previous backend revision and manifest; immutable media objects are retained until no rollback needs
 them.

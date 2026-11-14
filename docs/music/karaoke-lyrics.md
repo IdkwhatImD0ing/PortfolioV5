@@ -49,6 +49,18 @@ The parser rejects a file when:
 
 A bad or missing lyric file never stops its music track.
 
+## English lines
+
+The English under a line (`en`) is a translation of that line. Change one only when it is broken
+English or says the wrong thing, and make the smallest fix that keeps the words of the Chinese. A
+number, a name or an image from the story is translated as it stands: 十九层深渊 is "the nineteenth
+level of the abyss". Do not explain it or add a name the line does not say. Show the owner the
+lines before they go live.
+
+A change to `en` is made in the handoff file, then prepared, uploaded and deployed like any other
+lyric change (see [`soundtrack-assets.md`](soundtrack-assets.md)). English alone does not change the
+lyric font subset.
+
 ## Timing
 
 For audio time `t`, the current line satisfies `start <= t < end`. Gaps display nothing.
@@ -187,3 +199,12 @@ view, behind readers or the map, during fast travel, and on error screens.
 Listen through all nine tracks before release. Priorities are the estimated *Throne of Glory*
 lines, near-zero units, loop wrap, pause/resume, and the two corrected English translations in
 `降临` near 2:13 and 2:17.
+
+Nine more English lines were corrected on 2026-11-13. Check them at these times:
+
+| Song | Times |
+|---|---|
+| 璀璨冒险人 | 1:23, 2:52 |
+| 光之少年 | 1:14 to 1:16, 2:02, 2:24 to 2:26 |
+| 曙光 | 0:45, 0:49, 1:49, 2:04, 2:08, 3:00, 3:20 |
+| 化凡 | 2:39 |
