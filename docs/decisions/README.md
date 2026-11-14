@@ -475,6 +475,24 @@ mutes. A mute is remembered as before. Visitors whose browser blocks storage get
 
 **Why.** The owner: "Can we have it so by default audio is on?"
 
+### 2026-11-13 · The music gets a page of its own
+
+**Decided.** `/music` is a player for the soundtrack, with no 3D. It lists the twelve songs, shows
+the open song's credits and note, and shows its whole lyrics, which follow the song as in the
+flight's drawer. A bar at the bottom has previous, play and pause, next, a seek line, repeat, mute
+and volume. A song plays once and then the next one starts. Nothing plays or downloads before a
+press. The volume is the one the flight remembers. The flight's mute is not read here, and 100% is
+the file's own level, twice the flight's.
+
+It plays through an `<audio>` element fed a downloaded copy of the song, not the flight's Web Audio
+engine. The engine decodes whole tracks into memory to loop and crossfade them. A player needs
+pause and seek, and should keep playing in a hidden tab.
+
+**Why.** The owner: "Can I get a /music page that is just a music player and lets me see the lyrics
+en its entirety with controls liek volumne next pause play, etc".
+
+**See.** [`../music/music-page.md`](../music/music-page.md).
+
 ---
 
 ## Longer write-ups
