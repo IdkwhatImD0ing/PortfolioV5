@@ -185,6 +185,7 @@ Every stop has its own song. I made the twelve tracks in Suno, one for the loadi
 - The page plays them with Web Audio and only downloads the track you're at and the next one.
 - Music is on by default and starts when you first click. The speaker mutes it and a slider next to it sets the volume.
 - When the voice agent talks, the music drops so you can hear it.
+- [`/music`](https://art3m1s.me/music) is a player for the same songs, with the full lyrics.
 - The Suno prompts for every track are in [`docs/music/sect-themes/`](docs/music/sect-themes/README.md).
 
 ## 传音 · The voice agent

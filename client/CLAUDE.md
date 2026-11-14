@@ -8,6 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The sect replaced the one-page portfolio as the home page in October 2026 (its section components were archived, out of the repo). `/sect` permanently redirects to `/` (`src/app/sect/route.ts`), keeping the query string and hash. `?view=page` reads the whole portfolio as one page without 3D, and the server renders the portfolio as text under the flight for crawlers and no-JS visitors (`src/app/sect/summary.tsx`).
 
+The only other page is `/music` (`src/app/music/`): a player for the soundtrack with each song's whole lyrics and no 3D. It uses the same backend music routes as the flight but its own small audio player (`song-player.ts`, an `<audio>` element), not the flight's Web Audio engine. See `docs/music/music-page.md`.
+
 This directory (`client/`) is the frontend. It was the `client-new/` redesign until the original frontend was retired (June 2026, see `docs/history/legacy-client-retirement.md` at the repo root) and this package was renamed to `client/`.
 
 ## Monorepo layout (paths relative to repo root, one level up)
@@ -65,6 +67,7 @@ Bill is at this PC and must not hear the site while you (or any subagent) test i
 - Before the first click on the page, set `localStorage["sect.music.muted"] = "1"` (the key is `MUTE_KEY` in `src/lib/sect/music.ts`) and reload. Sound is on by default, so without a saved `"1"` (a fresh profile, or a `"0"` from an earlier run) the music starts on the first click, tap or key.
 - Never press "Turn on sound" or the speaker toggle to unmute. If a check truly needs playing audio (the word-by-word lyric fill only runs while a track is audible), mute the tab or browser itself instead (for Playwright, launch with `--mute-audio`), or ask Bill first.
 - When you finish, leave the saved choice at muted.
+- `/music` (the player page) does not read that mute: its play button always plays. There, set `localStorage["sect.music.volume"] = "0"` and reload before pressing play, a song or a lyric line. The song still runs, so the lyrics can be checked in silence. Do not press its speaker button or M: at zero they bring the sound back at half. Leave the saved volume at `"0"` only while testing; it is the flight's volume too, so put back what was there (or remove the key) when you finish on Bill's own browser profile.
 - Put this rule in every subagent or workflow brief that opens the site.
 
 ## Architecture: the voice → navigation pipeline
@@ -92,7 +95,7 @@ Changing a navigable destination means editing all three: the tool/page mapping 
 
 ## Frontend conventions
 
-- **`src/app/page.tsx` is a server component** that renders the sect (`SectClient`), the portfolio as text under it (`SectSummary`) and a `<noscript>` rule. Title, description, share cards and JSON-LD live in `src/app/layout.tsx`; the share image is `public/og-image.jpg`. There is one page, not a router: "navigation" means flying to a stop (the URL hash names it), not changing routes.
+- **`src/app/page.tsx` is a server component** that renders the sect (`SectClient`), the portfolio as text under it (`SectSummary`) and a `<noscript>` rule. Title, description, share cards and JSON-LD live in `src/app/layout.tsx`; the share image is `public/og-image.jpg`. The portfolio is one page, not a router: "navigation" means flying to a stop (the URL hash names it), not changing routes. (`/music` is a separate page with its own title and description in `src/app/music/page.tsx`; nothing in the flight links to it.)
 - **Pure logic is extracted from components and unit-tested** in `src/lib/` (`voice-bus.ts`, `transcript.ts`, `portfolio-data/`, `project-fallback.ts`, and everything under `src/lib/sect/`). When adding behavior, prefer putting the pure part in `src/lib` with a `.test.ts` rather than inlining it in a component.
 - **Portfolio content lives in `src/lib/portfolio-data/`** (typed `Project`, `Hackathon`, `Education`, etc.). Projects can be addressed by `id` or `aliases` — use `findProject(idOrAlias)` so the agent's Pinecone/Devpost slug resolves to the local project. `src/data/pinecone-projects.json` is the agent-side project data.
 - **Styling is Tailwind v4** with CSS custom properties (e.g. `var(--grad)`, `border-line-soft`, `text-magenta`) defined in `src/app/globals.css` (the voice orb's palette), and the sect's own ink, paper and gold in `src/app/sect/sect.css` and `content/content.css`. Match the existing arbitrary-value + custom-property idiom rather than introducing new color literals.
