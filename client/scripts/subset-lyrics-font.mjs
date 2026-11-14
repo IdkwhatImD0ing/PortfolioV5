@@ -2,7 +2,8 @@
 // assets/OFL-MaShanZheng.txt) cut down to the Chinese characters the soundtrack panel writes: every
 // lyric line, each song's title, show and artist, and the notes in src/lib/sect/song-notes.ts. The panel loads it only once it is opened
 // (sect.css "Sect Lyric Brush"). A character the file lacks falls back to the serif, so run this
-// again after the songs or their lyrics change.
+// again after the songs or their lyrics change. The cut also gains the comma and the full stop as an
+// upright column writes them (scripts/vertical-punctuation.py), for the notes' Chinese.
 //
 //   node scripts/subset-lyrics-font.mjs path/to/MaShanZheng-Regular.ttf path/to/prepared-music
 //
@@ -62,4 +63,7 @@ execFileSync(
   ],
   { stdio: "inherit" },
 );
+// The notes' Chinese is set in upright columns: the comma and the full stop get the forms a column
+// wants (the font has none of its own).
+execFileSync(python, [path.join(root, "scripts/vertical-punctuation.py"), out], { stdio: "inherit" });
 console.log(`${path.relative(root, out)}: ${chars.size} characters, ${statSync(out).size} bytes`);

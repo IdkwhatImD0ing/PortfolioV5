@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MUSIC_KEYS, isMusicKey, type MusicKey } from "./music";
-import { SONG_NOTES, SONG_TITLES_EN, hasHan, songCredits, songNote, songTitleEn } from "./song-notes";
+import { NOTE_COLUMN, SONG_NOTES, SONG_TITLES_EN, hasHan, noteColumns, songCredits, songNote, songTitleEn } from "./song-notes";
 
 /** The nine sung tracks (docs/music/local-soundtrack.md). */
 const VOCAL_KEYS: readonly MusicKey[] = ["mirror", "arena", "mission", "library", "steles", "scroll", "formation", "abode", "summit"];
@@ -41,6 +41,48 @@ describe("song notes", () => {
 
   it("keep the owner's curly apostrophe", () => {
     expect(songNote("mirror")?.en).toContain("it’s better");
+  });
+});
+
+describe("a note's Chinese in columns", () => {
+  const notes = Object.entries(SONG_NOTES).map(([key, note]) => ({ key, zh: note?.zh ?? "", columns: noteColumns(note?.zh ?? "") }));
+
+  it("keeps every character, in order", () => {
+    for (const { key, zh, columns } of notes) expect(columns.join(""), key).toBe(zh);
+  });
+
+  it("opens no column with a comma or a full stop", () => {
+    for (const { key, columns } of notes) for (const column of columns) expect(column, key).not.toMatch(/^[，。、]/);
+  });
+
+  it("fills the columns evenly: none a stub, none longer than a full column and one hanging mark", () => {
+    for (const { key, columns } of notes) {
+      for (const column of columns) {
+        expect([...column].length, key).toBeGreaterThanOrEqual(NOTE_COLUMN - 2);
+        expect([...column].length, key).toBeLessThanOrEqual(NOTE_COLUMN + 1);
+        // One past the full length is only ever a mark hanging under the last character.
+        if ([...column].length > NOTE_COLUMN) expect(column, key).toMatch(/[，。、]$/);
+      }
+    }
+  });
+
+  it("takes no more columns than the drawer holds at full size", () => {
+    // sect.css: a column is 1.5 × 1.3rem wide and the note 20.2rem, so ten fit; eight leaves margins.
+    for (const { key, columns } of notes) expect(columns.length, key).toBeLessThanOrEqual(8);
+  });
+
+  it("sends a column's last character over with the mark, where the columns after it have room", () => {
+    // 天地玄黄宇宙洪 would be a full column with the comma opening the next.
+    expect(noteColumns("天地玄黄宇宙洪，荒日月盈昃", 7)).toEqual(["天地玄黄宇宙", "洪，荒日月盈昃"]);
+  });
+
+  it("hangs the mark under a full column when every column is full", () => {
+    expect(noteColumns("天地玄黄宇宙洪，荒日月盈昃辰", 7)).toEqual(["天地玄黄宇宙洪，", "荒日月盈昃辰"]);
+  });
+
+  it("writes a short note in one column, and nothing for an empty one", () => {
+    expect(noteColumns("日月神教")).toEqual(["日月神教"]);
+    expect(noteColumns("")).toEqual([]);
   });
 });
 

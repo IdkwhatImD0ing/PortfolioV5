@@ -16,7 +16,7 @@
 import { type CSSProperties, type KeyboardEvent, type MouseEvent, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { MusicKey, MusicTrack } from "@/lib/sect/music";
 import { lyricLineAt, lyricUnitProgress, lyricWordAt, type LyricLine, type SongLyrics } from "@/lib/sect/lyrics";
-import { hasHan, songCredits, songNote, songTitleEn, type SongNote } from "@/lib/sect/song-notes";
+import { hasHan, noteColumns, songCredits, songNote, songTitleEn, type SongNote } from "@/lib/sect/song-notes";
 import { BrushName, InkRing, SealStamp, SealedName } from "../ornaments";
 import type { MusicEngine } from "./music-engine";
 import { SoundCall, serverSnapshot } from "./sound-toggle";
@@ -376,24 +376,40 @@ export function SongHead({
 
 /**
  * The owner's note, centred. A press swaps its English for its Chinese and back: the one showing
- * fades out, then the other fades in over the same place (both are laid in one cell, so the drawer
- * keeps its height). It starts in English for each song.
+ * fades out, then the note's place opens or closes to the other's height as that one fades in
+ * (sect.css: each side is closed to no height unless it is the one showing). It starts in English
+ * for each song.
+ *
+ * The Chinese is written as an inscription is: upright columns, read from the right. The columns
+ * are cut here (lib/sect/song-notes.ts noteColumns) and --cols tells the sheet how many there are;
+ * a screen reader gets the note in one piece.
  */
 export function SongNoteText({ note }: { note: SongNote }) {
   const [zh, setZh] = useState(false);
+  const columns = noteColumns(note.zh);
   return (
     <button
       type="button"
       className="sect-lyrics-note"
       data-lang={zh ? "zh" : "en"}
       title={zh ? "English" : "中文"}
+      style={{ "--cols": columns.length } as CSSProperties}
       onClick={() => setZh((v) => !v)}
     >
-      <span className="sect-lyrics-note-face" lang="en" aria-hidden={zh || undefined}>
-        {note.en}
+      <span className="sect-lyrics-note-side" data-side="en">
+        <span className="sect-lyrics-note-face" lang="en" aria-hidden={zh || undefined}>
+          {note.en}
+        </span>
       </span>
-      <span className="sect-lyrics-note-face" lang="zh" aria-hidden={!zh || undefined}>
-        {note.zh}
+      <span className="sect-lyrics-note-side" data-side="zh">
+        <span className="sect-lyrics-note-face" lang="zh" aria-hidden={!zh || undefined}>
+          <span className="sr-only">{note.zh}</span>
+          {columns.map((column, i) => (
+            <span aria-hidden className="sect-lyrics-note-col" key={i}>
+              {column}
+            </span>
+          ))}
+        </span>
       </span>
     </button>
   );
