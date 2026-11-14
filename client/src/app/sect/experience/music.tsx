@@ -5,10 +5,10 @@
  * track as the camera reaches it, crossfading (lib/sect/music.ts has the choices, ./music-engine.ts
  * the Web Audio). Mounted once by the experience, with the sound toggle (./sound-toggle.tsx).
  *
- * - Starts muted (docs/music/sect-themes/README.md): the loading screen's "Turn on sound" (SoundPrompt)
- *   or the sound toggle turns it on, and the choice is remembered (localStorage "sect.music.muted").
- *   A visitor who turned it on before hears it again from their first click, tap or key (browsers
- *   allow sound only after one; a wheel does not count).
+ * - Sound is on by default (docs/music/sect-themes/README.md): the music starts on the visitor's
+ *   first click, tap or key (browsers allow sound only after one; a wheel does not count), Enter on
+ *   the loading screen included. The sound toggle or the loading screen's prompt (SoundPrompt) mutes
+ *   it, and the choice is remembered (localStorage "sect.music.muted").
  * - The volume slider beside the toggle sets the level (lib/sect/volume.ts, remembered as
  *   "sect.music.volume"); the ducking and silences below take their share of it.
  * - A fast scroll through several areas plays none of the ones in between (the hysteresis); a jump

@@ -424,20 +424,20 @@ describe("what to load and keep", () => {
 });
 
 describe("the mute choice", () => {
-  it("starts muted until the visitor turns sound on, and remembers it", () => {
+  it("starts with sound on until the visitor mutes it, and remembers it", () => {
     const data = new Map<string, string>();
     const storage = { getItem: (k: string) => data.get(k) ?? null, setItem: (k: string, v: string) => void data.set(k, v) };
-    // A first visit: muted (the README's "Start muted, with a visible sound toggle").
-    expect(readMuted(storage)).toBe(true);
-    writeMuted(storage, false);
-    expect(data.get(MUTE_KEY)).toBe("0");
+    // A first visit: sound on (the README's "Start with sound on").
     expect(readMuted(storage)).toBe(false);
     writeMuted(storage, true);
     expect(data.get(MUTE_KEY)).toBe("1");
     expect(readMuted(storage)).toBe(true);
+    writeMuted(storage, false);
+    expect(data.get(MUTE_KEY)).toBe("0");
+    expect(readMuted(storage)).toBe(false);
   });
 
-  it("survives blocked storage (muted, and nothing throws)", () => {
+  it("survives blocked storage (sound on, and nothing throws)", () => {
     const blocked = {
       getItem: () => {
         throw new Error("SecurityError");
@@ -446,9 +446,9 @@ describe("the mute choice", () => {
         throw new Error("SecurityError");
       },
     };
-    expect(readMuted(blocked)).toBe(true);
+    expect(readMuted(blocked)).toBe(false);
     expect(() => writeMuted(blocked, true)).not.toThrow();
-    expect(readMuted(null)).toBe(true);
+    expect(readMuted(null)).toBe(false);
   });
 });
 
