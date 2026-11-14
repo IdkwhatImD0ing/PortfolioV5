@@ -51,10 +51,16 @@ A bad or missing lyric file never stops its music track.
 
 ## English lines
 
-The English under a line (`en`) is a translation of that line. Change one only when it is broken
-English or says the wrong thing, and make the smallest fix that keeps the words of the Chinese. A
-number, a name or an image from the story is translated as it stands: 十九层深渊 is "the nineteenth
-level of the abyss". Do not explain it or add a name the line does not say. Show the owner the
+The English under a line (`en`) is a translation of that line. It is read against the Chinese above
+it while the line is sung, so two things hold:
+
+- It keeps the phrases in the order the Chinese sings them, where English allows. 这个世界 是什么模样
+  is "This world, what does it look like".
+- A number, a name or an image from the story is translated as it stands. 十九层深渊 is "the
+  nineteenth level of the abyss". Do not explain it or add a name the line does not say.
+
+Change a line only when it is broken English, says the wrong thing or runs in a different order
+from the Chinese. Make the smallest fix that keeps the words of the Chinese. Show the owner the
 lines before they go live.
 
 A change to `en` is made in the handoff file, then prepared, uploaded and deployed like any other
@@ -200,11 +206,15 @@ Listen through all nine tracks before release. Priorities are the estimated *Thr
 lines, near-zero units, loop wrap, pause/resume, and the two corrected English translations in
 `降临` near 2:13 and 2:17.
 
-Nine more English lines were corrected on 2026-11-13. Check them at these times:
+More English lines were corrected on 2026-11-13 (nine that were broken English) and on 2026-11-14
+(thirteen that ran in a different order from the Chinese). Check them at these times:
 
 | Song | Times |
 |---|---|
-| 璀璨冒险人 | 1:23, 2:52 |
-| 光之少年 | 1:14 to 1:16, 2:02, 2:24 to 2:26 |
+| 璀璨冒险人 | 0:19, 0:30, 0:34, 0:38, 0:45, 1:23, 2:52 |
+| 浩瀚 | 1:15, 2:33, 3:10 |
+| 光之少年 | 0:52, 1:14 to 1:16, 1:40, 2:02, 2:24 to 2:26, 2:52 |
 | 曙光 | 0:45, 0:49, 1:49, 2:04, 2:08, 3:00, 3:20 |
-| 化凡 | 2:39 |
+| 降临 | 0:44, 2:07, 2:28 |
+| 化凡 | 0:42, 2:39 |
+| 破茧 | 0:25, 1:31 |

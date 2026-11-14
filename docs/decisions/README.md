@@ -489,6 +489,17 @@ first rewrites were too literal: he kept 逍遥's "A pot of wine to drown our dr
 explained the story behind a line, and he turned those down too. On 破茧's 重回到十九层深渊: "19th
 llevel of abyss is the correct translation".
 
+### 2026-11-14 · English lyric lines follow the order of the Chinese
+
+**Decided.** An English lyric line keeps its phrases in the order the Chinese sings them, where
+English allows. Thirteen lines that ran the other way were turned round, in seven songs. 这个世界
+是什么模样 was "What does this world look like" and is now "This world, what does it look like".
+A flipped order is a third reason to change a line, next to broken English and a wrong meaning.
+The times of the lines are in [`../music/karaoke-lyrics.md`](../music/karaoke-lyrics.md).
+
+**Why.** The owner: "translations should match the sentence structure". That line was his example,
+and he added "Later lines do this quite admirably".
+
 ---
 
 ## Longer write-ups
