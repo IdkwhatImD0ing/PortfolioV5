@@ -465,11 +465,39 @@ while it waits and full when it is ready. The solid gold rectangle is gone from 
 be like grayed out or something." He then found the solid box out of step with the page's other
 controls.
 
+### 2026-11-13 · Sound is on by default
+
+**Decided.** A visitor who has never muted the music hears it. Browsers still allow sound only
+after a press, so it starts on the first click, tap or key: Enter on the loading screen, the
+graphics picker, or anything else. Until then the loading screen's sound button reads "Turn on
+sound"; after the first press it reads "Sound on", and pressing it (or the speaker in the corner)
+mutes. A mute is remembered as before. Visitors whose browser blocks storage get sound on too.
+
+**Why.** The owner: "Can we have it so by default audio is on?"
+
+### 2026-11-13 · The music gets a page of its own
+
+**Decided.** `/music` is a player for the soundtrack, with no 3D. It lists the twelve songs, shows
+the open song's credits and note, and shows its whole lyrics, which follow the song as in the
+flight's drawer. A bar at the bottom has previous, play and pause, next, a seek line, repeat, mute
+and volume. A song plays once and then the next one starts. Nothing plays or downloads before a
+press. The volume is the one the flight remembers. The flight's mute is not read here, and 100% is
+the file's own level, twice the flight's.
+
+It plays through an `<audio>` element fed a downloaded copy of the song, not the flight's Web Audio
+engine. The engine decodes whole tracks into memory to loop and crossfade them. A player needs
+pause and seek, and should keep playing in a hidden tab.
+
+**Why.** The owner: "Can I get a /music page that is just a music player and lets me see the lyrics
+en its entirety with controls liek volumne next pause play, etc".
+
+**See.** [`../music/music-page.md`](../music/music-page.md).
+
 ### 2026-11-13 · A song note's Chinese is written in columns, from the right
 
-**Decided.** In the soundtrack drawer, the Chinese side of a song's note is set in upright columns
-read from the right, at most seven characters to a column, as an inscription on a scroll is
-written. The English side and the lyrics are unchanged; lyrics stay written across, as sung lines
+**Decided.** In the soundtrack drawer and on `/music` (the same note), the Chinese side of a
+song's note is set in upright columns read from the right, at most seven characters to a column,
+as an inscription on a scroll is written. The English side and the lyrics are unchanged; lyrics stay written across, as sung lines
 are everywhere. The note is now as tall as the side it shows: the Chinese is taller, so pressing
 the note opens its place and the lyrics under it move down, and the English view keeps the height
 it had. The lyrics' brush font gained the comma and the full stop as a column writes them, in the
@@ -482,7 +510,8 @@ at a scroll's end, in a brush hand, and that is how one is written. Across is no
 the mainland has printed since the 1950s), it only reads as modern.
 
 **Checked** on a preview page with the real drawer component and stylesheet, a made-up engine and
-made-up lyrics, at 1024×768 and at a 250 px drawer (a 320 px phone). Not checked in the full 3D page
+made-up lyrics, at 1024×768 and at a 250 px drawer (a 320 px phone), and the `/music` card on its
+own stylesheet at 1024×768 and 375×812. Not checked in the full 3D page or the real `/music` page
 with music playing, and the opening and closing motion was not watched (the preview pane was
 hidden, where animation does not run).
 

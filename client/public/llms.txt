@@ -8,6 +8,7 @@ How the site works:
 - The home page is a scroll-driven three.js flight through a floating xianxia sect. The scene is built in Blender with Python, and its light is baked in Cycles on a rented GPU. Each of its eleven stops has its own music and holds one section of the portfolio: Mountain Gate (welcome), Heart-Mirror Terrace (about), Artifact Forge Peak (projects), Sword-Discussion Arena (hackathons), Mission Hall (experience), Scripture Pavilion (education), Stele Forest (skills), Jade Slip Pavilion (resume), Grand Sect-Protecting Formation (how the site works), Cave Abode (personal) and Moon-Gazing Terrace (contact).
 - A voice agent, presented as a senior disciple of the sect who answers through its sound-transmission talisman (传音符), answers questions about Bill in the third person and takes the visitor to the stop that holds the answer by the map's ink fast travel (on a voice call the server sends the move over Pusher). Visitors can also type to it.
 - `https://art3m1s.me/?view=page` shows the whole portfolio as one plain page without 3D. The server also renders the full portfolio as text in the page's HTML, so it can be read without running JavaScript.
+- `https://art3m1s.me/music` is a player for the site's twelve songs, with their lyrics in Chinese and English.
 - A hash opens a section or a project directly: `https://art3m1s.me/#projects`, `https://art3m1s.me/#resume`, `https://art3m1s.me/#project/dispatchai`. The old address `https://art3m1s.me/sect` redirects to the home page.
 
 Canonical identity and handles:

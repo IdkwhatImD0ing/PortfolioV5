@@ -74,8 +74,8 @@ block in `client/src/app/sect/sect.css`.
   blur, as on the stops' panels. Its close button is a bare cross in the corner (a second framed
   box inside the frame looked crowded). It fades in and slides a short way from the left. On wide
   screens it is a card at most 37rem tall, not a wall down the screen.
-- **The head.** A "Now playing" eyebrow ("Soundtrack" while the sound is off, which is how every
-  visitor starts; the drawer then offers a "Turn on sound" button under the note), then the song's
+- **The head.** A "Now playing" eyebrow ("Soundtrack" while the sound is off: muted, or before the
+  visitor's first click; the drawer then offers a "Turn on sound" button under the note), then the song's
   title. A Chinese title is written in the
   brush hand, then a short gold dash, its English in italics (`SONG_TITLES_EN` in
   `client/src/lib/sect/song-notes.ts`) and the red seal closing the line. Where they do not fit on

@@ -59,6 +59,7 @@ listed under "Kept beside the code".
 - [`music/soundtrack-assets.md`](music/soundtrack-assets.md): What are the prepared artist, duration, size, lyric and loop values for the current soundtrack revision?
 - [`music/backend-soundtrack-delivery.md`](music/backend-soundtrack-delivery.md): How do private storage, short-lived capabilities and range responses deliver the soundtrack?
 - [`music/karaoke-lyrics.md`](music/karaoke-lyrics.md): How does the universal left-side song-info and timed Chinese/English lyrics panel behave?
+- [`music/music-page.md`](music/music-page.md): What is on the `/music` player page, how does it play a song, and how do I test it without sound?
 
 ## Research
 

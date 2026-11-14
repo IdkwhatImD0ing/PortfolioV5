@@ -153,7 +153,7 @@ The current player still loads only the current track and the next one.
 
 ## Playback behavior
 
-- Start muted, with a visible sound toggle. Browsers block autoplay with sound until the visitor clicks something.
+- Start with sound on, with a visible sound toggle. Browsers block autoplay with sound until the visitor clicks something, so the music starts on the first click, tap or key.
 - Crossfade over 2 to 4 seconds when the camera moves into a new area.
 - Remember the visitor's mute and volume choices.
 

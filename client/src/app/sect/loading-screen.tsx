@@ -55,8 +55,9 @@ function SunMoonEmblem({ className }: { className?: string }) {
  * a phone that picked High and lost its graphics context gets back with Low and Reload.
  *
  * Under the picker, "Turn on sound" (experience/sound-toggle.tsx
- * SoundPrompt): the music starts muted, and browsers allow sound only after a press, so the screen
- * the visitor waits on offers it. Its place is kept too ("reserve"), and stays empty without music.
+ * SoundPrompt): sound is on by default, but browsers allow it only after a press, so the screen the
+ * visitor waits on offers one; after any press it reads "Sound on" and a press there mutes. Its place
+ * is kept too ("reserve"), and stays empty without music.
  *
  * Once the scene is ready the screen stays up (`onEnter`): the bar reads Ready, and "Enter"
  * takes the gold beside "Read as page", in the place the page-view offer had, so nothing moves. The
