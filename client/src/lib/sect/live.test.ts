@@ -177,6 +177,14 @@ function webpAlpha(head: Uint8Array): boolean | null {
   return null;
 }
 
+/**
+ * Whether these first bytes of a file are a Git LFS pointer. The live maps are kept in Git LFS, and
+ * a checkout that does not fetch LFS (the CI's) holds this short text file in place of each map.
+ */
+function lfsPointer(head: Uint8Array): boolean {
+  return String.fromCharCode(...head).startsWith("version https://git-lfs");
+}
+
 describe("parseLiveIndex", () => {
   it("reads the bake's index.json", () => {
     const ix = parseLiveIndex(sample());
@@ -289,7 +297,10 @@ describe("the installed live maps (public/sect/full/live)", () => {
       expect(ix, stop).not.toBeNull();
       expect(ix!.bakedShadow, stop).toBe(true);
       for (const a of Object.values(ix!.atlases)) {
-        expect(webpAlpha(fileHead(path.join(root, liveMapFile(stop, a.ambient)))), `${stop}/${a.ambient}`).toBe(true);
+        const head = fileHead(path.join(root, liveMapFile(stop, a.ambient)));
+        // Without Git LFS (the CI) there is a pointer in the map's place, and no header to read.
+        if (lfsPointer(head)) continue;
+        expect(webpAlpha(head), `${stop}/${a.ambient}`).toBe(true);
       }
     }
   });
@@ -300,7 +311,9 @@ describe("the installed live maps (public/sect/full/live)", () => {
       expect(ix, stop).not.toBeNull();
       expect(ix!.bakedSoft, stop).toBe(true);
       for (const a of Object.values(ix!.atlases)) {
-        expect(webpAlpha(fileHead(path.join(root, liveMapFile(stop, a.normal)))), `${stop}/${a.normal}`).toBe(true);
+        const head = fileHead(path.join(root, liveMapFile(stop, a.normal)));
+        if (lfsPointer(head)) continue;
+        expect(webpAlpha(head), `${stop}/${a.normal}`).toBe(true);
       }
     }
   });
@@ -3002,5 +3015,15 @@ describe("the bake's soft shadow (index.json ambientAlpha)", () => {
     expect(webpAlpha(head("ALPH", { 20: 0x10 }))).toBeNull();
     expect(webpAlpha(ascii("RIFF0000WEBPVP8X0000000"))).toBeNull();
     expect(webpAlpha(ascii("not a webp at all, but long enough"))).toBeNull();
+  });
+
+  it("tells a Git LFS pointer from a map", () => {
+    const ascii = (s: string) => Uint8Array.from(s, (c) => c.charCodeAt(0));
+    // What a checkout without LFS holds, cut to the 32 bytes the tests read.
+    const pointer = "version https://git-lfs.github.com/spec/v1\noid sha256:0000\nsize 1\n";
+    expect(lfsPointer(ascii(pointer).subarray(0, 32))).toBe(true);
+    expect(webpAlpha(ascii(pointer).subarray(0, 32))).toBeNull();
+    expect(lfsPointer(ascii("RIFF0000WEBPVP8X00000000000000000"))).toBe(false);
+    expect(lfsPointer(new Uint8Array(0))).toBe(false);
   });
 });
