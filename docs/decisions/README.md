@@ -1097,6 +1097,38 @@ changes in one frame, with no fade (a fade would keep the heavy shader on while 
 [`../sect/veg-shells.md`](../sect/veg-shells.md); "The visitor always wins" in
 [`../sect/scroll-snap.md`](../sect/scroll-snap.md); "Tiers" in [`../sect/lux.md`](../sect/lux.md).
 
+### 2026-11-15 · Strong desktops load every place in the background
+
+**Decided.** On a High desktop with 16 GB of memory, once the visitor has pressed Enter the places outside the
+window load one at a time, the ones ahead first, until all eleven are held. They stay loaded. What is drawn
+follows the same rule as before, so the first view does not change, and later stops draw more places in full
+(nine at the mission hall where there were six). The first step down the quality ladder ends it for that visit
+and gives the memory back. Phones, tablets, Low, Medium, a line the browser calls 3G or slower and the data
+saver are as they were. A far stand-in no longer reads the built mask, so it keeps its rock look whatever has
+been loaded.
+
+**Why.** The owner asked what drawing far places in full would cost, saw the numbers and said: "I think the best
+thing is to be first load the gate and then ... once we display the gate, we start to slowly load the stuff in
+the background until everything". Measured at the gate on his card: holding all eleven takes 2.24 GB of
+textures where the window takes 0.87 GB, and the frame costs the same 3.0 ms, because a held place is not drawn
+outside the frames it is seen from. Drawing all eleven in full takes 5.5 ms and twice the draw calls for a
+change in 1.8 percent of the pixels. So the page holds everything and draws as before.
+
+**Checked.** One agent built it and a second checked it in a browser. The check failed once: the first build
+also called a line slow under 5 Mbps, and Chrome's own guess for a new profile is 1.3 to 1.5 Mbps, so nothing
+filled on the owner's PC. Only the browser's class of line counts now. The check also found the library's far
+stand-in turning into a smooth tube once the library had loaded, which is the built mask above. After both
+fixes: all eleven places in 7.4 to 8.8 s after Enter on localhost, never two loading at once. A full scroll
+after that had no frame over 50 ms and no stand-in at all (before: 1 to 5 frames over 50 ms, and every place a
+stand-in at some point). A far jump during filling took the same time as before. 2,632 tests, the typecheck and
+lint pass.
+
+**Limits.** A visitor who scrolls the moment the page opens gains little at first, since a background place
+waits for the camera to rest before it is prepared. Not tried on a slow GPU, a card with little memory, a real
+slow line, Firefox or Safari. Drawing far places in full is not built; it waits for the owner's eye.
+
+**See.** [`../sect/background-fill.md`](../sect/background-fill.md).
+
 ---
 
 ## Longer write-ups
@@ -1122,4 +1154,5 @@ changes in one frame, with no fade (a fade would keep the heavy shader on while 
 | 2026-11-13 | Lighting a stop without freezing the page: the four causes of the shader waits, the fix, the timing before and after, what is left | [`../sect/live-gate.md`](../sect/live-gate.md) |
 | 2026-11-14 | A smooth flight: the visitor flight as the measure, the three causes of stutter, the GPU queue and banded uploads, the Enter wait, the worker decode, old against new | [`../sect/smooth-flight.md`](../sect/smooth-flight.md) |
 | 2026-11-14 | Scroll snap: why scenes felt stuck, the short stops, which stop a rest glides to, the glide that keeps the camera's speed, what was checked | [`../sect/scroll-snap.md`](../sect/scroll-snap.md) |
+| 2026-11-15 | Every place loads in the background on a strong desktop: what holding and drawing cost, who gets it, how it stays out of the way, the stand-in that lost its rock | [`../sect/background-fill.md`](../sect/background-fill.md) |
 | 2026-11-09 | Round 55: the gate seen square on, and prop moves at four stops (designed and scripted, not baked yet) | [`../scene/placement-r55.md`](../scene/placement-r55.md) |

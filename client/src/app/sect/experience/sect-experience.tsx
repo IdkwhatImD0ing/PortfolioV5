@@ -160,7 +160,7 @@ import { disposeObjects } from "./prepare";
 import SectCanvas, { MOON_HOTSPOT } from "./scene";
 import { SoundPrompt } from "./sound-toggle";
 import { cameraStill, createStore, isMoving, recenterView, sceneView, wake, type SectStore } from "./store";
-import { ChunkStreamer, streamBudget } from "./streaming";
+import { ChunkStreamer, streamBudget, withoutFill, type StreamBudget } from "./streaming";
 import { SectVoice, startTalk, talismanBox, useVoiceRouting } from "./voice";
 
 /** "loaded": the scene has rendered behind the loading screen, which waits for "Enter". */
@@ -242,6 +242,12 @@ function probeDevice(): Probe {
 /** What the renderer does at tier `t` on this device (the ladder's top for it). */
 function tierLook(t: Tier, probe: Probe): Quality {
   return tierQuality(t, window.devicePixelRatio, { coarse: probe.coarse, appleGpu: probe.appleGpu });
+}
+
+/** The stream budget for tier `t` on this device, without background filling once it has struck out (fillStruck). */
+function pageBudget(t: Tier, probe: Probe, struck: boolean): StreamBudget {
+  const budget = streamBudget(t, probe.coarse);
+  return struck ? withoutFill(budget) : budget;
 }
 
 function maxScroll(): number {
@@ -393,6 +399,14 @@ export default function SectExperience() {
   const resume = useRef<{ u: number; frame: number | null } | null>(null);
   /** The world being built or shown, for a live change (set as soon as it exists, before React has it). */
   const world = useRef<{ ctx: WorldContext; streamer: ChunkStreamer } | null>(null);
+  /**
+   * One strike: the first step down the quality ladder in this page view ends background filling
+   * (streaming.ts STREAM_BUDGETS.everything) for good. A machine short on GPU memory shows it as slow
+   * frames, and the ladder's step is the only sign of that the page has. It never comes back (a step
+   * up does not undo it), so the stream cannot swing between filling and dropping. Kept for the page
+   * view: a world loaded again for another tier starts without filling too.
+   */
+  const fillStruck = useRef(false);
   /** The focus was in the graphics popover when the page loaded again: the loading screen's picker takes it. */
   const [refocusPicker, setRefocusPicker] = useState(false);
 
@@ -610,7 +624,7 @@ export default function SectExperience() {
         // A set's preparation takes bigger slices of the main thread while nothing of the scene shows.
         c.sliceMs = () => PREPARE_SLICE[sceneView(s)];
         // Phones and tablets keep only the area they are in (the backdrop's proxies stand in for the rest).
-        const budget = streamBudget(t, probe.coarse);
+        const budget = pageBudget(t, probe, fillStruck.current);
         const st: ChunkStreamer = new ChunkStreamer(
           c,
           () => {
@@ -774,6 +788,9 @@ export default function SectExperience() {
       else if (back && cameraStill(store)) lookingBack = true;
       setLookedBack(ready && back);
       setIntroUp(introPresence(store.u, 12) > 0.01);
+      // Background loads (a strong desktop's budget) only once the visitor is in: the loading
+      // screen's wait for the first stop never shares the line with them.
+      streamer.fillOpen = phase === "ready";
       streamer.update(store.frame, target, ready && !isMoving(store), undefined, lookingBack);
     };
     tick();
@@ -812,17 +829,26 @@ export default function SectExperience() {
   keepLookRef.current = keepLook;
   // A step is worked out from ladderNow here, not inside a state updater: React runs updaters twice
   // in development, and the live light count would go up twice for one step.
-  const stepLadder = useCallback((next: Quality | null) => {
-    if (next) {
-      if (ladderNow.current.liveLight && !next.liveLight) setLiveOffs((n) => n + 1);
-      ladderNow.current = next;
-      setQuality(next);
-    }
-    return ladderNow.current;
-  }, []);
+  // `down`: a step down, the first of which ends background filling (fillStruck): the live stream
+  // drops at its next update what its window does not hold, which gives that memory back.
+  const stepLadder = useCallback(
+    (next: Quality | null, down = false) => {
+      if (next) {
+        if (down && !fillStruck.current) {
+          fillStruck.current = true;
+          world.current?.streamer.setBudget(pageBudget(shownTier.current, probe, true));
+        }
+        if (ladderNow.current.liveLight && !next.liveLight) setLiveOffs((n) => n + 1);
+        ladderNow.current = next;
+        setQuality(next);
+      }
+      return ladderNow.current;
+    },
+    [probe],
+  );
   const onDegrade = useCallback(
     (cadenceMs: number | null) => {
-      stepLadder(degradeQuality(ladderNow.current, window.devicePixelRatio, { keepLook: keepLookRef.current, cadenceMs }));
+      stepLadder(degradeQuality(ladderNow.current, window.devicePixelRatio, { keepLook: keepLookRef.current, cadenceMs }), true);
     },
     [stepLadder],
   );
@@ -836,7 +862,7 @@ export default function SectExperience() {
     const hook = {
       quality: () => ladderNow.current,
       ceiling: () => ceiling,
-      down: () => stepLadder(degradeQuality(ladderNow.current, window.devicePixelRatio, { keepLook: false, cadenceMs: null })),
+      down: () => stepLadder(degradeQuality(ladderNow.current, window.devicePixelRatio, { keepLook: false, cadenceMs: null }), true),
       up: () => stepLadder(upgradeQuality(ladderNow.current, ceiling, window.devicePixelRatio)),
     };
     const w = window as unknown as { __sectLadder?: typeof hook };
@@ -927,7 +953,7 @@ export default function SectExperience() {
       const w = world.current;
       if (w) {
         retuneWorld(w.ctx, tier);
-        w.streamer.setBudget(streamBudget(tier, probe.coarse));
+        w.streamer.setBudget(pageBudget(tier, probe, fillStruck.current));
       }
       return;
     }

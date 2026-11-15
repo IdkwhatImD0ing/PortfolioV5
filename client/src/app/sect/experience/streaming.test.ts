@@ -48,9 +48,11 @@ import {
   chunkTexBytes,
   estimateTexBytes,
   retryDelayMs,
+  fillMemory,
   roomyMemory,
   streamBudget,
   textureBytes,
+  withoutFill,
 } from "./streaming";
 import type { WorldContext } from "./assets";
 
@@ -471,7 +473,10 @@ describe("ChunkStreamer", () => {
     const roomy = { deviceMemory: 8, hardwareConcurrency: 16 };
     const small = { deviceMemory: 4, hardwareConcurrency: 4 };
     expect(streamBudget("high", false, small, false)).toBe(STREAM_BUDGETS.full);
-    expect(streamBudget("high", false, roomy, false)).toBe(STREAM_BUDGETS.full);
+    // Two each side on High with 8 GB too; with 16 GB the rest fill in the background (below).
+    expect(streamBudget("high", false, roomy, false, {})).toBe(STREAM_BUDGETS.full);
+    expect(streamBudget("high", false, { deviceMemory: 16, hardwareConcurrency: 16 }, false, {})).toBe(STREAM_BUDGETS.everything);
+    expect(STREAM_BUDGETS.everything.around).toEqual(STREAM_BUDGETS.full.around);
     expect(streamBudget("mid", false, roomy, false)).toBe(STREAM_BUDGETS.full);
     expect(streamBudget("mid", false, small, false)).toBe(STREAM_BUDGETS.narrow);
     expect(streamBudget("low", false, roomy, false)).toBe(STREAM_BUDGETS.low);
@@ -527,6 +532,170 @@ describe("ChunkStreamer", () => {
     st.setGlobalTris(1_450_000);
     expect(st.status().globalTris).toBe(1_450_000);
     expect(st.update(350, null, false)!.need).toEqual(before);
+  });
+});
+
+describe("ChunkStreamer filling in the background (a strong desktop)", () => {
+  const everything = STREAM_BUDGETS.everything;
+
+  it("fills only on a High desktop with 16 GB, on a line that is not slow, without the data saver", () => {
+    const roomy = { deviceMemory: 16, hardwareConcurrency: 16 };
+    const small = { deviceMemory: 4, hardwareConcurrency: 4 };
+    const fast = { effectiveType: "4g" };
+    expect(streamBudget("high", false, roomy, false, fast)).toBe(everything);
+    expect(streamBudget("high", false, { deviceMemory: 32, hardwareConcurrency: 16 }, false, fast)).toBe(everything);
+    // The line unknown (Firefox, Safari), and the memory hidden with many cores (fillMemory).
+    expect(streamBudget("high", false, { hardwareConcurrency: 16 }, false, {})).toBe(everything);
+    expect(streamBudget("high", false, { hardwareConcurrency: 10 }, false, {})).toBe(everything);
+    // 8 GB holds the window, not every area: a known 8 wins over many cores, and 8 cores stand for 8 GB.
+    expect(streamBudget("high", false, { deviceMemory: 8, hardwareConcurrency: 32 }, false, fast)).toBe(STREAM_BUDGETS.full);
+    expect(streamBudget("high", false, { hardwareConcurrency: 8 }, false, {})).toBe(STREAM_BUDGETS.full);
+    expect(fillMemory({})).toBe(false);
+    expect(streamBudget("high", false, small, false, fast)).toBe(STREAM_BUDGETS.full);
+    expect(streamBudget("mid", false, roomy, false, fast)).toBe(STREAM_BUDGETS.full);
+    expect(streamBudget("low", false, roomy, false, fast)).toBe(STREAM_BUDGETS.low);
+    // Any touch screen.
+    expect(streamBudget("high", true, roomy, false, fast)).toBe(STREAM_BUDGETS.lean);
+    expect(streamBudget("mid", true, roomy, false, fast)).toBe(STREAM_BUDGETS.low);
+    // The data saver: nothing ahead, nothing in the background.
+    expect(streamBudget("high", false, roomy, true, fast)).toEqual({ ...STREAM_BUDGETS.full, prefetch: "off" });
+    // A slow line: the browser calls it 3G or slower.
+    for (const slow of [{ effectiveType: "3g" }, { effectiveType: "2g" }, { effectiveType: "slow-2g" }]) {
+      expect(streamBudget("high", false, roomy, false, slow)).toBe(STREAM_BUDGETS.full);
+    }
+    // Every other budget never fills; this one is the desktop window plus 3 GB of texture memory.
+    for (const b of [STREAM_BUDGETS.full, STREAM_BUDGETS.narrow, STREAM_BUDGETS.low, STREAM_BUDGETS.lean]) expect(b.fillTexBytes).toBe(0);
+    expect(everything).toEqual({ ...STREAM_BUDGETS.full, fillTexBytes: 3 * 2 ** 30 });
+  });
+
+  it("reads the line from the browser, and Chrome's low first bandwidth guess does not stop filling", () => {
+    const roomy = { deviceMemory: 16, hardwareConcurrency: 16 };
+    const saved = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    const browser = (connection: object) =>
+      Object.defineProperty(globalThis, "navigator", { value: { connection }, configurable: true, writable: true });
+    try {
+      // What Chrome reported on a fast desktop line, on localhost and in a new profile: it leaves out
+      // local traffic and guesses about 1.3-1.5 Mbps until it has seen a fast download.
+      browser({ effectiveType: "4g", downlink: 1.45, rtt: 100, saveData: false });
+      expect(streamBudget("high", false, roomy)).toBe(everything);
+      browser({ effectiveType: "4g", downlink: 1.3, rtt: 50 });
+      expect(streamBudget("high", false, roomy)).toBe(everything);
+      // The browser calls the line 3G: no filling.
+      browser({ effectiveType: "3g", downlink: 0.4, rtt: 400 });
+      expect(streamBudget("high", false, roomy)).toBe(STREAM_BUDGETS.full);
+      // The data saver, read from the browser too: nothing ahead, nothing in the background.
+      browser({ effectiveType: "4g", downlink: 10, saveData: true });
+      expect(streamBudget("high", false, roomy)).toEqual({ ...STREAM_BUDGETS.full, prefetch: "off" });
+    } finally {
+      if (saved) Object.defineProperty(globalThis, "navigator", saved);
+      else delete (globalThis as { navigator?: unknown }).navigator;
+    }
+  });
+
+  it("withoutFill gives the same budget with filling off", () => {
+    expect(withoutFill(everything)).toEqual(STREAM_BUDGETS.full);
+    expect(withoutFill(STREAM_BUDGETS.full)).toBe(STREAM_BUDGETS.full);
+    expect(withoutFill(STREAM_BUDGETS.low)).toBe(STREAM_BUDGETS.low);
+  });
+
+  it("starts nothing in the background until the page opens it, nor while fast travel's wait watches a stop", async () => {
+    const st = new ChunkStreamer(eight(), () => {}, everything);
+    await rest(st, 50);
+    expect(ids(st)).toEqual(["gate", "mirror", "forge", "arena"]);
+    st.update(50, null, true);
+    expect(loads).toEqual([]);
+    st.fillOpen = true;
+    st.settleAt(50);
+    st.update(50, null, true);
+    expect(loads).toEqual([]);
+    // Once the wait has let go, the next area past the window and the spare slot starts, mid-flight too.
+    const now = performance.now();
+    const clock = vi.spyOn(performance, "now").mockReturnValue(now + 1000);
+    try {
+      st.update(50, null, false);
+      expect(loads.map((l) => l.id)).toEqual(["mission"]);
+      expect(st.status().filling).toEqual(["mission"]);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("loads one area at a time, the next once the last is on the GPU, until every area is held; striking it out gives them back", async () => {
+    const st = new ChunkStreamer(eight(), () => {}, everything);
+    await rest(st, 50);
+    st.fillOpen = true;
+    const order: string[] = [];
+    for (let i = 0; i < EIGHT.length; i++) {
+      st.update(50, null, false);
+      expect(loads.length).toBeLessThanOrEqual(1);
+      if (loads.length === 0) break;
+      const id = loads[0].id;
+      order.push(id);
+      // Before it has arrived, and once it has but is not on the GPU yet: nothing more starts.
+      st.update(50, null, false);
+      expect(loads.map((l) => l.id)).toEqual([id]);
+      loads.splice(0)[0].resolve(null);
+      await flush();
+      expect(st.status().filling).toEqual([]);
+      st.update(50, null, false);
+      expect(loads).toEqual([]);
+      st.markReady(id);
+    }
+    expect(order).toEqual(["mission", "library", "steles", "scroll"]);
+    expect(ids(st)).toEqual(EIGHT);
+    // All held along the flight and back: nothing drops or loads again.
+    for (const f of [150, 450, 750, 350, 50]) {
+      expect(st.update(f, null, false)!.drop).toEqual([]);
+      expect(loads).toEqual([]);
+    }
+    // The page's one strike (a step down the quality ladder): what the window does not hold goes.
+    st.setBudget(withoutFill(everything));
+    st.update(50, null, true);
+    expect(ids(st)).toEqual(["gate", "mirror", "forge", "arena"]);
+  });
+
+  it("a needed area never waits behind a background download: it stops, and the needed one starts at once", async () => {
+    const st = new ChunkStreamer(eight(), () => {}, everything);
+    await rest(st, 50);
+    st.fillOpen = true;
+    st.update(50, null, false);
+    const mission = loads.find((l) => l.id === "mission")!;
+    // A far jump to the scroll: its area loads now, not after the mission's download.
+    st.update(50, 750, false);
+    expect(mission.signal.aborted).toBe(true);
+    expect(st.status().filling).toEqual([]);
+    expect(st.status().loading).toEqual(["scroll"]);
+  });
+
+  it("a background load the place needs goes on; one whose bytes are in is left to finish", async () => {
+    const st = new ChunkStreamer(eight(), () => {}, everything);
+    await rest(st, 50);
+    st.fillOpen = true;
+    st.update(50, null, false);
+    const mission = loads.find((l) => l.id === "mission")!;
+    // At the arena the mission is in the window (the library is still to load): it goes on.
+    st.update(350, null, false);
+    expect(mission.signal.aborted).toBe(false);
+    expect(st.plan!.load).toEqual(["library"]);
+    // Back at the gate with its bytes in, then a jump: it is parsed and kept, not thrown away.
+    st.update(50, null, false);
+    arrive("mission");
+    st.update(50, 750, false);
+    expect(mission.signal.aborted).toBe(false);
+    expect(loads.map((l) => l.id)).toEqual(["mission", "scroll"]);
+  });
+
+  it("a window load the camera has moved away from stops for a needed one, as it is cancelled without filling", () => {
+    for (const budget of [everything, STREAM_BUDGETS.full]) {
+      loads.length = 0;
+      const st = new ChunkStreamer(eight(), () => {}, budget);
+      // At the mirror its own area loads first; the camera is at the library before it is in.
+      st.update(150, null, false);
+      const mirror = loads.find((l) => l.id === "mirror")!;
+      st.update(550, null, false);
+      expect(mirror.signal.aborted).toBe(true);
+      expect(loads.map((l) => l.id)).toEqual(["mirror", "library"]);
+    }
   });
 });
 

@@ -19,6 +19,7 @@ listed under "Kept beside the code".
 - [`sect/flight-sweep.md`](sect/flight-sweep.md): How was the whole flight checked for flaws, what did that change (mist, turned views, beams, the summit), and what was tried and taken back?
 - [`sect/scroll-snap.md`](sect/scroll-snap.md): Why does scrolling never stick on a scene but always end on one? The short stops, which stop a rest glides to, the glide, and what was checked.
 - [`sect/smooth-flight.md`](sect/smooth-flight.md): What made the flight stutter on the real visitor path, how is smoothness measured (the visitor flight on a production build), and what do the GPU queue, banded uploads, the Enter wait and the worker decode do?
+- [`sect/background-fill.md`](sect/background-fill.md): What does it cost to hold every place, and to draw every place? Who gets the background loading after Enter, how does it stay out of the way, and why did a far pillar lose its rock?
 - [`sect/music-volume-slider.md`](sect/music-volume-slider.md): When does the music volume slider show, and when does it hide?
 - [`content/profile-content.md`](content/profile-content.md): Which career, education and hackathon facts are confirmed, and how must they be worded?
 - [`content/project-modal.md`](content/project-modal.md): Where do project cards and the forge reader get their data, and when may a project show an award?

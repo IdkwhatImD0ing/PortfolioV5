@@ -1099,12 +1099,18 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
           tree ? "  sectTexel = sectTreeLift( sectTexel );" : "",
           // 1 on the range, 0 at the stops (range-look.ts sectRangeW; rock also 0 under anything
           // built, sectBuilt: stair piers are rock); the detail's range layers read it too.
+          // An area's far stand-in (prepare.ts SECT_STANDIN) does not read the built mask: the mask
+          // fills as each area's set is prepared and is never emptied, so a stand-in's rock lost its
+          // range look (pale, with dark streaks) once its own area had been loaded, and a spire
+          // seen from far turned into a smooth tube. It looks the same whatever has been loaded.
           // A card far from every area (its vertices' margin, interpolated, is past CARD_RANGE_MARGIN,
           // more than the interpolation can lose) is on the range: exactly 1, without the area loop.
           cardGrade
             ? `  float sectRw = 1.0;\n  if ( vSectRm < ${glslFloat(CARD_RANGE_MARGIN)} ) sectRw = sectRangeW( vSectWorld );`
             : range
-              ? `  float sectRw = sectRangeW( vSectWorld )${rock ? " * ( 1.0 - sectBuilt( vSectWorld ) )" : ""};`
+              ? rock
+                ? "#ifdef SECT_STANDIN\n  float sectRw = sectRangeW( vSectWorld );\n#else\n  float sectRw = sectRangeW( vSectWorld ) * ( 1.0 - sectBuilt( vSectWorld ) );\n#endif"
+                : "  float sectRw = sectRangeW( vSectWorld );"
               : "",
           // Foliage, mossy rock and lawns on the range keep more of their green; range rock is paler
           // (range-look.ts foliageGradeStatements, rockGradeStatements, groundGradeStatements).

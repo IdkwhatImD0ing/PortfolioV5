@@ -26,6 +26,11 @@ layer from the page; it fades out by 700 m, and the spires stand 0.5 to 3 km off
   of green ahead of blue, not lacquer red, not marble white, or grey, dark and steep). Walls, roofs
   and paving get their baked colour back.
 
+- **A stand-in does not read the built mask (2026-11-15).** Rock on the range is pale with dark
+  streaks, except under anything built. That mask fills as each area's set loads, so a stand-in
+  lost its range look once its own area had been loaded and went back to a smooth tube. Now it
+  looks the same whatever has loaded. See [`background-fill.md`](background-fill.md).
+
 One trap on the way: the loader strips the dots from node names, so `far.c0` arrives as `farc0`
 under `backdropfar`. `isFarSetMesh` accepts both.
 

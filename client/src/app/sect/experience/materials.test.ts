@@ -433,6 +433,8 @@ describe("detail layers on baked rock and ground", () => {
       expect(count(fs, "uniform float uSectRockMid;")).toBe(kind === "rock" ? 1 : 0);
       // Rock under anything built (stair piers) keeps its stone; lawns do not ask.
       expect(fs.includes("sectRangeW( vSectWorld ) * ( 1.0 - sectBuilt( vSectWorld ) )")).toBe(kind === "rock");
+      // An area's far stand-in does not read the built mask: it looks the same before and after its area has loaded.
+      expect(fs.includes("#ifdef SECT_STANDIN\n  float sectRw = sectRangeW( vSectWorld );\n#else\n  float sectRw = sectRangeW( vSectWorld ) * ( 1.0 - sectBuilt( vSectWorld ) );\n#endif")).toBe(kind === "rock");
       for (const name of includes(fs)) expect((ShaderChunk as unknown as Record<string, string>)[name], name).toBeTypeOf("string");
     }
   });

@@ -2524,7 +2524,7 @@ function DebugProbe({
     const chunkLine = st
       ? [
           ...st.resident.map((c) => `${c.id}${c.drawn ? "*" : c.ready ? "" : "~"}`),
-          ...st.loading.map((id) => `${id}...`),
+          ...st.loading.map((id) => `${id}${st.filling.includes(id) ? "+" : ""}...`),
           ...st.failed.map((id) => `${id}!`),
         ].join(" ") || "none"
       : "none";
