@@ -475,6 +475,7 @@ export function* grassEdgeSteps(ground: GroundSoup, rock: RockSoup): Generator<v
   // Triangles with two corners welded into one are slivers under 8 cm: they would count an edge twice.
   const live = new Uint8Array(nT);
   for (let t = 0; t < nT; t++) {
+    if (t % SLICE === SLICE - 1) yield;
     const a = rep[t * 3], b = rep[t * 3 + 1], c = rep[t * 3 + 2];
     live[t] = a !== b && b !== c && a !== c ? 1 : 0;
   }
@@ -482,6 +483,7 @@ export function* grassEdgeSteps(ground: GroundSoup, rock: RockSoup): Generator<v
   // Every edge filed under its lower welded vertex (CSR): `other` is the upper one, `ent` the corner.
   const off = new Int32Array(w.count + 1);
   for (let t = 0; t < nT; t++) {
+    if (t % SLICE === SLICE - 1) yield;
     if (!live[t]) continue;
     for (let k = 0; k < 3; k++) off[Math.min(rep[t * 3 + k], rep[t * 3 + ((k + 1) % 3)]) + 1]++;
   }
@@ -490,6 +492,7 @@ export function* grassEdgeSteps(ground: GroundSoup, rock: RockSoup): Generator<v
   const other = new Int32Array(off[w.count]);
   const ent = new Int32Array(off[w.count]);
   for (let t = 0; t < nT; t++) {
+    if (t % SLICE === SLICE - 1) yield;
     if (!live[t]) continue;
     for (let k = 0; k < 3; k++) {
       const i = rep[t * 3 + k], j = rep[t * 3 + ((k + 1) % 3)];
@@ -502,6 +505,7 @@ export function* grassEdgeSteps(ground: GroundSoup, rock: RockSoup): Generator<v
   const open = new Int32Array(other.length).fill(-1);
   let nOpen = 0;
   for (let v = 0; v < w.count; v++) {
+    if (v % SLICE === SLICE - 1) yield;
     for (let s = off[v]; s < off[v + 1]; s++) {
       let n = 0;
       for (let q = off[v]; q < off[v + 1]; q++) if (other[q] === other[s]) n++;
@@ -509,7 +513,10 @@ export function* grassEdgeSteps(ground: GroundSoup, rock: RockSoup): Generator<v
     }
   }
   const openEnt = new Int32Array(nOpen);
-  for (let s = 0; s < other.length; s++) if (open[s] >= 0) openEnt[open[s]] = ent[s];
+  for (let s = 0; s < other.length; s++) {
+    if (s % (4 * SLICE) === 4 * SLICE - 1) yield;
+    if (open[s] >= 0) openEnt[open[s]] = ent[s];
+  }
   const findOpen = (i: number, j: number): number => {
     const lo = Math.min(i, j), hi = Math.max(i, j);
     for (let s = off[lo]; s < off[lo + 1]; s++) if (other[s] === hi) return open[s];
@@ -525,6 +532,7 @@ export function* grassEdgeSteps(ground: GroundSoup, rock: RockSoup): Generator<v
   const out = new Float32Array(nOpen * 2);
   const flat = new Uint8Array(nOpen);
   for (let e = 0; e < nOpen; e++) {
+    if (e % SLICE === SLICE - 1) yield;
     const t = Math.floor(openEnt[e] / 3);
     const k0 = openEnt[e] % 3, k1 = (k0 + 1) % 3, k2 = (k0 + 2) % 3;
     const o = t * 9;

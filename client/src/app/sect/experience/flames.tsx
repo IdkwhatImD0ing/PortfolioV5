@@ -34,7 +34,7 @@
  * sparks, the light holds as baked and the molten glow stops flickering.
  */
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   AddEquation,
   Box3,
@@ -100,6 +100,7 @@ import { distanceFade, fxTier } from "@/lib/sect/water";
 import type { LoadedSet } from "./assets";
 import { FORGE_FIRE_GLOW } from "./fx";
 import { getNoiseTexture, SOFT_DEPTH } from "./materials";
+import { keepShaderProgramsBeforeFree, materialsOf, primePrograms, programsReady } from "./program-prime";
 import type { SectStore } from "./store";
 
 const f = glslFloat;
@@ -882,14 +883,25 @@ export function Flames({ set, meta, store, fog, quality, overlay, debug = false 
       sphere: new Sphere(),
       flick: new Float32Array(sources.length),
       control: { enabled: true, show: { light: true, mouths: true, flames: true, embers: true } as Record<string, boolean> },
+      /**
+       * The warm-up below has its programs linked and their first use run: until then the fire is
+       * not drawn (its carvings show, as for a fire out of view), so its first frame waits on nothing.
+       */
+      primed: false,
     };
   }, [fires, fog, meta.fog.color, tier]);
 
+  // What the cleanup below compiles the kept copies with (read when it runs, not when it was made).
+  const keepWith = useRef({ gl, camera, post: quality.post });
+  keepWith.current = { gl, camera, post: quality.post };
   useEffect(() => {
     if (!built) return;
     overlay.add(built.group);
     return () => {
       overlay.remove(built.group);
+      // Its programs stay for the page (the fire goes with its set; coming back links nothing).
+      const k = keepWith.current;
+      keepShaderProgramsBeforeFree(k.gl, [built.group], k.camera, overlay, k.post);
       built.quad.dispose();
       for (const m of built.meshes) {
         m.geometry.dispose();
@@ -923,8 +935,18 @@ export function Flames({ set, meta, store, fog, quality, overlay, debug = false 
       const prev = gl.getRenderTarget();
       try {
         gl.setRenderTarget(target);
-        void gl.compileAsync(built.group, camera, overlay).catch((e) => console.warn("[sect] fire warm-up failed", e));
+        // Its first use run as soon as it is ready too (program-prime.ts), not on the first frame it shows.
+        const mats = materialsOf([built.group]);
+        void gl
+          .compileAsync(built.group, camera, overlay)
+          .then(() => programsReady(gl, mats))
+          .then(() => (cancelled ? 0 : primePrograms(gl, mats)))
+          .catch((e) => console.warn("[sect] fire warm-up failed", e))
+          .finally(() => {
+            if (!cancelled) built.primed = true;
+          });
       } catch (e) {
+        built.primed = true;
         console.warn("[sect] fire warm-up failed", e);
       } finally {
         gl.setRenderTarget(prev);
@@ -967,7 +989,7 @@ export function Flames({ set, meta, store, fog, quality, overlay, debug = false 
   useFrame((state) => {
     if (!built || !fires || !set) return;
     const on = built.src.uOn.value;
-    const live = set.drawn && built.control.enabled;
+    const live = set.drawn && built.control.enabled && built.primed;
     let any = false;
     if (live) {
       built.m.multiplyMatrices(state.camera.projectionMatrix, state.camera.matrixWorldInverse);

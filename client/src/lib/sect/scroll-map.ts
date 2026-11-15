@@ -1,7 +1,8 @@
 /**
  * Scroll position -> camera frame, with dwell ("hold") zones where the camera stops so an overlay
  * panel can be read. Distances are in abstract scroll units; the page decides how many pixels a
- * unit is. Moving segments are eased so the camera slows into each hold and speeds out of it.
+ * unit is. Moving segments can be eased so the camera slows into each hold and speeds out of it (the
+ * flight's own feel, FLIGHT_SCROLL, has neither long holds nor easing: it snaps instead, snap.ts).
  */
 import { clamp } from "./camera-path";
 import type { Hold } from "./types";
@@ -49,11 +50,18 @@ export interface ScrollMap {
 }
 
 /**
- * The flight's scroll feel, the same as the first test's: one unit per frame on moving segments
- * and 42 units of dwell at every hold. With eleven holds the page simply gets longer (about 36
- * screens), so each leg between two areas scrolls like the gate-to-mirror leg did.
+ * The flight's scroll feel: one unit per frame, the same pace everywhere, and no dead stretch at a
+ * stop. The camera stops at a stop because the visitor's scrolling rested and it glided there
+ * (snap.ts), not because the scroll position sits in a long hold: the 42-unit holds (5 to 7 wheel
+ * clicks where the camera stood still) and the easing into them (45% speed at every stop) made fast
+ * scrolling stick on every scene. A hold keeps one unit (about 18 px on a 1080 px screen), so "inside
+ * a hold zone" still means at the stop and a scroll position a few pixels off still shows exactly the
+ * hold frame; scrolling through at a slow 20 units a second it stands still for 50 ms. No easing: the
+ * film's own camera already slows into six of the eleven hold frames (it passes the gate, the
+ * mirror, the forge, the mission hall, the jade slip and the summit at a quarter to 70% of its speed
+ * in the middle of their legs), so easing on top made those stops drag.
  */
-export const FLIGHT_SCROLL: Required<ScrollMapOptions> = { unitsPerFrame: 1, dwellUnits: 42, ease: 0.55 };
+export const FLIGHT_SCROLL: Required<ScrollMapOptions> = { unitsPerFrame: 1, dwellUnits: 1, ease: 0 };
 
 export function easeInOut(t: number, e: number): number {
   const x = clamp(t, 0, 1);

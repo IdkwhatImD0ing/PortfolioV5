@@ -55,6 +55,15 @@ export const CARD_LOOK = {
    * f1055 look-down still showed X crowns, since most of that frame looks down 25-40 degrees.)
    */
   viewFade: { top: [0.2, 0.42] as const, side: [0.38, 0.6] as const },
+  /**
+   * Where the crown shells take over from the sprite cards (lib/sect/veg.ts): ground cells `cellM` metres across
+   * switch between `from` and `to` metres from the camera (level distance to the cell's centre), each cell at its
+   * own distance, so there is no line across the forest. Near, a card has the baked detail; far and from above its
+   * flat top quad reads as a plate, and the shell reads as a crown. `above`: the camera's height over the tree
+   * divided by its level distance (the tangent of the angle it looks down at) from which the shell draws at any
+   * distance, again per cell.
+   */
+  farCut: { cellM: 9, from: 150, to: 230, above: [0.2, 0.34] as const },
 };
 
 export type CardLook = typeof CARD_LOOK;
@@ -168,6 +177,27 @@ export function cardViewFadeGlsl(look: CardLook = CARD_LOOK): string {
     "    }",
     "  }",
   ].join("\n");
+}
+
+/**
+ * The ground cell of a world position and that cell's switch distance: the same lines in the card's fragment stage
+ * and the shell's vertex stage, so one of the two always draws a tree. `at` is a vec3 expression, `lim` a vec2.
+ */
+export function farCutCellGlsl(at: string, lim: string, look: CardLook = CARD_LOOK): string {
+  const c = glslFloat(look.farCut.cellM);
+  return [
+    `    vec2 sectCell = floor( ${at}.xz / ${c} );`,
+    "    float sectCellH = fract( sin( dot( sectCell, vec2( 12.9898, 78.233 ) ) ) * 43758.5453 );",
+    `    float sectCellD = distance( cameraPosition.xz, ( sectCell + 0.5 ) * ${c} );`,
+    // Seen from above a card's flat top quad is what shows: the shell takes over there at any distance.
+    `    float sectCellEl = ( cameraPosition.y - ${at}.y ) / max( sectCellD, 1.0 );`,
+    `    bool sectCellFar = sectCellD > mix( ${lim}.x, ${lim}.y, sectCellH ) || sectCellEl > mix( ${glslFloat(look.farCut.above[0])}, ${glslFloat(look.farCut.above[1])}, sectCellH );`,
+  ].join("\n");
+}
+
+/** GLSL after a sprite card's map: nothing is drawn past the cell's switch distance while uSectCardFar.y > 0. */
+export function cardFarCutGlsl(look: CardLook = CARD_LOOK): string {
+  return ["  if ( uSectCardFar.y > 0.0 ) {", farCutCellGlsl("vSectCardWorld", "uSectCardFar", look), "    if ( sectCellFar ) discard;", "  }"].join("\n");
 }
 
 /**

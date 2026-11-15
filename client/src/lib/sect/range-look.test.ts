@@ -180,8 +180,9 @@ describe("range foliage", () => {
       expect(s, "saturation").toBeLessThan(0.6);
       expect(luma(after)).toBeGreaterThan(luma(before));
     }
-    // The sunlit pad was olive-brown (the grade takes all of green's lead); now it is green.
-    expect(screenHsv(gradeLinear(PAD_SUN))[0]).toBeLessThan(65);
+    // The grade alone leaves the sunlit pad yellow-olive (it takes part of green's lead); the
+    // range's foliage turns it greener.
+    expect(screenHsv(foliageLinear(PAD_SUN, 1, 200))[0]).toBeGreaterThan(screenHsv(gradeLinear(PAD_SUN))[0] + 5);
   });
 
   it("holds the saturation cap on the square root, keeping the largest channel", () => {
@@ -283,13 +284,19 @@ describe("range rock and lawns", () => {
     expect(screenHsv(after)[0]).toBeGreaterThan(screenHsv(before)[0]);
   });
 
-  it("greens range lawns only past the grass tufts' reach", () => {
+  it("leaves range lawns within the grass tufts' reach, and lawns off the range, as graded", () => {
     const lawn = hexToLinear("#6a7a3a");
     const g = RANGE_LOOK.ground.tame;
     groundRangeLinear(lawn, 1, g.near - 1).forEach((v, i) => expect(v).toBeCloseTo(gradeLinear(lawn)[i], 12));
     groundRangeLinear(lawn, 0, 500).forEach((v, i) => expect(v).toBeCloseTo(gradeLinear(lawn)[i], 12));
+  });
+
+  it("greens range lawns past the grass tufts' reach", () => {
+    const lawn = hexToLinear("#6a7a3a");
+    const g = RANGE_LOOK.ground.tame;
     const far = groundRangeLinear(lawn, 1, g.far + 10);
-    expect(screenHsv(far)[0]).toBeGreaterThan(screenHsv(gradeLinear(lawn))[0] + 5);
+    // The grade itself keeps most of green's lead since round 57, so the far lawn's gain over it is smaller.
+    expect(screenHsv(far)[0]).toBeGreaterThan(screenHsv(gradeLinear(lawn))[0] + 3);
   });
 
   it("emits the rock and lawn GLSL", () => {
@@ -430,6 +437,32 @@ describe("built mask", () => {
     growBuilt(g);
     expect(builtAt(g, 21, -79)).toBe(1);
     expect(builtAt(g, 0.5, 0.5)).toBe(0);
+  });
+
+  it("grows only around new marks, giving the mask a whole-grid grow gives", () => {
+    const g = createBuiltGrid(AREAS);
+    // Batches of upward triangles in several places, grown after each batch (as each set commits).
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    const span = (n: number, o: number) => o + rnd() * n;
+    for (let batch = 0; batch < 5; batch++) {
+      const tris: number[] = [];
+      const cx = span(150, -80);
+      const cz = span(280, -320);
+      for (let k = 0; k < 30; k++) tris.push(...flat(cx + span(30, 0), cz + span(30, 0), 100, 1 + rnd() * 6));
+      markBuiltTriangles(g, src(tris), null, 0, tris.length / 9);
+      expect(g.dirty).not.toBeNull();
+      growBuilt(g);
+      expect(g.dirty).toBeNull();
+      // The same marks grown over the whole grid (a grid with no `dirty`).
+      const whole = { ...g, mask: new Uint8Array(g.mask.length), dirty: undefined };
+      growBuilt(whole);
+      expect(Buffer.from(g.mask).equals(Buffer.from(whole.mask))).toBe(true);
+    }
+    // Nothing new marked: nothing to do, the mask stays.
+    const before = g.mask.slice();
+    growBuilt(g);
+    expect(Buffer.from(g.mask).equals(Buffer.from(before))).toBe(true);
   });
 
   it("emits sectBuilt with its texture and box", () => {

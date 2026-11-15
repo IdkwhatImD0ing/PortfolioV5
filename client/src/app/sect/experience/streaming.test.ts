@@ -5,7 +5,8 @@ const loads: {
   files: string[];
   signal: AbortSignal;
   calm?: () => Promise<void>;
-  onBytes?: (url: string) => (loaded: number, total: number) => void;
+  onBytes?: (url: string) => (loaded: number, total: number, done?: boolean) => void;
+  onFileDone?: (url: string) => void;
   resolve: (set: unknown) => void;
   reject: (e: unknown) => void;
 }[] = [];
@@ -20,7 +21,7 @@ vi.mock("./assets", () => ({
     set.drawn = false;
     for (const r of set.scenes) r.visible = false;
   },
-  loadSet: vi.fn((ctx: WorldContext, id: string, need: [number, number], files: string[], opts: { signal: AbortSignal; calm?: () => Promise<void>; onBytes?: (url: string) => (loaded: number, total: number) => void }) => {
+  loadSet: vi.fn((ctx: WorldContext, id: string, need: [number, number], files: string[], opts: { signal: AbortSignal; calm?: () => Promise<void>; onBytes?: (url: string) => (loaded: number, total: number, done?: boolean) => void; onFileDone?: (url: string) => void }) => {
     // The set holds the manifest's triangles and one 4096 px mipmapped atlas (LinearMipmapLinearFilter).
     const tris = ctx.data.manifest.chunks.find((c) => c.id === id)?.tris ?? 0;
     const textures = [{ image: { width: 4096, height: 4096 }, generateMipmaps: true, minFilter: 1008, userData: {} }];
@@ -31,6 +32,7 @@ vi.mock("./assets", () => ({
         signal: opts.signal,
         calm: opts.calm,
         onBytes: opts.onBytes,
+        onFileDone: opts.onFileDone,
         resolve: () => resolve({ id, need, scenes: [], ready: false, drawn: false, tris, bytes: 0, textures }),
         reject,
       });
@@ -116,7 +118,7 @@ async function flush(): Promise<void> {
 /** Every file of the load in flight for `id` has all its bytes (it is parsed and prepared next). */
 function arrive(id: string): void {
   const l = loads.find((x) => x.id === id)!;
-  for (const f of l.files) l.onBytes?.(f)(100, 100);
+  for (const f of l.files) l.onBytes?.(f)(100, 100, true);
 }
 
 /** Every load in flight arrives, and (as the render loop would) is uploaded and marked ready. */
@@ -567,6 +569,60 @@ describe("ChunkStreamer.settleAt (fast travel's settled wait)", () => {
     expect(loads.map((l) => l.id)).toEqual(["b"]);
   });
 
+  it("with every area around (the loading screen's wait for the first stop), waits for and loads the window's further areas too, side by side, downloading one at a time, nearest first", async () => {
+    const st = new ChunkStreamer(wide(), () => {});
+    expect(st.settleAt(500, Infinity).chunks.filter((c) => !c.expected).map((c) => c.id)).toEqual(["a", "b", "c", "d", "e"]);
+    // The narrow wait still holds the further ones back; this one starts them, more than two at once,
+    // each once the last one's files are in (it is parsed and prepared meanwhile).
+    st.update(500, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["c"]);
+    for (let i = 0; i < 3; i++) {
+      arrive(loads[loads.length - 1].id);
+      st.settleAt(500, Infinity);
+      st.update(500, null, true);
+    }
+    expect(loads.length).toBe(4);
+    expect(loads[0].id).toBe("c");
+    // Four at most.
+    arrive(loads[3].id);
+    st.settleAt(500, Infinity);
+    st.update(500, null, true);
+    expect(loads.length).toBe(4);
+    for (let i = 0; i < 6; i++) {
+      st.settleAt(500, Infinity);
+      st.update(500, null, true);
+      await settle(st);
+    }
+    // And f, the prefetch past the window, beside them.
+    expect(new Set(st.list().map((s) => s.id))).toEqual(new Set(["a", "b", "c", "d", "e", "f"]));
+  });
+
+  it("starts the first stop's prefetch beside the areas it waits for, keeps it, and waits for it", async () => {
+    // Areas a-d at the stop a; the window at a is a, b, c and the prefetch past it is d.
+    const st = new ChunkStreamer(wide(), () => {});
+    for (let i = 0; i < 4 && !loads.some((l) => l.id === "d"); i++) {
+      st.settleAt(100, Infinity);
+      st.update(100, null, true);
+      const last = loads[loads.length - 1];
+      if (last.id !== "d") arrive(last.id);
+    }
+    // d starts while the others are still being prepared (none of them is loaded yet).
+    expect(loads.map((l) => l.id)).toEqual(["a", "b", "c", "d"]);
+    expect(st.list()).toEqual([]);
+    // The next plan keeps it (no cancel), and the wait now covers it as a load under way.
+    st.settleAt(100, Infinity);
+    st.update(100, null, true);
+    expect(loads.find((l) => l.id === "d")?.signal.aborted).toBe(false);
+    expect(st.settleAt(100, Infinity).chunks.filter((c) => !c.expected).map((c) => c.id)).toContain("d");
+  });
+
+  it("loads one download at a time under fast travel's ink, and starts no prefetch early", () => {
+    const st = new ChunkStreamer(wide(), () => {});
+    st.settleAt(500);
+    st.update(500, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["c"]);
+  });
+
   it("follows each area's download, then its upload, and then loads the rest of the window", async () => {
     const st = new ChunkStreamer(wide(), () => {});
     st.update(100, null, true);
@@ -578,8 +634,8 @@ describe("ChunkStreamer.settleAt (fast travel's settled wait)", () => {
     st.update(100, null, true);
     expect(loads.map((l) => l.id)).toEqual(["a"]);
     // All of them: 80%, and b starts.
-    loads[0].onBytes?.("a.glb")(600, 600);
-    loads[0].onBytes?.("a_trees.glb")(400, 400);
+    loads[0].onBytes?.("a.glb")(600, 600, true);
+    loads[0].onBytes?.("a_trees.glb")(400, 400, true);
     expect(st.settleAt(100).chunks[0].done).toBeCloseTo(0.8);
     st.update(100, null, true);
     expect(loads.map((l) => l.id)).toEqual(["a", "b"]);
@@ -605,6 +661,62 @@ describe("ChunkStreamer.settleAt (fast travel's settled wait)", () => {
     } finally {
       clock.mockRestore();
     }
+  });
+
+  it("names the areas whose bytes are still on the way: not loaded yet, or a file still downloading", async () => {
+    const st = new ChunkStreamer(wide(), () => {});
+    // Nothing started yet: every area the first view draws is still to come.
+    expect(st.settleAt(500, Infinity).arriving).toEqual(["a", "b", "c", "d", "e"]);
+    st.update(500, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["c"]);
+    // Half a file in: still arriving.
+    loads[0].onBytes?.("c.glb")(1000, 2000);
+    expect(st.settleAt(500, Infinity).arriving).toContain("c");
+    // All of c's files in: parsing and preparing it is local work. The next download starts.
+    arrive("c");
+    st.update(500, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["c", "b"]);
+    let d = st.settleAt(500, Infinity);
+    expect(d.arriving).toEqual(["a", "b", "d", "e"]);
+    // Loaded (uploading), then drawn: neither arrives any more.
+    for (const l of loads.splice(0)) if (l.id === "c") l.resolve(null);
+    await flush();
+    d = st.settleAt(500, Infinity);
+    expect(d.arriving).not.toContain("c");
+    st.markReady("c");
+    expect(st.settleAt(500, Infinity).arriving).not.toContain("c");
+  });
+
+  it("counts a file in only once its download is done, whatever its size says", () => {
+    const st = new ChunkStreamer(wide(), () => {});
+    st.settleAt(500);
+    st.update(500, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["c"]);
+    const c = loads[0];
+    // A size the server does not say (0), or a body it decompresses (more bytes than it said): not done yet.
+    c.onBytes?.("c.glb")(500, 0);
+    expect(st.settleAt(500).arriving).toContain("c");
+    c.onBytes?.("c.glb")(5000, 4000);
+    expect(st.settleAt(500).arriving).toContain("c");
+    // One download at a time under the ink: b waits for it.
+    st.update(500, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["c"]);
+    c.onBytes?.("c.glb")(6000, 4000, true);
+    expect(st.settleAt(500).arriving).not.toContain("c");
+    st.update(500, null, true);
+    expect(loads.map((l) => l.id)).toEqual(["c", "b"]);
+  });
+
+  it("counts a file that is over (a decorative one that failed) as no longer on the way", () => {
+    const st = new ChunkStreamer(wide(), () => {});
+    st.settleAt(100);
+    st.update(100, null, true);
+    const a = loads.find((l) => l.id === "a")!;
+    expect(a.files).toEqual(["a.glb", "a_trees.glb"]);
+    a.onBytes?.("a.glb")(100, 100, true);
+    expect(st.settleAt(100).arriving).toContain("a");
+    a.onFileDone?.("a_trees.glb");
+    expect(st.settleAt(100).arriving).not.toContain("a");
   });
 
   it("while the ink waits, only the stop's own area and its neighbours load; the rest of the window after", async () => {

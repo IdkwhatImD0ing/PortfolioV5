@@ -5,7 +5,8 @@ baked per instance:
 
 - Near (nearest distance to the camera path below --tree-near, shrubs below 25 m): GPU instances
   (EXT_mesh_gpu_instancing) of light prototype meshes (the designed `far` LOD for Huangshan pines, other
-  species reduced from their hero/mid LOD with the alpha needle/leaf cards removed). Each prototype gets a
+  species reduced from their hero/mid LOD with the alpha needle/leaf cards removed; the FULL PATH below keeps
+  the cards on pines, bushes and broadleaf). Each prototype gets a
   small baked texture in several lighting variants: the sun from N directions around the tree (8 for pines,
   4 otherwise) plus one "in shadow" variant (sky + fill only). Each instance uses the variant whose sun
   direction matches the real sun in the instance's own frame (its yaw), or the shadow variant when a ray
@@ -61,7 +62,7 @@ plan gives it (chunks.npz: the area where it is nearest the camera; never split)
   area's trees that are seen from outside its core range (150 m band), so a hillside keeps its forest while that
   area's chunk is not drawn (the page hides the proxy while the chunk is drawn, as for the backdrop's area proxies).
   The backdrop sheet uses --backdrop-px (64) sprites.
-- Bamboo near meshes keep their leaves (opaque blades, unlike the alpha needle/flower cards that are removed).
+- Bamboo near meshes keep their leaves (opaque blades).
 - Pine near meshes (huangshan, cliff, ancient) keep needle cards: built from the '.hero' LOD (else '.mid'; --needle-lod
   mid: the pilot's order), trunk + cushions collapse-decimated to NEEDLE_OPAQUE_TRIS, the needle fans never decimated,
   only thinned (whole fans, seeded per family) to --needle-max-tris. With --needle-cards twig (the default) every kept
@@ -89,6 +90,14 @@ plan gives it (chunks.npz: the area where it is nearest the camera; never split)
   nature._mat_needle's 8-leaf fan alpha) and the azalea flowers kept as small opaque quads (pink in the bake); the
   whole bush gets crown normals (one soft rounded mass). --shrub-mesh blob: the old near shrub (green '.low' clumps,
   azalea '.hero' clumps x0.3, leaves and flowers removed).
+- Broadleaf (pine.broadleaf; round 58, docs/scene/trees-r58.md). With --broadleaf-mesh leafy (the default) the near
+  mesh is the '.hero' crown kept whole (trunk, limbs, blobs; no collapse) plus its ~190 leaf sprays as cut-out cards,
+  built like the leafy bush (shrub_near_mesh, material 'trees.needle.leaf.<area>', leaf_alpha.png). The sprays grow by
+  --broadleaf-leaf-grow (1.0: the size the far sprites show). Crown normals over blobs and sprays; --broadleaf-crown
+  none turns them off for broadleaf only. --broadleaf-mesh blob: the old near mesh (sprays removed, collapsed to
+  BROADLEAF_NEAR_RATIO). trees_stats.json 'broadleaf' logs both meshes' triangles and texels per metre.
+- Peach (blossom.peach): with --blossom-mesh mid (the default, round 58) the near mesh is the '.mid' prototype whole
+  with crown normals (the card sprites' source too); --blossom-mesh far: the old '.far' collapsed to 0.25.
 - The "in shadow" lighting variant keeps the sun at SHADE_SUN (0.3) of its energy, raised to SHADE_SUN_ELEV_DEG,
   instead of switching it off (shade pines baked near-black). Card sprites of pines are rendered from the '.hero' LOD
   with every needle fan replaced by a twig card (cut out by the twig texture), so far trees get the same fine edge.
@@ -112,7 +121,8 @@ Caches on the box (bakecache/trees_full, not copied back): sun visibility per re
 --fresh ignores them. Test runs: --out out/<name> sends plan.json, the GLBs, the previews, verify renders and the caches
 under that folder (raw/, bake/trees/, cache/ or --cache-dir) instead of out/web/full and bakecache/trees_full; with
 --only <chunks> --only-recs a build casts, bakes and renders sprites for those chunks' records only. Mesh-bake names
-carry NEEDLE_TAG / TWIG_TAG (needle pines), SHRUB_TAG (leafy bushes) and LIGHT_TAG (shade variant), sprite
+carry NEEDLE_TAG / TWIG_TAG (needle pines), SHRUB_TAG (leafy bushes), BROADLEAF_TAG (leafy broadleaf), BLOSSOM_TAG
+('.mid' peaches) and LIGHT_TAG (shade variant), sprite
 names TWIG_TAG (twig-card pines) and LIGHT_TAG (shade variant), so a change there re-bakes only what it affects.
 """
 import argparse
@@ -196,8 +206,9 @@ def proto_obj(name):
     return ob if ob is not None and ob.type == "MESH" else None
 
 
-BROADLEAF_NEAR_RATIO = 0.8     # the broadleaf's near mesh: its leafless hero crown (about 1.4k triangles after the
-                               # leaf cards are stripped) kept near the plan's 1.2k; at 0.35 it kept 370-470
+BROADLEAF_NEAR_RATIO = 0.8     # the broadleaf's old near mesh (--broadleaf-mesh blob): its leafless hero crown (about
+                               # 1.4k triangles after the leaf cards are stripped) kept near the plan's 1.2k; at 0.35
+                               # it kept 370-470. The leafy one (the default) keeps the crown whole: leafy_broadleaf
 
 
 def mesh_source(fam):
@@ -876,6 +887,18 @@ def _needle_tris(C, fam, lod="full"):
     return int((lt[nd] - 2).sum())
 
 
+def _broadleaf_stats(st, C, fam, n):
+    """Per-file broadleaf counts for trees_stats.json: near meshes, their triangles, and the triangles the old near
+    mesh (--broadleaf-mesh blob) would have drawn, when the build measured it (leafy broadleaf)."""
+    if not fam.startswith("pine.broadleaf") or fam not in C["fam_mesh"]:
+        return
+    st["broadleaf_meshes"] += n
+    st["tris_broadleaf"] += ntris(C["fam_mesh"][fam]) * n
+    old = (C.get("fam_bleaf", {}).get(fam, {}).get("old") or {}).get("tris")
+    if old:
+        st["tris_broadleaf_old"] += old * n
+
+
 def card_quads(c, lo, hi, scales, uvs):
     """Front (XZ plane), side (YZ plane) and top (horizontal, at 62 % height) quads matching the ortho sprite
     renders; each quad is the sprite's square footprint, UVs into the sprite sheet."""
@@ -1040,7 +1063,8 @@ NEEDLE_OPAQUE_TRIS = {"huangshan": 2000, "cliff": 2000, "ancient": 2400,   # pin
                       "masson": 1400}                       # near mesh with needle cards (was 1000/1200/1600; round 48:
 #                                                            the Masson spire, nature.pine style 'masson'). The round-48
 #                                                            broadleaf ('pine.broadleaf') has no needle fans: its near
-#                                                            mesh is its crown blobs (leaf cards stripped, x 0.35)
+#                                                            mesh is the leafy one (leafy_broadleaf; --broadleaf-mesh
+#                                                            blob: crown blobs, sprays stripped, x BROADLEAF_NEAR_RATIO)
 NEEDLE_TEXEL = 0.7          # needle fans' texel density in a mesh slot relative to the trunk and cushions (linear)
 NEEDLE_ALPHA_PX = 256       # needle_alpha.png: the fans' alpha in fan-UV space, shared by every trees.needle material
 NEEDLE_TAG = "nd2"          # in the mesh-bake cache names of needle meshes; bump when needle_bake_nodes, the twig cards
@@ -1097,6 +1121,17 @@ SHRUB_FLOWER_SRGB = (0.91, 0.43, 0.56)   # leafy near bush: the opaque flower qu
 #                             #e0587a a little lighter); with the material's own ramp the square's corners (rim #c8385c)
 #                             and dark centre baked them red-orange, where the far cards' cut-out flowers read pink
 SHRUB_TAG = "lf3"           # in the mesh-bake cache names of leafy bushes; bump when shrub_near_mesh changes
+# Leafy broadleaf (round 58, --broadleaf-mesh leafy): the '.hero' crown kept whole with its leaf sprays as cut-out
+# cards, through shrub_near_mesh (blob_tris None: no collapse). The far sprites render the same '.hero' unscaled.
+BROADLEAF_LEAF_GROW = 1.0   # sprays grown about their root (--broadleaf-leaf-grow). 1.0 keeps them the size the far
+#                             sprites show; raise it only if the verify renders show sprays buried in the blobs
+BROADLEAF_SLOT_PX = 384     # leafy broadleaf mesh slot (FULL_SLOT_PX pine, as before); trees_stats.json 'broadleaf'
+#                             logs the texels per metre of the old and the leafy mesh, so the trade is measured
+BROADLEAF_TAG = "bl1"       # in the mesh-bake cache names of leafy broadleaf; bump when their near mesh changes
+# Peach stop-gap (round 58, --blossom-mesh mid): the near peach is its '.mid' prototype whole with crown normals,
+# instead of '.far' collapsed to 0.25 (hard facets).
+BLOSSOM_CLUMP_MAT = "M.nature_blossom_peach"   # the peach '.mid' / '.far' clumps (nature._blossom_proto): foliage
+BLOSSOM_TAG = "bm1"         # in the mesh-bake cache names of '.mid' peaches; bump when their near mesh changes
 
 
 def needle_style(fam, a):
@@ -1109,12 +1144,18 @@ def needle_style(fam, a):
 
 def full_mesh_source(fam, a=None):
     """(object, decimation ratio); needle pines use '.hero' (else '.mid'; --needle-lod mid: the other way round, the
-    pilot's choice) and decimate per part (needle_near_mesh)."""
+    pilot's choice) and decimate per part (needle_near_mesh). Leafy broadleaf: the old source ('.hero', else '.far')
+    whole (shrub_near_mesh). '.mid' peaches: '.mid' whole (crown normals in full_build); without a '.mid' prototype
+    the old '.far' at 0.25."""
     if needle_style(fam, a):
         lods = (".mid", ".hero") if getattr(a, "needle_lod", "hero") == "mid" else (".hero", ".mid")
         return proto_obj(fam + lods[0]) or proto_obj(fam + lods[1]), 1.0
     if leafy_shrub(fam, a):
         return proto_obj(fam) or proto_obj(fam + ".low"), 1.0
+    if leafy_broadleaf(fam, a):
+        return mesh_source(fam)[0], 1.0
+    if blossom_mid(fam, a) and proto_obj(fam + ".mid") is not None:
+        return proto_obj(fam + ".mid"), 1.0
     ob, ratio = mesh_source(fam)
     return ob, FULL_RATIO.get(fam.split(".")[0], ratio)
 
@@ -1124,10 +1165,30 @@ def leafy_shrub(fam, a):
     return fam.split(".")[0] == "shrub" and a is not None and getattr(a, "shrub_mesh", "blob") == "leafy"
 
 
+def leafy_broadleaf(fam, a):
+    """True when a broadleaf family's near mesh keeps its leaf sprays (--broadleaf-mesh leafy). False without options
+    (a is None), so callers that pass none keep the old mesh."""
+    return fam.startswith("pine.broadleaf") and a is not None and getattr(a, "broadleaf_mesh", "blob") == "leafy"
+
+
+def blossom_mid(fam, a):
+    """True when a peach family's near mesh is its '.mid' prototype whole (--blossom-mesh mid). False without options."""
+    return fam.startswith("blossom.peach") and a is not None and getattr(a, "blossom_mesh", "far") == "mid"
+
+
+def broadleaf_crown(a):
+    """Crown normals on leafy broadleaf: off with --no-crown-normals (every family) or --broadleaf-crown none (these
+    only, for an A/B that leaves pines and bushes as they are)."""
+    return not getattr(a, "no_crown_normals", False) and getattr(a, "broadleaf_crown", "field") == "field"
+
+
 def slot_px(fam, a):
-    """Mesh-slot size (px) of a family's near mesh: FULL_SLOT_PX by kind, SHRUB_SLOT_PX for a leafy bush."""
+    """Mesh-slot size (px) of a family's near mesh: FULL_SLOT_PX by kind, SHRUB_SLOT_PX for a leafy bush,
+    BROADLEAF_SLOT_PX for a leafy broadleaf."""
     if leafy_shrub(fam, a):
         return SHRUB_SLOT_PX_LOW if fam.endswith(".low") else SHRUB_SLOT_PX
+    if leafy_broadleaf(fam, a):
+        return BROADLEAF_SLOT_PX
     return FULL_SLOT_PX.get(fam.split(".")[0], 128)
 
 
@@ -1168,6 +1229,8 @@ def full_remove(fam, a=None):
         keep = keep + (NEEDLE_MAT,)
     if leafy_shrub(fam, a):
         keep = keep + (SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT)
+    if leafy_broadleaf(fam, a):
+        keep = keep + (SHRUB_LEAF_MAT,)
     return tuple(m for m in REMOVE_MATS if m not in keep)
 
 
@@ -1229,11 +1292,13 @@ def grow_fans(me, mask, k):
     return len(root)
 
 
-def shrub_near_mesh(fam, me, dec, blob_tris, crown=True):
+def shrub_near_mesh(fam, me, dec, blob_tris, crown=True, grow=SHRUB_LEAF_GROW):
     """Leafy near bush from a shrub prototype (its '.hero' LOD, else '.low'): the clumps (every face that is not a leaf
     spray or a flower) collapse-decimated to about `blob_tris`, the leaf sprays (SHRUB_LEAF_MAT, cut-out cards on the
     page) and the azalea flowers (SHRUB_FLOWER_MAT, small opaque quads) kept whole. Crown normals over the whole bush
-    (crown=False: not), so it bakes as one soft rounded mass instead of per-clump facets. Returns (mesh, info)."""
+    (crown=False: not), so it bakes as one soft rounded mass instead of per-clump facets. Returns (mesh, info).
+    Also the leafy broadleaf: blob_tris None keeps the opaque part whole; grow scales every leaf spray about its root
+    (SHRUB_LEAF_GROW for bushes, so their meshes and caches stay the same)."""
     mats = [m.name if m else "" for m in me.materials]
     mi = np.empty(len(me.polygons), np.int32)
     me.polygons.foreach_get("material_index", mi)
@@ -1248,12 +1313,12 @@ def shrub_near_mesh(fam, me, dec, blob_tris, crown=True):
     for m, k in ((SHRUB_LEAF_MAT, "leaf"), (SHRUB_FLOWER_MAT, "flower")):
         if m in mats:
             info[k + "_tris"] = int((lt[mi == mats.index(m)] - 2).sum())
-    if SHRUB_LEAF_MAT in mats and SHRUB_LEAF_GROW != 1.0:
-        info["leaf_grow"] = grow_fans(me, mi == mats.index(SHRUB_LEAF_MAT), SHRUB_LEAF_GROW)
+    if SHRUB_LEAF_MAT in mats and grow != 1.0:
+        info["leaf_grow"] = grow_fans(me, mi == mats.index(SHRUB_LEAF_MAT), grow)
     if (~keep).any():
         blob = EW.submesh(me, ~keep, me.name + ".blob")
         n0 = ntris(blob)
-        r = min(1.0, blob_tris / max(n0, 1))
+        r = 1.0 if blob_tris is None else min(1.0, blob_tris / max(n0, 1))
         blob = dec.get("tree.%s.blob" % fam, blob, r)
         info.update(blob_tris_source=n0, blob_tris=ntris(blob), ratio=round(r, 3))
         if keep.any():
@@ -1269,6 +1334,25 @@ def shrub_near_mesh(fam, me, dec, blob_tris, crown=True):
         info.update(crown_normals=crown_normals(out, field))
     info["tris"] = ntris(out)
     return out, info
+
+
+def broadleaf_blob_ref(fam, dec):
+    """The old near mesh of a broadleaf family (--broadleaf-mesh blob: sprays removed, collapsed to
+    BROADLEAF_NEAR_RATIO), for trees_stats.json only: its triangles and its texels per prototype metre in the old
+    FULL_SLOT_PX pine slot, unwrapped and packed as the build does. Not baked, not exported."""
+    ob, ratio = mesh_source(fam)
+    if ob is None:
+        return {}
+    me = ob.data.copy()
+    me.name = "tree.ref." + fam
+    EW._slot_materials(me, ob)
+    me = dec.get("tree." + fam, strip_faces(me, REMOVE_MATS), FULL_RATIO.get("pine", ratio))
+    spx = FULL_SLOT_PX["pine"]
+    A = BW.ma(me)
+    rho = spx * math.sqrt(0.5 / max(A.area, 1e-6))
+    _, pk = BW.pack_shelf(BW.project_box26(A.co * rho, A.vi, A.ls), A.co * rho, A.vi, A.ls, spx, margin=1.5)
+    return dict(source=ob.name, tris=ntris(me), slot_px=spx, area_m2=round(A.area, 2),
+                texels_per_m=round(rho * pk["texels_per_unit"], 2))
 
 
 def _poly_arrays(me):
@@ -1539,14 +1623,15 @@ def _set_smooth(me, mask):
     me.polygons.foreach_set("use_smooth", sm)
 
 
-FOLIAGE_MATS = (NEEDLE_MAT, "M.nature_shrub", SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT)
+FOLIAGE_MATS = (NEEDLE_MAT, "M.nature_shrub", SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT, BLOSSOM_CLUMP_MAT)
 
 
 def _foliage_mask(me):
-    """Per polygon: cushions, needle cards, a bush's clumps, leaves and flowers (materials '*pine_pad*' and
-    FOLIAGE_MATS), not bark."""
+    """Per polygon: cushions, needle cards, a bush's clumps, leaves and flowers, a broadleaf's crown blobs and a
+    peach's clumps (materials '*pine_pad*', '*canopy*' and FOLIAGE_MATS), not bark. Only broadleaf carry canopy
+    materials and only peaches the clump one, so pines and bushes get the same normals as before."""
     mats = [m.name if m else "" for m in me.materials]
-    fol = np.array([("pine_pad" in m) or m in FOLIAGE_MATS for m in mats] or [False], bool)
+    fol = np.array([("pine_pad" in m) or ("canopy" in m) or m in FOLIAGE_MATS for m in mats] or [False], bool)
     mi = np.empty(len(me.polygons), np.int32)
     me.polygons.foreach_get("material_index", mi)
     return fol[np.clip(mi, 0, len(fol) - 1)], mats
@@ -2116,6 +2201,48 @@ def bush_report(P, a):
     return out
 
 
+def write_instances(P, a):
+    """out/web/full/veg/instances.json: every kept vegetation record as the page needs it to grow its own plants
+    (round 58: trees built and lit by the page instead of baked cards). Per chunk id ('backdrop' for the far set), rows
+    of [x, y, z, yaw, height, radius, scale_z, sun, family index, mesh (1) or card (0), hotspot index (0: none), nearest
+    camera distance]. Blender coordinates and metres; x, y, z is the prototype's origin (the trunk's foot), height and
+    radius come from the record's world box, sun is the build's cached sun ray cast (bakecache sunvis.npz: 0 shaded
+    .. 1 lit; 1 where it was never cast). 'plan,instances' after a build: no ray casts, no bakes."""
+    R, recs, ids = P["R"], P["recs"], P["ids"]
+    vp = os.path.join(FULL_CACHE, "sunvis.npz")
+    sun = {}
+    if os.path.isfile(vp):
+        z = np.load(vp, allow_pickle=False)
+        sun = dict(zip(z["keys"].tolist(), z["vis"].tolist()))
+    fams = sorted({r["fam"] for r in recs})
+    fi = {f: k for k, f in enumerate(fams)}
+    hots = sorted({r["hot"] for r in recs if r["hot"]})
+    hk = {h: k + 1 for k, h in enumerate(hots)}
+    out, miss = {}, 0
+    for r in recs:
+        i = r["i"]
+        M = np.asarray(R.mw[i], float)
+        lo, hi = np.asarray(R.lo[i], float), np.asarray(R.hi[i], float)
+        key = R.key[i]
+        miss += key not in sun
+        cid = ids[r["chunk"]] if r["chunk"] >= 0 else "backdrop"
+        out.setdefault(cid, []).append([
+            round(float(M[0, 3]), 3), round(float(M[1, 3]), 3), round(float(M[2, 3]), 3),
+            round(math.atan2(M[1, 0], M[0, 0]), 3), round(float(hi[2] - lo[2]), 3),
+            round(float(0.5 * max(hi[0] - lo[0], hi[1] - lo[1])), 3),
+            round(float(np.linalg.norm(M[:3, 2])), 4), round(float(sun.get(key, 1.0)), 2), fi[r["fam"]],
+            1 if r["cls"] == "mesh" else 0, hk.get(r["hot"], 0), round(float(r["d"]), 1)])
+    dst = os.path.join(EW.FULL, "veg", "instances.json")
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    with open(dst, "w", encoding="utf-8") as fh:
+        json.dump(dict(columns=["x", "y", "z", "yaw", "height", "radius", "scale_z", "sun", "family", "mesh", "hotspot",
+                                "d"],
+                       families=fams, hotspots=hots, chunks=out, sun_missing=int(miss),
+                       counts={k: len(v) for k, v in out.items()}), fh, separators=(",", ":"))
+    log("instances:", sum(len(v) for v in out.values()), "records in", len(out), "chunks,", len(fams), "families,",
+        miss, "without a sun cast ->", dst)
+
+
 def write_plan(P, a):
     R, recs, ids = P["R"], P["recs"], P["ids"]
     per = {}
@@ -2327,6 +2454,7 @@ def full_build(a, sc, P):
     fam_needle, fam_nd, fam_fan = {}, {}, {}      # needle pines: build info, needle polygon mask, fan UVs per loop
     fam_nuv, fam_lite = {}, {}                    # twig cards: card UVs per loop (TEXCOORD_1), the lite subset
     fam_cut, fam_shrub = {}, {}                   # cut-out cards per family ('pine' needles/twigs, 'leaf'), bush info
+    fam_bleaf, fam_bloss = {}, {}                 # leafy broadleaf and '.mid' peach build info (trees_stats.json)
     for fam in sorted({r["fam"] for r in recs if r["cls"] == "mesh"}):
         ob, ratio = full_mesh_source(fam, a)
         if ob is None:
@@ -2344,6 +2472,25 @@ def full_build(a, sc, P):
                 fam_nd[fam], fam_fan[fam], fam_cut[fam] = nd, fan, "leaf"
             fam_shrub[fam] = dict(info, source=ob.name)
             log("bush proto", fam, json.dumps(fam_shrub[fam]))
+        elif leafy_broadleaf(fam, a):       # the whole crown + its leaf sprays as cut-out cards (the bush's path)
+            crown = broadleaf_crown(a)
+            me, info = shrub_near_mesh(fam, me, dec, None, crown=crown, grow=a.broadleaf_leaf_grow)
+            nd, fan = needle_loops(me, mat=SHRUB_LEAF_MAT)
+            if nd.any():
+                fam_nd[fam], fam_fan[fam], fam_cut[fam] = nd, fan, "leaf"
+            fam_bleaf[fam] = dict(info, source=ob.name, grow=a.broadleaf_leaf_grow, crown=crown,
+                                  old=broadleaf_blob_ref(fam, dec))
+            log("broadleaf proto", fam, json.dumps(fam_bleaf[fam]))
+        elif blossom_mid(fam, a) and ob.name.endswith(".mid"):     # peach stop-gap: '.mid' whole, crown normals
+            info = dict(source=ob.name, tris=ntris(me), crown_normals=0)
+            far = proto_obj(fam + ".far")
+            if far is not None:             # the old near mesh ('.far' at 0.25): estimated, not built
+                info["old_tris_est"] = int(round(ntris(far.data) * 0.25))
+            field = None if a.no_crown_normals else crown_field(me)
+            if field is not None:
+                info["crown_normals"] = crown_normals(me, field)
+            fam_bloss[fam] = info
+            log("blossom proto", fam, json.dumps(info))
         elif st:
             me, info = needle_near_mesh(fam, me, dec, opaque_tris(st, a), a.needle_max_tris,
                                         twig=dict(scale=fam_scale.get(fam, 1.0)) if twig else None,
@@ -2358,6 +2505,8 @@ def full_build(a, sc, P):
             fam_needle[fam] = dict(info, source=ob.name, scale=fam_scale.get(fam, 1.0))
             log("needle proto", fam, json.dumps(fam_needle[fam]))
         elif ratio < 0.999:
+            if blossom_mid(fam, a):
+                log("WARN no '.mid' prototype for", fam, "- it keeps the old near mesh", ob.name, "at", ratio)
             me = dec.get("tree." + fam, me, ratio)
         fam_mesh[fam] = me
         log("mesh proto", fam, ob.name, ntris(ob.data), "->", ntris(me), "tris")
@@ -2476,6 +2625,18 @@ def full_build(a, sc, P):
                 fam_tag[fam] += "." + SHRUB_TAG
             if "UVMap" in me.uv_layers:
                 me.uv_layers["UVMap"].active_render = True      # _mat_needle's colour (and fan alpha) read the fan UVs
+        if fam in fam_bleaf:        # leafy broadleaf: own tag, spray grow and crown normals (same polygon count)
+            b = fam_bleaf[fam]
+            fam_tag[fam] += ".%s.g%d.c%d" % (BROADLEAF_TAG, int(round(b["grow"] * 100)), int(bool(b["crown"])))
+            tpm = rho * info["texels_per_unit"]          # texels per prototype metre on the crown and bark
+            b.update(slot_px=spx, area_m2=round(A.area, 2), texels_per_m=round(tpm, 2),
+                     leaf_texels_per_m=round(tpm * texel, 2) if nd is not None else 0.0)
+            o = b.get("old") or {}
+            log("broadleaf", fam, "tris", o.get("tris"), "->", b["tris"], "texels per m", o.get("texels_per_m"), "->",
+                b["texels_per_m"], "(leaves", b["leaf_texels_per_m"], ") slot", o.get("slot_px"), "->", spx)
+        if fam in fam_bloss:        # '.mid' peach: own tag and crown normals (on or off: same polygon count)
+            fam_tag[fam] += ".%s.c%d" % (BLOSSOM_TAG, int(fam_bloss[fam]["crown_normals"] > 0))
+            fam_bloss[fam].update(slot_px=spx, texels_per_m=round(rho * info["texels_per_unit"], 2))
     bake_px = {}
 
     def cache_path(fam, v):
@@ -2507,7 +2668,7 @@ def full_build(a, sc, P):
                     if fam in fam_nuv:
                         twig_alpha_nodes(mc, t_img)
                     needle_bake_nodes(mc)
-                elif m.name in (SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT) and fam in fam_shrub:
+                elif m.name in (SHRUB_LEAF_MAT, SHRUB_FLOWER_MAT) and (fam in fam_shrub or fam in fam_bleaf):
                     needle_bake_nodes(mc)       # leaves and flowers: opaque to their own texels, see-through to shadows
                     if m.name == SHRUB_FLOWER_MAT:
                         flat_colour_nodes(mc, SHRUB_FLOWER_SRGB)
@@ -2671,7 +2832,7 @@ def full_build(a, sc, P):
     C = dict(G=G, gpos=gpos, fam_mesh=fam_mesh, fam_uv=fam_uv, card_geo=card_geo, spr=spr, spr_scale=spr_scale,
              labels=P["labels"], fam_nd=fam_nd, fam_fan=fam_fan, needle_alpha=p_alpha,
              needle_mode="twig" if fam_nuv else "needle", fam_nuv=fam_nuv, fam_lite=fam_lite, fam_cut=fam_cut,
-             leaf_alpha=p_leaf)
+             leaf_alpha=p_leaf, fam_bleaf=fam_bleaf)
     for r in recs:                  # near pines: full or lite twig cards (one bake, two meshes)
         lite = fam_lite.get(r["fam"])
         r["nlod"] = needle_lod(r, a) if r["cls"] == "mesh" and lite is not None and not lite["keep"].all() else "full"
@@ -2696,7 +2857,8 @@ def full_build(a, sc, P):
                lit_share=round(float(np.mean([r["vis"] >= 0.5 for r in recs])), 3),
                mesh_variants=len(used_mesh), card_keys=len(need_px),
                card_keys_hold=sum(1 for x in need_px.values() if x >= a.hold_sprite_px),
-               needles=fam_needle, bushes=fam_shrub, options={k: v for k, v in vars(a).items() if k != "commands"})
+               needles=fam_needle, bushes=fam_shrub, broadleaf=fam_bleaf, blossom=fam_bloss,
+               options={k: v for k, v in vars(a).items() if k != "commands"})
     BW.dump(os.path.join(FULL_OUT, "trees_stats.json"), out)
     log("TREES FULL", json.dumps(dict(totals=tot, times=T)))
     for cid, f in files.items():
@@ -2828,6 +2990,7 @@ def export_chunk(sc, a, cid, rk, R, C):
         if fam.startswith("shrub"):
             st["bush_meshes"] += len(lst)
             st["tris_bush"] += ntris(me) * len(lst)
+        _broadleaf_stats(st, C, fam, len(lst))
         if len(lst) < 3:
             small += [(me, R.mw[r["i"]]) for r in lst]
             st["merged_near"] += len(lst)
@@ -2877,7 +3040,10 @@ def export_chunk(sc, a, cid, rk, R, C):
             made.append(o)
             temp.append(me)
             st["tris_mesh"] += ntris(me)
-            st["tris_needle"] += sum(_needle_tris(C, r["fam"]) for r in ms if card_mat(r["fam"]) is not None)
+            for r in ms:                # cut-out card triangles by kind, as for the instanced groups
+                if card_mat(r["fam"]) is not None:
+                    st["tris_leaf" if cut.get(r["fam"]) == "leaf" else "tris_needle"] += _needle_tris(C, r["fam"])
+                _broadleaf_stats(st, C, r["fam"], 1)
         cs = [r for r in lst if r["cls"] == "card"]
         if cs:
             o, nt = card_object("trees.hs.%s.cards" % hid, cs, R, C, spr_uv, mat_card)
@@ -3203,12 +3369,14 @@ def full_args(argv):
                     help="trunk + cushion tris of needle pines, 'huangshan,cliff,ancient' (default NEEDLE_OPAQUE_TRIS "
                          "2000,2000,2400; the pilot's: 1000,1200,1600)")
     ap.add_argument("--no-crown-normals", action="store_true",
-                    help="bake needle pines with their own (decimated) normals, not the smoothed crown's")
+                    help="bake every family (needle pines, bushes, broadleaf, '.mid' peaches) with its own normals, "
+                         "not the smoothed crown's")
     ap.add_argument("--shade-sun", type=float, default=SHADE_SUN,
                     help="the shade variant's sun, a share of its energy (0: off, the old bake)")
     ap.add_argument("--exposure", type=float, default=1.2)
     ap.add_argument("--sat", type=float, default=1.15)
     ap.add_argument("--only", default="", help="build: chunk ids (and/or 'backdrop') to write; default all")
+    ap.add_argument("--light", default="", help="look tests: bake_web.BAKE_LIGHT overrides (bake_web.set_bake_light)")
     ap.add_argument("--fresh", action="store_true", help="ignore the caches in bakecache/trees_full")
     ap.add_argument("--quality", default="dev", choices=sorted(BW.BAKE_QUALITY),
                     help="dev: the fast bake (default); production: 4x samples for mesh bakes and sprites, adaptive "
@@ -3230,6 +3398,18 @@ def full_args(argv):
                     help="leafy: near bushes keep their leaf sprays (cut-out cards) and flowers, clumps decimated to "
                          "--shrub-blob-tris; blob: the old near shrub (clumps only)")
     ap.add_argument("--shrub-blob-tris", type=int, default=SHRUB_BLOB_TRIS)
+    ap.add_argument("--broadleaf-mesh", choices=("leafy", "blob"), default="leafy",
+                    help="leafy: near broadleaf keep their whole '.hero' crown and its leaf sprays (cut-out cards, the "
+                         "bush's leaf material); blob: the old near mesh (sprays removed, collapsed to %g)"
+                         % BROADLEAF_NEAR_RATIO)
+    ap.add_argument("--broadleaf-leaf-grow", type=float, default=BROADLEAF_LEAF_GROW,
+                    help="leafy broadleaf: every leaf spray grown about its root by this (1.0: the far sprites' size)")
+    ap.add_argument("--broadleaf-crown", choices=("field", "none"), default="field",
+                    help="leafy broadleaf: crown normals (field) or the mesh's own normals (none); unlike "
+                         "--no-crown-normals this leaves pines and bushes alone (an A/B of the broadleaf only)")
+    ap.add_argument("--blossom-mesh", choices=("mid", "far"), default="mid",
+                    help="near peaches: mid = the '.mid' prototype whole with crown normals; far = the old '.far' "
+                         "collapsed to 0.25")
     ap.add_argument("--out", default="",
                     help="test runs: write under this folder (relative to the project, e.g. out/r17/new): raw/, "
                          "bake/trees/ and cache/ instead of out/web/full/raw, out/web/full/bake/trees and "
@@ -3273,6 +3453,7 @@ def apply_out(a):
 def main():
     a = full_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
     apply_out(a)
+    BW.set_bake_light(getattr(a, "light", ""))
     EW.use_profile("full")
     sc = bpy.context.scene
     t0 = time.time()
@@ -3285,6 +3466,10 @@ def main():
                 write_plan(P, a)
             else:
                 full_build(a, sc, P)
+        elif cmd == "instances":
+            if P is None:
+                P = full_plan(a, sc)
+            write_instances(P, a)
         elif cmd == "verify":
             full_verify(a, sc)
         else:

@@ -9,7 +9,8 @@
  * The world streams: the global set (backdrop with a reduced proxy of every area) loads first, then
  * each area's chunk around the camera (streaming.ts).
  *
- * Navigation: scroll; the rail (desktop) or its compact row (phones); the map (the Map button or
+ * Navigation: scroll (once the visitor's scrolling rests, the camera glides on to a stop by itself:
+ * lib/sect/snap.ts); the rail (desktop) or its compact row (phones); the map (the Map button or
  * M: a painted map of the sect with every stop's seal, fast travel to any of them under an ink wash,
  * and the list of every place and item); PageDown/PageUp, the up and down arrows and J/K between
  * holds, Home to the start and End to the last place. Fast travel's ink stays up until the place has
@@ -49,6 +50,9 @@
  * ("ready"); meanwhile the next areas stream in. A load again for a new tier after that, and the
  * screenshot views (?ui=0, ?frame=N), go straight on.
  */
+// First of all: a ?look= (development only) is written into the look tables before any module that
+// builds shaders from them loads (look-switch.ts).
+import "./look-switch";
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentType } from "react";
 import type { Object3D } from "three";
 import { AREAS, areaInfo, isAreaId, type AreaId } from "@/lib/sect/areas";
@@ -58,13 +62,15 @@ import { areaItemHotspots, commandTarget, isThing, parseContentHash, SECTION_NAM
 import { POSTER_ATTR, posterStart, startYaw, type NetworkHint } from "@/lib/sect/content-start";
 import { framingAt, framingFrame } from "@/lib/sect/framing";
 import { composeLook, isDragging, isLookingBack, isTurned, type LookOffset } from "@/lib/sect/free-look";
+import { PREPARE_SLICE } from "@/lib/sect/gpu-queue";
 import { PageHistory } from "@/lib/sect/history";
 import { plainUrl, readHistoryState, readerUrl, resolveDeepLink } from "@/lib/sect/links";
+import { LIVE_LOOK } from "@/lib/sect/live";
 import { lookFogConstants } from "@/lib/sect/look";
 import { countLookHintShown, LOOK_HINT_MS, lookHintRetired, retireLookHint } from "@/lib/sect/look-hint";
 import { hoverNote, loreByArea } from "@/lib/sect/lore";
 import { flightSeconds, navKeyIntent, navKeyTarget, nearestHold, panelSide } from "@/lib/sect/nav";
-import { downloadFraction, flickStop, PORTRAIT_TURN_SECONDS, portraitTurn, posterMatches, type FileProgress } from "@/lib/sect/opening";
+import { downloadFraction, PORTRAIT_TURN_SECONDS, portraitTurn, posterMatches, type FileProgress } from "@/lib/sect/opening";
 import { resolveAsset } from "@/lib/sect/parse";
 import {
   AUTO_FRAME_BUDGET_MS,
@@ -100,7 +106,8 @@ import {
   uToScroll,
   type TrackViewport,
 } from "@/lib/sect/scroll-map";
-import { SettleWatch } from "@/lib/sect/settle";
+import { detailHolds, SETTLE, SETTLE_GATE, SettleWatch } from "@/lib/sect/settle";
+import { coastTarget, commitUnits, planCarry, planGlide, SNAP, snapTarget, wheelPixels } from "@/lib/sect/snap";
 import type { Vec3 } from "@/lib/sect/types";
 import type { VoiceCommand } from "@/lib/voice-bus";
 import { AreaPanel, AreaReader, ContentFallback, hotspotLabel, hotspotTarget, type ContentTarget } from "../content";
@@ -109,7 +116,7 @@ import { LoadingScreen } from "../loading-screen";
 import {
   chunkFiles,
   createWorldContext,
-  detailSettling,
+  detailState,
   disposeSet,
   disposeWorldContext,
   globalFiles,
@@ -150,7 +157,7 @@ import {
 import { disposeObjects } from "./prepare";
 import SectCanvas, { MOON_HOTSPOT } from "./scene";
 import { SoundPrompt } from "./sound-toggle";
-import { cameraStill, createStore, isMoving, recenterView, wake, type SectStore } from "./store";
+import { cameraStill, createStore, isMoving, recenterView, sceneView, wake, type SectStore } from "./store";
 import { ChunkStreamer, streamBudget } from "./streaming";
 import { SectVoice, startTalk, talismanBox, useVoiceRouting } from "./voice";
 
@@ -248,8 +255,23 @@ function subscribeWideHud(onChange: () => void): () => void {
 const wideHudNow = () => window.matchMedia(WIDE_HUD).matches;
 const wideHudOnServer = () => true;
 
+/**
+ * Where the page itself last put the scroll (instantScrollTo), until the scroll event that follows:
+ * that event is not the visitor scrolling (a flight, a snap or a resync must not count as one, or a
+ * snap's arrival would start the next).
+ */
+let ownScrollY: number | null = null;
+
 function instantScrollTo(top: number): void {
   window.scrollTo({ top, behavior: "instant" as ScrollBehavior });
+  ownScrollY = window.scrollY;
+}
+
+/** This scroll event is the page's own (instantScrollTo), not the visitor's. Each write answers one event. */
+function takeOwnScroll(): boolean {
+  const own = ownScrollY !== null && Math.abs(window.scrollY - ownScrollY) < 1;
+  ownScrollY = null;
+  return own;
 }
 
 function localStore(): Storage | null {
@@ -261,6 +283,10 @@ function localStore(): Storage | null {
 }
 
 const CONTEXT_LOST = "The graphics card dropped the scene.";
+/** How many times a visit the sect loads again by itself after the graphics card dropped it... */
+const CONTEXT_RESTARTS = 2;
+/** ...and how long the error screen shows first (ms). */
+const CONTEXT_RESTART_DELAY_MS = 1500;
 /** The loading screen's label, and its live region's; a load for a new tier says "Switching to Low". */
 const LOADING = "Loading the sect";
 /**
@@ -270,12 +296,24 @@ const LOADING = "Loading the sect";
 const RESTART_DELAY_MS = 400;
 /** The opening view waits at most this long for its chunks (the backdrop proxies stand in after). */
 const OPENING_TIMEOUT_MS = 25000;
+/**
+ * How long the loading screen may hold "Enter" back past the first picture while the first stop
+ * finishes (its live light, grass, uploads and shader programs): a slow device still gets in. Files
+ * still downloading hold it only briefly (lib/sect/settle.ts SETTLE_GATE), so on a slow line this
+ * cap is not what lets the visitor in.
+ */
+const ENTER_SETTLE_MS = 6000;
 /** The intro title starts fading in this long after the page is ready (the veil fades over 700 ms)... */
 const INTRO_DELAY_MS = 350;
 /** ...and takes this long. */
 const INTRO_FADE_MS = 800;
-/** Within this many scroll units of a hold, a click on its place opens the reader without flying. */
-const AT_HOLD_UNITS = 30;
+/**
+ * Within this many scroll units of a hold (the camera shows its frame, or one beside it), a click on
+ * its place opens the reader without flying. After a snap the camera rests exactly on the stop;
+ * further off, the visitor has only just scrolled (the snap is coming), and the click flies there
+ * first, so a reader never opens over a view between stops. (30 when a hold was 42 units long.)
+ */
+const AT_HOLD_UNITS = 2;
 
 interface FallbackState {
   initial: ContentTarget | null;
@@ -345,6 +383,8 @@ export default function SectExperience() {
   const [refocusPicker, setRefocusPicker] = useState(false);
 
   const [phase, setPhase] = useState<Phase>(probe.webgl2 ? "data" : "nowebgl");
+  /** The first stop has finished behind the loading screen (or the wait ran out): "Enter" may turn gold. */
+  const [firstStopDone, setFirstStopDone] = useState(false);
   /** The visitor pressed "Enter" (a later load for a new tier then goes straight on). */
   const entered = useRef(!waitsForEnter(params));
   const [error, setError] = useState<string | null>(null);
@@ -548,6 +588,8 @@ export default function SectExperience() {
           tier: t,
           deferDetail: true,
         });
+        // A set's preparation takes bigger slices of the main thread while nothing of the scene shows.
+        c.sliceMs = () => PREPARE_SLICE[sceneView(s)];
         // Phones and tablets keep only the area they are in (the backdrop's proxies stand in for the rest).
         const budget = streamBudget(t, probe.coarse);
         const st: ChunkStreamer = new ChunkStreamer(
@@ -657,6 +699,9 @@ export default function SectExperience() {
         if (made.global) disposeSet(made.ctx, made.global);
         if (made.flyer) disposeObjects([made.flyer], new Set([made.ctx.waterfallMaterial]));
         disposeWorldContext(made.ctx);
+        // The streamer's callbacks close over this scope, and an old React closure can keep the
+        // streamer a while after a reload: it must not keep the old world's sets with it.
+        made = null;
       }
     };
     // reducedMotion and deep are read once for the initial store; later changes go through effects.
@@ -728,7 +773,8 @@ export default function SectExperience() {
 
   // The world has rendered: the loading screen offers "Enter" (the first time), or the page opens.
   const onRendered = useCallback(() => {
-    setProgress({ value: 1, label: "Ready" });
+    // On the Enter screen the bar stays just short of full while the first stop finishes (below).
+    setProgress((p) => (entered.current ? { value: 1, label: "Ready" } : { value: Math.max(p.value, 0.98), label: p.label }));
     setPhase((p) => (p === "error" ? p : entered.current ? "ready" : "loaded"));
   }, []);
 
@@ -737,8 +783,6 @@ export default function SectExperience() {
     entered.current = true;
     setPhase((p) => (p === "loaded" ? "ready" : p));
   }, []);
-
-  const onContextLost = useCallback(() => fail(CONTEXT_LOST), [fail]);
 
   // The quality ladder (scene.tsx Driver). For a tier the visitor picked it is a safety net only:
   // under 25 fps (not 50) and only the resolution steps down, so High still looks like High (and
@@ -759,6 +803,14 @@ export default function SectExperience() {
   const liveRef = useRef({ store, phase });
   liveRef.current = { store, phase };
 
+  const onContextLost = useCallback(() => {
+    // Where the visitor was, or was flying to: loading again after this (by itself or by Reload on
+    // the error screen) goes back there, as a tier change does.
+    const { store: s, phase: p } = liveRef.current;
+    if (p === "ready" && s) resume.current = { u: s.flight ? s.flight.toU : s.targetU, frame: s.frameOverride };
+    fail(CONTEXT_LOST);
+  }, [fail]);
+
   /** Takes the world down for a new load: the canvas goes, and the loading screen comes back. */
   const clearWorld = useCallback((label: string) => {
     setCtx(null);
@@ -770,6 +822,7 @@ export default function SectExperience() {
     setChunks([]);
     setOpeningIds(null);
     setOpeningTimedOut(false);
+    setFirstStopDone(false);
     setError(null);
     setPhase("data");
     setProgress({ value: 0.02, label });
@@ -852,6 +905,20 @@ export default function SectExperience() {
     else restart(tier);
   }, [restart, tier]);
 
+  // The graphics card dropped the scene: the canvas has gone and the error screen shows. A moment
+  // later the sect loads again by itself, in place, on a new canvas (what Reload there does when no
+  // tier pick is stored, without the click), at most CONTEXT_RESTARTS times a visit; after that the
+  // error screen waits for Reload.
+  const contextRestarts = useRef(0);
+  useEffect(() => {
+    if (phase !== "error" || error !== CONTEXT_LOST || contextRestarts.current >= CONTEXT_RESTARTS) return;
+    const t = window.setTimeout(() => {
+      contextRestarts.current++;
+      restart(tier);
+    }, CONTEXT_RESTART_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [phase, error, restart, tier]);
+
   useEffect(() => {
     if (phase !== "ready" || !store) return;
     resume.current = null;
@@ -876,10 +943,13 @@ export default function SectExperience() {
 
   /**
    * Eases the camera to scroll position `toU` and puts the page scroll there at once. `instant`: it
-   * is there at once (fast travel, under the ink).
+   * is there at once (fast travel, under the ink). `carry`: when the camera is moving (a glide, a
+   * flight, a scroll it is catching up with), the flight carries its speed on instead of stopping it
+   * dead and easing it out again (lib/sect/snap.ts planCarry; the keys' steps); at rest it eases as
+   * any flight does.
    */
   const startFlight = useCallback(
-    (toU: number, onArrive?: () => void, instant = false) => {
+    (toU: number, onArrive?: () => void, instant = false, carry = false) => {
       if (!store) return;
       store.frameOverride = null;
       store.gatherFrame = null;
@@ -888,7 +958,9 @@ export default function SectExperience() {
       const duration = store.reducedMotion || instant ? 0 : flightSeconds(toU - fromU);
       const toFrame = uToFrame(store.map, toU);
       store.targetU = toU;
-      if (duration > 0) store.flight = { fromU, toU, t0: performance.now(), duration, toFrame, onArrive };
+      const glide = carry && duration > 0 ? planCarry(fromU, toU, store.speed, duration) : null;
+      if (glide) store.flight = { fromU, toU, t0: performance.now(), duration: glide.duration, toFrame, onArrive, v0: glide.v0 };
+      else if (duration > 0) store.flight = { fromU, toU, t0: performance.now(), duration, toFrame, onArrive };
       else {
         store.flight = null;
         store.u = toU;
@@ -901,16 +973,36 @@ export default function SectExperience() {
   );
 
   /**
+   * A snap: glides the camera from where it is on to the stop at scroll position `toU`, carrying on
+   * the speed it has (no stop and restart: lib/sect/snap.ts planGlide), and puts the page scroll
+   * there at once. No gathering first, as a scroll does not gather: the streamer plans for the glide's
+   * end (toFrame) and the backdrop stands in for anything not in yet.
+   */
+  const startGlide = useCallback(
+    (toU: number) => {
+      if (!store) return;
+      const g = planGlide(store.u, toU, store.speed);
+      store.targetU = toU;
+      store.flight = { fromU: g.fromU, toU, t0: performance.now(), duration: g.duration, toFrame: uToFrame(store.map, toU), v0: g.v0 };
+      store.glides++;
+      instantScrollTo(uToScroll(toU, maxScroll(), store.map.totalUnits));
+      wake(store);
+    },
+    [store],
+  );
+
+  /**
    * Flies to scroll position `toU`. Chunks the destination needs that are not on the GPU yet are
    * gathered first (the indicator shows; the backdrop proxies stand in meanwhile), so the camera
    * never arrives at nothing; after 12 s it goes anyway and the proxies stand in until they come. A
    * newer jump or the visitor's own scrolling cancels a waiting one. Resolves false when cancelled so.
    * (The keys' steps between stops; the rail's, the list's, links' and Home and End's jumps go under
    * the ink instead when their place is not loaded: goTo. The voice agent always goes by the ink:
-   * travelTo.)
+   * travelTo.) `carry`: the flight carries the camera's speed on when it starts while the camera
+   * moves (startFlight; the keys' steps).
    */
   const jumpTo = useCallback(
-    async (toU: number, onArrive?: () => void): Promise<boolean> => {
+    async (toU: number, onArrive?: () => void, carry = false): Promise<boolean> => {
       if (!store) return false;
       const token = ++jumpToken.current;
       if (Math.abs(store.u - toU) < 1 && !store.flight) {
@@ -935,7 +1027,7 @@ export default function SectExperience() {
         store.gatherFrame = null;
         setGathering(null);
       }
-      startFlight(toU, onArrive);
+      startFlight(toU, onArrive, false, carry);
       return true;
     },
     [store, streamer, startFlight],
@@ -1107,26 +1199,125 @@ export default function SectExperience() {
     [store, goTo, travelTo, openReader],
   );
 
+  /**
+   * A place's panel opens its reader. The panel still shows for a moment after the camera has left
+   * its stop (it fades over 16 units, the first part of a glide on), so while a flight or a snap glide
+   * is under way the reader waits for the camera to be there: it opens on arrival when the camera is
+   * headed there already, else after flying back (navigate). At rest it opens at once, as before.
+   */
+  const openFromPanel = useCallback(
+    (t: ContentTarget) => {
+      const fl = store?.flight;
+      if (!store || !fl) {
+        openReader(t);
+        return;
+      }
+      const hold = store.map.holds.find((h) => h.id === t.area);
+      if (hold && Math.abs(fl.toU - hold.uMid) < AT_HOLD_UNITS) {
+        const then = fl.onArrive;
+        fl.onArrive = () => {
+          then?.();
+          openReader(t);
+        };
+        return;
+      }
+      navigate(t, true);
+    },
+    [store, openReader, navigate],
+  );
+
   // --- scroll and input ----------------------------------------------------------------------------
 
   // Scroll drives the camera target. A ?frame=N view holds until the visitor scrolls themselves
-  // (wheel, touch, keys); a flight is cancelled the same way (the camera then glides on from where
-  // it is). Programmatic scrolls never clear either.
+  // (wheel, touch, keys); a flight or a snap glide is cancelled the same way, and the camera coasts
+  // on from where it is at the speed it had (lib/sect/snap.ts coastTarget: the page scroll is put
+  // there, and the visitor's own scrolling moves on from it, rather than from where the flight was
+  // going). The page's own scrolls (instantScrollTo) clear neither.
+  //
+  // Snap: once the visitor's own scrolling rests (SNAP.restMs with no scroll from them and no finger
+  // down) close to a stop, the camera glides on to it by itself (lib/sect/snap.ts snapTarget,
+  // startGlide); further from one it stays where the visitor left it, to look around. Every input
+  // counts: the wheel, a trackpad, touch (a flick rests once its momentum has run out), Space, the
+  // scrollbar (any scroll the page did not make itself). Not before the flight starts, with reduced
+  // motion (it has its own stops), while a ?frame= view is held, or once a flight from a key or a
+  // link has taken over; while a reader, the map, fast travel's ink or the page view covers the
+  // flight, or a far jump gathers, it waits for that to go.
   useEffect(() => {
     if (!store) return;
-    const userInput = () => {
+    const ready = phase === "ready";
+    /** Where this stretch of the visitor's scrolling began: the scroll position at the last rest. */
+    let fromU = store.targetU;
+    /** The visitor has scrolled (or touched) since the last rest. */
+    let moved = false;
+    let timer = 0;
+    const arm = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(rest, SNAP.restMs);
+    };
+    const rest = () => {
+      timer = 0;
+      if (!moved || touching.current) return;
+      // Dragging the view to look around: the snap waits until the drag is let go.
+      if (isDragging(store.look)) {
+        arm();
+        return;
+      }
+      if (!ready || store.flight || store.frameOverride !== null || store.reducedMotion) {
+        moved = false;
+        return;
+      }
+      if (modalRef.current || store.paused || store.gatherFrame !== null) {
+        arm();
+        return;
+      }
+      moved = false;
+      const to = snapTarget(
+        store.map.stops.map((s) => s.u),
+        store.targetU,
+        fromU,
+        commitUnits(store.map.totalUnits, maxScroll()),
+      );
+      fromU = to ?? store.targetU;
+      if (to !== null) startGlide(to);
+    };
+    /** The visitor scrolled, or put a finger down: a stretch begins (from the last rest), or goes on. */
+    const visitor = () => {
+      if (!moved) fromU = store.targetU;
+      moved = true;
+      if (!touching.current) arm();
+    };
+    /** `px`: the wheel turn that took over from a flight, which the page applies itself (onWheel). */
+    const userInput = (px = 0) => {
       if (store.frameOverride !== null) store.frameOverride = null;
-      if (store.flight) store.flight = null;
+      const fl = store.flight;
+      if (fl) {
+        store.flight = null;
+        if (!modalRef.current) {
+          store.targetU = coastTarget(store.u, store.speed, store.map.totalUnits, fl.toU);
+          instantScrollTo(uToScroll(store.targetU, maxScroll(), store.map.totalUnits) + px);
+        }
+      }
       if (store.gatherFrame !== null) {
         jumpToken.current++;
         store.gatherFrame = null;
         setGathering(null);
       }
+      visitor();
+    };
+    // Putting the scroll at the coast point drops the browser's own scroll for the wheel turn that
+    // is already on its way (it never lands), so that one turn is the page's to apply: the browser's
+    // is cancelled. Not listening passively costs nothing here: the camera follows the scroll through
+    // the rig's damping, never the browser's scrolling itself.
+    const onWheel = (e: WheelEvent) => {
+      const px = store.flight && !modalRef.current && !e.ctrlKey && e.cancelable ? wheelPixels(e.deltaY, e.deltaMode, window.innerHeight) : 0;
+      if (px !== 0) e.preventDefault();
+      userInput(px);
     };
     const keyInput = (e: KeyboardEvent) => {
       if ([" ", "Spacebar"].includes(e.key) && !(e.target as HTMLElement | null)?.closest?.("button, a, input, textarea")) userInput();
     };
     const onScroll = () => {
+      const own = takeOwnScroll();
       const total = store.map.totalUnits;
       if (modalRef.current) {
         // Something scrolled the page under the reader or page view (an anchor, the voice orb
@@ -1136,20 +1327,64 @@ export default function SectExperience() {
         return;
       }
       if (store.frameOverride !== null) return;
-      store.targetU = scrollToU(window.scrollY, maxScroll(), total);
+      const at = scrollToU(window.scrollY, maxScroll(), total);
+      // The page put the scroll there from targetU itself: reading it back would only round it to a
+      // pixel, moving a camera that rests exactly on a stop off it by a hair.
+      if (own && Math.abs(at - store.targetU) < 0.5) return;
+      if (!own) {
+        // The visitor's own scroll (the scrollbar, middle-click autoscroll, a wheel's smooth scroll,
+        // a flick's momentum): it takes over from a snap glide at once. As with a wheel turn
+        // (userInput), the camera coasts on from where it is and the scroll moves on from there by as
+        // far as the visitor scrolled from the glide's end, where the page had put it (moving on from
+        // the glide's end itself lunged the camera ahead and on past the stop it was gliding to).
+        const fl = store.flight;
+        if (fl?.v0 !== undefined) {
+          store.flight = null;
+          store.targetU = coastTarget(store.u, store.speed, total, fl.toU);
+          visitor();
+          store.targetU = Math.min(total, Math.max(0, store.targetU + at - fl.toU));
+          instantScrollTo(uToScroll(store.targetU, maxScroll(), total));
+          wake(store);
+          return;
+        }
+        visitor();
+      }
+      store.targetU = at;
       wake(store);
     };
-    window.addEventListener("wheel", userInput, { passive: true });
-    window.addEventListener("touchstart", userInput, { passive: true });
+    const touchEnd = () => {
+      if (moved) arm();
+    };
+    const touchStart = () => userInput();
+    window.addEventListener("wheel", onWheel, { passive: false });
+    window.addEventListener("touchstart", touchStart, { passive: true });
+    window.addEventListener("touchend", touchEnd, { passive: true });
+    window.addEventListener("touchcancel", touchEnd, { passive: true });
     window.addEventListener("keydown", keyInput);
     window.addEventListener("scroll", onScroll, { passive: true });
+    // The flight starts (or starts again after a new load) with the camera between stops, as when the
+    // visitor scrolled while the loading screen was up (no snap then): it glides on to the nearest
+    // stop, as after any rest, so it still ends on a scene.
+    if (
+      ready &&
+      !store.flight &&
+      store.frameOverride === null &&
+      !store.reducedMotion &&
+      !store.map.stops.some((s) => Math.abs(s.u - store.targetU) <= SNAP.atStopUnits)
+    ) {
+      moved = true;
+      arm();
+    }
     return () => {
-      window.removeEventListener("wheel", userInput);
-      window.removeEventListener("touchstart", userInput);
+      window.clearTimeout(timer);
+      window.removeEventListener("wheel", onWheel);
+      window.removeEventListener("touchstart", touchStart);
+      window.removeEventListener("touchend", touchEnd);
+      window.removeEventListener("touchcancel", touchEnd);
       window.removeEventListener("keydown", keyInput);
       window.removeEventListener("scroll", onScroll);
     };
-  }, [store]);
+  }, [store, phase, startGlide]);
 
   // Keys between holds: PageDown/PageUp, arrows, J/K; Home/End to the ends. Not while a reader,
   // the page view, the voice panel or any input has focus.
@@ -1177,10 +1412,12 @@ export default function SectExperience() {
       const stop = navKeyTarget(store.map, from, intent);
       if (!stop) return;
       // Home and End are far jumps: to a place not loaded yet they go under the ink, as the rail's
-      // do (goTo). The steps between stops fly, gathering what they must, as a scroll does.
+      // do (goTo). The steps between stops fly, gathering what they must, as a scroll does; a step
+      // pressed while the camera moves (a glide, another step) carries its speed on, no stop and
+      // restart (lib/sect/snap.ts planCarry).
       const area = intent === "first" || intent === "last" ? nearestHold(store.map, stop.u) : null;
       if (area) goTo(area, undefined, stop.u);
-      else void jumpTo(stop.u);
+      else void jumpTo(stop.u, undefined, true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -1440,52 +1677,6 @@ export default function SectExperience() {
     return () => cancelAnimationFrame(raf);
   }, [store, phase]);
 
-  // Touch: a flick (or a drag) that comes to rest within about a screen of the next stop glides on
-  // to it, where the panel is up, rather than leaving the camera between places (lib/sect/opening.ts
-  // flickStop). Rest is a moment with no scroll after the finger lifts (the momentum glide has ended).
-  useEffect(() => {
-    if (!store || phase !== "ready") return;
-    let moved = false;
-    let fromU = store.targetU;
-    let timer = 0;
-    const settle = () => {
-      timer = 0;
-      if (!moved || touching.current) return;
-      moved = false;
-      if (modalRef.current || store.paused || store.flight || store.gatherFrame !== null || store.frameOverride !== null || store.reducedMotion) return;
-      const reach = (window.innerHeight * store.map.totalUnits) / Math.max(1, maxScroll());
-      const to = flickStop(store.map, store.targetU, reach, store.targetU - fromU);
-      if (to !== null) startFlight(to);
-    };
-    const arm = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(settle, 180);
-    };
-    const onStart = () => {
-      moved = false;
-      fromU = store.targetU;
-      window.clearTimeout(timer);
-    };
-    const onScroll = () => {
-      // Only the visitor's own scrolling: a flight or a resync puts the scroll position in place.
-      if (!touching.current && !moved) return;
-      moved = true;
-      if (!touching.current) arm();
-    };
-    const onEnd = () => {
-      if (moved) arm();
-    };
-    window.addEventListener("touchstart", onStart, { passive: true });
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("touchend", onEnd, { passive: true });
-    return () => {
-      window.clearTimeout(timer);
-      window.removeEventListener("touchstart", onStart);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("touchend", onEnd);
-    };
-  }, [store, phase, startFlight]);
-
   // --- talk, hotspots, places --------------------------------------------------------------------
 
   // The first drag that turns the view retires the hint for good; unused, it fades after a while.
@@ -1515,12 +1706,13 @@ export default function SectExperience() {
   const onHover = useCallback((id: string | null, at: readonly [number, number] | null) => {
     const el = hoverRef.current;
     if (el) {
-      // Hidden while the hovered point is behind the camera (the view turned away from it).
-      el.style.opacity = id && at ? "1" : "0";
       // Anchored at the top centre of the object's projected box, above it. Kept 8 px inside the
       // window by its measured size (a title and a two-line blurb), so it is never cut off at an
       // edge, and moved off the stop's content panel when it would cover it (overlay.tsx
       // placeHoverLabel). Its content changes a frame late, so the next frame corrects the size.
+      // Everything is measured before anything is written: a write first made the browser lay the
+      // page out again inside the frame for the reads (2-7 ms a frame while a label shows).
+      let transform: string | null = null;
       if (at) {
         const panels: DOMRect[] = [];
         for (const p of Object.values(panelRefs.current)) {
@@ -1534,8 +1726,11 @@ export default function SectExperience() {
           { w: window.innerWidth, h: window.innerHeight },
           panels,
         );
-        el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
+        transform = `translate(${Math.round(x)}px, ${Math.round(y)}px) translate(-50%, -100%)`;
       }
+      // Hidden while the hovered point is behind the camera (the view turned away from it).
+      el.style.opacity = id && at ? "1" : "0";
+      if (transform !== null) el.style.transform = transform;
     }
     setHovered((h) => (h === id ? h : id));
   }, []);
@@ -1696,21 +1891,23 @@ export default function SectExperience() {
    * Under the ink, until the place at scroll position `toU` has settled (lib/sect/settle.ts): every
    * area its view draws streamed in, on the GPU and drawn (the neighbours' stand-ins swapped for
    * them), nothing filling in any more (grass, the mirror's capture, the hold focus, the detail
-   * texture), then the renderer's counts and the view still for a few frames. The scene draws it
+   * texture), then the renderer's counts and the view still for a few frames, then live light lit
+   * there (but never more than LIVE_LOOK.handover.inkWaitMs past the rest). The scene draws it
    * behind the ink meanwhile (every display frame once its areas are in; at the idle rate while they
    * stream, which leaves the loading its time). Reports the progress for the ink's Loading line.
    * Resolves when settled, when `signal` aborts (the ink gave up, or went), or when something moved
    * the camera off the place.
    */
   const settleAt = useCallback(
-    (toU: number, signal: AbortSignal) =>
+    (toU: number, signal: AbortSignal, gate?: { lateMs: number }) =>
       new Promise<void>((resolve) => {
         if (!store || !streamer || !ctx || signal.aborted) {
           resolve();
           return;
         }
         const frame = uToFrame(store.map, toU);
-        const watch = new SettleWatch();
+        // The first stop's wait counts a shorter still (it waits for the GPU's queue too).
+        const watch = new SettleWatch(gate ? SETTLE_GATE : SETTLE);
         let raf = 0;
         let shown = -1;
         let unculled = false;
@@ -1725,13 +1922,23 @@ export default function SectExperience() {
             stop();
             return;
           }
-          const place = streamer.settleAt(frame);
+          // The first stop (`gate`): every area its view draws, not only it and its neighbours.
+          const place = streamer.settleAt(frame, gate ? Infinity : undefined);
           const r = store.report;
           const busy: string[] = [];
           if (r.grass) busy.push("grass");
           if (r.reflection) busy.push("reflection");
           if (r.focus) busy.push("focus");
-          if (detailSettling(ctx)) busy.push("detail");
+          // The detail texture: the ink waits until it has faded in, the loading screen not for its fade.
+          const detail = detailState(ctx);
+          if (detailHolds(detail, !!gate)) busy.push("detail");
+          // The loading screen's wait (`gate`) also waits for the GPU's queue and links to empty.
+          if (gate && r.gpu) busy.push("gpu");
+          // What is still downloading: the loading screen's wait lets go of it (SETTLE_GATE
+          // arrivingMs); fast travel's waits for it (SETTLE).
+          const arriving = [...place.arriving];
+          if (detail === "arriving") arriving.push("detail");
+          if (r.liveArriving) arriving.push("live");
           const st = watch.push({
             now: performance.now(),
             frames: r.frames,
@@ -1740,8 +1947,12 @@ export default function SectExperience() {
             busy,
             gpu: `${r.geometries}:${r.textures}:${r.programs}`,
             view: `${store.frame.toFixed(2)}|${store.look.yaw.toFixed(4)}|${store.look.pitch.toFixed(4)}`,
+            // Live light coming in at the place holds the ink a little past settled (live.tsx).
+            late: r.live ? ["live"] : [],
+            lateMs: gate ? gate.lateMs : LIVE_LOOK.handover.inkWaitMs,
+            arriving,
           });
-          if (params.debug) (window as unknown as { __sectSettle?: unknown }).__sectSettle = { ...st, chunks: place.chunks, leaving: place.leaving, busy };
+          if (params.debug) (window as unknown as { __sectSettle?: unknown }).__sectSettle = { ...st, chunks: place.chunks, leaving: place.leaving, busy, arriving };
           const pct = Math.round(st.progress * 50) / 50;
           if (pct !== shown) {
             shown = pct;
@@ -1762,6 +1973,40 @@ export default function SectExperience() {
       }),
     [store, streamer, ctx, params],
   );
+
+  // Until the flight starts the loading screen covers the scene: the GPU queue runs flat out behind
+  // it (store.ts sceneView).
+  useEffect(() => {
+    if (store) store.veiled = phase !== "ready";
+  }, [store, phase]);
+
+  // The first stop finishes behind the loading screen before "Enter" turns gold: every area its view
+  // draws on the GPU and drawn once with nothing culled, its grass grown, its live light lit, nothing
+  // left to upload or link (settleAt, the wait fast travel's ink makes, plus the GPU queue). What
+  // would grow or fade in meanwhile is there at once (store.inked), as under the ink. Its stalls are
+  // then spent where nobody sees them, not on the first frames after Enter. At most ENTER_SETTLE_MS.
+  // It waits for work on what has arrived, never long for a download (SETTLE_GATE arrivingMs): on a
+  // real line the neighbours and the live maps come after Enter, as they do at every later stop.
+  useEffect(() => {
+    if (phase !== "loaded" || firstStopDone || !store) return;
+    let gone = false;
+    const ac = new AbortController();
+    const cap = window.setTimeout(() => ac.abort(), ENTER_SETTLE_MS);
+    store.inked = true;
+    void settleAt(store.targetU, ac.signal, { lateMs: ENTER_SETTLE_MS }).then(() => {
+      if (gone) return;
+      clearTimeout(cap);
+      store.inked = false;
+      setProgress({ value: 1, label: "Ready" });
+      setFirstStopDone(true);
+    });
+    return () => {
+      gone = true;
+      clearTimeout(cap);
+      ac.abort();
+      store.inked = false;
+    };
+  }, [phase, firstStopDone, store, settleAt]);
 
   /**
    * Under the ink: the map closes, the camera is at the stop's hold (or at `toU`) at once (a far jump
@@ -2046,7 +2291,7 @@ export default function SectExperience() {
                   key={h.id}
                   area={h.id}
                   side={shortScreen ? "left" : (sides[h.id] ?? undefined)}
-                  onOpen={openReader}
+                  onOpen={openFromPanel}
                   onTalk={talk}
                   references={loreAt[h.id]}
                   ref={panelRef(h.id)}
@@ -2110,12 +2355,13 @@ export default function SectExperience() {
         <LoadingScreen
           progress={progress.value}
           label={progress.label}
-          phaseLabel={phase === "ready" || phase === "loaded" ? "Ready" : load.label}
+          phaseLabel={phase === "ready" || (phase === "loaded" && firstStopDone) ? "Ready" : load.label}
           error={error}
           visible={phase !== "ready"}
           onReload={error ? reloadAfterError : undefined}
           onReadAsPage={readAsPage}
-          onEnter={phase === "loaded" ? enter : undefined}
+          onEnter={phase === "loaded" && firstStopDone ? enter : undefined}
+          finishing={phase === "loaded"}
           quality={picker ? { ...picker, autoFocus: refocusPicker } : undefined}
           sound={music ? <SoundPrompt engine={music} /> : "reserve"}
           poster

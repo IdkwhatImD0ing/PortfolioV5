@@ -10,9 +10,10 @@ import type { LookOffset } from "./free-look";
  * 80 KB, portrait under 60 KB). Landscape is captured on the high tier (desktops). Portrait is
  * captured on the low tier in a touch browser, as phones draw it (they start on Low): a High still
  * was 6 levels darker than a phone's first picture and had no sun glare. They must be captured again
- * whenever that view changes (a new bake of the gate or the backdrop, a new camera path, or a look
- * change: materials, grade, sky, moon): the loading screen crossfades from the still to the canvas,
- * so the two must match.
+ * whenever that view changes (a new bake of the gate or the backdrop, a new camera path, the gate's
+ * entry in journey.ts JOURNEY, the gold look, JOURNEY_ON, or any other look change: materials,
+ * grade, sky, moon): the loading screen crossfades from the still to the canvas, so the two must
+ * match. docs/sect/lux.md "Loading posters" has the steps.
  *
  * Both are perspective views from the start camera, so each screen's view is a centred crop of one
  * of them at a scale the camera's field of view sets (camera-path.ts fovForAspect):
@@ -212,36 +213,4 @@ export function portraitTurn(holdId: string | null, portrait: boolean): LookOffs
 /** Seconds the portrait turn takes (eased), about as long as the free look's swing back. */
 export const PORTRAIT_TURN_SECONDS = 0.9;
 
-// --- flicks ----------------------------------------------------------------------------------------
-
-/** The scroll map's stops (the start, each hold's middle, the end) and hold zones, as flickStop reads them. */
-export interface FlickMap {
-  stops: readonly { u: number }[];
-  holds: readonly { u0: number; u1: number }[];
-}
-
-/**
- * Where a touch flick that has come to rest at scroll position `u`, moving in `direction` (+1 down
- * the path, -1 back, 0 unknown), glides on to: the next stop ahead when it is within `reach` scroll
- * units (about one screen), else the stop just passed when the flick overshot it by a third of that
- * (gliding further back would undo the flick). Null when neither, or when the camera is already
- * there (inside a hold's dwell, where the panel is up, or within a unit of the start or the end).
- */
-export function flickStop(map: FlickMap, u: number, reach: number, direction = 0): number | null {
-  if (map.holds.some((h) => u >= h.u0 && u <= h.u1)) return null;
-  const nearest = (side: number) => {
-    let best: number | null = null;
-    for (const s of map.stops) {
-      if (side !== 0 && (s.u - u) * side <= 0) continue;
-      if (best === null || Math.abs(s.u - u) < Math.abs(best - u)) best = s.u;
-    }
-    return best;
-  };
-  const near = (to: number | null, limit: number) => to !== null && Math.abs(to - u) >= 1 && Math.abs(to - u) <= limit;
-  const dir = Math.sign(direction);
-  const ahead = nearest(dir);
-  if (near(ahead, reach)) return ahead;
-  if (dir === 0) return null;
-  const behind = nearest(-dir);
-  return near(behind, reach / 3) ? behind : null;
-}
+// A touch flick that comes to rest now snaps to a stop the same way as every other scroll (snap.ts).

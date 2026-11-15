@@ -29,6 +29,25 @@ import type { CloudPuff, Hold, Vec3 } from "./types";
 /** Most areas the shaders' list holds (meta.json has eleven); the rest of the slots stay empty. */
 export const RANGE_MAX_AREAS = 16;
 
+/**
+ * The haze per stop as the page has it (RANGE_LOOK.haze.holds starts as a copy). A look scales
+ * these (looks.ts hazeHolds): this copy is never written, so a hot reload of the looks after one was
+ * written into RANGE_LOOK does not scale it a second time.
+ */
+export const RANGE_HAZE_HOLDS: Readonly<Record<string, number>> = Object.freeze({
+  gate: 1.6,
+  mirror: 1.8,
+  forge: 2.0,
+  arena: 2.2,
+  mission: 2.4,
+  library: 2.7,
+  steles: 3.0,
+  scroll: 3.2,
+  formation: 3.4,
+  abode: 3.8,
+  summit: 4.2,
+});
+
 export const RANGE_LOOK = {
   areas: {
     /** Metres past an area's footprint where the range starts (the plan's "footprint + 30 m"). */
@@ -76,19 +95,7 @@ export const RANGE_LOOK = {
    * the anchor's height). The haze leaves the first look.ts haze.clear metres clear.
    */
   haze: {
-    holds: {
-      gate: 1.6,
-      mirror: 1.8,
-      forge: 2.0,
-      arena: 2.2,
-      mission: 2.4,
-      library: 2.7,
-      steles: 3.0,
-      scroll: 3.2,
-      formation: 3.4,
-      abode: 3.8,
-      summit: 4.2,
-    } as Record<string, number>,
+    holds: { ...RANGE_HAZE_HOLDS } as Record<string, number>,
     clear: 80,
   },
   /**
@@ -122,7 +129,7 @@ export const RANGE_LOOK = {
    * (nature_canopy_mass, a ground class) and the lawns past the near forest read canopy green, not olive grey.
    */
   ground: {
-    tame: { tame: 0.5, near: 50, far: 100 },
+    tame: { tame: 0.15, near: 50, far: 100 },
     near: 90,
     far: 180,
     amount: 0.75,
@@ -175,6 +182,11 @@ export interface BuiltGrid {
   nz: number;
   marks: Uint8Array;
   mask: Uint8Array;
+  /**
+   * The cells markBuiltTriangles has marked since the last growBuilt, [i0, j0, i1, j1] inclusive,
+   * or null for none. Left out (a grid made by hand), growBuilt grows the whole grid.
+   */
+  dirty?: [number, number, number, number] | null;
 }
 
 /** An empty built grid over the areas' anchors +- marginM (a 1-cell grid at the origin with no areas). */
@@ -186,7 +198,7 @@ export function createBuiltGrid(areas: readonly RangeArea[], look: RangeLook = R
   const z0 = (zs.length ? Math.min(...zs) : 0) - b.marginM;
   const nx = xs.length ? Math.ceil((Math.max(...xs) + b.marginM - x0) / b.cellM) : 1;
   const nz = zs.length ? Math.ceil((Math.max(...zs) + b.marginM - z0) / b.cellM) : 1;
-  return { x0, z0, cell: b.cellM, nx, nz, marks: new Uint8Array(nx * nz), mask: new Uint8Array(nx * nz) };
+  return { x0, z0, cell: b.cellM, nx, nz, marks: new Uint8Array(nx * nz), mask: new Uint8Array(nx * nz), dirty: null };
 }
 
 /**
@@ -246,30 +258,56 @@ export function markBuiltTriangles(
     const j1 = Math.min(Math.floor((Math.max(p[2], p[5], p[8]) - grid.z0) / grid.cell), grid.nz - 1);
     if (i0 > i1 || j0 > j1) continue;
     for (let j = j0; j <= j1; j++) grid.marks.fill(1, j * grid.nx + i0, j * grid.nx + i1 + 1);
+    const d = grid.dirty;
+    if (d) {
+      if (i0 < d[0]) d[0] = i0;
+      if (j0 < d[1]) d[1] = j0;
+      if (i1 > d[2]) d[2] = i1;
+      if (j1 > d[3]) d[3] = j1;
+    } else if (d === null) {
+      grid.dirty = [i0, j0, i1, j1];
+    }
     marked++;
   }
   return marked;
 }
 
-/** Grows the marks by `grow` cells into the mask (255 = built), a square max filter. */
+/**
+ * Grows the marks by `grow` cells into the mask (255 = built), a square max filter. Marks only ever
+ * get added (markBuiltTriangles), so only the cells within `grow` of the ones marked since the last
+ * call (`dirty`) can change: only those are worked out again, from the marks around them, which
+ * gives the mask a whole-grid pass would (an area's set touches a few thousand of the grid's
+ * 360 000 cells; the whole grid took 5-10 ms a set, mid-flight). Without `dirty`, the whole grid.
+ */
 export function growBuilt(grid: BuiltGrid, look: RangeLook = RANGE_LOOK): void {
   const { nx, nz, marks, mask } = grid;
   const r = look.built.grow;
-  const rows = new Uint8Array(nx * nz);
-  for (let j = 0; j < nz; j++) {
-    for (let i = 0; i < nx; i++) {
+  const d = grid.dirty;
+  if (d === null) return;
+  // The mask's cells to work out, and the rows of the first pass they read.
+  const i0 = d ? Math.max(d[0] - r, 0) : 0;
+  const i1 = d ? Math.min(d[2] + r, nx - 1) : nx - 1;
+  const j0 = d ? Math.max(d[1] - r, 0) : 0;
+  const j1 = d ? Math.min(d[3] + r, nz - 1) : nz - 1;
+  const rj0 = Math.max(j0 - r, 0);
+  const rj1 = Math.min(j1 + r, nz - 1);
+  const w = i1 - i0 + 1;
+  const rows = new Uint8Array(w * (rj1 - rj0 + 1));
+  for (let j = rj0; j <= rj1; j++) {
+    for (let i = i0; i <= i1; i++) {
       let v = 0;
-      for (let d = Math.max(i - r, 0); d <= Math.min(i + r, nx - 1) && !v; d++) v = marks[j * nx + d];
-      rows[j * nx + i] = v;
+      for (let c = Math.max(i - r, 0); c <= Math.min(i + r, nx - 1) && !v; c++) v = marks[j * nx + c];
+      rows[(j - rj0) * w + (i - i0)] = v;
     }
   }
-  for (let j = 0; j < nz; j++) {
-    for (let i = 0; i < nx; i++) {
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
       let v = 0;
-      for (let d = Math.max(j - r, 0); d <= Math.min(j + r, nz - 1) && !v; d++) v = rows[d * nx + i];
+      for (let c = Math.max(j - r, 0); c <= Math.min(j + r, nz - 1) && !v; c++) v = rows[(c - rj0) * w + (i - i0)];
       mask[j * nx + i] = v ? 255 : 0;
     }
   }
+  if (d) grid.dirty = null;
 }
 
 /** The mask under world (x, z), 0..1 (nearest cell; the shader filters between cells). 0 outside the grid. */
@@ -653,12 +691,11 @@ vec3 sectFoliageRange( vec3 c, vec3 t, float w, float dist ) {
  * (look.ts sectGradeWith) with the range's parameters blended in by the range weight `sectRw`
  * (declared before it: `float sectRw = sectRangeW( vSectWorld );`, materials.ts).
  */
-export function foliageGradeStatements(grade: SectLook["grade"] = SECT_LOOK.grade, look: RangeLook = RANGE_LOOK): string {
+export function foliageGradeStatements(look: RangeLook = RANGE_LOOK): string {
   const f = look.foliage;
-  const ss = grade.splitShadow ?? grade.split;
   return [
-    `  vec3 sectGraded = sectGradeWith( sectTexel, mix( ${glslFloat(grade.greenTame)}, ${glslFloat(f.greenTame)}, sectRw ),`,
-    `    mix( ${glslVec3(unitTint(grade.shadowTint))}, ${glslVec3(unitTint(f.shadowTint))}, sectRw ), mix( ${glslFloat(ss)}, ${glslFloat(f.splitShadow)}, sectRw ) );`,
+    `  vec3 sectGraded = sectGradeWith( sectTexel, mix( SECT_GRADE_TAME, ${glslFloat(f.greenTame)}, sectRw ),`,
+    `    mix( SECT_GRADE_SHADOW.rgb, ${glslVec3(unitTint(f.shadowTint))}, sectRw ), mix( SECT_GRADE_SHADOW.w, ${glslFloat(f.splitShadow)}, sectRw ) );`,
   ].join("\n");
 }
 
@@ -666,10 +703,10 @@ export function foliageGradeStatements(grade: SectLook["grade"] = SECT_LOOK.grad
  * The GLSL statements rock runs in place of `vec3 sectGraded = sectGrade( sectTexel );` (needs
  * sectRw, rockGlsl, look.ts sectGradeWith): rockRangeLinear's twin.
  */
-export function rockGradeStatements(grade: SectLook["grade"] = SECT_LOOK.grade, look: RangeLook = RANGE_LOOK): string {
+export function rockGradeStatements(look: RangeLook = RANGE_LOOK): string {
   return [
     "  float sectMoss = sectMossGate( sectTexel ) * sectRw;",
-    `  vec3 sectGraded = sectGradeWith( sectTexel, mix( ${glslFloat(grade.greenTame)}, ${glslFloat(look.rock.moss.tame)}, sectMoss ), ${baseTint(grade)} );`,
+    `  vec3 sectGraded = sectGradeWith( sectTexel, mix( SECT_GRADE_TAME, ${glslFloat(look.rock.moss.tame)}, sectMoss ), ${BASE_TINT} );`,
     "  sectGraded = sectRockRange( sectGraded, sectRw * ( 1.0 - sectMoss ), length( vSectWorld - cameraPosition ) );",
   ].join("\n");
 }
@@ -678,18 +715,19 @@ export function rockGradeStatements(grade: SectLook["grade"] = SECT_LOOK.grade, 
  * The GLSL statement ground runs in place of `vec3 sectGraded = sectGrade( sectTexel );` (needs
  * sectRw, vSectWorld, look.ts sectGradeWith): groundRangeLinear's twin.
  */
-export function groundGradeStatements(grade: SectLook["grade"] = SECT_LOOK.grade, look: RangeLook = RANGE_LOOK): string {
+export function groundGradeStatements(look: RangeLook = RANGE_LOOK): string {
   const g = look.ground.tame;
   return [
     `  float sectGt = sectRw * smoothstep( ${glslFloat(g.near)}, ${glslFloat(g.far)}, length( vSectWorld - cameraPosition ) );`,
-    `  vec3 sectGraded = sectGradeWith( sectTexel, mix( ${glslFloat(grade.greenTame)}, ${glslFloat(g.tame)}, sectGt ), ${baseTint(grade)} );`,
+    `  vec3 sectGraded = sectGradeWith( sectTexel, mix( SECT_GRADE_TAME, ${glslFloat(g.tame)}, sectGt ), ${BASE_TINT} );`,
   ].join("\n");
 }
 
-/** The stops' shadow tint and split as sectGradeWith's last two arguments. */
-function baseTint(grade: SectLook["grade"]): string {
-  return `${glslVec3(unitTint(grade.shadowTint))}, ${glslFloat(grade.splitShadow ?? grade.split)}`;
-}
+/**
+ * The stops' shadow tint and split as sectGradeWith's last two arguments (and above, the stops'
+ * green tame): look.ts gradeGlsl's SECT_GRADE_* numbers, which the journey moves at run time.
+ */
+const BASE_TINT = "SECT_GRADE_SHADOW.rgb, SECT_GRADE_SHADOW.w";
 
 /**
  * After rangeGlsl, for rock: `float sectMossGate( vec3 t )` (mossGate's twin) and `vec3

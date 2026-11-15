@@ -30,7 +30,7 @@ import {
   windowCentreAt,
 } from "@/lib/sect/chunks";
 import type { DeviceInfo, Tier } from "@/lib/sect/runtime";
-import { chunkDone, destinationChunks, SETTLE, type SettleSnapshot } from "@/lib/sect/settle";
+import { chunkArriving, chunkDone, destinationChunks, SETTLE, type SettleSnapshot } from "@/lib/sect/settle";
 import type { ChunkInfo } from "@/lib/sect/types";
 import { chunkFiles, disposeSet, loadSet, retireSet, type LoadedSet, type SetLoadOptions, type WorldContext } from "./assets";
 
@@ -42,6 +42,21 @@ import { chunkFiles, disposeSet, loadSet, retireSet, type LoadedSet, type SetLoa
  * on a 40 Mbps line, sharing the line with the forge further back.
  */
 const MAX_PARALLEL = 2;
+/**
+ * Loads at once during the loading screen's wait for the first stop (settleAt with `around`
+ * Infinity), the area the plan prefetches once the others are in among them (it is drawn in the
+ * first view too, far back). One after another, the prefetch started only once the others were
+ * drawn, and its parsing, preparing and uploads alone held "Enter" about half a second, or,
+ * finishing after it, went up and linked their programs in the first seconds of the flight.
+ *
+ * Their downloads still go one at a time, nearest first, as everywhere (MAX_PARALLEL): the next
+ * starts once the last one's files are in, while that one is parsed and prepared, so on localhost
+ * they overlap as before. The wait no longer waits for a download (lib/sect/settle.ts SETTLE_GATE),
+ * and on a real line four side by side made the nearest neighbour (the mirror's peak beside the
+ * stair) and the first stop's own area, when the opening view went on without it, arrive last with
+ * the rest.
+ */
+const GATE_PARALLEL = 4;
 /** Tries a chunk gets (the first load and its retries) before the backdrop's proxy stands in for good. */
 const MAX_TRIES = 3;
 /**
@@ -249,6 +264,12 @@ export interface DestinationStatus {
   chunks: SettleSnapshot["chunks"];
   /** Chunks drawn there now that go once those are in. */
   leaving: string[];
+  /**
+   * Of `chunks` (the expected one aside: it holds nothing anyway), those whose bytes are still on
+   * the way: not loaded yet, or a file of theirs still downloading (lib/sect/settle.ts
+   * chunkArriving). The loading screen's wait lets go of them.
+   */
+  arriving: string[];
 }
 
 /** Someone waiting for a chunk (whenReady): released when it is ready, or when nobody wants it any more. */
@@ -303,7 +324,7 @@ export class ChunkStreamer {
    * up), until `until`: meanwhile only the loads it waits for start (SETTLE.around of the stop), so
    * the window's further areas do not share the line with them. They start once it lets go.
    */
-  private settling: { frame: number; until: number } | null = null;
+  private settling: { frame: number; until: number; around: number } | null = null;
 
   constructor(ctx: WorldContext, onChange: () => void, budget: StreamBudget = ctx.lowTextures ? STREAM_BUDGETS.low : STREAM_BUDGETS.full) {
     this.ctx = ctx;
@@ -391,10 +412,12 @@ export class ChunkStreamer {
    * area the plan will fetch next once these are in is listed too, `expected` (for the progress
    * shown: it may not come after all). While it is called, update() starts only the loads it waits
    * for (SETTLE_FOCUS_MS): the window's further areas would otherwise share the line with them and
-   * make the wait about a third longer.
+   * make the wait about a third longer. `around`: how many areas each side of the stop's own it
+   * covers (the loading screen's wait for the first stop: every area its view draws, Infinity; then
+   * the loads start side by side, the prefetch among them: GATE_PARALLEL).
    */
-  settleAt(frame: number): DestinationStatus {
-    this.settling = { frame, until: performance.now() + SETTLE_FOCUS_MS };
+  settleAt(frame: number, around: number = SETTLE.around): DestinationStatus {
+    this.settling = { frame, until: performance.now() + SETTLE_FOCUS_MS, around };
     const failed = this.failedIds();
     const ready = new Set<string>(failed);
     for (const [id, s] of this.sets) if (s.ready) ready.add(id);
@@ -402,7 +425,7 @@ export class ChunkStreamer {
     const loading = new Set(this.loading.keys());
     const base = { chunks: this.spans, frame, direction: this.travel?.direction ?? 1, loaded: this.costs, window: this.window };
     const ahead = this.budget.prefetch !== "off";
-    const now = destinationChunks({ ...base, resident, loading, ready }, ahead, SETTLE.around);
+    const now = destinationChunks({ ...base, resident, loading, ready }, ahead, around);
     // As if those were all in: what the plan wants then (the prefetch it starts once they are).
     const assumed = new Set(now.want);
     const next = destinationChunks(
@@ -413,22 +436,26 @@ export class ChunkStreamer {
         ready: new Set([...ready, ...assumed]),
       },
       ahead,
-      SETTLE.around,
+      around,
     );
+    const stateOf = (id: string) => ({
+      done: ready.has(id),
+      resident: this.sets.has(id),
+      received: [...(this.received.get(id)?.values() ?? [])].reduce((a, b) => a + b, 0),
+      total: this.downloadBytes(id),
+      fetched: this.loading.has(id) && this.fetched.has(id),
+    });
     const status = (id: string, expected: boolean) => ({
       id,
-      done: chunkDone({
-        done: ready.has(id),
-        resident: this.sets.has(id),
-        received: [...(this.received.get(id)?.values() ?? [])].reduce((a, b) => a + b, 0),
-        total: this.downloadBytes(id),
-      }),
+      done: chunkDone(stateOf(id)),
       weight: this.downloadBytes(id),
       ...(expected ? { expected } : {}),
     });
+    const chunks = [...now.want.map((id) => status(id, false)), ...next.want.filter((id) => !assumed.has(id)).map((id) => status(id, true))];
     return {
-      chunks: [...now.want.map((id) => status(id, false)), ...next.want.filter((id) => !assumed.has(id)).map((id) => status(id, true))],
+      chunks,
       leaving: now.leaving,
+      arriving: now.want.filter((id) => chunkArriving(stateOf(id))),
     };
   }
 
@@ -514,7 +541,7 @@ export class ChunkStreamer {
     // Ready to draw, or failed (nothing to wait for): the plan hands over until the needed are.
     const ready = new Set<string>(failed);
     for (const [id, s] of this.sets) if (s.ready) ready.add(id);
-    const plan = planChunks({
+    const input = {
       chunks: this.spans,
       frame,
       direction: this.travel.direction,
@@ -526,7 +553,8 @@ export class ChunkStreamer {
       loaded: this.costs,
       ready,
       window: this.window,
-    });
+    };
+    const plan = planChunks(input);
     this.plan = plan;
 
     let changed = false;
@@ -551,17 +579,28 @@ export class ChunkStreamer {
     }
     // While fast travel waits at a stop, only what it waits for starts (the stop's own area and its
     // neighbours, a prefetch among them when the window is the area alone); the rest once it is done.
-    const focus = this.settling !== null && performance.now() < this.settling.until ? this.settling.frame : null;
+    const settling = this.settling !== null && performance.now() < this.settling.until ? this.settling : null;
+    const focus = settling?.frame ?? null;
     const order = new Map(this.spans.map((s, i) => [s.id, i]));
     const centre = focus === null ? -1 : windowCentreAt(this.spans, focus);
-    const waitedFor = (id: string) => focus === null || Math.abs((order.get(id) ?? Infinity) - centre) <= SETTLE.around;
-    // One download at a time, nearest first (MAX_PARALLEL).
+    const waitedFor = (id: string) => settling === null || Math.abs((order.get(id) ?? Infinity) - centre) <= settling.around;
+    // One download at a time, nearest first (MAX_PARALLEL loads). Behind the loading screen, waiting
+    // for the first stop, more loads side by side (GATE_PARALLEL), their downloads still one at a time.
+    const gate = settling !== null && settling.around === Infinity;
     const downloading = () => [...this.loading.keys()].some((id) => !this.fetched.has(id));
     for (const id of plan.load) {
-      if (this.loading.size >= MAX_PARALLEL || downloading()) break;
+      if (this.loading.size >= (gate ? GATE_PARALLEL : MAX_PARALLEL) || downloading()) break;
       if (waitedFor(id)) this.start(id, opts);
     }
     const mode = this.budget.prefetch;
+    // And the area the plan prefetches once those are in, beside them (planned as if they were in:
+    // it takes the spare slot it would take then, so the plans that follow keep it, and the wait then
+    // covers it as a load under way), its download after theirs.
+    if (gate && plan.prefetch === null && (mode === "moving" || (mode === "rest" && idle)) && this.loading.size < GATE_PARALLEL && !downloading()) {
+      const inAll = new Set([...input.resident, ...plan.need]);
+      const later = planChunks({ ...input, resident: inAll, ready: new Set([...ready, ...plan.need]), loading: new Set([...input.loading].filter((id) => !inAll.has(id))) });
+      if (later.prefetch && waitedFor(later.prefetch)) this.start(later.prefetch);
+    }
     if (plan.prefetch && waitedFor(plan.prefetch) && this.loading.size === 0 && (mode === "moving" || (mode === "rest" && idle))) this.start(plan.prefetch);
     this.openGates();
     if (changed) this.onChange();
@@ -603,8 +642,14 @@ export class ChunkStreamer {
     this.received.set(id, got);
     this.fetched.delete(id);
     const files = chunkFiles(chunk, this.ctx.lowTextures);
-    // Files whose bytes are all in (or whose size the server does not say: no telling, so in).
+    // Files whose bytes are all in: the download said it is done (it reads to the end, so a size the
+    // server does not say, or a body it decompresses, cannot make it look done early), or the file is
+    // over (loaded, or failed: a decorative one the set goes on without).
     const arrived = new Set<string>();
+    const arrive = (url: string) => {
+      arrived.add(url);
+      if (arrived.size >= files.length && this.loading.get(id) === ac) this.fetched.add(id);
+    };
     loadSet(this.ctx, id, [chunk.need[0], chunk.need[1]], files, {
       signal: ac.signal,
       calm: () => this.calm(id),
@@ -613,12 +658,15 @@ export class ChunkStreamer {
       // tracker when it has one.
       onBytes: (url) => {
         const outer = opts?.onBytes?.(url);
-        return (loaded, total) => {
+        return (loaded, total, done) => {
           got.set(url, loaded);
-          if (total <= 0 || loaded >= total) arrived.add(url);
-          if (arrived.size >= files.length && this.loading.get(id) === ac) this.fetched.add(id);
-          outer?.(loaded, total);
+          if (done) arrive(url);
+          outer?.(loaded, total, done);
         };
+      },
+      onFileDone: (url) => {
+        arrive(url);
+        opts?.onFileDone?.(url);
       },
     })
       .then((set) => {

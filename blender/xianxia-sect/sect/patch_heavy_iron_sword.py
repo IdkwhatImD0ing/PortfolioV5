@@ -26,6 +26,9 @@ what grew: then run export_web.py -- chunks,meta --profile full before the bake)
 Idempotent: every run builds the six meshes fresh (same seed, same geometry), swaps them in and frees the previous
 ones; a second run finds no plaque and changes nothing else. Refuses to save if a part is missing, a new box leaves
 the old one, a part goes over arena.HS_TRI_CAP triangles or a part is not closed.
+
+Round 56: rebuild() is the whole in-place rebuild with its checks and no save; sect/patch_r56_form.py PARTS=sword calls
+it (the blade's three tones and props_iron_heavy, arena.HS_SIDE_EDGE / HS_MATERIALS), and main() saves after it.
 """
 import os
 import sys
@@ -110,7 +113,9 @@ def delete_plaque():
     return names
 
 
-def main():
+def rebuild(log=log):
+    """The in-place rebuild and every check, no save. Raises RuntimeError on a failed check. Returns dict(removed,
+    stale, total, objects)."""
     sroot = bpy.data.objects.get(SWORD)
     if sroot is None:
         raise RuntimeError("%s not found; is this out/sect_chase.blend?" % SWORD)
@@ -188,8 +193,14 @@ def main():
             [(s.material.name if s.material else None, s.link) for s in ob.material_slots])
     log("glow", glow.name, "obj glow", glow.get("glow"), "visible_shadow", glow.visible_shadow)
     log("total triangles", total, "objects", n_obj, "->", len(bpy.data.objects), "(removed %d)" % len(removed))
-    if stale:
-        log("CACHES STALE: world boxes grew", stale, "- run export_web.py -- chunks,meta --profile full before the bake")
+    return dict(removed=removed, stale=stale, total=total, objects=(n_obj, len(bpy.data.objects)))
+
+
+def main():
+    info = rebuild()
+    if info["stale"]:
+        log("CACHES STALE: world boxes grew", info["stale"],
+            "- run export_web.py -- chunks,meta --profile full before the bake")
     else:
         log("CACHES ok: names kept and every world box inside the old one; vis_cache, chunks and the 'arena' hotspot "
             "stay valid (the deleted plaque's rows are ignored)")
@@ -197,4 +208,5 @@ def main():
     log("saved", bpy.data.filepath, "objects", len(bpy.data.objects))
 
 
-main()
+if __name__ == "__main__":
+    main()

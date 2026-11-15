@@ -311,6 +311,124 @@ vec3 sectScreenAdd( vec3 l, float back ) {
 }
 `;
 
+// ---------------------------------------------------------------------------------------------
+// The look's run-time numbers (look-gpu.ts packs them; journey.ts moves them along the flight)
+
+/** vec4s in uSectLook. */
+export const LOOK_VEC4S = 17;
+
+/** Where each group of uSectLook starts (look-gpu.ts says what each vec4 holds). */
+export const LOOK_SLOT = { fog: 0, grade: 6, frame: 10 } as const;
+
+/** vec4s the frame grade takes (lookFrameGradeGlsl). */
+export const FRAME_GRADE_VEC4S = 7;
+
+/** Declares uSectLook once, whichever of the fog and the grade GLSL comes first in a shader. */
+export const LOOK_UNIFORM_GLSL = `#ifndef SECT_LOOK_UNIFORM
+#define SECT_LOOK_UNIFORM
+uniform vec4 uSectLook[ ${LOOK_VEC4S} ];
+#endif`;
+
+/**
+ * GLSL: `vec3 <name>( vec3 linear )`, the grade of the whole frame (looks.ts frameGradeLinear), its
+ * numbers in vec4s `base` to `base + 6` of the uniform array `array` (look-gpu.ts packFrame). At
+ * amount 0 it returns its input untouched.
+ */
+export function lookFrameGradeGlsl(name: string, array: string, base: number): string {
+  const u = (i: number) => `${array}[ ${base + i} ]`;
+  return /* glsl */ `
+float ${name}Curve( float v, float p, float k ) {
+  float x = clamp( v, 0.0, 1.0 );
+  return x < p ? p * pow( x / p, k ) : 1.0 - ( 1.0 - p ) * pow( ( 1.0 - x ) / ( 1.0 - p ), k );
+}
+vec3 ${name}( vec3 c0 ) {
+  vec4 a = ${u(0)};
+  if ( a.x <= 0.0 ) return c0;
+  vec3 luma = vec3( 0.2126, 0.7152, 0.0722 );
+  vec4 bal = ${u(1)};
+  vec4 sh = ${u(2)};
+  vec4 hi = ${u(3)};
+  vec4 lift = ${u(4)};
+  vec4 sp = ${u(5)};
+  vec4 gw = ${u(6)};
+  vec3 x0 = max( c0, 0.0 );
+  float glow = smoothstep( gw.x, gw.y, max( x0.r, max( x0.g, x0.b ) ) );
+  vec3 c = x0 * a.y * bal.rgb;
+  // The curve on each channel (a channel over 1 keeps its value): like film, the mids gain colour
+  // and the lights go toward white instead of toward a hotter hue.
+  vec3 cv = pow( min( c, 1.0 ), vec3( 0.45454545 ) );
+  vec3 cc = pow( vec3( ${name}Curve( cv.r, a.w, a.z ), ${name}Curve( cv.g, a.w, a.z ), ${name}Curve( cv.b, a.w, a.z ) ), vec3( 2.2 ) );
+  c = mix( cc, c, step( vec3( 1.0 ), c ) );
+  // The split tone and the lift, by display luminance.
+  float v2 = pow( min( dot( c, luma ), 1.0 ), 0.45454545 );
+  float ws = 1.0 - smoothstep( sp.x - sp.y, sp.x + sp.y, v2 );
+  c *= mix( vec3( 1.0 ), sh.rgb, sh.w * ws ) * mix( vec3( 1.0 ), hi.rgb, hi.w * ( 1.0 - ws ) );
+  c += lift.rgb * ( lift.w * pow( 1.0 - v2, 4.0 ) );
+  float red = smoothstep( 0.45, 0.7, ( c.r - max( c.g, c.b ) ) / max( c.r, 1e-4 ) );
+  float sat = mix( bal.w, sp.z, red );
+  float lc = dot( c, luma );
+  c = max( vec3( lc ) + ( c - vec3( lc ) ) * sat, 0.0 );
+  float k = min( a.x, 1.0 );
+  vec3 graded = mix( x0, c, k );
+  // The glows' gain fades with the amount too, so a grade fading in (the journey leaving today's
+  // dusk) does not jump the glows to the full gain at the first step.
+  return mix( graded, x0 * mix( 1.0, sp.w, k ), glow );
+}
+`;
+}
+
+/**
+ * The frame grade for shaders that draw straight to the screen (the Low tier has no post pass to
+ * grade the frame): `vec3 sectLookGrade( vec3 linear )`, from uSectLook's frame group.
+ */
+const LOOK_GRADE_FUNCTIONS = `
+#ifndef SECT_LOOK_GRADE
+#define SECT_LOOK_GRADE
+${LOOK_UNIFORM_GLSL}
+${lookFrameGradeGlsl("sectLookGrade", "uSectLook", LOOK_SLOT.frame)}
+#endif
+`;
+
+/**
+ * sectLookGrade for a fragment shader that has no fog library (the cloud puffs and the mist work
+ * their haze out in the vertex shader). Safe beside the fog library: it is built in once.
+ */
+export const SCREEN_GRADE_PARS = LOOK_GRADE_FUNCTIONS;
+
+/**
+ * In a shader with fogLibrary, before `#include <colorspace_fragment>`: on the sRGB screen (the Low
+ * tier) the colour takes the look's frame grade there, as the post pass grades the frame on High
+ * and Mid. Into the composer's buffer it does nothing (the test is a constant the compiler folds).
+ */
+export const SCREEN_GRADE_GLSL =
+  "  if ( linearToOutputTexel( vec4( 0.5 ) ).r > 0.6 ) gl_FragColor.rgb = sectLookGrade( gl_FragColor.rgb );";
+
+/**
+ * The haze's #defines that the look can move at run time: each reads uSectLook's fog group while
+ * its switch is on, else the number the shader was built with.
+ */
+function fogLookDefines(c: FogConstants): string[] {
+  const on = "( uSectLook[ 0 ].w > 0.5 )";
+  const v3 = (slot: number, v: Vec3) => `( ${on} ? uSectLook[ ${slot} ].rgb : ${glslVec3(v)} )`;
+  const f = (slot: number, comp: string, v: number, wrap = (x: string) => x) => `( ${on} ? ${wrap(`uSectLook[ ${slot} ].${comp}`)} : ${glslFloat(v)} )`;
+  return [
+    LOOK_UNIFORM_GLSL,
+    `#define SECT_FOG_DENSITY ${f(5, "y", c.density)}`,
+    `#define SECT_SUN_FOG ${v3(0, c.sunFogColor)}`,
+    `#define SECT_CLOUD_FOG ${v3(1, c.cloudColor)}`,
+    `#define SECT_SKY_HAZE ${f(5, "x", c.skyHaze)}`,
+    `#define SECT_EXTINCTION ${v3(2, c.extinction)}`,
+    `#define SECT_COOL_TINT ${v3(3, c.coolTint)}`,
+    `#define SECT_COOL_MIX ${f(1, "w", c.coolMix)}`,
+    `#define SECT_DESATURATE ${f(2, "w", c.desaturate)}`,
+    `#define SECT_AERIAL_DEPTH ${f(3, "w", Math.max(c.aerialDepth, 1e-3), (x) => `max( ${x}, 1e-3 )`)}`,
+    `#define SECT_HAZE_CLEAR ${f(4, "x", Math.max(c.hazeClear, 0), (x) => `max( ${x}, 0.0 )`)}`,
+    `#define SECT_MIST_DENSITY ${f(4, "y", c.mistDensity)}`,
+    `#define SECT_MIST_FALLOFF ${f(4, "z", Math.max(c.mistFalloff, 1), (x) => `max( ${x}, 1.0 )`)}`,
+    `#define SECT_MIST_START ${f(4, "w", c.mistStart)}`,
+  ];
+}
+
 const FOG_FUNCTIONS = /* glsl */ `
 float sectExpIntegral( float k, float t ) {
   if ( abs( k ) < 1e-5 ) return t;
@@ -379,7 +497,7 @@ vec3 sectAerial( vec3 col, vec3 base, vec3 rd, float od ) {
   return col * tr + h * ( 1.0 - tr );
 }
 ${DITHER_GLSL}
-${SCREEN_CLIP_GLSL}
+${SCREEN_CLIP_GLSL}${LOOK_GRADE_FUNCTIONS}
 // An sRGB-encoded colour plus SECT_DITHER 8-bit steps of noise at pixel p (gl_FragCoord.xy): for
 // shaders drawing straight to the screen (the low tier has no post pass to dither the frame).
 vec3 sectDitherEncoded( vec3 c, vec2 p ) {
@@ -387,36 +505,29 @@ vec3 sectDitherEncoded( vec3 c, vec2 p ) {
 }
 `;
 
-/** #defines shared by the fog chunks and the sky shader. */
+/**
+ * #defines shared by the fog chunks and the sky shader. The ones a look can move at run time read
+ * uSectLook while its fog switch is on (fogLookDefines), else these constants.
+ */
 export function fogDefines(c: FogConstants): string {
   return [
-    `#define SECT_FOG_DENSITY ${glslFloat(c.density)}`,
+    ...fogLookDefines(c),
     `#define SECT_FOG_BASE_Y ${glslFloat(c.baseY)}`,
     `#define SECT_FOG_FALLOFF ${glslFloat(c.falloff)}`,
     `#define SECT_CLOUD_TOP ${glslFloat(c.cloudTop)}`,
     `#define SECT_CLOUD_SCALE ${glslFloat(c.cloudScale)}`,
     `#define SECT_CLOUD_DENSITY ${glslFloat(c.cloudDensity)}`,
     `#define SECT_SUN_DIR ${glslVec3(c.sunDir)}`,
-    `#define SECT_SUN_FOG ${glslVec3(c.sunFogColor)}`,
     `#define SECT_SUN_FOG_MIX ${glslFloat(c.sunFogMix)}`,
-    `#define SECT_CLOUD_FOG ${glslVec3(c.cloudColor)}`,
-    `#define SECT_SKY_HAZE ${glslFloat(c.skyHaze)}`,
     `#define SECT_LUMA ${glslVec3(LUMA)}`,
-    `#define SECT_EXTINCTION ${glslVec3(c.extinction)}`,
-    `#define SECT_COOL_TINT ${glslVec3(c.coolTint)}`,
-    `#define SECT_COOL_MIX ${glslFloat(c.coolMix)}`,
-    `#define SECT_DESATURATE ${glslFloat(c.desaturate)}`,
-    `#define SECT_AERIAL_DEPTH ${glslFloat(Math.max(c.aerialDepth, 1e-3))}`,
-    `#define SECT_HAZE_CLEAR ${glslFloat(Math.max(c.hazeClear, 0))}`,
     // The per-stop haze multiplier: three's fogDensity uniform in the materials three fogs (the fog
     // chunk defines it first; scene.tsx sets the scene's FogExp2 density every frame), 1 in the
     // custom shaders (the sky dome, the cloud sea and the puffs keep the film's haze).
     "#ifndef SECT_HAZE_SCALE\n#define SECT_HAZE_SCALE 1.0\n#endif",
+    // The mist's code is built in when the shader's own mist is on (today's is), so the run-time
+    // density can move it.
     c.mistDensity > 0 ? "#define SECT_MIST" : "",
-    `#define SECT_MIST_DENSITY ${glslFloat(c.mistDensity)}`,
     `#define SECT_MIST_BASE_Y ${glslFloat(c.mistBaseY)}`,
-    `#define SECT_MIST_FALLOFF ${glslFloat(Math.max(c.mistFalloff, 1))}`,
-    `#define SECT_MIST_START ${glslFloat(c.mistStart)}`,
     `#define SECT_DITHER ${glslFloat(c.dither)}`,
   ]
     .filter((l) => l.length > 0)
@@ -511,7 +622,9 @@ ${FOG_FUNCTIONS}
   #endif
   sectC = mix( sectC, SECT_CLOUD_FOG, 1.0 - exp( - sectCloudDepth( cameraPosition.y, sectRd.y, sectT ) ) );
   sectC = sectAerial( sectC, sectBase, sectRd, sectHazeDepth( cameraPosition.y, sectRd.y, sectT ) );
-  gl_FragColor.rgb = sectEncoded ? sectDitherEncoded( sectSrgbEncode( sectScreenClip( sectC ) ), gl_FragCoord.xy ) : sectC;
+  // Straight to the screen (the Low tier) the look's frame grade goes on here, before the clip, as
+  // the post pass grades the frame on High and Mid (none at amount 0: today's dusk).
+  gl_FragColor.rgb = sectEncoded ? sectDitherEncoded( sectSrgbEncode( sectScreenClip( sectLookGrade( sectC ) ) ), gl_FragCoord.xy ) : sectC;
 #endif
 `,
   };

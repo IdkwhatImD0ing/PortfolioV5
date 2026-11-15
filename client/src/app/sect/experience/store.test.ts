@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createFreeLook } from "@/lib/sect/free-look";
 import { buildScrollMap, uToFrame } from "@/lib/sect/scroll-map";
-import { cameraStill, createStore, framesToGo, glowKey, isMoving, wake, wakeHover } from "./store";
+import { cameraStill, createStore, framesToGo, glowKey, isMoving, sceneView, wake, wakeHover } from "./store";
 
 const map = buildScrollMap(1, 400, [
   { id: "gate", label: "Mountain Gate", frame: 93 },
@@ -42,6 +42,32 @@ describe("cameraStill", () => {
     const keys = createFreeLook();
     keys.keys.right = true;
     expect(cameraStill({ ...at, look: keys })).toBe(false);
+  });
+});
+
+describe("sceneView (the GPU queue's pace)", () => {
+  const at = { map, flight: null, reducedMotion: false, targetU: gate.uMid, u: gate.uMid, look: createFreeLook(), veiled: false, inked: false };
+
+  it("is veiled behind the loading screen or the ink, moving or not", () => {
+    expect(sceneView({ ...at, veiled: true })).toBe("veiled");
+    expect(sceneView({ ...at, inked: true, targetU: gate.uMid + 5 })).toBe("veiled");
+  });
+
+  it("is moving while the camera flies, glides, catches up with the scroll or the view turns", () => {
+    expect(sceneView({ ...at, targetU: gate.uMid + 5 })).toBe("moving");
+    expect(sceneView({ ...at, flight: { fromU: 0, toU: gate.uMid, t0: 0, duration: 1, toFrame: 93, v0: 20 } })).toBe("moving");
+    const drag = createFreeLook();
+    drag.press = { id: 1, touch: false, x0: 0, y0: 0, x: 40, y: 0, dragging: true };
+    expect(sceneView({ ...at, look: drag })).toBe("moving");
+  });
+
+  it("is at rest once the camera has caught up and nothing turns", () => {
+    expect(sceneView(at)).toBe("resting");
+  });
+
+  it("starts veiled: a new store is behind the loading screen", () => {
+    const camera = { startFrame: 0 } as Parameters<typeof createStore>[1];
+    expect(createStore(map, camera, 0, null, false).veiled).toBe(true);
   });
 });
 

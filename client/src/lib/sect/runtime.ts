@@ -4,6 +4,7 @@
  * the quality ladder the page steps down when frames run long (and back up when they have room
  * again). Pure functions with plain inputs, so they are unit-testable.
  */
+import { LIVE_LOOK } from "./live";
 
 /** Exponential damping toward target; frame-rate independent. dt is clamped to 0.1 s. */
 export function damp(current: number, target: number, lambda: number, dt: number): number {
@@ -29,6 +30,81 @@ export interface SectParams {
   set: string;
   /** ?open=<hotspot id> opens that item's reader once the page is ready, or null. */
   open: string | null;
+  /**
+   * ?look=<id> shows the scene in one of the looks (lib/sect/looks.ts). Development only: a
+   * production build never has it. Absent (not null) when there is none.
+   */
+  look?: LookId;
+  /**
+   * The look by time of day in Pacific time (lib/sect/day-look.ts). Development only: ?look=auto
+   * follows the clock at page load, ?time=HH:MM (24 hour, Pacific) shows that time today and
+   * ?date=YYYY-MM-DD another day. Absent when none is given, and when ?look=<id> forces a look.
+   */
+  day?: DayOptions;
+  /**
+   * ?look=journey (true) forces the journey (lib/sect/journey.ts: the day along the flight) and
+   * ?look=dusk (false) today's dusk with no journey. Development only. Absent when neither is given.
+   */
+  journey?: boolean;
+}
+
+/** ?look=journey: true; ?look=dusk: false; anything else: null. */
+export function parseJourneyParam(v: string | null): boolean | null {
+  const s = (v ?? "").trim().toLowerCase();
+  return s === "journey" ? true : s === "dusk" ? false : null;
+}
+
+/** The looks ?look= can pick (lib/sect/looks.ts LOOKS says what each one changes). */
+export const LOOK_IDS = ["gold", "moon", "ink", "day"] as const;
+
+export type LookId = (typeof LOOK_IDS)[number];
+
+/** ?look=<id>: one of LOOK_IDS (case and spaces ignored), else null. */
+export function parseLookParam(v: string | null): LookId | null {
+  const s = (v ?? "").trim().toLowerCase();
+  return (LOOK_IDS as readonly string[]).includes(s) ? (s as LookId) : null;
+}
+
+/** A calendar date (month 1 to 12). */
+export interface CivilDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+/** What the time-of-day look shows instead of the clock (each absent: the clock's own). */
+export interface DayOptions {
+  /** Minutes since midnight, Pacific time. */
+  time?: number;
+  /** The day (its sunrise and sunset). */
+  date?: CivilDate;
+}
+
+/** ?time=HH:MM, 24 hour (00:00 to 23:59), as minutes since midnight; else null. */
+export function parseTimeParam(v: string | null): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((v ?? "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h < 24 && min < 60 ? h * 60 + min : null;
+}
+
+/** ?date=YYYY-MM-DD, a date that exists; else null. */
+export function parseDateParam(v: string | null): CivilDate | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((v ?? "").trim());
+  if (!m) return null;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(year, month - 1, day));
+  return t.getUTCFullYear() === year && t.getUTCMonth() === month - 1 && t.getUTCDate() === day ? { year, month, day } : null;
+}
+
+/** ?look=auto, ?time= and ?date= as DayOptions, or null when none of them is there. */
+function parseDayParams(q: URLSearchParams): DayOptions | null {
+  const auto = (q.get("look") ?? "").trim().toLowerCase() === "auto";
+  const time = parseTimeParam(q.get("time"));
+  const date = parseDateParam(q.get("date"));
+  if (!auto && time === null && date === null) return null;
+  return { ...(time !== null ? { time } : {}), ...(date ? { date } : {}) };
 }
 
 /**
@@ -74,14 +150,18 @@ function openParam(v: string | null): string | null {
 }
 
 /**
- * The page's URL options. `dev` allows ?set= (a production build ignores it, so the test sets are
- * neither loaded nor reachable there).
+ * The page's URL options. `dev` allows ?set=, ?look=, ?time= and ?date= (a production build ignores
+ * them, so the test sets and the looks are neither loaded nor reachable there).
  */
 export function parseSectParams(search: string, dev = process.env.NODE_ENV !== "production"): SectParams {
   const q = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const raw = q.get("frame");
   const n = raw !== null && raw.trim() !== "" ? Number(raw) : NaN;
   const t = q.get("tier");
+  const look = dev ? parseLookParam(q.get("look")) : null;
+  // A forced look wins over the clock.
+  const day = dev && !look ? parseDayParams(q) : null;
+  const journey = dev && !look && !day ? parseJourneyParam(q.get("look")) : null;
   return {
     frame: Number.isFinite(n) ? n : null,
     debug: flag(q.get("debug")),
@@ -90,6 +170,9 @@ export function parseSectParams(search: string, dev = process.env.NODE_ENV !== "
     tier: t !== null && TIERS.includes(t) ? (t as Tier) : null,
     set: dev ? assetSet(q.get("set")) : "full",
     open: openParam(q.get("open")),
+    ...(look ? { look } : {}),
+    ...(day ? { day } : {}),
+    ...(journey !== null ? { journey } : {}),
   };
 }
 
@@ -178,6 +261,16 @@ export interface Quality {
   standIns?: boolean;
   /** Tree cards (alpha-tested sprites and needle cards) are not drawn. A ladder step, as standIns. */
   noCards?: boolean;
+  /**
+   * Far trees are drawn as lit crown shells (lib/sect/veg.ts) in place of the baked cards: High
+   * only (absent: false). ?veg=0 / ?veg=1 overrides it (veg.ts vegShellsOn).
+   */
+  vegShells?: boolean;
+  /**
+   * The gate's atlas surfaces are lit live in the shader (lib/sect/live.ts) instead of read from the
+   * bake: High only (LIVE_LOOK.on; absent: false). ?live=0 / ?live=1 overrides it (live.ts liveOn).
+   */
+  liveLight?: boolean;
 }
 
 export interface TierOptions {
@@ -196,13 +289,13 @@ export interface TierOptions {
  */
 export function tierQuality(tier: Tier, devicePixelRatio = 1, opts: TierOptions = {}): Quality {
   const coarse = opts.coarse === true;
-  if (tier === "low") return { maxDpr: coarse ? 1.5 : 1, msaa: 0, bloom: false, post: false, lowTextures: true, maxFps: 0 };
-  if (tier === "mid") return { maxDpr: coarse || opts.appleGpu ? 1.5 : 1, msaa: 0, bloom: true, post: true, lowTextures: coarse, maxFps: 0 };
+  if (tier === "low") return { maxDpr: coarse ? 1.5 : 1, msaa: 0, bloom: false, post: false, lowTextures: true, maxFps: 0, vegShells: false, liveLight: LIVE_LOOK.on.low };
+  if (tier === "mid") return { maxDpr: coarse || opts.appleGpu ? 1.5 : 1, msaa: 0, bloom: true, post: true, lowTextures: coarse, maxFps: 0, vegShells: false, liveLight: LIVE_LOOK.on.mid };
   // Above 1x the extra pixels already smooth edges, so 2 samples do: 4x MSAA at 1.25x (a 1440p
   // screen at 125 % scaling) cost up to about 1 ms of GPU a frame, a third of a 360 Hz frame.
   // Never 0 here: tree cards need a multisampled buffer for alpha to coverage (setCardCoverage).
   const dpr = Math.min(Math.max(devicePixelRatio || 1, 1), 1.5);
-  return { maxDpr: 1.5, msaa: dpr >= 1.25 ? 2 : 4, bloom: true, post: true, lowTextures: false, maxFps: 0 };
+  return { maxDpr: 1.5, msaa: dpr >= 1.25 ? 2 : 4, bloom: true, post: true, lowTextures: false, maxFps: 0, vegShells: true, liveLight: LIVE_LOOK.on.high };
 }
 
 /**

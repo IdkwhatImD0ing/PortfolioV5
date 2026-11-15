@@ -493,6 +493,528 @@ en its entirety with controls liek volumne next pause play, etc".
 
 **See.** [`../music/music-page.md`](../music/music-page.md).
 
+### 2026-11-09 · Light the bake cannot hold
+
+**Decided.** The page adds three things on top of the baked light, each frame, on High: contact shade (small
+soft shadows where a lantern, a pillar or a railing meets the ground, worked out from the depth buffer), sun
+shafts (a shadow map of the world from the sun, then a march through the haze, so light and shade show in the
+air behind pillars and islands) and a finish (deeper darks, a little sharpening, fine grain). Medium gets the
+finish without the sharpening, and FXAA: it had no edge smoothing at all. Low is unchanged. The mist puffs
+now read one noise field fixed in the world, so a row of them is one torn bank and no longer a stack of smooth
+ellipses. The sun's glow is screened onto the sky and no longer added: added, it drew a flat pink plate with
+a hard rim. `?lux=0` turns the new passes off for a before and after.
+
+**Why.** The owner compared the site with Saltline, a browser game Claude built in one run, and found the
+scene's "quality is not good enough compared to the game that was made". He wanted the Blender scenes kept.
+Saltline's look comes from its lighting and its finish more than from its models, and those are the parts a
+bake cannot hold: light at a few centimetres a texel loses the line where a prop meets the floor, and a bake
+lights surfaces, not air. So the Blender scene and its bake stay as they are, and the page adds what is
+missing. The shafts took three tries: adding light for all lit air washed the picture out, so they now only
+change a ray that differs from the frame around it.
+
+**See.** [`../sect/lux.md`](../sect/lux.md).
+
+### 2026-11-09 · Placement with intent: the gate's camera, and round 55
+
+**Decided.** At the Mountain Gate the camera steps 3 m left onto the plaza's centre line and turns a degree,
+so the gate is seen square on. Four stops get prop moves in Blender (round 55): the forge yard becomes two
+smith's bays, a pair of racks by the workshop door and an ore yard, with one stray anvil removed; the mission
+hall's lanterns leave the Big Dipper for the arrival landing; the jade slip's walk keeps one lantern spacing, two of
+its scholar's rocks flank the way out and the third stands by the peach; the mirror terrace's west rock gets its boulder. The gate change is in the
+client. The Blender moves were baked the next night (the entry below).
+
+**Why.** The owner: "some of the objects in the scene are haphazardly placed". Every stop was drawn as a plan
+from the builders' own coordinates and projected into its camera. That showed two causes. The gate plaza is
+mirror-symmetric, but the flight passes its stop 3 m off the centre line, so the right-hand lanterns hid
+behind a pillar while the left-hand ones showed: the props were right and the view was wrong. At the other
+four stops, yard dressing had been typed in one piece at a time with no rule joining one to the next.
+Centring the camera was also tried at the stele forest and the formation and taken back out: at the first it
+flips the panel onto half of a symmetric view, at the second the turn back breaks the gentle-camera limit.
+
+**See.** [`../scene/placement-r55.md`](../scene/placement-r55.md).
+
+---
+
+### 2026-11-10 · Round 55 baked: what the first run changed
+
+**Decided.** Round 55's prop moves are in the scene and baked (forge, mission, scroll, mirror and the
+backdrop, production quality, one rented RTX 5090). Three things were settled on the box:
+
+- The tall scholar's rock at the jade slip stands 5.1 m from the peach, not 3 m. At 3 m it stood inside the
+  crown with branches through the stone. 5.1 m is the nearest spot on the visitor's side where it is clear.
+- `tools/rblender.py` and `tools/sect_pack.py` find the project from their own path, so a round can run from
+  a git worktree without touching the main checkout. The box keeps its mirror at the main checkout's path.
+- The audit's cache (`vis_cache.npz`) is kept with the round's files. The copy on the PC had gone stale, and
+  that cost a 38 minute re-audit.
+
+**Why.** The scripts had never run in Blender. The patch's own checks caught the rock in the tree, a floor it
+did not know (the mission's arrival landing) and a 3 mm gap under racks and lanterns that it was too strict
+about. Previews of the four stops were looked at before the bake. The packer also had to be repaired: it had
+not compiled since 2026-11-04.
+
+**See.** [`../scene/placement-r55.md`](../scene/placement-r55.md).
+
+---
+
+### 2026-11-10 · The flight sweep: mist, turned views, beams, the summit
+
+**Decided.** After a look at every half second of the film (twice, with readers listing flaws and each
+claim checked on the full frame): mist puffs end in a wide soft rim and a thin bank seen edge on becomes a
+low faint veil; a view turned to the side or behind comes down to 4 degrees below the horizon where the film
+tilts up; a far light beam keeps a minimum width; the summit stands 8 frames back so the moon hangs clear of
+the pavilion's finial.
+
+**Why.** The owner asked for the long loop of changing and checking that the Saltline game had. The sweep's
+worst finds were mist that read as stickers and tape, a summit where turning round showed only sky, beams
+that read as scratches, and the moon resting on a spire. Four other ideas were tried on screenshots and
+taken back (steep grass as stone, moss in patches, a lower highlight shoulder, a soft shore on the cloud
+sea): none changed what the eye saw. What is left is in the scene itself and is scripted as round 56.
+
+**See.** [`../sect/flight-sweep.md`](../sect/flight-sweep.md).
+
+---
+
+### 2026-11-10 · Round 56 scripted: form and edges
+
+**Decided.** Five flaws the flight sweep found in the scene itself are scripted as one Blender round, to run
+when the owner says so: grass ends on a level line at every terrace rim (a square near a terrace is grass
+only when all four corners are on the flat), the mirror's and the abode's lawns dive under their terraces
+instead of ending on a step, the stairways' side walls get a weathered white marble the bake can hold, the
+arena sword's broad faces get three tones, and the plank bridge to the arena island hangs 5.5 m instead of 2.
+No object is renamed, so the audit is not needed. The rim touches every chunk, so it is one full bake.
+
+**Why.** Each was first tried or ruled out in the page: the teeth and the flat walls are in the baked
+texture itself, and the others are geometry. One box session for all five costs about the same as doing the
+rim alone.
+
+**See.** [`../scene/form-r56.md`](../scene/form-r56.md).
+
+---
+
+### 2026-11-10 · Round 56 baked: three checks loosened, the abode's plants rebuilt
+
+**Decided.** Round 56 ran on one rented box the morning the owner said "Yes, run 56", and all five parts are
+in the client. Three of the patch's checks were loosened after the first dry runs. The range's top points may
+sit up to 5 cm off the rebuilt recipe as long as no changed face uses one. A lawn may be 1 mm off its area's
+origin. The plant check guards only the part of a lawn that no re-made face reaches. The abode's plant file
+was rebuilt on its own, beside the bake.
+
+**Why.** Each check had stopped on something real and harmless: 83 of 214,414 range points up to 2.8 cm off
+for a reason not traced, float rounding at 1,300 m from the origin, and six rim plants the scatter drew again.
+Two of those plants were shrubs the page draws, so keeping the old plant file would have left two bushes in
+the air over the lowered lip.
+
+**See.** [`../scene/form-r56.md`](../scene/form-r56.md).
+
+---
+
+### 2026-11-10 · Round 57: the bake gets a key light, the page a richer grade
+
+**Decided.** Every bake now lights the scene with the film's sky and a crisp warm key from the sun's side, 27
+degrees up, in place of the soft fill it had. The page's grade keeps most of green's lead, with more contrast
+and saturation, and mist puffs are rounder and lit from the sun side. All eleven stops, the backdrop and every
+area's plants were re-baked.
+
+**Why.** The owner said the site "still doesnt seem photorealistic" and pointed, in effect, at his own style
+frames: clear shadows, rich greens, lit cloud. The scene's sun is 7 degrees up, so the old soft fill was what
+lit the ground, and it cast no shadow. A test at the mirror terrace showed that lowering the fill only darkens
+the picture and that a key light gives lawns and plazas real light and shade. He saw the before and after and
+said "Yes, roll it out".
+
+**See.** [`../scene/light-r57.md`](../scene/light-r57.md).
+
+---
+
+### 2026-11-10 · Far trees are drawn as lit crowns built in code
+
+**Decided.** On the High tier a far tree is an instanced crown shell that the page builds and lights itself,
+from a list of every plant's place, size and family exported from the scene. The baked cards stay for trees
+near the camera and for the other tiers. Ground cells 9 m across switch between the two by distance and by how
+steeply the camera looks down, with the same lines of shader code on both sides.
+
+**Why.** The owner: "far away objects show up as blocks which breaks the immersion". The blocks were the
+cards' flat top quads, seen from above. He also asked to look at how Saltline does it: that game loads no
+models, it builds from code and lights live. Doing the same for far trees removes the plates, lets the crowns
+take the scene's light, and needs no bake when the look changes.
+
+**See.** [`../sect/veg-shells.md`](../sect/veg-shells.md).
+
+---
+
+### 2026-11-10 · Far spires get a rock layer of their own; the first review round's fixes
+
+**Decided.** After the rollout, three readers went through 117 frames of the flight and the look-around views.
+Their top finding was far rock spires that read as smooth tubes. The backdrop's far peaks and the rock faces of
+the areas' stand-ins now get a rock layer sized for a spire, with no distance fade. The same round lowered the
+grade's shoulder and warm split (sunlit marble had blown out, cliffs had turned rust orange) and gave every tree
+crown its own width.
+
+**Why.** The backdrop is baked as one colour per point with no detail class, and the page's rock layer fades out
+by 700 m, so everything past that was bare. The fix is in the page because the stand-ins' outlines are fine at
+that distance: what was missing was surface.
+
+**See.** [`../sect/far-rock.md`](../sect/far-rock.md), [`../scene/light-r57.md`](../scene/light-r57.md).
+
+---
+
+### 2026-11-10 · The gate is lit live, from three more maps the bake writes
+
+**Decided.** One stop, the gate, is lit in the page on the High tier: its sun light, shadows and shine are worked
+out per pixel. The bake writes three more maps per atlas for it (surface colour, surface direction, and the light
+with the sun and the key lamp off), the page adds the two lamps with a shadow map each, and Blender's own view
+transform is read from a lookup table so live colours match baked ones. On top of that come what a bake cannot
+hold: bumps, gloss, and the sky in smooth surfaces. `?live=0` keeps the bake.
+
+**Why.** The owner, after round 57: "It still doesnt look as good as Saltline unfortunately the photo realism,
+etc", then "Yes, build the gate". Saltline lights everything live; a bake's shadows are as soft as its texels and
+nothing in it shines. An export without a bake was the first plan and was dropped: it would have lost what
+Blender's materials hold. Keeping the bake's sky light and replacing only the two lamps keeps all of that, and it
+can be checked: the page's sum was measured against the bake's raw files (within 2%) and against the baked
+picture (5 steps of 255 on average) before anything was tuned by eye.
+
+**See.** [`../sect/live-gate.md`](../sect/live-gate.md).
+
+---
+
+### 2026-11-10 · Live light at every stop, one at a time, with the bake's bounced light and far shadows
+
+**Decided.** All eleven stops have live maps, and the page lights the one the flight is at (High tier). The next
+stop's maps load while the flight moves on, and fast travel's ink waits for the new stop's light. Two more things
+now come from the bake, both worked out from its raw files by `sect/live_bounce.py`: the lamps' bounced light
+(added to the sky-light map) and how much of the lamps' light the bake let through at each texel (in that map's
+alpha). The live colour starts from the baked texel: it is multiplied by "baked texel over the bake's light as
+the maps rebuild it", so where live changes nothing the picture is the bake's own. The page's own shadow maps
+only tighten the bake's shadow, and only near its edges. The maps (83 MB of WebP) go in Git LFS.
+
+**Why.** The owner: "Lets keep going", and earlier "MAke sure to go through multiple rounds across all scenes".
+One stop at a time because stops are 190 to 240 m apart and a stop's maps are about 255 MB on the GPU. The bounce
+came from a review: shade was 11 to 19 percent darker and cooler than the bake with a flat guess. The bake's far
+shadow came from the abode, where a tree 30 m off drew a hard edge on the cliff that the bake has three metres
+soft. Three review rounds compared baked and live pairs at full size. The third found live about equal to the
+bake and its flaws all of one family: the page's maps are half the bake's size and its shadow maps have gaps
+(faces the flight never sees are not in the page). So live was turned from "rebuild the light" into "the bake,
+plus what live light changes". After that it differs from the bake by 2.6 steps of 255 on average over 55 views,
+and what differs is what it adds: a little more sun, tile relief, tighter contact shadows, a held-down shine.
+The honest finding: with these models a careful bake is most of what live light can show. What still reads as
+fake is in both pictures, and is the models and textures.
+
+**See.** [`../sect/live-gate.md`](../sect/live-gate.md).
+
+---
+
+### 2026-11-11 · Surfaces get wear, dirt and rock beds, in the page
+
+**Decided.** The first round on models and textures is done in the page's shaders, with no new model and no
+bake: paving gets replaced stones, stains, dust and cracks (and under the live lamps slabs that sit unevenly,
+with bevelled edges); every baked surface with no detail class of its own gets patchy tone, rain streaks and a
+fine grain; lawns drift more in colour and their clumps come and go; steep rock lies in level beds.
+
+**Why.** The owner: "Yes, start it", after three reviews found the same four things fake at most stops, in the
+baked and the live picture alike: spotless plazas, flat clean paint, lawns one even green, cliffs with no
+structure. The page already had detail layers for three of them, set so gently that nobody saw them, so the
+cheapest real gain was there, and it can be checked the same hour on the GPU. Shapes (cliffs, trees, the
+waterfall) are left for a Blender round.
+
+**See.** [`../sect/surfaces.md`](../sect/surfaces.md).
+
+---
+
+### 2026-11-12 · Round 58: near trees keep their leaves; far crowns and rock get detail, and half of it is taken back
+
+**Decided.** The first round on models. Three things ship:
+
+- Near broadleaf trees keep their leaf sprays, and peach trees use their fuller model. This is a tree
+  build on the box, with no light bake.
+- Far crowns keep the ragged leafy edge they had and get soft lit lumps that ease off when a crown is
+  large on screen. A crown deep among others is darker low down, measured by height on its own shell.
+- Cliffs and spires get the middle band of the bake's own rock photo (cracks and blocks from 12 cm
+  to 1 m), read at the bake's own coordinates, only where the baked texel is too coarse to hold it.
+
+The web pack grows from 122.6 to 127.2 MB. That is 2.2 MB over the packer's 125 MB line, which only
+reports. It is accepted: the owner put the look first, and the leaves are the round's clearest gain.
+
+**Why.** The owner: "Yes, start it", then "Keep going". Reviews named trees and rock at every stop.
+The pipeline was mapped by five readers, five designs were each attacked by a skeptic, and three
+were built. Then the pictures decided, twice:
+
+- The first review of the page parts scored a small loss, 4.52 to 4.46 out of 10. The new crown
+  outline "bites" caused 32 of 48 confirmed faults: holes through crowns, floating chips. Their
+  maths was only right on a sphere, and crowns are flattened or tall. The bites were removed and the
+  old leafy edge restored. The lumps looked like crumpled foil up close, so they were softened.
+- The last review of the whole round scored a gain, 4.50 to 4.68. Near trees were a clear win at 9
+  of 11 stops. Far crowns showed no change a reviewer could see. The rock band helped at five stops
+  and hurt at two, where it sat on rock the bake already holds. So it now follows the baked texel's
+  size. That last fix was checked on the GPU but not by a review round.
+
+**Held for round 59.** A floor on the rock's baked texture density, a rebuilt rock material without
+drawn cracks, and real ledges on the fine rock meshes. Lawn edges, the stair's stretched texture and
+the steles court's paving wait longer.
+
+**See.** [`../scene/trees-r58.md`](../scene/trees-r58.md), [`../sect/veg-shells.md`](../sect/veg-shells.md),
+[`../sect/surfaces.md`](../sect/surfaces.md).
+
+---
+
+### 2026-11-12 · Round 59: only the rock texel floor is kept, and it waits for the next bake; the new rock material and the bake-time ledges are switched off
+
+**Decided.** Round 59 built three things for the rock and tested them on a rented box. Only one is kept:
+
+- The texel floor stays on in the code. It gives rock that the holds see from the front more of the bake's
+  texture, paid for inside today's budget, with no atlas added. It was not baked for production: it goes out with
+  the next full bake.
+- The rebuilt rock material (world beds and joints in place of drawn cracks) is off (`ROCK_STRUCT = False`).
+- Bake-time relief (real ledges and flat faces cut into the rock meshes) is off (`RELIEF = False`; `--relief`
+  turns it on).
+
+Nothing on the page changed. The box session cost 1.07 dollars. The code of all three stays in the repo, with its
+tests, for a later rock round.
+
+**Why.** The pictures decided:
+
+- The new material looked worse than today's rock in 9 of 11 stills and better in none. Its beds came out as
+  near-black painted bands, a contour map on a sloping slab and a block grid at the forge. Toned down twice, it lost
+  to today's rock 9 to 2 and 8 to 2 with two blind reviewers. Under the 7 degree sun, structure drawn through a Bump
+  reads as painted lines.
+- The relief turned the abode cliff's sunlit shoulder into pleated cloth and let the lawn show through a new ledge.
+  The floating rocks did not visibly change. The near columns gained a little, but one at the gate came away from
+  the rope bridge's anchor.
+- The floor kept every area at 93 % or more of today's texels a metre for everything else, and a fix keeps the
+  steles from opening a third atlas. Its two-area test bake showed slightly sharper cracks on the abode cliff, but
+  only at twice the page's size. That is too small to pay for a 145 minute production bake on its own.
+
+**Next rock round.** Start with a better base rock photo: every reviewer, blind or not, named its web of small crack
+cells, which reads as dried mud, as the strongest tell. Then give beds real shape, with finer cliff meshes or a baked
+displacement, before any more painted structure. The column relief can come back with the gate's bridge anchor
+pinned.
+
+**See.** [`../scene/rock-r59.md`](../scene/rock-r59.md).
+
+### 2026-11-13 · Round 60: the rock gets a new base photo, and texture work stops there
+
+**Decided.** The rock's base photo is now a seamless tile cut from Poly Haven's mountainside model (`mtn_cliff`),
+in place of the marble photo whose crack web read as dried mud. It was baked for production with round 59's texel
+floor on, and the page's rock detail was rebuilt from it. No download was needed: the model was already on disk.
+The rock tuning that was meant to follow was dropped, and so was any further round of texture polish.
+
+**Why.** The pictures picked the tile: blind reviewers ranked it first of six variants, it beat today's rock in
+11 and 12 of 17 pairs with no loss, and marble at three times the size did not help. On real page screenshots the
+gain was smaller: it won about twice as often as it lost, short of the 2.5 to 1 set beforehand. Then the owner
+looked at the before and after and said: "Tbh after all this 60 rounds I dont see any differences tbh um". Rounds
+55 to 60 had all worked at the size of a texture. None changed what a visitor sees at a glance. The new photo is
+kept because it is a measured gain with no loss a visitor would notice. The box's bill was 2.41 dollars (the
+credit dropped by 2.49).
+
+**Rule from now on.** A change must show in a full-frame before and after at page size, and the owner's eye
+decides. Reviewer scores alone do not justify another round.
+
+**See.** [`../scene/rock-r60.md`](../scene/rock-r60.md).
+
+### 2026-11-13 · The day runs along the flight: sunrise at the gate, night at the summit
+
+**Decided.** The page's look follows the camera. The gate is a gold sunrise, the mirror a misty morning, the middle
+stops a clear day, the library late afternoon, the steles golden hour, the jade slip sunset, then dusk, blue hour at
+the abode and night under the moon at the summit. It is the normal look for every visitor on every quality tier.
+One table sets the arc (`JOURNEY` in `client/src/lib/sect/journey.ts`) and one flag turns it off (`JOURNEY_ON`),
+which gives back the dusk the scene was baked in. The loading stills were captured again to match the sunrise gate.
+
+**Why.** After the owner saw no difference from the texture rounds, he was shown three bold looks of the whole frame
+(golden hour, moonlight, ink-wash mist). That gave him two ideas. First: "what if we had my site change colors based
+on the current time of the day in Pacific time?" Then: "Or maybe we have the date change from sunrise to sunset. From
+the start to the end of the map? Which one do you think is better?" The journey was recommended and he took it
+("Yep, let's do that then."):
+
+- Every visitor sees the whole day in one visit. With the clock, a visitor sees one look, and most visits fall in
+  the same few hours.
+- It tells the sect's name: sun into moon.
+- Each stop needs one look polished, at its own hour.
+- The bake's low sun suits sunrise, golden hour and dusk, which are the hours the arc leans on.
+
+**How.** The looks only move settings the page can change while it runs (uniforms and colours), so no shader is
+built when the look changes: a full scroll links the same number of shader programs with the journey as without.
+The lowest tier has no post pass, so its frame grade runs inside the shaders that draw to the screen. Blending the
+look costs about 0.03 ms on a frame where the camera moved.
+
+**Limits.** The baked light's direction cannot move: shadows stay long at noon and the moon is lit from the sun's
+side. The clock idea stays in the code as a development preview (`?look=auto`, `?time=`), off for visitors. The
+share image still shows dusk. The lowest tier's extra shader work has not been timed on a real phone. The owner
+found the local page very laggy. On the High tier, arriving at a stop could freeze the page for up to about a
+second while the live light's shadow programs loaded. That was the live light's code, though the waits were longer
+with the journey on. It is fixed in the next entry.
+
+**See.** "Looks and the journey" in [`../sect/lux.md`](../sect/lux.md).
+
+### 2026-11-13 · Shader programs are made ready before they are drawn with, and kept for the page
+
+**Decided.** Nothing the page draws may build or first-use a shader program on the frame that shows it. The live
+light's programs, the shadow maps' depth programs, each streamed chunk's programs, the decorations' and the fire's
+are compiled off the frame, waited for until every one is linked, and have their first use run before anything
+draws with them. Programs the live light needs are kept for the whole page instead of being freed with each stop.
+
+**Why.** The owner tried the local page and wrote: "I tried out the localhost link and its very very laggy, what
+kind of performance optimziations can we do? That wont ruin the visual performance". A timed scroll of the whole
+flight showed 10 to 27 freezes per flight on the High tier, 0.8 to 12 s in all, each one the page waiting for the
+graphics driver to finish a shader program. The earlier check of the journey had only counted programs, never
+frame time.
+
+**How.** Four causes: the shadow maps' depth programs were freed and rebuilt at every stop; the warm-up copies of
+the live materials lost `flatShading` and `defines` when cloned, so they compiled the wrong programs; the real
+materials were switched before their programs had finished; and a ready program's first use still blocked on a
+busy frame. No shader, map or uniform value changed.
+
+**Checked.** A second agent re-timed it and compared pictures. New code: no wait in 13 of 14 flights (one had two
+at the first stop), 46 to 62 programs linked per flight against 229 to 285, worst frame 0.13 to 0.36 s against
+0.24 to 3.2 s. With motion frozen, old and new code give the same picture (shadow crops differ by exactly 0).
+Counts of programs and textures stop growing after the second pass over the flight.
+
+**Limits.** All timing is on the development server with a game on the same GPU. Not timed: a first-ever visit
+with no cached shaders, and a production build. Still there: texture uploads of 15 to 45 ms for each 4096 px map
+(most of the frames over 100 ms that are left), and at the first stop a frame of 0.24 to 0.34 s in about one
+flight in three while the driver builds its programs.
+
+**Rule from this.** Before the owner is given a link, time a full scroll and compare it with the page before the
+change. Counting shader programs is not a timing.
+
+**See.** "Lighting a stop without freezing the page" in [`../sect/live-gate.md`](../sect/live-gate.md).
+
+### 2026-11-14 · GPU work goes through one queue, and Enter waits for the first stop
+
+**Decided.** Smoothness is now measured on the path a visitor takes: a production build, the interface on, the
+loading screen, a click on Enter, then a scroll down and back. On that path three things changed. Texture uploads
+go through one queue, one small step per frame, and a big map goes up in bands. Enter stays grey until the first
+stop is finished behind the loading screen, for at most 6 s. Images are decoded in a worker, and the big
+preparation jobs are cut into smaller steps.
+
+**Why.** After the shader freezes were gone the owner's page still stuttered, and every timing so far had skipped
+the interface and the loading screen. A diagnosis on the real path found three causes per flight: 2.2 s of stall
+from uploading 4096 px maps in one call each, 1.1 s of waiting on the browser's GPU process while the driver built
+shaders, and 0.75 s of main-thread script.
+
+**Checked.** A separate agent timed old against new on production builds and compared pictures. Frames over
+50 ms per flight fell from about 30 to between 2 and 5, and none is over 100 ms. The time lost in slow frames
+fell from 1.6 to 2.0 s per flight to about 0.2 s. With motion frozen the picture matches at all eleven stops.
+A tier change now gives its memory back, and a lost graphics context recovers by itself.
+
+**The cost.** The loading screen takes 2 to 4 s longer (Enter at 3.6 to 5.0 s on a repeat visit against 1.4 to
+2.0 s, and 6.4 s on a first visit against 2.1 s). The stutter moved from after Enter to behind the loading
+screen. The checker marked this as a fail against its brief. It is kept for now, and making that wait shorter is
+the next step.
+
+**Limits.** After a very fast flight a place can show its stand-in models for 3 to 5 s. Banded uploads are only
+used for maps whose sides are powers of two, because the driver made different mipmaps for the others. One
+capture in ten at the forge showed 57 speckled pixels on far trees, not explained.
+
+**See.** [`../sect/smooth-flight.md`](../sect/smooth-flight.md).
+
+### 2026-11-14 · The GPU queue's pace follows what the visitor can see
+
+**Decided.** The queue that feeds the GPU has three paces. While the camera moves it takes one small step a
+frame, as before. While the camera rests it takes about 7 ms a frame for the place the visitor is waiting to see.
+Behind the loading screen or fast travel's ink it takes most of the frame. The rest of the loading work takes
+bigger slices behind the loading screen too, and the areas the first stop waits for load side by side.
+
+**Why.** Finishing the first stop before Enter had made the loading screen 2 to 4 s longer, and after a very fast
+arrival a place could show its stand-in models for seconds. Both came from pacing the work as if the visitor were
+always watching a moving camera.
+
+**Checked.** Enter comes at about 3.0 s on a repeat visit (3.8 s before) and 4.6 s on a first visit (6.6 s
+before). No flight had a frame of 100 ms or more. Every place was drawn in full when the camera stopped.
+
+**Limits.** The checker marked two things. With both builds sharing one browser profile the new one's Enter was
+sometimes later, because each build pushed the other's cached shaders out. And two picture differences are not
+explained: 56 pixels on a far pagoda at the forge, and a place ahead that is lit a little differently in the
+middle of a key flight. Enter on a slow line is not measured.
+
+**See.** "Round 3" in [`../sect/smooth-flight.md`](../sect/smooth-flight.md).
+
+### 2026-11-14 · Timings are taken in a normal Chrome, and drawing ahead is set aside
+
+**Decided.** Smoothness is timed in a Chrome started for the run on its own profile, not in the browser the test
+tool drives. The off-screen first draw built in round 4 is not merged.
+
+**Why.** The freezes on the first load of a fresh browser session turned out to belong to that one browser, which
+builds every shader 5 to 10 times slower than any other Chrome on the PC. In a normal Chrome the page was already
+smooth on such a load. Drawing ahead took a flight from 1 or 2 frames of 50 to 64 ms to none, which cannot be
+seen, and costs a quarter more GPU buffers and a slower relight after a renderer is rebuilt.
+
+**Also found.** On a real line a first visit waits exactly 6 s between the first picture and Enter, the cap on
+the wait for the first stop's neighbours. On localhost that never showed. It is the next thing to fix.
+
+**See.** "Round 4" in [`../sect/smooth-flight.md`](../sect/smooth-flight.md). The set-aside code is on the
+branch `claude/saltline-draw-ahead`.
+
+### 2026-11-14 · Enter waits for work, not for downloads
+
+**Decided.** After the first picture, the loading screen keeps Enter grey only while work is going on for files
+that have already arrived. A file still downloading holds Enter for at most half a second. Whatever arrives after
+Enter is handled as at every later stop: stand-in models until an area is in, live light fading in when its maps
+come.
+
+**Why.** With the network slowed to 50, 20 and 5 megabits a second, a first visit waited exactly 6 s between the
+first picture and Enter, the cap on a wait for areas that were still downloading. Every earlier timing ran on
+localhost, where a download takes no time, so nobody saw it.
+
+**Checked.** Enter now comes 0.7 s after the first picture on all three lines (at 50 megabits a second: 6.2 s
+from the start of the load instead of 11.5 s). No frame of 100 ms or more after Enter in 7 slowed runs. With no
+slowing nothing changed by more than a quarter of a second. The checker found and fixed one freeze this exposed:
+an area dropped while its shaders were still being built.
+
+**Limits.** Measured on localhost with Chrome's own slowing, on the High tier, on a desktop.
+
+**See.** "Round 5" in [`../sect/smooth-flight.md`](../sect/smooth-flight.md).
+
+### 2026-11-14 · The branch goes up as one commit
+
+**Decided.** The Saltline branch is pushed as a single commit on top of main and opened as one pull request.
+
+**Why.** The branch's 29 commits hold every bake of the scene files. Pushing them all would upload 969 MB to Git
+LFS, and LFS storage is never given back. Only 307 MB of that is the files as they are now. The other 661 MB is
+older bakes of the same files. One commit uploads the 307 MB. It also leaves out 7 MB of gate maps that one
+commit had stored outside LFS.
+
+**Cost.** GitHub shows one commit where the work took 29. The write-ups in `docs/` hold what each round did. The
+29 commits stay on the owner's PC, on the branch `claude/saltline-full-history`.
+
+**Checked.** Before the push, two separate passes went over everything it would publish: every added line and
+commit message for keys and private data, and every file for its kind, its size and text hidden inside it.
+Nothing was found that had to stay out.
+
+### 2026-11-14 · Scrolling snaps to a scene, and no longer sticks on one
+
+**Decided.** A stop is no longer a stretch of the scroll where the camera stands still. Each stop keeps one scroll
+unit instead of 42, and the legs are not eased. When the visitor's scrolling rests for 0.18 s, the camera glides to a
+stop by itself: the next one in the direction of travel once they have moved 60 px, else back to the nearest. The
+glide starts at the speed the camera has and lands softly. Any input ends it at once. One mechanism serves the
+wheel, a trackpad, touch, Space and the scrollbar, and replaces the touch-only flick.
+
+**Why.** The owner: "each scene will stop for a second when you scroll onto it, right? So when you're fast
+traveling between scenes, it gets stuck on scenes and it feels weird. But at the same time, we should like snap to
+a scene." Both came from tying the stop to a place in the scroll: the dead stretch was 5 to 7 wheel clicks long and
+the camera slowed to 45 percent on the way in, yet scrolling that ended between two scenes left the camera there.
+He was shown the design and answered "Yes, build it".
+
+**The cost.** The camera can no longer rest halfway between two scenes. One wheel click now takes the visitor to
+the next scene, so the whole flight is eleven clicks for someone in a hurry. The page is a fifth shorter.
+
+**Limits.** The logic passed 13 cases and a round of attempts to break it, but in a hidden browser pane with
+frames driven from a timer. How it feels in a real window, on a real trackpad and on a phone is not checked.
+
+**See.** [`../sect/scroll-snap.md`](../sect/scroll-snap.md).
+
+### 2026-11-14 · The snap becomes a gentle one
+
+**Decided.** The camera stays where the visitor's scrolling rests. It is pulled on to a scene only when the rest
+is close to it: within the last 16 percent of the way there, or a small overshoot past a scene just scrolled
+through. Leaving a scene is free from the first wheel click, and while the visitor drags the view to look around
+the snap waits. A wheel click no longer travels a whole scene; the keys, the rail and the map still do.
+
+**Why.** The owner tried the first version, which glided to a scene after every rest: "I think the snapping is
+too agggressive riht now, what if the user wants to sit in between a scene and look atound the map". The cost
+named when it was built ("the camera can no longer rest halfway between two scenes") was the wrong one to pay.
+
+**Limits.** The two reach numbers are a first guess and wait for his verdict.
+
+**See.** "Which stop, and when it stays" in [`../sect/scroll-snap.md`](../sect/scroll-snap.md).
+
 ---
 
 ## Longer write-ups
@@ -503,3 +1025,19 @@ en its entirety with controls liek volumne next pause play, etc".
 | 2026-10-24 | The music volume slider opens and closes on its own | [`../sect/music-volume-slider.md`](../sect/music-volume-slider.md) |
 | 2026-10-24 | The jade slip camera steps back | [`../sect/jade-slip-framing.md`](../sect/jade-slip-framing.md) |
 | 2026-10-24 | The background with intent: pillars with grassy shelves, a broadleaf canopy, fewer islands, a planned horizon (round 48; shipped as the final production bake) | [`2026-10-24-background-with-intent.md`](2026-10-24-background-with-intent.md) |
+| 2026-11-09 | Lux: contact shade, sun shafts and a finish on top of the baked light; torn mist; a clean sun | [`../sect/lux.md`](../sect/lux.md) |
+| 2026-11-10 | The flight sweep: how every half second of the film was checked, what changed, what was taken back | [`../sect/flight-sweep.md`](../sect/flight-sweep.md) |
+| 2026-11-10 | Round 56: rim teeth, lawn steps, stair walls, the sword's tones, the bridge's sag (baked the same day) | [`../scene/form-r56.md`](../scene/form-r56.md) |
+| 2026-11-10 | Round 57: the bake's key light, the richer grade, rounder mist; the test and the rollout | [`../scene/light-r57.md`](../scene/light-r57.md) |
+| 2026-11-10 | Far trees as lit crowns built in code: the data, the shader, the switch with the baked cards | [`../sect/veg-shells.md`](../sect/veg-shells.md) |
+| 2026-11-10 | Far spires that read as rock: why the backdrop was bare, the spire-sized layer, the stand-ins' gate | [`../sect/far-rock.md`](../sect/far-rock.md) |
+| 2026-11-10 | Live light, first at the gate and then at every stop: the maps from the bake, two shadow maps, Blender's view as a table, the bake's bounced light and far shadows, how it was checked against the bake, three reviews | [`../sect/live-gate.md`](../sect/live-gate.md) |
+| 2026-11-11 | Surfaces: wear and dirt on paving, weathering on walls and marble, lawns that vary, rock beds; what went wrong on the way | [`../sect/surfaces.md`](../sect/surfaces.md) |
+| 2026-11-12 | Round 58, near trees: why they were smooth blobs, the leaf sprays kept, the tree build's run and cost, the box's two faults | [`../scene/trees-r58.md`](../scene/trees-r58.md) |
+| 2026-11-12 | Round 59, rock: the texel floor kept for the next bake, the rebuilt material and the bake-time relief tested and switched off, the box run and its cost, what the next rock round starts with | [`../scene/rock-r59.md`](../scene/rock-r59.md) |
+| 2026-11-13 | Round 60, rock: a seamless tile from the mountainside model, the blind stills review with a placebo, the production bake, the page test, and why tuning stopped | [`../scene/rock-r60.md`](../scene/rock-r60.md) |
+| 2026-11-13 | Looks and the journey: the four looks, the arc table, how the look follows the camera with no shader built, the tiers, the switches | [`../sect/lux.md`](../sect/lux.md) |
+| 2026-11-13 | Lighting a stop without freezing the page: the four causes of the shader waits, the fix, the timing before and after, what is left | [`../sect/live-gate.md`](../sect/live-gate.md) |
+| 2026-11-14 | A smooth flight: the visitor flight as the measure, the three causes of stutter, the GPU queue and banded uploads, the Enter wait, the worker decode, old against new | [`../sect/smooth-flight.md`](../sect/smooth-flight.md) |
+| 2026-11-14 | Scroll snap: why scenes felt stuck, the short stops, which stop a rest glides to, the glide that keeps the camera's speed, what was checked | [`../sect/scroll-snap.md`](../sect/scroll-snap.md) |
+| 2026-11-09 | Round 55: the gate seen square on, and prop moves at four stops (designed and scripted, not baked yet) | [`../scene/placement-r55.md`](../scene/placement-r55.md) |

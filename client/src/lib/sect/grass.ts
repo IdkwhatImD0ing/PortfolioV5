@@ -622,14 +622,26 @@ function triDist2(T: Float32Array, t: number, px: number, py: number, pz: number
   return (px - qx) ** 2 + (py - qy) ** 2 + (pz - qz) ** 2;
 }
 
-/** Within GRASS.sheetM of a stream or waterfall sheet. */
-export function nearSheet(ix: SheetIndex | null, x: number, y: number, z: number): boolean {
+/**
+ * Within GRASS.sheetM of a stream or waterfall sheet. `tested`, when given, has the number of sheet
+ * triangles measured added to its `n` (scatterSteps counts them as work).
+ */
+export function nearSheet(ix: SheetIndex | null, x: number, y: number, z: number, tested?: { n: number }): boolean {
   if (!ix) return false;
   const list = ix.cells.get(cellId(Math.floor(x / ix.cellM), Math.floor(z / ix.cellM)));
   if (!list) return false;
   const r2 = GRASS.sheetM * GRASS.sheetM;
-  for (const t of list) if (triDist2(ix.tris, t, x, y, z) < r2) return true;
-  return false;
+  let k = 0;
+  let near = false;
+  for (const t of list) {
+    k++;
+    if (triDist2(ix.tris, t, x, y, z) < r2) {
+      near = true;
+      break;
+    }
+  }
+  if (tested) tested.n += k;
+  return near;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -730,8 +742,10 @@ export function* scatterSteps(soup: GroundSoup, cams: CamIndex, opts: ScatterOpt
   const tris = Math.floor(P.length / 9);
   const a = [0, 0, 0, 0];
   const b = [0, 0, 0, 0];
-  // Work since the last yield: a distance query counts 4, a point 1.
+  // Work since the last yield: a distance query counts 4, a point 1, and a point beside a water
+  // sheet 1 more per sheet triangle measured (there a point can cost dozens of them).
   let work = 0;
+  const sheetTests = { n: 0 };
   for (let t = 0; t < tris; t++) {
     if (work > 1024) {
       work = 0;
@@ -785,6 +799,14 @@ export function* scatterSteps(soup: GroundSoup, cams: CamIndex, opts: ScatterOpt
           const n = Math.floor(pieceArea * dens + rnd(pkey, 0));
           work += n;
           for (let q = 0; q < n; q++) {
+            if (sheetTests.n > 1024) {
+              work += sheetTests.n;
+              sheetTests.n = 0;
+            }
+            if (work > 2048) {
+              work = 0;
+              yield t;
+            }
             // A uniform point in the piece (folded square), then into the parent.
             let e1 = rnd(pkey, q * 8 + 1);
             let e2 = rnd(pkey, q * 8 + 2);
@@ -797,7 +819,7 @@ export function* scatterSteps(soup: GroundSoup, cams: CamIndex, opts: ScatterOpt
             const x = ax + ux * s + vx * r;
             const y = ay + uy * s + vy * r;
             const z = az + uz * s + vz * r;
-            if (underPond(ponds, x, y, z) || nearSheet(opts.sheets ?? null, x, y, z)) continue;
+            if (underPond(ponds, x, y, z) || nearSheet(opts.sheets ?? null, x, y, z, sheetTests)) continue;
             const w0 = 1 - s - r;
             const tu = UV[t * 6] * w0 + UV[t * 6 + 2] * s + UV[t * 6 + 4] * r;
             const tv = UV[t * 6 + 1] * w0 + UV[t * 6 + 3] * s + UV[t * 6 + 5] * r;
@@ -953,7 +975,7 @@ export function* rootSteps(inst: GrassInstances, texels: Uint8Array): Generator<
   const ranks = new Uint8Array(inst.count);
   let n = 0;
   for (let i = 0; i < inst.count; i++) {
-    if ((i & 16383) === 16383) yield;
+    if ((i & 4095) === 4095) yield;
     const a = texels[i * 4 + 3];
     if (a < ROOT.alpha0 / 2) continue;
     const kind = inst.a[i * 4 + 3];
@@ -971,7 +993,7 @@ export function* rootSteps(inst: GrassInstances, texels: Uint8Array): Generator<
   }
   const out: RootedGrass = { count: n, pos: new Float32Array(n * 3), col: new Uint8Array(n * 4), a: new Uint8Array(n * 4), b: new Uint8Array(n * 4) };
   for (let o = 0; o < n; o++) {
-    if ((o & 16383) === 16383) yield;
+    if ((o & 4095) === 4095) yield;
     const i = idx[o];
     for (let k = 0; k < 3; k++) out.pos[o * 3 + k] = inst.pos[i * 3 + k];
     for (let k = 0; k < 4; k++) {
@@ -1019,7 +1041,7 @@ export function* cellSteps(inst: RootedGrass, cellM: number = GRASS.cellM): Gene
   let work = 0;
   const farM = cellM * GRASS.farCell.scale;
   for (let i = 0; i < inst.count; i++) {
-    if ((i & 16383) === 16383) yield;
+    if ((i & 4095) === 4095) yield;
     const layer = inst.a[i * 4 + 3] === KIND.rim ? 1 : 0;
     // Key: column, then 0 near tufts (and the fringe), 1 rim clumps, 2 far tufts (larger columns).
     const far = layer === 0 && inst.b[i * 4 + 3] === 1;

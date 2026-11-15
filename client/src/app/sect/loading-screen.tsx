@@ -88,6 +88,7 @@ export function LoadingScreen({
   onReload,
   onReadAsPage,
   onEnter,
+  finishing = false,
   quality,
   sound,
   poster = false,
@@ -103,6 +104,11 @@ export function LoadingScreen({
   onReadAsPage?: () => void;
   /** The scene is ready: "Enter" turns gold and starts the flight. Until then it waits, greyed out. */
   onEnter?: () => void;
+  /**
+   * The scene is up and its first stop is finishing behind the screen (Enter still waits): the
+   * connection is not slow, so the page-view offer is not promoted.
+   */
+  finishing?: boolean;
   /** The graphics picker, or "reserve" for its empty place (it is coming); none without either. */
   quality?: QualityPickerProps | "reserve";
   /** The sound prompt, or "reserve" for its empty place; none without either. */
@@ -117,11 +123,12 @@ export function LoadingScreen({
     setPageHref(pageViewHref(window.location.search, window.location.hash));
   }, []);
   const ready = onEnter !== undefined;
+  const up = ready || finishing;
   useEffect(() => {
-    if (!visible || error || ready) return;
+    if (!visible || error || up) return;
     const t = window.setTimeout(() => setSlow(true), SLOW_MS);
     return () => clearTimeout(t);
-  }, [visible, error, ready]);
+  }, [visible, error, up]);
 
   const quiet =
     "border-b border-[var(--sect-gold-soft)] text-[var(--sect-gold)] hover:border-[var(--sect-gold)] focus-visible:border-[var(--sect-gold)]";
@@ -134,7 +141,7 @@ export function LoadingScreen({
   const pair = "min-w-[8.75rem] [@media(max-width:340px)]:min-w-[7.5rem]";
   const plate = "sect-panel sect-plate sect-ctl sect-veil-btn";
   const offerClass = `${plate} ${pair}`;
-  const offerLead = !ready && slow ? "" : undefined;
+  const offerLead = !up && slow ? "" : undefined;
   const offerText = "Read as page";
   const offer = onReadAsPage ? (
     <button type="button" onClick={onReadAsPage} className={offerClass} data-lead={offerLead}>
@@ -219,7 +226,7 @@ export function LoadingScreen({
           <div className="mt-3 flex flex-col items-center gap-2">
             {/* Its line is always kept (hidden until slow), so the centred column and the picker above
                 don't jump up 15 px under a finger when it shows. */}
-            <p className={`text-[0.875rem] text-[var(--sect-paper)] ${slow && !ready ? "" : "invisible"}`}>Slow connection?</p>
+            <p className={`text-[0.875rem] text-[var(--sect-paper)] ${slow && !up ? "" : "invisible"}`}>Slow connection?</p>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <EnterButton onEnter={onEnter} className={`${plate} ${pair}`} />
               {offer}

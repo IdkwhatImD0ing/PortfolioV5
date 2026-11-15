@@ -239,8 +239,35 @@ describe("quality ladder", () => {
   });
 
   it("mid has bloom but no MSAA at 1x; low has no postprocessing and 2048 px textures", () => {
-    expect(tierQuality("mid")).toEqual({ maxDpr: 1, msaa: 0, bloom: true, post: true, lowTextures: false, maxFps: 0 });
-    expect(tierQuality("low")).toEqual({ maxDpr: 1, msaa: 0, bloom: false, post: false, lowTextures: true, maxFps: 0 });
+    expect(tierQuality("mid")).toEqual({ maxDpr: 1, msaa: 0, bloom: true, post: true, lowTextures: false, maxFps: 0, vegShells: false, liveLight: false });
+    expect(tierQuality("low")).toEqual({ maxDpr: 1, msaa: 0, bloom: false, post: false, lowTextures: true, maxFps: 0, vegShells: false, liveLight: false });
+  });
+
+  it("lights the gate live on High only, and keeps it through the ladder's steps", () => {
+    expect(tierQuality("high", 1).liveLight).toBe(true);
+    expect(tierQuality("high", 2).liveLight).toBe(true);
+    expect(tierQuality("mid", 1).liveLight).toBe(false);
+    expect(tierQuality("mid", 2, { coarse: true, appleGpu: true }).liveLight).toBe(false);
+    expect(tierQuality("low", 3, { coarse: true }).liveLight).toBe(false);
+    let q: Quality | null = tierQuality("high", 2);
+    for (let i = 0; i < 10 && q; i++) {
+      expect(q.liveLight).toBe(true);
+      q = degradeQuality(q, 2);
+    }
+  });
+
+  it("draws far trees as crown shells on High only, and keeps them through the ladder's steps", () => {
+    expect(tierQuality("high", 1).vegShells).toBe(true);
+    expect(tierQuality("high", 2).vegShells).toBe(true);
+    expect(tierQuality("mid", 1).vegShells).toBe(false);
+    expect(tierQuality("mid", 2, { coarse: true, appleGpu: true }).vegShells).toBe(false);
+    expect(tierQuality("low", 3, { coarse: true }).vegShells).toBe(false);
+    // A step down changes one thing; the field rides along (veg.ts vegShellsOn drops the shells with the cards).
+    let q: Quality | null = tierQuality("high", 2);
+    for (let i = 0; i < 10 && q; i++) {
+      expect(q.vegShells).toBe(true);
+      q = degradeQuality(q, 2);
+    }
   });
 
   it("touch screens render sharper, and the mid tier there takes the 2048 px textures", () => {

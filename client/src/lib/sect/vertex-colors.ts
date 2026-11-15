@@ -66,6 +66,26 @@ export function repairColors(
   index: ArrayLike<number> | null,
   opts: FillOptions = {},
 ): Uint32Array {
+  const steps = repairColorSteps(colors, positions, index, opts);
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** Loop iterations between two yields of repairColorSteps (well under a millisecond of work). */
+export const REPAIR_SLICE = 16384;
+
+/**
+ * repairColors as a generator that yields every REPAIR_SLICE loop iterations, so a caller can spread
+ * a large mesh over several tasks (prepare.ts). The same work in the same order: the same result.
+ */
+export function* repairColorSteps(
+  colors: Float32Array,
+  positions: ArrayLike<number> | (() => ArrayLike<number>),
+  index: ArrayLike<number> | null,
+  opts: FillOptions = {},
+): Generator<void, Uint32Array, void> {
   const n = Math.floor(colors.length / 3);
   const passes = opts.passes ?? 6;
   const shade = opts.undersideShade ?? 0.5;
@@ -78,15 +98,20 @@ export function repairColors(
   for (let v = 0; v < n; v++) {
     if (isMissing(colors, v)) slot[v] = missing++;
     else known[v] = 1;
+    if (v % REPAIR_SLICE === REPAIR_SLICE - 1) yield;
   }
   if (missing === 0 || missing === n) return new Uint32Array(0);
   const unset = new Uint32Array(missing);
-  for (let v = 0; v < n; v++) if (slot[v] >= 0) unset[slot[v]] = v;
+  for (let v = 0; v < n; v++) {
+    if (slot[v] >= 0) unset[slot[v]] = v;
+    if (v % REPAIR_SLICE === REPAIR_SLICE - 1) yield;
+  }
 
   // The triangles that touch an unset vertex: the only ones a pass needs (most of a mesh is set).
   let active = new Uint32Array(Math.min(Math.floor(tri / 3), missing * 8) || 1);
   let na = 0;
   for (let t = 0; t + 2 < tri; t += 3) {
+    if (t > 0 && t % (3 * REPAIR_SLICE) === 0) yield;
     if (known[at(t)] && known[at(t + 1)] && known[at(t + 2)]) continue;
     if (na === active.length) {
       const grown = new Uint32Array(active.length * 2);
@@ -114,6 +139,7 @@ export function repairColors(
     cnt.fill(0);
     let kept = 0;
     for (let i = 0; i < na; i++) {
+      if (i % REPAIR_SLICE === REPAIR_SLICE - 1) yield;
       const t = active[i];
       const a = at(t);
       const b = at(t + 1);
@@ -165,12 +191,16 @@ export function repairColors(
   // from a brightness histogram, as the mean of the vertices in the median's bucket.
   const lum = (v: number) => 0.2126 * colors[v * 3] + 0.7152 * colors[v * 3 + 1] + 0.0722 * colors[v * 3 + 2];
   let top = 0;
-  for (let v = 0; v < n; v++) if (known[v]) top = Math.max(top, lum(v));
+  for (let v = 0; v < n; v++) {
+    if (known[v]) top = Math.max(top, lum(v));
+    if (v % REPAIR_SLICE === REPAIR_SLICE - 1) yield;
+  }
   const width = top > 0 ? top / MEDIAN_BINS : 1;
   const bin = (v: number) => Math.min(MEDIAN_BINS - 1, Math.floor(lum(v) / width));
   const hist = new Uint32Array(MEDIAN_BINS);
   let setCount = 0;
   for (let v = 0; v < n; v++) {
+    if (v % REPAIR_SLICE === REPAIR_SLICE - 1) yield;
     if (!known[v]) continue;
     hist[bin(v)]++;
     setCount++;
@@ -182,6 +212,7 @@ export function repairColors(
   }
   const median = [0, 0, 0];
   for (let v = 0; v < n; v++) {
+    if (v % REPAIR_SLICE === REPAIR_SLICE - 1) yield;
     if (!known[v] || bin(v) !== mid) continue;
     median[0] += colors[v * 3];
     median[1] += colors[v * 3 + 1];
@@ -200,6 +231,7 @@ export function repairColors(
     if (!known[v]) ny[slot[v]] += y;
   };
   for (let i = 0; i < na; i++) {
+    if (i % REPAIR_SLICE === REPAIR_SLICE - 1) yield;
     const t = active[i];
     const a = at(t);
     const b = at(t + 1);

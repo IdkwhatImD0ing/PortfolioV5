@@ -14,12 +14,19 @@
  *   detail);
  * - then the renderer's resident counts (geometries, textures, programs) and the view itself hold
  *   still for SETTLE.stableFrames rendered frames and SETTLE.stableMs: an upload, a compile, a swap
- *   or a turn starts that count again.
+ *   or a turn starts that count again;
+ * - and then any late piece the page names (live light coming in at the place) is done, or a short
+ *   while has passed (SettleSnapshot.lateMs): a late piece never holds the ink longer than that.
  *
  * "Every chunk the camera draws there" means the place's own area and its direct neighbours in
  * flight order (SETTLE.around): the stream keeps two areas each side at full detail on desktops, and
  * waiting for all five would double the wait after a far jump. The two further out stream in once
  * the ink has cleared; their stand-ins sit far back in the view, where the swap hardly shows.
+ *
+ * The loading screen's wait for the first stop (SETTLE_GATE) is the same watch, with one difference:
+ * a piece whose bytes are still on the way (an area still downloading or not started, the detail
+ * texture or live light's maps still downloading: SettleSnapshot.arriving) holds it only briefly
+ * (SettleConfig.arrivingMs). It waits for work on what has arrived, not for the line.
  *
  * Pure: plain inputs, no timers, no three.js.
  */
@@ -40,7 +47,48 @@ export const SETTLE = {
    * `around`): its view is mostly made of those. Areas further out the stream keeps come in after.
    */
   around: 1,
+  /**
+   * Fast travel's ink waits for every piece, a download still under way too (SettleConfig.arrivingMs):
+   * the visitor asked to see that place, and the ink hides it until it is all there.
+   */
+  arrivingMs: Infinity,
 } as const;
+
+/** What a SettleWatch counts by (SETTLE, SETTLE_GATE). */
+export interface SettleConfig {
+  stableFrames: number;
+  stableMs: number;
+  share: { chunks: number; pieces: number; still: number };
+  /**
+   * How long a piece whose bytes are still on the way (SettleSnapshot.arriving) may hold the wait,
+   * from the first snapshot that showed it so (ms). Infinity: as long as it takes (fast travel's ink
+   * waits for its downloads).
+   */
+  arrivingMs: number;
+}
+
+/**
+ * The loading screen's wait for the first stop: as fast travel's, with a shorter still, and a
+ * download still under way does not hold it.
+ *
+ * The still: that wait also waits for the GPU's queue to be empty and every program linked (the
+ * page names that piece: "gpu"), which is most of what the still stood for, and its first still is
+ * always counted twice (the frame drawn with nothing culled uploads the areas' meshes and starts it
+ * again): at 400 ms each they held "Enter" back about 0.8 s with nothing left to do. A swap, an
+ * upload or a compile still shows in the counts within a frame or two.
+ *
+ * Downloads: the wait is there to spend the work on what has arrived (preparing it, its uploads and
+ * links, the grass, live light starting) behind the loading screen rather than on the first frames
+ * after Enter. A file still arriving is not such work: on a real line the first stop's neighbours
+ * and its live maps took longer than the wait's 6 s cap at 50 megabits a second, so Enter always
+ * came 6 s after the first picture, for nothing. An area or a map whose bytes are all here is local
+ * work and still holds it (under the cap). One still downloading holds it only for `arrivingMs`
+ * from when the wait first saw it so: on localhost every area the first view draws arrived within
+ * 0.3 s of the first picture (and the next one starts up to 150 ms after it, at the stream's next
+ * update), so there it is waited for as before; on a real line it lets go, and what arrives after
+ * Enter goes up at the queue's resting or moving pace, as at every later stop.
+ */
+export const SETTLE_GATE: SettleConfig = { stableFrames: SETTLE.stableFrames, stableMs: 150, share: SETTLE.share, arrivingMs: 500 };
 
 /**
  * The chunks a camera resting at `input.frame` draws once streaming there has run its course: those
@@ -93,6 +141,36 @@ export interface ChunkState {
   /** Bytes downloaded so far, and the chunk's whole download (0: unknown). */
   received: number;
   total: number;
+  /** Every one of its files has all its bytes here (parsing and preparing may still run). */
+  fetched?: boolean;
+}
+
+/**
+ * The chunk's bytes are still on the way (SettleSnapshot.arriving): not drawn yet, not loaded and
+ * prepared, and some file of it still downloading, or its load not started. One whose files are all
+ * here is work on what has arrived, however far its preparing has come.
+ */
+export function chunkArriving(s: Pick<ChunkState, "done" | "resident" | "fetched">): boolean {
+  return !s.done && !s.resident && !s.fetched;
+}
+
+/**
+ * Where the tiling detail texture is (experience/assets.ts detailState): not on its way (none yet,
+ * in, or failed), its file still downloading, being decoded, or fading in over the rock.
+ */
+export type DetailState = "none" | "arriving" | "decoding" | "fading";
+
+/**
+ * Whether the detail texture holds a settled wait. Fast travel's ink waits until it has faded in:
+ * the ink lifts on the final picture. The loading screen's wait (`gate`) waits for its decoding
+ * only (its download is a piece still arriving: SettleSnapshot.arriving). The fade is no work (a
+ * uniform's ramp; the upload is on the first frame drawn with it), and it held Enter up to a second
+ * after the first picture on a line where the file came just before or after it. It ends behind the
+ * loading screen, or within the veil's own fade once Enter is pressed.
+ */
+export function detailHolds(state: DetailState, gate: boolean): boolean {
+  if (state === "none") return false;
+  return !gate || state !== "fading";
 }
 
 /** How far a chunk has come toward being drawn, 0..1: mostly its download, then its preparing and upload. */
@@ -123,6 +201,21 @@ export interface SettleSnapshot {
   gpu: string;
   /** Where the view is (the frame and the look): a turn or a move starts the still count again. */
   view: string;
+  /**
+   * Pieces that may hold the ink past settled, but not for long (live light coming in at the place:
+   * experience/live.tsx). They hold nothing back until everything else has settled; from then the
+   * watch waits while any is busy, at most `lateMs` (absent: 0, no wait).
+   */
+  late?: readonly string[];
+  lateMs?: number;
+  /**
+   * Of the chunks (by id), the busy pieces and the late pieces (by name), those whose bytes are still
+   * on the way: a chunk not loaded yet or still downloading, the detail texture or live light's maps
+   * still downloading. Once the watch has seen one so for SettleConfig.arrivingMs it holds nothing
+   * (absent: none). A chunk whose files are all here but not yet prepared or uploaded is not among
+   * them: that is work on what has arrived.
+   */
+  arriving?: readonly string[];
 }
 
 export interface SettleState {
@@ -131,6 +224,8 @@ export interface SettleState {
   progress: number;
   /** What it still waits for: chunk ids, busy pieces, "leaving", or "still" (the frames holding). */
   waiting: string[];
+  /** What it no longer waits for: pieces still arriving past SettleConfig.arrivingMs. */
+  away: string[];
 }
 
 /**
@@ -142,10 +237,19 @@ export class SettleWatch {
   private fromFrames = 0;
   private fromNow = 0;
   private shown = 0;
+  /** When everything but the late pieces first settled (null: not yet). */
+  private lateFrom: number | null = null;
+  /** When each piece was first seen still arriving (SettleSnapshot.arriving). */
+  private readonly arrivingSince = new Map<string, number>();
 
-  constructor(private readonly c = SETTLE) {}
+  constructor(private readonly c: SettleConfig = SETTLE) {}
 
   push(s: SettleSnapshot): SettleState {
+    // Pieces whose bytes are still on the way, and of those the ones that no longer hold the wait.
+    const arriving = new Set(s.arriving ?? []);
+    for (const id of arriving) if (!this.arrivingSince.has(id)) this.arrivingSince.set(id, s.now);
+    const gone = (id: string) => arriving.has(id) && s.now - (this.arrivingSince.get(id) ?? s.now) >= this.c.arrivingMs;
+    const away: string[] = [];
     const waiting: string[] = [];
     let weight = 0;
     let done = 0;
@@ -156,11 +260,18 @@ export class SettleWatch {
       weight += w;
       done += w * k;
       if (k >= 1) continue;
+      // Expected next, or still downloading past arrivingMs: counted in the progress, never waited for.
       if (ch.expected) expecting = true;
-      else waiting.push(ch.id);
+      else if (gone(ch.id)) {
+        expecting = true;
+        away.push(ch.id);
+      } else waiting.push(ch.id);
     }
     if (s.leaving > 0) waiting.push("leaving");
-    waiting.push(...s.busy);
+    for (const b of s.busy) {
+      if (gone(b)) away.push(b);
+      else waiting.push(b);
+    }
     const pieces = waiting.length === 0;
     // The still count starts from the first snapshot with every piece in, and over again whenever
     // the counts or the view change.
@@ -172,12 +283,24 @@ export class SettleWatch {
     }
     this.pieces = pieces;
     const frames = s.frames - this.fromFrames;
-    const settled = pieces && frames >= this.c.stableFrames && s.now - this.fromNow >= this.c.stableMs;
-    if (pieces && !settled) waiting.push("still");
+    const calm = pieces && frames >= this.c.stableFrames && s.now - this.fromNow >= this.c.stableMs;
+    // Settled but for the late pieces: they may hold it lateMs from the first time it got here.
+    if (calm && this.lateFrom === null) this.lateFrom = s.now;
+    const late: string[] = [];
+    for (const l of s.late ?? []) {
+      if (!gone(l)) late.push(l);
+      else if (!away.includes(l)) away.push(l);
+    }
+    const capped = this.lateFrom !== null && s.now - this.lateFrom >= Math.max(s.lateMs ?? 0, 0);
+    const settled = capped || (calm && late.length === 0);
+    if (!settled) {
+      if (pieces && !calm) waiting.push("still");
+      if (this.lateFrom !== null) waiting.push(...late);
+    }
     const { share } = this.c;
     const still = pieces && !expecting ? Math.min(1, frames / this.c.stableFrames, (s.now - this.fromNow) / this.c.stableMs) : 0;
     const raw = (weight > 0 ? done / weight : 1) * share.chunks + (pieces && !expecting ? share.pieces : 0) + still * share.still;
     this.shown = settled ? 1 : Math.max(this.shown, Math.min(0.99, raw));
-    return { settled, progress: this.shown, waiting };
+    return { settled, progress: this.shown, waiting, away };
   }
 }

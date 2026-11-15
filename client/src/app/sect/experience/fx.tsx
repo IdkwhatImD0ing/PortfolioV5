@@ -7,20 +7,23 @@
  * breathing glow. Each is one draw. Motion follows lib/sect/fx.ts (petalOffset is mirrored in the
  * petal vertex shader). The holy fire on the altars and braziers is flames.tsx's.
  */
-import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
+import { useEffect, useMemo, useRef, type RefObject } from "react";
 import {
   AdditiveBlending,
   Box3,
   Color,
   DoubleSide,
   DynamicDrawUsage,
+  HalfFloatType,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
   Mesh,
   PlaneGeometry,
   ShaderMaterial,
   Vector3,
+  WebGLRenderTarget,
+  type Object3D,
 } from "three";
 import { craneFlights, cranePose, PETAL_STRIDE, PETAL_WIND, petalSeeds } from "@/lib/sect/fx";
 import { fogLibrary, type FogConstants } from "@/lib/sect/glsl";
@@ -28,7 +31,70 @@ import { breathe } from "@/lib/sect/idle";
 import { SECT_LOOK } from "@/lib/sect/look";
 import type { SectMeta, Vec3 } from "@/lib/sect/types";
 import type { LoadedSet } from "./assets";
+import { keepShaderProgramsBeforeFree, materialsOf, primePrograms, programsReady } from "./program-prime";
 import type { SectStore } from "./store";
+
+/**
+ * A stop's own decoration (the forge fire, the formation core, the incense) gets its program linked
+ * and its first use run off the frame (program-prime.ts); the ref turns true once that is done, and
+ * the piece is not drawn before. When it goes (with its set), its program is kept for the page first:
+ * call this before the effect that frees the piece, so this one's cleanup runs first. three's compile skips hidden objects, and
+ * these are hidden until their set is drawn, so the scene's decoration warm-up (scene.tsx WarmDecor)
+ * compiled nothing for them: their first frame linked the program and waited for it (52 to 102 ms
+ * on the forge fire at the first stop). `post`: compiled for the composer's buffer, as WarmDecor does.
+ */
+function usePrimed(object: Object3D | null, post: boolean): RefObject<boolean> {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const primed = useRef(false);
+  const keepWith = useRef({ gl, camera, scene, post });
+  keepWith.current = { gl, camera, scene, post };
+  useEffect(() => {
+    if (!object) return;
+    return () => {
+      const k = keepWith.current;
+      keepShaderProgramsBeforeFree(k.gl, [object], k.camera, k.scene, k.post);
+    };
+  }, [object]);
+  useEffect(() => {
+    primed.current = false;
+    if (!object) return;
+    let cancelled = false;
+    // A display frame on: the object is in the scene by then (mounted in this commit).
+    const raf = requestAnimationFrame(() => {
+      if (cancelled) return;
+      const shown = object.visible;
+      object.visible = true;
+      const target = post ? new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthBuffer: false }) : null;
+      const prev = gl.getRenderTarget();
+      try {
+        gl.setRenderTarget(target);
+        const mats = materialsOf([object]);
+        void gl
+          .compileAsync(object, camera, scene)
+          .then(() => programsReady(gl, mats))
+          .then(() => (cancelled ? 0 : primePrograms(gl, mats)))
+          .catch((e) => console.warn("[sect] decoration warm-up failed", e))
+          .finally(() => {
+            if (!cancelled) primed.current = true;
+          });
+      } catch (e) {
+        primed.current = true;
+        console.warn("[sect] decoration warm-up failed", e);
+      } finally {
+        gl.setRenderTarget(prev);
+        target?.dispose();
+        object.visible = shown;
+      }
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [object, post, gl, scene, camera]);
+  return primed;
+}
 
 function petalMaterial(sunDir: Vector3): ShaderMaterial {
   const p = SECT_LOOK.petals;
@@ -369,7 +435,7 @@ void main() {
  * The forge cauldron's fire, over the bowl of its glowing embers (the ".glow.ember" meshes): drawn
  * while the forge chunk is. Sparks stop (and hide) with reduced motion; the glow stays.
  */
-export function ForgeFire({ set, store }: { set: LoadedSet | null; store: SectStore }) {
+export function ForgeFire({ set, store, post }: { set: LoadedSet | null; store: SectStore; post: boolean }) {
   const built = useMemo(() => {
     if (!set) return null;
     const box = new Box3();
@@ -413,6 +479,8 @@ export function ForgeFire({ set, store }: { set: LoadedSet | null; store: SectSt
     mesh.visible = false;
     return { mesh, material, quad };
   }, [set]);
+  // Before the effect that frees the piece: its program is kept first (usePrimed).
+  const primed = usePrimed(built?.mesh ?? null, post);
   useEffect(
     () => () => {
       built?.mesh.geometry.dispose();
@@ -423,7 +491,7 @@ export function ForgeFire({ set, store }: { set: LoadedSet | null; store: SectSt
   );
   useFrame((state) => {
     if (!built || !set) return;
-    built.mesh.visible = set.drawn;
+    built.mesh.visible = set.drawn && primed.current;
     if (!set.drawn) return;
     built.material.uniforms.uTime.value = store.reducedMotion ? 0 : state.clock.elapsedTime;
     built.material.uniforms.uSparks.value = store.reducedMotion ? 0 : 1;
@@ -439,7 +507,7 @@ export function ForgeFire({ set, store }: { set: LoadedSet | null; store: SectSt
  * breath (idle.ts). One sprite, while the formation chunk is drawn; still with reduced motion. The
  * holy fire in its braziers is flames.tsx's, as every carved flame's is.
  */
-export function FormationCore({ set, store, meta }: { set: LoadedSet | null; store: SectStore; meta: SectMeta }) {
+export function FormationCore({ set, store, meta, post }: { set: LoadedSet | null; store: SectStore; meta: SectMeta; post: boolean }) {
   const built = useMemo(() => {
     if (!set) return null;
     const look = SECT_LOOK.formation;
@@ -460,6 +528,8 @@ export function FormationCore({ set, store, meta }: { set: LoadedSet | null; sto
     mesh.visible = false;
     return { mesh, material, quad };
   }, [set, meta]);
+  // Before the effect that frees the piece: its program is kept first (usePrimed).
+  const primed = usePrimed(built?.mesh ?? null, post);
   useEffect(
     () => () => {
       built?.mesh.geometry.dispose();
@@ -470,7 +540,7 @@ export function FormationCore({ set, store, meta }: { set: LoadedSet | null; sto
   );
   useFrame((state) => {
     if (!built || !set) return;
-    built.mesh.visible = set.drawn;
+    built.mesh.visible = set.drawn && primed.current;
     if (!set.drawn) return;
     const t = store.reducedMotion ? 0 : state.clock.elapsedTime;
     const g = SECT_LOOK.formation.coreGlow;
@@ -539,7 +609,7 @@ void main() {
  * A thread of incense smoke over the mirror terrace's censer (its ".glow.ember" bowl), drawn while
  * the mirror chunk is. Hidden with reduced motion.
  */
-export function IncenseSmoke({ set, store }: { set: LoadedSet | null; store: SectStore }) {
+export function IncenseSmoke({ set, store, post }: { set: LoadedSet | null; store: SectStore; post: boolean }) {
   const built = useMemo(() => {
     if (!set) return null;
     const box = new Box3();
@@ -574,6 +644,8 @@ export function IncenseSmoke({ set, store }: { set: LoadedSet | null; store: Sec
     mesh.visible = false;
     return { mesh, material, quad };
   }, [set]);
+  // Before the effect that frees the piece: its program is kept first (usePrimed).
+  const primed = usePrimed(built?.mesh ?? null, post);
   useEffect(
     () => () => {
       built?.mesh.geometry.dispose();
@@ -584,7 +656,7 @@ export function IncenseSmoke({ set, store }: { set: LoadedSet | null; store: Sec
   );
   useFrame((state) => {
     if (!built || !set) return;
-    built.mesh.visible = set.drawn && !store.reducedMotion;
+    built.mesh.visible = set.drawn && !store.reducedMotion && primed.current;
     if (built.mesh.visible) built.material.uniforms.uTime.value = state.clock.elapsedTime;
   });
   return built ? <primitive object={built.mesh} /> : null;

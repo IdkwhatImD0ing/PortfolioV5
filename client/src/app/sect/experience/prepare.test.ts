@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { BoxGeometry, BufferAttribute, type BufferGeometry, Group, Mesh, MeshBasicMaterial, type Object3D, SphereGeometry, Texture } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { boundsSliced, disposeObjects, imageClosed, mergeSliced, prepareScene, prepareSceneSliced, type PrepareOptions } from "./prepare";
+import { boundsSliced, disposeObjects, imageClosed, isFarSetMesh, mergeSliced, PREPARE_SLICE_MS, prepareScene, prepareSceneSliced, sliceBudget, type PrepareOptions } from "./prepare";
 
 /** A stand-in-like scene: rows of small static meshes sharing two materials (they merge per cell). */
 function scene(): Object3D {
@@ -61,6 +61,49 @@ describe("prepareSceneSliced", () => {
       pause: async () => ac.abort(new Error("cancelled")),
     });
     await expect(p).rejects.toThrow("cancelled");
+  });
+
+  it("asks a budget function at every slice (bigger slices while the scene is covered), same result", async () => {
+    const whole = scene();
+    const one = prepareScene(whole, options());
+    let t = 0;
+    let asked = 0;
+    let pauses = 0;
+    let budget = 2;
+    const r = await prepareSceneSliced(scene(), options(), {
+      budgetMs: () => {
+        asked++;
+        return budget;
+      },
+      now: () => (t += 1),
+      pause: async () => {
+        pauses++;
+        // The loading screen comes up: the slices that follow are ten times longer.
+        budget = 20;
+      },
+    });
+    expect(asked).toBe(pauses + 1);
+    expect(r.mergedInto).toBe(one.mergedInto);
+    // Fewer pauses than with 2 ms slices throughout (the first test's clock gives over 20).
+    let t2 = 0;
+    let pauses2 = 0;
+    await prepareSceneSliced(scene(), options(), { budgetMs: 2, now: () => (t2 += 1), pause: async () => void pauses2++ });
+    expect(pauses).toBeLessThan(pauses2 / 3);
+  });
+});
+
+describe("sliceBudget", () => {
+  it("takes a number, a function, or nothing (PREPARE_SLICE_MS), and never a bad value", () => {
+    expect(sliceBudget(undefined)()).toBe(PREPARE_SLICE_MS);
+    expect(sliceBudget(12)()).toBe(12);
+    expect(sliceBudget(() => 24)()).toBe(24);
+    expect(sliceBudget(() => Number.NaN)()).toBe(PREPARE_SLICE_MS);
+    expect(sliceBudget(-1)()).toBe(PREPARE_SLICE_MS);
+    expect(
+      sliceBudget(() => {
+        throw new Error("no store");
+      })(),
+    ).toBe(PREPARE_SLICE_MS);
   });
 });
 
@@ -217,5 +260,24 @@ describe("imageClosed (a texture three must not upload again)", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("the backdrop's far set", () => {
+  const under = (parent: string, name: string): Object3D => {
+    const g = new Group();
+    g.name = parent;
+    const m = new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial());
+    m.name = name;
+    g.add(m);
+    return m;
+  };
+
+  it("knows a far-set mesh by its name, with or without the dots the loader strips", () => {
+    expect(isFarSetMesh(under("backdropfar", "farc0"))).toBe(true);
+    expect(isFarSetMesh(under("backdrop.far", "far.c12"))).toBe(true);
+    expect(isFarSetMesh(under("backdropfar", "farglow"))).toBe(false);
+    expect(isFarSetMesh(under("proxyabode", "proxyabodec0"))).toBe(false);
+    expect(isFarSetMesh(under("sect.gate", "farc0"))).toBe(false);
   });
 });

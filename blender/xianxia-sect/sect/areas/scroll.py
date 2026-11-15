@@ -62,6 +62,16 @@ K = "scroll"
 # key positions (local)
 PAV = (12.0, 29.5)            # two-storey pavilion centre: back right, on the cliff edge (r ~ 39 m)
 PAV_R = 5.8                   # pavilion column circumradius (its platform reaches ~7.5 m)
+# Stone lanterns up the walk (round 55, docs/scene/placement-r55.md): pairs WALK_LANTERN_DX either side of the pavilion
+# axis, one beat apart from the terrace front, and the stair's pair (scroll.lantern_stone, .001) one beat on from the
+# last, so the walk keeps its 9 m beat all the way: -13, -4, 5, 14, then the hanging lanterns at the door (y 23). Until
+# round 54 the stair's pair stood 3.6 m either side at y 19.1 (PAV y - 10.4), 14 m on from the pair before it.
+WALK_LANTERN_YS = (-13.0, -4.0, 5.0)
+WALK_LANTERN_DX = 4.2
+STAIR_LANTERN_Y = WALK_LANTERN_YS[-1] + (WALK_LANTERN_YS[1] - WALK_LANTERN_YS[0])
+STAIR_LANTERNS = tuple((PAV[0] + sx * WALK_LANTERN_DX, STAIR_LANTERN_Y) for sx in (-1, 1))
+STAIR_LANTERNS_R54 = tuple((PAV[0] + sx * 3.6, PAV[1] - 10.4) for sx in (-1, 1))
+STAIR_LANTERN_NAMES = (K + ".lantern_stone", K + ".lantern_stone.001")   # build order: west, then east
 LANTERN_LIFT = 0.16           # the eave-corner lanterns' lift (r5): cord top 3 cm into the lower eave's soffit
 # The 1103 hold as the site shows it: chase.cam's place and heading there, in this area's frame (read from
 # out/sect_chase.blend; sect/patch_r15_scroll_restore.py checks the file still agrees). r15: the site shows the film's
@@ -298,13 +308,12 @@ def _pavilion(coll, root):
     ap2 = r2 * math.cos(math.pi / 6)
     P.plaque(coll, AREA["title_zh"], 2.9, name=_n("plaque"), parent=root,
              location=(px, py - ap2 - 0.45, floors[1] + 2.9))
-    # stone lanterns flanking the pavilion stairs, then lining the path to the terrace front
-    for sx in (-1, 1):
-        P.lantern_stone(coll, 2.4, name=_n("lantern_stone"), parent=root,
-                        location=(px + sx * 3.6, py - 10.4, 0.0))
-        for y in (-13.0, -4.0, 5.0):
+    # stone lanterns in pairs up the walk, one beat apart (WALK_LANTERN_YS), the last pair (lantern_stone) a beat on
+    for k, sx in enumerate((-1, 1)):
+        P.lantern_stone(coll, 2.4, name=_n("lantern_stone"), parent=root, location=(*STAIR_LANTERNS[k], 0.0))
+        for y in WALK_LANTERN_YS:
             P.lantern_stone(coll, 2.4, name=_n("lantern_path"), parent=root,
-                            location=(px + sx * 4.2, y, 0.0))
+                            location=(px + sx * WALK_LANTERN_DX, y, 0.0))
     # hanging lanterns at the two front corners of the lower eave (r5: lifted LANTERN_LIFT so the cord's top runs 3 cm
     # into the eave soffit; at floors[1] - 1.7 it stopped 13 cm short and the lantern hung from nothing)
     for k in (0, 1):
@@ -1284,14 +1293,42 @@ def _nature(coll, root):
     N.blossom_tree(coll, height=6.5, seed=1, kind="peach", name=_n("peach"), parent=root,
                    location=(22.0, 12.0, 0.0))
     # scholar rocks, each on a low marble pedestal (r5: on bare paving the tall dark rock by the back rail read as a
-    # stray figure); the right-front rock sits at (22, -14), clear of the side steps' walking line at y -3.5
+    # stray figure): two flank the way to the side steps, the tall one stands by the peach (ROCKS)
     for i, (x, y, s) in enumerate(ROCKS):
         rock_pedestal(coll, root, i, x, y, s)
         N.rock(coll, s, seed=i, kind="scholar", name=_n("rock", i), parent=root,
                location=(x, y, ROCK_PEDESTAL[1] - ROCK_PEDESTAL[2]))
 
 
-ROCKS = ((-23.0, 14.0, 4.2), (22.0, -14.0, 2.8), (-2.0, 21.5, 3.0))   # scholar rocks: x, y, height
+# Scholar rocks (x, y, height). Round 55 (docs/scene/placement-r55.md): the two of a height flank the way out to the
+# side steps (their walking line is y EXIT_LINE_Y), ROCK_FLANK either side of it and clear of it, on the line
+# ROCK_GALLERY_X beside the walk; the tall one stands by the peach (the peach is at (22, 12)), a rock and a tree
+# together: 5.1 m from the trunk on the visitor's side, the nearest it stands clear of the crown (measured on the
+# box: the crown comes down to 1.5 m and reaches 4 to 5 m out there; 3 m from the trunk the rock stood inside it,
+# branches through the stone). Each keeps its height and seed. Until round 54 the three stood at unrelated spots
+# (ROCKS_R54). Each rock and its pedestal (rock_pedestal) are built as a pair at one place.
+ROCK_GALLERY_X = 22.0
+EXIT_LINE_Y = -3.5
+ROCK_FLANK = 6.5
+ROCKS = ((18.4, 8.4, 4.2), (ROCK_GALLERY_X, EXIT_LINE_Y - ROCK_FLANK, 2.8),
+         (ROCK_GALLERY_X, EXIT_LINE_Y + ROCK_FLANK, 3.0))
+ROCKS_R54 = ((-23.0, 14.0, 4.2), (22.0, -14.0, 2.8), (-2.0, 21.5, 3.0))
+
+
+def rock_names(i):
+    """(rock, pedestal) object names of scholar rock i, as _nature and rock_pedestal name them."""
+    return "%s.rock.%d" % (K, i), "%s.rock_pedestal.%d" % (K, i)
+
+
+def r55_moves():
+    """Round 55's moved pieces: {name: ((x, y) now, (x, y) until round 54)}: the stair's lantern pair, and each scholar
+    rock with its pedestal (sect/patch_r55_placement.py)."""
+    out = {nm: (a, b) for nm, a, b in zip(STAIR_LANTERN_NAMES, STAIR_LANTERNS, STAIR_LANTERNS_R54) if a != b}
+    for i, (a, b) in enumerate(zip(ROCKS, ROCKS_R54)):
+        if a[:2] != b[:2]:
+            for nm in rock_names(i):
+                out[nm] = (a[:2], b[:2])
+    return out
 ROCK_PEDESTAL = (0.30, 0.36, 0.05)   # octagonal pedestal: radius per metre of rock height, height, sunk into the paving
 ROCK_ITEM = "r5_rock_pedestal"       # obj['sect_item'] on each pedestal
 

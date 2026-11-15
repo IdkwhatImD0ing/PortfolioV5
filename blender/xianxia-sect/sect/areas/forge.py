@@ -23,7 +23,9 @@ Layout (local frame, front = -Y, z = 0 walkable top, footprint 50 m):
   with ember sparks; around it a tilted ring of the 11 winning projects' artifacts (FORGE_RING), each
   made for its project, on a parent Empty that turns once, linearly, over frames 1-1500
 - a jade rune ring on the paving under the orbit
-- side workshops, anvils, quench troughs, weapon racks, ore piles, stone lanterns, banners
+- side workshops, anvils, quench troughs, weapon racks, ore piles, stone lanterns, banners; since round 55 the yard is
+  two smith's bays (the west one the smith's corner mirrored across the axis), two racks at the east workshop's porch
+  and the ore in groups (the yard block, west_place)
 - the smith's corner (round 34), on the open paving right of the dais in front of the hall's east bays, square to the
   hold camera and left of the page's voice button: the Golden Wheel Lama's five wheels (金輪法王 金銀銅鐵鉛五輪, The
   Return of the Condor Heroes) in a graded row on a rosewood stand (_five_wheels), with an anvil and a quench trough
@@ -373,6 +375,73 @@ def smith_place(key):
     u, v, turn = SMITH[key]
     c, s = math.cos(SMITH_YAW), math.sin(SMITH_YAW)
     return SMITH_AT[0] + c * u - s * v, SMITH_AT[1] + s * u + c * v, SMITH_YAW + turn
+
+
+# ------------------------------------------------------------------ the yard (round 55)
+# Round 55 (docs/scene/placement-r55.md): the yard is two smith's bays and a few groups, not single pieces typed in one
+# at a time. The smith's corner above is the east bay. The west bay is that bay mirrored across the axis (x = 0) here
+# in code, so the two cannot drift apart: a weapon rack (forge.weapon_rack) where the five wheels' stand is, an anvil
+# (forge.anvil.002) and quench trough 1 where the first anvil and trough 0 are. Mirroring turns each piece the other
+# way (rz -> -rz), so its front still faces the mirrored hold camera. The other two racks flank the east workshop's
+# porch. The ore stands in groups: one heap at each workshop's hall-side corner (forge.ore.002 the east twin of
+# forge.ore.003) and three together by the bridge gate. The lone anvil under the artifacts' orbit (forge.anvil.001)
+# belonged to no bay and is gone. Until round 54 every piece was its own hand-typed spot (the *_R54 tables below;
+# sect/patch_r55_placement.py tells an old file by them).
+
+
+def west_place(key):
+    """(x, y, rz) of the west bay's member ``key``: the east bay's (smith_place) mirrored across x = 0. A trough is the
+    same box after a half turn, so its turn is kept within a quarter turn either way (74 deg rather than -106)."""
+    x, y, rz = smith_place(key)
+    rz = -rz
+    if key == "trough":
+        rz = (rz + 0.5 * math.pi) % math.pi - 0.5 * math.pi
+    return -x, y, rz
+
+
+def yard_name(base, i):
+    """The name the build gives yard piece i of kind ``base`` ('anvil', 'weapon_rack', 'ore'): the first is
+    forge.<base>, the rest forge.<base>.<i:03d>, numbered by their place in the tables below (kept even when one is
+    gone, so the others keep their names and the web export's cache keys)."""
+    return "%s.%s" % (KEY, base) + ("" if i == 0 else ".%03d" % i)
+
+
+def trough_names(i):
+    """(trough, water) object names of quench trough i, as _quench_trough names them."""
+    return "%s.trough.%d" % (KEY, i), "%s.trough_water.%d" % (KEY, i)
+
+
+RACK_TURN = 0.5 * math.pi       # the porch racks stand side-on to the east workshop's front (they read from both sides)
+# (x, y, rz) per piece in build order; None: not built (the five wheels take rack 1's place, anvil 1 is gone)
+ANVILS = (smith_place("anvil"), None, west_place("anvil"))
+# the porch is centred on y 4: the racks stand 5.4 m either side of that
+RACKS = (west_place("rack"), None, (24.3, 9.4, RACK_TURN), (24.3, -1.4, RACK_TURN))
+ORE = ((-27.0, -24.0, 2.6), (-23.4, -26.6, 1.8), (25.0, 14.0, 2.4), (-25.0, 14.0, 2.0), (-26.0, -29.6, 2.2))   # x, y, size
+TROUGH_1 = west_place("trough")
+# until round 54 (the racks turned 0.25 rad toward the axis; trough 1 was the round-12 build, its boxes baked at
+# TROUGH_1_R54, unturned)
+ANVILS_R54 = (smith_place("anvil"), (13.5, -17.0, -0.3), (-16.0, -24.0, 1.2))
+RACKS_R54 = ((-21.0, -21.0, 0.25), None, (21.0, 10.0, -0.25), (24.0, 15.5, -0.25))
+ORE_R54 = ((-27.0, -24.0, 2.6), (-22.0, -30.0, 1.8), (26.0, -4.0, 2.4), (-25.0, 14.0, 2.0), (20.0, 26.0, 2.2))
+TROUGH_1_R54 = (18.0, -9.0)
+
+
+def yard_moves():
+    """Round 55's moved yard pieces: {name: ((x, y, rz) now, (x, y, rz) until round 54)}. Trough 1 is rebuilt rather
+    than moved (TROUGH_1); YARD_GONE lists what is no longer built."""
+    out = {}
+    for base, now, was in (("anvil", ANVILS, ANVILS_R54), ("weapon_rack", RACKS, RACKS_R54)):
+        for i, (a, b) in enumerate(zip(now, was)):
+            if a is not None and b is not None and tuple(a) != tuple(b):
+                out[yard_name(base, i)] = (tuple(a), tuple(b))
+    for i, (a, b) in enumerate(zip(ORE, ORE_R54)):
+        if a != b:
+            out[yard_name("ore", i)] = ((a[0], a[1], 0.0), (b[0], b[1], 0.0))
+    return out
+
+
+# the pieces no longer built: {name: (x, y, rz) until round 54}
+YARD_GONE = {yard_name("anvil", i): tuple(b) for i, (a, b) in enumerate(zip(ANVILS, ANVILS_R54)) if a is None and b}
 
 
 # ------------------------------------------------------------------ the Golden Wheel Lama's five wheels
@@ -1516,23 +1585,26 @@ def build(collection):
                        samples_per_segment=1, closed=True, caps=False, parent=tilt)
     U.set_visibility(hoop, shadow=False)
 
-    # forge yard props; the first anvil and trough 0 stand in the smith's corner with the five wheels (round 34)
-    ax, ay, arz = smith_place("anvil")
-    for i, (x, y, rz) in enumerate(((ax, ay, arz), (13.5, -17.0, -0.3), (-16.0, -24.0, 1.2))):
-        P.anvil(coll, 1.5, name=_n("anvil"), parent=root, location=(x, y, 0.0), rotation=(0, 0, rz))
-    _quench_trough(root, coll, 0, *smith_place("trough"))
-    _quench_trough(root, coll, 1, 18.0, -9.0)
-    for i, (x, y) in enumerate(((-21.0, -21.0), FW_LOC, (21.0, 10.0), (24.0, 15.5))):
-        if i == 1:      # the Golden Wheel Lama's five wheels (in the smith's corner) in place of a weapon rack
-            _five_wheels(coll, root, x, y)
+    # forge yard props: two smith's bays and the ore in groups (round 55, the yard block above). The east bay is the
+    # smith's corner with the five wheels (round 34), the west bay its mirror image.
+    # Explicit numbers (yard_name) keep every piece's name, and so its cache key, now that anvil 1 is not built.
+    for i, place in enumerate(ANVILS):
+        if place is None:
             continue
-        # explicit numbers keep the other racks' names (forge.weapon_rack, .002, .003) and so their cache keys
-        nm = _n("weapon_rack") if i == 0 else U.unique_name("forge.weapon_rack.%03d" % i)
-        P.weapon_rack(coll, 2.6, seed=i, name=nm, parent=root, location=(x, y, 0.0),
-                      rotation=(0, 0, 0.25 if x < 0 else -0.25))
-    for i, (x, y, s) in enumerate(((-27.0, -24.0, 2.6), (-22.0, -30.0, 1.8), (26.0, -4.0, 2.4),
-                                   (-25.0, 14.0, 2.0), (20.0, 26.0, 2.2))):
-        P.ore_pile(coll, s, seed=i, name=_n("ore"), parent=root, location=(x, y, 0.0))
+        x, y, rz = place
+        P.anvil(coll, 1.5, name=U.unique_name(yard_name("anvil", i)), parent=root, location=(x, y, 0.0),
+                rotation=(0, 0, rz))
+    _quench_trough(root, coll, 0, *smith_place("trough"))
+    _quench_trough(root, coll, 1, *TROUGH_1)
+    for i, place in enumerate(RACKS):
+        if place is None:   # the Golden Wheel Lama's five wheels (the east bay) in place of a weapon rack
+            _five_wheels(coll, root, *FW_LOC)
+            continue
+        x, y, rz = place
+        P.weapon_rack(coll, 2.6, seed=i, name=U.unique_name(yard_name("weapon_rack", i)), parent=root,
+                      location=(x, y, 0.0), rotation=(0, 0, rz))
+    for i, (x, y, s) in enumerate(ORE):
+        P.ore_pile(coll, s, seed=i, name=U.unique_name(yard_name("ore", i)), parent=root, location=(x, y, 0.0))
     # (round 34: Dugu Qiubai's Sword Tomb 剑冢 left the forge for the Jade Slip Pavilion; _sword_tomb builds it there)
 
     # approach axis: stone lanterns and banners

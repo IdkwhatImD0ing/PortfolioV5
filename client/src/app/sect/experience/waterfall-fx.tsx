@@ -31,7 +31,6 @@ import {
   ClampToEdgeWrapping,
   Color,
   Frustum,
-  ImageBitmapLoader,
   ImageLoader,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
@@ -52,6 +51,7 @@ import {
   Vector3,
   Vector4,
 } from "three";
+import { WorkerBitmapLoader } from "./bitmap-decode";
 import { fogLibrary, glslFloat, type FogConstants } from "@/lib/sect/glsl";
 import { SECT_LOOK } from "@/lib/sect/look";
 import type { Quality } from "@/lib/sect/runtime";
@@ -68,7 +68,7 @@ import {
   type FallFoot,
 } from "@/lib/sect/water";
 import type { LoadedSet } from "./assets";
-import { enableFogEncodeOnce, getNoiseTexture, SOFT_DEPTH } from "./materials";
+import { enableFogEncodeOnce, getNoiseTexture, SOFT_DEPTH, veilBlending } from "./materials";
 import type { SectStore } from "./store";
 
 const f = glslFloat;
@@ -353,7 +353,7 @@ void main() {
 // Mist puffs
 
 function puffMaterial(fog: FogConstants, fogColor: string, time: IUniform<number>): ShaderMaterial {
-  return new ShaderMaterial({
+  return veilBlending(new ShaderMaterial({
     name: "sect.waterfall.mist",
     transparent: true,
     depthWrite: false,
@@ -466,7 +466,7 @@ void main() {
   #include <colorspace_fragment>
 }
 `,
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -509,7 +509,7 @@ function loadFxImage(url: string, tex: Texture, isLive: () => boolean, onReady: 
   };
   const failed = () => console.warn(`[sect] ${url} did not load; the waterfall foot keeps its stand-in`);
   if (typeof createImageBitmap !== "undefined") {
-    new ImageBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" }).load(url, done, undefined, failed);
+    new WorkerBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" }).load(url, done, undefined, failed);
   } else {
     new ImageLoader().load(url, done, undefined, failed);
   }

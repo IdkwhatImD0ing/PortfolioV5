@@ -209,7 +209,12 @@ describe("fog GLSL", () => {
     expect(d).toMatch(/^#define SECT_MIST$/m);
     expect(fogDefines(plain)).not.toMatch(/^#define SECT_MIST$/m);
     expect(d).not.toMatch(/NaN|undefined|Infinity/);
-    const used = new Set([...fogLibrary(aerial).matchAll(/\bSECT_[A-Z_]+\b/g)].map((m) => m[0]));
+    // The functions' own include guards (the frame grade and the look's uniform, each built in
+    // once) are defined where they are tested, not by fogDefines.
+    const fns = fogLibrary(aerial).slice(d.length);
+    const guards = new Set([...fns.matchAll(/#ifndef (SECT_[A-Z_]+)\n#define \1\n/g)].map((m) => m[1]));
+    expect(guards).toEqual(new Set(["SECT_LOOK_GRADE", "SECT_LOOK_UNIFORM"]));
+    const used = new Set([...fogLibrary(aerial).matchAll(/\bSECT_[A-Z_]+\b/g)].map((m) => m[0]).filter((n) => !guards.has(n)));
     for (const name of used) expect(d).toMatch(new RegExp(`#define ${name}\\b`));
   });
 
@@ -220,7 +225,8 @@ describe("fog GLSL", () => {
     expect(f).toContain("vec3 sectC = gl_FragColor.rgb;");
     expect(f).not.toContain("sectSrgbDecode( gl_FragColor.rgb )");
     expect(f).toContain("sectSrgbDecode( fogColor )");
-    expect(f).toContain("sectDitherEncoded( sectSrgbEncode( sectScreenClip( sectC ) ), gl_FragCoord.xy )");
+    // On the sRGB screen (Low) the look's frame grade goes on before the clip (none at amount 0).
+    expect(f).toContain("sectDitherEncoded( sectSrgbEncode( sectScreenClip( sectLookGrade( sectC ) ) ), gl_FragCoord.xy )");
   });
 
   it("takes a linear colour and a linear fog colour when a shader sets SECT_FOG_ONCE, and decodes only the fog colour otherwise", () => {

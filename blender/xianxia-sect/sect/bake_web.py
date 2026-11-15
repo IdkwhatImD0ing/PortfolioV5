@@ -97,6 +97,22 @@ bakecache/full/<chunk>/ (box only).
               RANGE_SHARP_DEG, the knife-edge lips over the undersides, stay hard). Floating islands
               (and far-set rock) get LOD floors from their own on-screen size (_island_floors, sect/bake_rules.py).
               The joined bake objects carry shadow_terminator_geometry_offset = TERMINATOR_OFFSET.
+              Rock floor (round 59, ROCK_FLOOR_*): rock the hold cameras see from the front, looking forward or
+              turned 60 degrees, gets a floor of texels a metre by hold distance, nearest first, inside the chunk's own
+              budget; the rest of the chunk keeps at least ROCK_FLOOR_GMIN of its linear density. Each chunk logs one
+              'ROCK FLOOR <id>: ...' line. --no-rock-floor bakes the plan as before; --rock-floor-units x tries a
+              bigger budget.
+              Rock relief (round 59, RELIEF_*, sect/relief.py): right after the capture, the captured copies of the
+              rock that already has a fine mesh (abode.cliff, the karst columns world.peak / abode.pinnacle /
+              summit.condor_crag, the floating rocks arena.island / scenery.island / world.islet) get beds, joint
+              blocks and flat column faces on their rock_cliff faces, pinned near plants, structures, water, roots and
+              open edges, and a 'geo_w' attribute the rock material reads. No vertex is added; the scene file keeps
+              the old shapes (so the film and the scene previews no longer match the web rock). Relieved pieces get
+              LOD floors (RELIEF_FLOORS) that are added to the chunk's triangle budget, so other pieces keep theirs.
+              Each chunk logs 'RELIEF LOD <id>: ...'; --plan-only also picks the LODs with those floors off and lists
+              the five largest non-rock pieces' levels both ways. The relief is off unless --relief is given (it
+              failed its look review in round 59, docs/scene/rock-r59.md); --relief-only <regex> relieves only
+              matching objects; --relief-set KEY=value overrides a relief constant.
               --plan-only stops every chunk after the LOD pick and unwrap: bake/plan_<id>.json, bake/plan_stats.json.
               Stats: bake/chunks/<id>.json, bake/post/<id>.json, bake/bake_stats.json; graded atlases bake/tex/.
     water     raw/<area>_water.glb per chunk + raw/backdrop_water.glb (seen only beyond 400 m, and the long streams
@@ -132,9 +148,9 @@ take up to 2.5x longer than this (whole bake up to ~3.5 h): the first chunk's "b
     all chunks + ~5 min setup: dev 47 min, production about 1 h 40 min (worst case about 3.5 h)
 
 Colour: atlases and vertex colours are display-referred sRGB (AgX Punchy + grade baked in); the web draws
-them unlit with no tone mapping. Lighting for the bake = the scene's sun + sky, with the sky fill raised
-x1.4 and warmed, plus a soft warm fill sun from the sun's side (stands in for the film's golden haze
-in-scatter; calibrated on Cycles stills against the style frames).
+them unlit with no tone mapping. Lighting for the bake = the scene's sun + sky, the sky warmed, plus a crisp
+warm key from the sun's side, 27 degrees up (BAKE_LIGHT; round 57, docs/scene/light-r57.md). Until round 56 it
+was a soft fill instead (BAKE_LIGHT_R56), which lit flat ground more than the sun did and cast no shadow.
 """
 import argparse
 import collections
@@ -156,6 +172,7 @@ if ROOT not in sys.path:
 
 from sect import export_web as EW  # noqa: E402
 from sect import bake_rules as BR  # noqa: E402
+from sect import relief as RF  # noqa: E402
 
 OUT_WEB = EW.OUT_WEB
 BAKE_OUT = os.path.join(OUT_WEB, "bake")
@@ -177,7 +194,15 @@ SPLIT_DEMAND = 250_000         # texels at nominal density above which a piece i
 VC_MIN_PX = 6.0                # distant pieces smaller than this on screen are dropped
 BIG_RATIO = 0.3                # terrain: overall decimation ratio, near the path protected by weights
 VEG_KINDS = ("pine", "blossom", "shrub", "grass", "bamboo", "willow", "lotus")
-COPY_ATTRS = ("arch_gen", "arch_dims", "arch_rand", "edge")
+COPY_ATTRS = ("arch_gen", "arch_dims", "arch_rand", "edge", "geo_w")
+# (round 59) geo_w: POINT float, 0-1, written by the round's rock relief on the rock it reshapes; the rock material
+# fades its own beds and master joints out where it is above 0 (materials.ROCK_GEO_ATTR), so one rock never shows two
+# bed sets. Pieces without it read 0.
+ROCK_FLAT_PROP = "rock_flat"   # (round 59) materials.ROCK_FLAT_PROPS: 1 on the floating rocks' bake pieces, which carry
+                               # their own modelled beds; the rock material leaves its world beds off there. Only the
+                               # bake sets it (_full_item): the scene's objects are not touched
+ROCK_FLAT_RE = re.compile(r"^(arena\.island|arena\.islet|scenery\.island|world\.islet|world\.link\.arena_mission\.stone"
+                          r"|nature\.floating(_rock)?)(\.\d{3})?$")   # nature.floating_rock's objects by name
 OBJ_PROPS_VEC = ("scale", "dimensions", "location")
 GLOW_DEFAULT = 3.0
 SUN_AZ_DEG = 252.0
@@ -281,9 +306,15 @@ ATLAS_EVEN = 0.9               # full: after packing, an atlas whose density (te
                                # chunk's lowest after halving its size is halved (library_A1, 7 terrain pieces, came out a
                                # 4096 at 1.45x density beside the pagoda's 0.78x)
 
-# bake lighting (variant C of out/web/bake/calib): sky x1.3 warmed + soft warm fill sun
-BAKE_LIGHT = dict(world_strength=1.4, world_tint=(1.25, 1.0, 0.78), fill_energy=1.6, fill_elev_deg=32.0,
-                  fill_angle_deg=110.0, fill_color=(1.0, 0.72, 0.5))
+# bake lighting. Round 57 (2026-11-10, the look test at the mirror terrace): the film's sky, warmed, plus a crisp warm
+# key from the sun's side, 27 degrees up and 6 degrees across. The scene's own sun stands 7 degrees up, so flat
+# ground gets an eighth of it. The key is what lights lawns and plazas and gives them shadows with an edge.
+# BAKE_LIGHT_R56 is what every bake used until then (variant C of out/web/bake/calib): the sky x1.4 and a fill 110
+# degrees across, which lit the ground more than the sun did and cast no shadow. --light overrides one run.
+BAKE_LIGHT = dict(world_strength=1.0, world_tint=(1.25, 1.0, 0.78), fill_energy=2.4, fill_elev_deg=27.0,
+                  fill_angle_deg=6.0, fill_color=(1.0, 0.72, 0.5))
+BAKE_LIGHT_R56 = dict(world_strength=1.4, world_tint=(1.25, 1.0, 0.78), fill_energy=1.6, fill_elev_deg=32.0,
+                      fill_angle_deg=110.0, fill_color=(1.0, 0.72, 0.5))
 PROFILE = "proto"              # use_profile("full") switches paths and holds to the whole path (see the FULL section)
 
 
@@ -915,6 +946,166 @@ def split_heavy(items, cam_mats, tan_v, aspect_w, dscale=None):
         n_split += 1
     log("split", n_split, "heavy pieces by face distance;", len(items), "->", len(out), "items")
     return out
+
+
+# ---- round 59: the rock texel floor (ROCK_FLOOR_*, docs/scene/rock-r59.md) -------------------------------------
+
+def _demand(it):
+    """Texel demand of an item at its density: its area (m2, the object's scale applied) x rho^2 (the formula
+    bake_chunk and split_heavy use)."""
+    A = ma(it.mesh)
+    L = np.asarray(it.M, float)[:3, :3]
+    return A.area * abs(np.linalg.det(L)) ** (2.0 / 3.0) * it.rho ** 2
+
+
+def hold_face_d(me, M, hold_mats, tan_v, aspect_w, ndc=None):
+    """Per face of `me` (world matrix M): the nearest hold camera in hold_mats that holds the face's centre in its
+    frame widened to ROCK_FLOOR_NDC and that the face faces (bake_rules.facing_dmin); inf when none."""
+    n = len(me.polygons)
+    c = np.empty(n * 3)
+    me.polygons.foreach_get("center", c)
+    nr = np.empty(n * 3)
+    me.polygons.foreach_get("normal", nr)
+    M = np.asarray(M, float)
+    L = M[:3, :3]
+    c = c.reshape(n, 3) @ L.T + M[:3, 3]
+    try:
+        nw = nr.reshape(n, 3) @ np.linalg.inv(L)      # normals by the inverse transpose (row vectors)
+    except np.linalg.LinAlgError:
+        nw = nr.reshape(n, 3) @ L.T
+    return BR.facing_dmin(c, nw, hold_mats, tan_v, aspect_w, ROCK_FLOOR_NDC if ndc is None else ndc)
+
+
+def floor_holds(F, cid):
+    """The views the rock floor is measured from: the hold cameras of chunk cid's area and of the areas within
+    ROCK_FLOOR_WINDOW of it in flight order (the page draws those chunks at that hold), each looking forward and
+    turned by ROCK_FLOOR_YAWS on the spot."""
+    k = HOLD_AREAS.index(cid) if cid in HOLD_AREAS else None
+    out = []
+    for j, M in enumerate(F["hold_mats"]):
+        if k is not None and abs(j - k) > ROCK_FLOOR_WINDOW:
+            continue
+        for deg in ROCK_FLOOR_YAWS:
+            out.append(BR.yaw_matrix(np.asarray(M, float), deg))
+    return out
+
+
+def rock_floor(F, cid, items, limit_today, limit):
+    """The rock texel floor of chunk cid (ROCK_FLOOR_*). Decide first, split last: per atlas item with at least
+    ROCK_SPLIT_MIN rock-class faces (not hotspot items, not turning objects), each face's nearest front-on hold
+    distance (hold_face_d over floor_holds) and its ROCK_FLOOR_BINS bin; one candidate part per item and bin with at
+    least ROCK_SPLIT_MIN faces, wanting min(ROCK_FLOOR_K / its median distance, ROCK_FLOOR_MAX) texels a metre. On
+    the split range a part also takes the ring of faces round it (bake_rules.grow_faces), so its density step falls
+    in the grass beside the rim, where the page's ground layer covers it. bake_rules.floor_reserve then gives the
+    parts their texels nearest bin first inside `limit`, the rest of the chunk keeping at least ROCK_FLOOR_GMIN x
+    today's scale (sqrt(limit_today / demand)). Only then are the kept parts cut out: '<name>.rh<bin>' with their own
+    density; the item's other faces stay one item under its own name (mesh '<name>.rk'), with its demand recomputed;
+    an empty rest is dropped. Returns (items, ids of the floor items, texels the floor uses, info for the log and the
+    chunk JSON, plain numbers only)."""
+    t0 = time.time()
+    cap = ATLAS_PX * ATLAS_PX * ATLAS_FILL
+    edges = tuple(float(x) for x in ROCK_FLOOR_BINS)
+    nbin = len(edges) - 1
+    total = float(sum(it.demand for it in items))
+    g_today = min(1.0, math.sqrt(limit_today / total)) if total > 0 else 1.0
+    holds = floor_holds(F, cid)
+    turning = EW.turning_owners()
+    split = {F["R"].owner[i] for i in F["big"]}
+    parts = []
+    for j, it in enumerate(items):
+        if it.hot or it.owner in turning:
+            continue
+        A = ma(it.mesh)
+        if A.np < ROCK_SPLIT_MIN or not A.mats:
+            continue
+        cls = np.array([_mat_class(F, m) == "rock" for m in A.mats], bool)
+        rock = cls[np.clip(A.mi, 0, len(A.mats) - 1)]
+        if int(rock.sum()) < ROCK_SPLIT_MIN:
+            continue
+        dh = hold_face_d(it.mesh, it.M, holds, F["tv"], F["aw"])
+        kb = BR.floor_bins(dh, edges)
+        ar = np.empty(A.np)
+        it.mesh.polygons.foreach_get("area", ar)
+        s3 = abs(float(np.linalg.det(np.asarray(it.M, float)[:3, :3]))) ** (2.0 / 3.0)
+        claimed = np.zeros(A.np, bool)
+        for k in range(nbin):
+            m = rock & (kb == k) & ~claimed
+            if int(m.sum()) < ROCK_SPLIT_MIN:
+                continue
+            dm = float(np.median(dh[m]))
+            want = min(ROCK_FLOOR_K / max(dm, 1.0), ROCK_FLOOR_MAX, RHO_MAX)
+            if it.owner in split:
+                m = BR.grow_faces(A.vi, A.ls, m, A.nv) & ~claimed
+            claimed |= m
+            parts.append(dict(j=j, k=k, m=m, area=float(ar[m].sum()) * s3, want=float(want), base=float(it.rho),
+                              d=dm))
+    t_rest = max(total - sum(p["area"] * p["base"] ** 2 for p in parts), 0.0)
+    rho, g_rest, used, rinfo = BR.floor_reserve([p["k"] for p in parts], [p["area"] for p in parts],
+                                                [p["want"] for p in parts], [p["base"] for p in parts], t_rest,
+                                                limit, ROCK_FLOOR_GMIN * g_today, g_ref=g_today, keep=ROCK_FLOOR_KEEP)
+    kept = {}
+    for p, r in zip(parts, rho.tolist()):
+        p["rho"] = float(r)
+        if r > 0.0:
+            kept.setdefault(p["j"], []).append(p)
+    out, floor_ids = [], set()
+    for j, it in enumerate(items):
+        ps = kept.get(j)
+        if not ps:
+            out.append(it)
+            continue
+        cover = np.zeros(ma(it.mesh).np, bool)
+        for p in ps:
+            cover |= p["m"]
+        if len(ps) == 1 and cover.all():           # the whole item is one floor part: no split
+            it.rho = max(ps[0]["rho"], RHO_MIN)
+            it.demand = _demand(it)
+            out.append(it)
+            floor_ids.add(id(it))
+            continue
+        for p in ps:
+            b0 = int(edges[p["k"]])
+            nit = Item(**{s: getattr(it, s) for s in Item.__slots__})
+            nit.mesh = submesh(it.mesh, p["m"], "%s.rh%d" % (it.name[:50], b0))
+            nit.name = "%s.rh%d" % (it.name, b0)
+            nit.rho = max(p["rho"], RHO_MIN)
+            nit.demand = _demand(nit)
+            out.append(nit)
+            floor_ids.add(id(nit))
+        if (~cover).any():                         # the rest of the item keeps its own density and name
+            rest = Item(**{s: getattr(it, s) for s in Item.__slots__})
+            rest.mesh = submesh(it.mesh, ~cover, "%s.rk" % it.name[:50])
+            rest.demand = _demand(rest)
+            out.append(rest)
+    used = float(sum(it.demand for it in out if id(it) in floor_ids))
+    bins = []
+    for k in range(nbin):
+        on = [p for p in parts if p["k"] == k and p["rho"] > 0.0]
+        a_on = sum(p["area"] for p in on)
+
+        def wmean(key, scale=1.0):
+            return round(sum(p["area"] * p[key] * scale for p in on) / a_on, 2) if a_on > 0 else 0.0
+
+        bins.append(dict(bin="%d-%d" % (int(edges[k]), int(edges[k + 1])), parts=sum(1 for p in parts if p["k"] == k),
+                         floor=len(on), m2=int(round(a_on)), got=wmean("rho"), was=wmean("base", g_today),
+                         mtex=round(sum(p["area"] * p["rho"] ** 2 for p in on) / 1e6, 3)))
+    top = sorted((p for p in parts if p["rho"] > 0.0), key=lambda p: -p["area"])[:10]
+    info = dict(on=True, units=round(limit / cap, 3), units_today=round(limit_today / cap, 3),
+                g_today=round(g_today, 4), g_rest=round(float(g_rest), 4),
+                keeps=round(float(g_rest) / g_today, 4) if g_today > 0 else 1.0,
+                floor_mtex=round(used / 1e6, 3), limit_mtex=round(limit / 1e6, 3), items=len(kept),
+                pieces=len(floor_ids), holds=len(holds), bins=bins, reserve=rinfo,
+                top=[[items[p["j"]].name, int(round(p["area"])), round(p["d"], 1), round(p["base"] * g_today, 2),
+                      round(p["rho"], 2)] for p in top],
+                seconds=round(time.time() - t0, 1))
+    info["line"] = ("ROCK FLOOR %s: scale today %.3f -> rest %.3f (keeps %.1f %% of today's linear density); floor "
+                    "%.2fM of %.2fM texels (%.2f atlases); texels a metre by bin: %s" % (
+                        cid, g_today, g_rest, 100.0 * info["keeps"], used / 1e6, limit / 1e6, limit / cap,
+                        "; ".join("%s m %.1f (was %.1f, %d of %d parts)" % (b["bin"], b["got"], b["was"], b["floor"],
+                                                                          b["parts"]) for b in bins)))
+    log(info["line"])
+    log("rock floor:", json.dumps({k: v for k, v in info.items() if k != "line"}))
+    return out, floor_ids, used, info
 
 
 def near_holds(R, idx, hold_mats, near=HOLD_NEAR, area_near=None):
@@ -1976,8 +2167,29 @@ def setup_cycles(sc, samples, quality="dev"):
                 log("WARN could not pin", k, v, e)
 
 
+def set_bake_light(spec):
+    """--light 'fill_energy=0.5,world_strength=1.0,world_tint=1.1/1.0/0.9': one run's own BAKE_LIGHT values, for look
+    tests (the shipped bakes use the defaults). Numbers, or three numbers joined by '/' for the colour keys. The
+    chunk's bake meta records the light it was baked with."""
+    if not spec:
+        return
+    for part in spec.split(","):
+        k, _, v = part.partition("=")
+        k = k.strip()
+        if k not in BAKE_LIGHT:
+            raise SystemExit("--light: unknown key %r (have %s)" % (k, ", ".join(sorted(BAKE_LIGHT))))
+        if isinstance(BAKE_LIGHT[k], tuple):
+            val = tuple(float(x) for x in v.split("/"))
+            if len(val) != len(BAKE_LIGHT[k]):
+                raise SystemExit("--light: %s takes %d numbers joined by '/'" % (k, len(BAKE_LIGHT[k])))
+        else:
+            val = float(v)
+        BAKE_LIGHT[k] = val
+    log("light override %r -> %s" % (spec, json.dumps(BAKE_LIGHT)))
+
+
 def bake_lighting(sc):
-    """Sky fill x1.3 warmed + a soft warm fill sun from the sun's side (see BAKE_LIGHT)."""
+    """The sky warmed + a warm key sun from the sun's side (see BAKE_LIGHT)."""
     L = BAKE_LIGHT
     nt = sc.world.node_tree
     bg = next(n for n in nt.nodes if n.bl_idname == "ShaderNodeBackground")
@@ -3188,6 +3400,26 @@ HOLD_RHO_NEAR = 120.0
 HOLD_AROUND_NEAR = 40.0        # m from a hold camera in any direction (the view turns all the way round there):
 HOLD_AROUND_FLOOR = 0.5        # LOD floor (the forward rule keeps 1.0 up to HOLD_FULL_TRIS)
 HOLD_RHO_AROUND = 1.25         # texel density factor (the forward rule gives HOLD_RHO)
+# round 59 (docs/scene/rock-r59.md): a texel floor for the rock the holds look at. Most rock in a hold's frame is 250 to
+# 400 m off at about 1 texel a metre (5 screen pixels a texel), so the photo and the rock's beds blur away. Rock-class
+# faces (DETAIL_CLASSES "rock") that a hold camera sees from the front, looking forward or turned ROCK_FLOOR_YAWS on
+# the spot, get at least min(ROCK_FLOOR_K / d, ROCK_FLOOR_MAX) texels a metre, d the median hold distance of their bin
+# (rock_floor). It is paid for inside the chunk's own budget (FULL_ATLASES_BY_AREA does not change): the nearest bin
+# first, everything else in the chunk keeping at least ROCK_FLOOR_GMIN of today's linear density; the bin that does
+# not fit is scaled and the bins past it get nothing (bake_rules.floor_reserve). --no-rock-floor bakes today's plan
+# exactly; --rock-floor-units x tries a budget of x atlases (plan-only runs).
+ROCK_FLOOR = True
+ROCK_FLOOR_PX = 1.5            # screen pixels a texel at 1920 px wide (RHO_K's 2.5 px became 3 to 5 after the budget)
+ROCK_FLOOR_K = 1.0 / (ROCK_FLOOR_PX * 5.9e-4)   # 1130 texels a metre at 1 m (1.7 x RHO_K); 3.8 at 300 m
+ROCK_FLOOR_MAX = 24.0          # texels a metre at most: nearer than about 47 m the page's fine rock layer takes over
+ROCK_FLOOR_BINS = (0.0, 30.0, 60.0, 120.0, 250.0, 400.0)   # m from the hold camera; past 400 m (ATLAS_MAX_D) no floor
+ROCK_FLOOR_YAWS = (0.0, 60.0, -60.0)   # deg: each hold's forward view and the visitor turned 60 deg each way (a third
+                                       # of the review captures are y60 / ym60)
+ROCK_FLOOR_NDC = (1.3, 1.5)    # frustum margins in NDC, x and y: the page's STOP_FRAMING turns, formation's -8 deg pitch
+ROCK_FLOOR_WINDOW = 2          # holds within this many stops of the chunk's own: the full tier draws 2 areas each side
+ROCK_FLOOR_GMIN = 0.93         # the rest of the chunk keeps at least this share of today's linear density (7 % less)
+ROCK_FLOOR_KEEP = 1.05         # a part is cut out only when it gets at least this x the density it gets anyway
+ROCK_SPLIT_MIN = 32            # rock faces an item, and each bin of it, needs to take part (fewer: not worth a seam)
 STAGE_OWNERS = "forge.artifact."   # the forge ring's artifacts turn all the way round on the web (idle motion):
                                    # each bakes as if it stood at the ring's front, see ring_stage()
 STAGE_STEP = 9.0                   # m: the staged artifacts stack straight up, this far apart (a 7 deg sun casts no
@@ -3245,6 +3477,29 @@ PILLAR_FLOOR_LO = 600.0
 PILLAR_FLOOR_HI = 9000.0
 PILLAR_FLOOR_MIN_PX = 60.0
 PILLAR_FLOOR_CAP = 120_000
+# round 59 (docs/scene/rock-r59.md, "Shape"): bake-time rock relief on the captured copies (sect/relief.py). The new
+# steps, notches and column faces must survive the LOD pick, so relieved pieces seen at RELIEF_FLOOR_MIN_PX or more keep
+# clip(K x px^2, LO, HI) triangles per kind (px: the largest on-screen size over the chunk's own views, as the pillar
+# floors), all of them at most RELIEF_FLOOR_CAP per chunk (one common scale). What they add over the other floors is
+# ADDED to the chunk's triangle budget, like the pillar floors (attack_0: floors taken from the budget took triangles
+# from halls, roofs and stairs in gate, forge, mission, library and steles), counted at the LOD level each floor rounds
+# up to, and the room rule's cap grows by the same (_lod_items). The pieces gain no new vertex, so where a
+# chunk already ships everything whole (abode, arena, formation, mirror, scroll, summit in round 56) nothing changes.
+RELIEF = False                 # --relief: True. Off: the look review of 2026-11-12 failed it on the abode cliff
+                               # (pleats, a lawn showing through), saw no change on the floating rocks and a small,
+                               # mixed one on the columns (docs/scene/rock-r59.md). Off, the bake is exactly as
+                               # before (no relief, no relief floors)
+RELIEF_ONLY = ""               # --relief-only <regex>: relieve only the objects whose name also matches (tests)
+RELIEF_SET = []                # --relief-set KEY=value (repeatable): overrides of relief_rules / relief constants
+RELIEF_FLOORS = dict(column=(0.07, 600.0, 16000.0),   # (K, LO, HI) triangles = clip(K x px^2, LO, HI): pillars
+                                                      # (PILLAR_FLOOR_K 0.04 / 9000 kept the shelves; the faces and
+                                                      # notches need about 1.75 x that)
+                     island=(0.30, 400.0, 14000.0),   # floating rocks (ISLAND_FLOOR_K 0.15 / 6000 kept the cone; the
+                                                      # recess rings need twice that)
+                     cliff=(0.07, 4000.0, 40000.0))   # abode.cliff (about 33k triangles: whole from about 750 px)
+RELIEF_FLOOR_MIN_PX = 60.0     # px: smaller on screen, no relief floor (the relief does not read there)
+RELIEF_FLOOR_CAP = 160_000     # relief floor triangles per chunk at most (scaled down evenly beyond); the plan-only gate
+                               # watches what they add (docs/scene/rock-r59.md)
 ISLAND_EXCLUDE = VEG_KINDS + ROOT_WORDS + ("fall", "mist")   # island-named pieces that are not the rock
 FAR_TRIS_FULL = 360_000        # backdrop far set
 PROXY_TRIS_FULL = 30_000       # backdrop proxy per area (records; the area's terrain faces come on top)
@@ -3360,6 +3615,17 @@ def full_ctx(want_chunks):
     for o in mixed:
         want_idx.update(i for i in orecs[o] if grp[i] != -99)
     bases = capture(sorted({R.tkey[i] for i in want_idx}))
+    # (round 59) rock relief on the captured copies, before any piece is decimated, split or cut (sect/relief.py).
+    # Only records baked into an area chunk (grp >= 0) are relieved, so every session relieves the same object the
+    # same way whatever chunks it was asked for (the backdrop's proxies share the relieved meshes)
+    relief = dict(objects={}, records={}, summary=dict(on=False))
+    if RELIEF:
+        relief = RF.relieve_bases(dict(R=R, grp=grp, ex=ex, mat_class=detail_class, only=RELIEF_ONLY or None,
+                                       log=log), bases)    # main() applied --relief-set already
+        relief["summary"]["on"] = True
+        for tk in relief["objects"]:
+            if tk in bases:
+                _MA.pop(bases[tk].name, None)
     dec = Decimator(sc)
     _FC.update(sc=sc, R=R, S=S, frames=frames, views=views, ch=ch, ids=ids, minfo=minfo, ex=ex, veg=veg, falls=falls,
                px=px,
@@ -3368,7 +3634,9 @@ def full_ctx(want_chunks):
                rw={}, lit=False, hidden_fx=0, t_setup=0.0,
                hot_labels={h[0]: h[1] for h in EW.all_hotspots()},
                hot_kind={h["id"]: h["kind"] for h in EW.HOTSPOT_DEFS},
-               hot_area={h["id"]: h["area"] for h in EW.HOTSPOT_DEFS if not h.get("metaOnly")})
+               hot_area={h["id"]: h["area"] for h in EW.HOTSPOT_DEFS if not h.get("metaOnly")},
+               relief=relief, relieved=dict(relief["records"]))
+    _FC.setdefault("check", {})["relief"] = relief["summary"]
     log("full ctx: records", n, "mixed owners", len(mixed), sorted(mixed)[:40], "captured", len(bases))
     # split meshes (range, roots): one weighted decimation for the whole path, faces assigned to chunks. The range
     # (the only one decimated) keeps its grass/rock border vertices and gets smooth whole-mesh normals (smooth_range)
@@ -3416,6 +3684,8 @@ def _full_item(F, i, me, kind, zone, d=None, name=None):
     scale, props = mat_slots_and_props(ob)
     if ob is not None:
         props["__dims"] = tuple(ob.dimensions)
+    if ROCK_FLAT_RE.match(R.owner[i]) or ROCK_FLAT_RE.match(R.name[i]):
+        props[ROCK_FLAT_PROP] = 1.0    # read only by a material with an OBJECT attribute of that name (round 59 rock)
     key = R.key[i] if name is None else name
     M = R.mw[i]
     lift = PATH_LIFT.get(R.owner[i]) or PATH_LIFT.get(R.name[i])
@@ -3590,6 +3860,120 @@ def _pillar_floors(F, idx, vmask, label):
     return r
 
 
+def _floor_cost(R, idx, fl):
+    """Per record of idx: the triangles floor ratios fl keep, each rounded up to the LOD level the pick uses (0 where
+    there is no floor). The room rule's sum."""
+    li = np.maximum((EW.LEVELS[None, :] >= fl[:, None]).sum(1) - 1, 0)
+    return R.tris[idx] * np.where(fl > 0, EW.LEVELS[li], 0.0)
+
+
+def _relief_floors(F, idx, vmask, label):
+    """Round 59: LOD floor ratios (per record of idx) for the relieved pieces (F["relieved"]: record -> kind): clip(K x
+    px^2, LO, HI) triangles by RELIEF_FLOORS[kind], px = the largest on-screen size over the views in vmask where the
+    audit saw the piece, at least RELIEF_FLOOR_MIN_PX; all of them at most RELIEF_FLOOR_CAP (one common scale).
+    Returns (ratios, mask of the relieved records in idx)."""
+    R, S, V = F["R"], F["S"], F["views"]
+    idx = np.asarray(idx, int)
+    rel = F.get("relieved") or {}
+    kinds = np.array([rel.get(int(i), "") for i in idx], dtype=object)
+    on = kinds != ""
+    r = np.zeros(len(idx))
+    vmask = np.asarray(vmask, bool)
+    if not on.any() or not vmask.any():
+        return r, on
+    tri = R.tris[idx].astype(float)
+    if "view_np" not in F:
+        F["view_np"] = np.array([np.asarray(m, float) for m in V.mats]).reshape(-1, 4, 4)
+    rec = idx[on]
+    vis = S.get("vis")
+    vis = vis[rec][:, vmask] if vis is not None and vis.shape[1] == len(V) else None
+    px = np.zeros(len(idx))
+    px[on] = BR.projected_px(R.lo[rec], R.hi[rec], F["view_np"][vmask], F["tv"], F["aw"], dscale=V.dscale[vmask],
+                             vis=vis)
+    for kind, (k, lo, hi) in RELIEF_FLOORS.items():
+        m = on & (kinds == kind) & (px >= RELIEF_FLOOR_MIN_PX)
+        r = np.maximum(r, BR.floor_ratios(tri, px, m, k, lo, hi))
+    r, info = BR.cap_floors(r, tri, RELIEF_FLOOR_CAP, EW.LEVELS)
+    log(label, "relief floors: pieces", int(on.sum()), "floored", info["n"], "keep", info["tris"], "tris (wanted",
+        info["want"], "cap", RELIEF_FLOOR_CAP, "scale", info["scale"], ")")
+    return r, on
+
+
+def _relief_check(F, idx, label, lv, fl_off, budget_off, budget_on, budget_in, rel_on, w, px):
+    """Round 59: what the relief floors did in this LOD pick. Per relieved piece its source triangles and the ones it
+    keeps; with F["relief_compare"] (plan-only runs) also the pick with the relief floors off (fl_off, budget_off,
+    the room rule applied the same way) and the levels of the five largest pieces with no rock-class material, both
+    ways: they must not drop. Logs 'RELIEF LOD <label>: ...' and keeps it in F["relief_lod"][label]."""
+    R, picker = F["R"], F["picker"]
+    idx = np.asarray(idx, int)
+
+    def kept(i, li):
+        me = picker.get(R.tkey[i], float(EW.LEVELS[li]))
+        return picker.tris(me) if me is not None else 0
+
+    lv_off = None
+    if F.get("relief_compare"):
+        b = budget_off
+        if ROOM_MIN > 0:
+            li = np.maximum((EW.LEVELS[None, :] >= fl_off[:, None]).sum(1) - 1, 0)
+            real = float((R.tris[idx] * np.where(fl_off > 0, EW.LEVELS[li], 0.0)).sum())
+            b = max(b, min(real / (1.0 - ROOM_MIN), ROOM_GROWTH_MAX * budget_in))
+        _k, lv_off, _t = EW.fit_budget(R, px, idx, b, w, picker, label + " (relief floors off)", floor=fl_off)
+        budget_off = b
+    rows = []
+    for j in np.nonzero(rel_on)[0]:
+        i = int(idx[j])
+        row = dict(name=R.name[i], src=int(R.tris[i]), level=float(EW.LEVELS[lv[j]]), tris=int(kept(i, lv[j])))
+        if lv_off is not None:
+            row.update(level_off=float(EW.LEVELS[lv_off[j]]), tris_off=int(kept(i, lv_off[j])))
+        rows.append(row)
+    rows.sort(key=lambda r_: -r_["tris"])
+    rock = np.array([any(_mat_class(F, m) == "rock" for m in R.tinfo[R.tkey[i]][2] if m) for i in idx], bool)
+    cand = np.nonzero(~rel_on & ~rock)[0]
+    top = cand[np.argsort(-R.tris[idx[cand]], kind="stable")][:5]
+    big = []
+    for j in top:
+        i = int(idx[j])
+        row = dict(name=R.name[i], src=int(R.tris[i]), level=float(EW.LEVELS[lv[j]]))
+        if lv_off is not None:
+            row["level_off"] = float(EW.LEVELS[lv_off[j]])
+        big.append(row)
+    dropped = [r_["name"] for r_ in big if "level_off" in r_ and r_["level"] < r_["level_off"]]
+    t_on = sum(r_["tris"] for r_ in rows)
+    t_off = sum(r_["tris_off"] for r_ in rows) if lv_off is not None else None
+    line = ("RELIEF LOD %s: %d relieved pieces keep %d of %d tris%s; budget %d%s; largest non-rock pieces %s; %s" % (
+        label, len(rows), t_on, sum(r_["src"] for r_ in rows),
+        (" (relief floors off: %d)" % t_off) if t_off is not None else "", int(budget_on),
+        (" (off %d)" % int(budget_off)) if lv_off is not None else "",
+        ", ".join("%s %s%s" % (r_["name"], r_["level"], ("/%s" % r_["level_off"]) if "level_off" in r_ else "")
+                  for r_ in big) or "none",
+        ("DROPPED: %s" % ", ".join(dropped)) if dropped else ("none dropped" if lv_off is not None else
+                                                              "not compared (plan-only compares)")))
+    log(line)
+    F.setdefault("relief_lod", {})[label] = dict(line=line, pieces=rows, largest=big, dropped=dropped,
+                                                 tris=int(t_on), tris_off=t_off, budget=int(budget_on),
+                                                 budget_off=int(budget_off) if lv_off is not None else None)
+
+
+def _relief_chunk(F, cid, idx):
+    """Round 59: the chunk's relief numbers for its JSONs (plain numbers only): the relieved objects baked here with
+    sect/relief.py's per-object numbers, and the LOD check (_relief_check). {"on": False} without relief."""
+    rel = F.get("relief") or {}
+    if not (rel.get("summary") or {}).get("on"):
+        return dict(on=False)
+    R = F["R"]
+    objs = rel.get("objects", {})
+    here = [objs[R.tkey[i]] for i in idx if int(i) in F.get("relieved", {}) and R.tkey[i] in objs]
+    keys = ("name", "kind", "verts", "tris", "moved", "mean", "max", "pinned")
+    out = dict(on=True, objects=[{k: o.get(k) for k in keys} for o in here])
+    lod = (F.get("relief_lod") or {}).get(cid)
+    if lod:
+        out["lod"] = lod
+    else:
+        out["lod"] = dict(line="RELIEF LOD %s: no relieved piece in this chunk" % cid)
+    return out
+
+
 _CUT = {}                      # _cut_mask memo: tkey -> cut
 
 
@@ -3688,6 +4072,8 @@ def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_vie
     roots = np.array([any(x in R.name[i] or x in R.owner[i] for x in ROOT_WORDS) for i in idx], bool)
     fl = np.maximum(fl, np.where(roots, ROOT_FLOOR, 0.0))
     isl_rows = []
+    fl_off = budget_off = rel_on = None
+    rel_extra = 0.0
     if isl_views is not None:
         fl_i, isl_rows = _island_floors(F, idx, isl_views, isl_cap, far_rock, label)
         fl = np.maximum(fl, fl_i)
@@ -3699,11 +4085,25 @@ def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_vie
             fl = np.maximum(fl, fl_p)
             budget += extra
             log(label, "pillar floors add", int(extra), "tris to the budget ->", int(budget))
+        # round 59: the relieved pieces' floors are extra triangles too (attack_0), area chunks only
+        if floors and RELIEF and F.get("relieved"):
+            fl_r, rel_on = _relief_floors(F, idx, isl_views, label)
+            if rel_on.any():
+                fl_off, budget_off = fl.copy(), budget
+                # what they add, counted at the LOD level each floor rounds up to (the pick keeps a 0.3 floor at
+                # 0.5): counted at the raw ratio, the rest came out of the other pieces
+                fl_new = np.maximum(fl, fl_r)
+                rel_extra = float((_floor_cost(R, idx, fl_new) - _floor_cost(R, idx, fl)).sum())
+                fl = fl_new
+                budget += rel_extra
+                log(label, "relief floors add", int(rel_extra), "tris to the budget ->", int(budget))
+            else:
+                rel_on = None
     if floors and ROOM_MIN > 0:
-        # room for the screen-size rule: the floors' real cost (each rounds up to a LEVEL)
-        li = np.maximum((EW.LEVELS[None, :] >= fl[:, None]).sum(1) - 1, 0)
-        real = float((R.tris[idx] * np.where(fl > 0, EW.LEVELS[li], 0.0)).sum())
-        nb = min(real / (1.0 - ROOM_MIN), ROOM_GROWTH_MAX * budget_in)
+        # room for the screen-size rule: the floors' real cost (each rounds up to a LEVEL). (round 59) Its cap grows by
+        # the relief floors' cost too, or where the cap binds it would swallow them
+        real = float(_floor_cost(R, idx, fl).sum())
+        nb = min(real / (1.0 - ROOM_MIN), ROOM_GROWTH_MAX * budget_in + rel_extra)
         if nb > budget:
             log(label, "room: floors keep", int(real), "tris: budget", int(budget), "->", int(nb))
             budget = nb
@@ -3715,6 +4115,8 @@ def _lod_items(F, idx, cid, budget, label, floors=True, w=None, px=None, isl_vie
         pick[int(i)] = (float(EW.LEVELS[li]), me)
         if me is not None and len(me.polygons):
             out.append((int(i), me))
+    if rel_on is not None:
+        _relief_check(F, idx, label, lv, fl_off, budget_off, budget, budget_in, rel_on, w, px)
     if isl_rows:
         # check-first: per island / far rock piece the px the LOD rule uses (px_eff; proxies: 2 x box diagonal), px
         # (the floor's views), source triangles, the floor, the chosen level and the triangles it keeps
@@ -3960,8 +4362,10 @@ def bake_chunk(F, cid, a):
     own = np.array([R.top[i] == cid or R.owner[i] in F["members"] for i in idx], bool)
     other = np.array([R.top[i] in EW.AREA_NAMES and R.top[i] != cid for i in idx], bool)
     w = np.where(own, EW.LOD_WEIGHTS["focus"], np.where(other, EW.LOD_WEIGHTS["other"], w))
+    F["relief_compare"] = bool(a.plan_only)       # (round 59) plan-only also picks with the relief floors off
     picked, tot = _lod_items(F, idx, cid, max(a.atlas_tris - used, 50_000), cid, w=w, isl_views=vneed,
                              isl_cap=ISLAND_FLOOR_CAP)
+    relief_info = _relief_chunk(F, cid, idx)
     for i, me in picked:
         items.append(_full_item(F, i, me, "atlas", cid))
     T["lod"] = round(time.time() - t0, 1)
@@ -3983,7 +4387,10 @@ def bake_chunk(F, cid, a):
         it.demand = A.area * abs(np.linalg.det(L)) ** (2.0 / 3.0) * it.rho ** 2
     items = split_heavy(items, cmats, F["tv"], F["aw"], dscale=cv.dscale)
     cap = ATLAS_PX * ATLAS_PX * ATLAS_FILL
-    units = a.chunk_atlases if a.chunk_atlases else FULL_ATLASES_BY_AREA.get(cid, FULL_ATLASES)
+    units_today = a.chunk_atlases if a.chunk_atlases else FULL_ATLASES_BY_AREA.get(cid, FULL_ATLASES)
+    units = units_today
+    if ROCK_FLOOR and getattr(a, "rock_floor_units", 0.0):
+        units = max(units_today, float(a.rock_floor_units))    # (round 59) a bigger budget for the floor, as a test
     limit = units * cap
     items_vc = []
     vc_info = {}
@@ -4001,17 +4408,35 @@ def bake_chunk(F, cid, a):
         vc_info = dict(items=len(items_vc), tris=int(sum(_tris(it.mesh) for it in items_vc)),
                        demand=round(sum(it.demand for it in items_vc)), g0=round(g0, 3), g1=round(g1, 3))
         log(cid, "small pieces as vertex colours:", json.dumps(vc_info))
-    total = sum(it.demand for it in items)
+    # (round 59) the rock floor takes its texels first; the rest of the chunk shares what is left (rock_floor). Off,
+    # the rest is every item and the limit the whole budget, as before
+    floor_ids, limit_rest, rock_info = set(), limit, dict(on=False)
+    n_today = 0
+    if ROCK_FLOOR:
+        # how many atlases the chunk makes without the floor (the grouping below, on today's demands): the floor cuts
+        # rock into parts, the greedy grouping then leaves more room unused, and the floor must not open one more
+        tot0 = sum(it.demand for it in items)
+        lim0 = units_today * cap
+        g_t = math.sqrt(lim0 / tot0) if tot0 > lim0 else 1.0
+        order0 = sorted(items, key=lambda it: (it.hot == "", it.top, it.owner, it.name))
+        n_today = len(BR.greedy_groups([it.demand * (max(it.rho * g_t, RHO_MIN) / it.rho) ** 2 if it.rho > 0
+                                        else it.demand for it in order0], cap))
+        items, floor_ids, used_floor, rock_info = rock_floor(F, cid, items, units_today * cap, limit)
+        limit_rest = max(limit - used_floor, 0.0)
+    rest = [it for it in items if id(it) not in floor_ids] if floor_ids else items
+    total = sum(it.demand for it in rest)
     gscale = 1.0
-    if total > limit:
-        gscale = math.sqrt(limit / total)
-        for it in items:
+    if total > limit_rest:
+        gscale = math.sqrt(limit_rest / total)
+        for it in rest:
             it.rho = max(it.rho * gscale, RHO_MIN)
             A = ma(it.mesh)
             L = np.asarray(it.M, float)[:3, :3]
             it.demand = A.area * abs(np.linalg.det(L)) ** (2.0 / 3.0) * it.rho ** 2
+    if ROCK_FLOOR:
+        rock_info["gscale"] = round(float(gscale), 4)    # the scale the rest really got (floor_reserve's g_rest)
     log(cid, "items", len(items), "near holds", nb, "texel demand %.1fM (limit %.1fM) density scale %.3f"
-        % (total / 1e6, limit / 1e6, gscale))
+        % (total / 1e6, limit_rest / 1e6, gscale))
     items.sort(key=lambda it: (it.hot == "", it.top, it.owner, it.name))
     groups = []
     cur = None
@@ -4027,6 +4452,19 @@ def bake_chunk(F, cid, a):
         last = groups.pop()
         groups[-1]["items"] += last["items"]
         groups[-1]["demand"] += last["demand"]
+    if ROCK_FLOOR and n_today and len(groups) > n_today and not getattr(a, "rock_floor_units", 0.0):
+        # (round 59) the floor's grouping came out with more atlases than today's: refit the last one's items into
+        # the room the others have left (bake_rules.refit_groups)
+        rf_flat = [it for g in groups for it in g["items"]]
+        rf_idx, rf_k = [], 0
+        for g in groups:
+            rf_idx.append(list(range(rf_k, rf_k + len(g["items"]))))
+            rf_k += len(g["items"])
+        rf_new, rf_info = BR.refit_groups(rf_idx, [it.demand for it in rf_flat], cap, n_today)
+        log(cid, "ROCK FLOOR refit: %d atlases back to %d; %d items moved, %d forced; fullest atlas %.1f %% of its room"
+            % (len(groups), len(rf_new), rf_info["moved"], rf_info["forced"], 100.0 * rf_info["over"]))
+        groups = [dict(items=[rf_flat[i] for i in g], demand=sum(rf_flat[i].demand for i in g)) for g in rf_new]
+        rock_info["refit"] = dict(rf_info, atlases_before=len(rf_idx), atlases=len(rf_new))
     atlases = []
     for j, g in enumerate(groups):
         size = ATLAS_PX
@@ -4046,6 +4484,11 @@ def bake_chunk(F, cid, a):
     even_atlases(atlases, cid)
     T["unwrap"] = round(time.time() - t1, 1)
     log(cid, "atlases", json.dumps(atlases))
+    if rock_info.get("line"):
+        # (round 59) the plan-only gate reads the atlas sizes off this line: the floor moves parts between atlases,
+        # and the greedy grouping can then tip an A1 past a 2048 or add an atlas, which this round must not do
+        rock_info["atlas_px"] = [int(at["size"]) for at in atlases]
+        rock_info["line"] += "; atlases %s px" % "+".join(str(s) for s in rock_info["atlas_px"])
     hot_here = sorted({it.hot for it in items} - {""})
     want_hot = sorted(h for h, ar in F["hot_area"].items() if ar == cid)
     missing_hot = [h for h in want_hot if h not in hot_here]
@@ -4057,7 +4500,8 @@ def bake_chunk(F, cid, a):
         out = dict(id=cid, plan_only=True, atlases=atlases, gscale=gscale, units=units, items=len(items),
                    tris_blender=tris_items, split_tris=split_tris, lod_tris=int(tot), islands=isl,
                    missing_hotspots=missing_hot, prev=_prev_chunk_stats(cid), vc_small=vc_info,
-                   dedupe=F.get("check", {}).get("dedupe", {}).get(cid, {}))
+                   dedupe=F.get("check", {}).get("dedupe", {}).get(cid, {}), rock_floor=rock_info,
+                   units_today=units_today, relief=relief_info)
         dump(os.path.join(BAKE_OUT, "plan_%s.json" % cid), out)
         p = out["prev"]
         log("PLAN", cid, "triangles", tris_items, "(split terrain %s)" % json.dumps(split_tris), "gscale %.3f" % gscale,
@@ -4078,6 +4522,8 @@ def bake_chunk(F, cid, a):
         if DENOISE_NORMAL:
             normals.append(bpy.data.images.new(at["name"] + "_normal", at["size"], at["size"], alpha=False,
                                                float_buffer=True))
+    ambient = [bpy.data.images.new(at["name"] + "_ambient", at["size"], at["size"], alpha=False, float_buffer=True)
+               for at in atlases] if getattr(a, "live", False) else []
     slot_list, slot_idx, img_nodes = [], {}, []
 
     def slot_at(it, mname):
@@ -4189,6 +4635,25 @@ def bake_chunk(F, cid, a):
             log("WARN", cid, "normal bake failed (denoise without the normal guide):", e)
             normals = []
         T["bake_normal"] = round(time.time() - t1, 1)
+    if ambient:
+        # the live path (--live, docs/sect/live-gate.md): the same bake with the sun and the key light off. What is
+        # left is the sky's light and its bounces; the page adds its own sun, shadows and shine to it
+        for tn, j in img_nodes:
+            tn.image = ambient[j]
+        lamps = [o for o in (bpy.data.objects.get("look.sun"), bpy.data.objects.get("bake.fill")) if o is not None]
+        was = [o.hide_render for o in lamps]
+        for o in lamps:
+            o.hide_render = True
+        bpy.context.view_layer.update()
+        sc.cycles.samples = a.samples
+        t1 = time.time()
+        bpy.ops.object.bake(type="COMBINED", pass_filter={"DIRECT", "INDIRECT", "DIFFUSE", "EMIT"}, uv_layer="bake",
+                            margin=BAKE_MARGIN, margin_type="EXTEND", use_clear=True, target="IMAGE_TEXTURES")
+        for o, h in zip(lamps, was):
+            o.hide_render = h
+        bpy.context.view_layer.update()
+        T["bake_ambient"] = round(time.time() - t1, 1)
+        log(cid, "baked the ambient atlases (%d lamps off) in" % len(lamps), T["bake_ambient"], "s")
     sc.cycles.samples = a.samples
     unstage(ob_at, C_at)
     if ob_vc is not None:
@@ -4212,10 +4677,12 @@ def bake_chunk(F, cid, a):
         log(cid, "baked the small pieces as vertex colours in", T["bake_vc"], "s")
     for tn, j in img_nodes:
         tn.image = images[j]
-    for im in images + albedo + normals:
+    for im in images + albedo + normals + ambient:
         im.filepath_raw = os.path.join(cdir, im.name + ".exr")
         im.file_format = "OPEN_EXR"
         im.save()
+    if ambient:
+        write_live_maps(cid, atlases, albedo, ambient, normals, a)
     os.makedirs(os.path.join(BAKE_OUT, "raw_preview"), exist_ok=True)
     for im in images:
         preview(im, os.path.join(BAKE_OUT, "raw_preview", im.name + ".png"))
@@ -4229,7 +4696,7 @@ def bake_chunk(F, cid, a):
                                                       vc=int(sum(_tris(it.mesh) for it in items_vc))),
                 missing_hotspots=missing_hot, need=plan["need"], hold=plan["hold"], vc_small=vc_info,
                 vc_samples=a.vc_samples, normal_guide=bool(normals), quality=a.quality,
-                bake_settings=bake_settings(a, sc))
+                bake_settings=bake_settings(a, sc), rock_floor=rock_info, relief=relief_info)
     dump(os.path.join(cdir, "items.json"), items_json, indent=None)
     dump(os.path.join(cdir, "items_vc.json"), vc_json, indent=None)
     bpy.data.libraries.write(os.path.join(cdir, "export.blend"), {ob_at} | ({ob_vc} if ob_vc is not None else set()),
@@ -4244,7 +4711,8 @@ def bake_chunk(F, cid, a):
                quality=a.quality, bake_settings=meta["bake_settings"],
                tris_blender=meta["tris"]["atlas"] + meta["tris"]["vc"], tris_vc=meta["tris"]["vc"],
                vc_small=vc_info, missing_hotspots=missing_hot, hidden=len(hid), occluders=len(occ_objs),
-               dedupe=F.get("check", {}).get("dedupe", {}).get(cid, {}))
+               dedupe=F.get("check", {}).get("dedupe", {}).get(cid, {}), rock_floor=rock_info,
+               units_today=units_today, relief=relief_info)
     if not a.no_post:
         t1 = time.time()
         try:
@@ -4267,7 +4735,7 @@ def bake_chunk(F, cid, a):
         bpy.data.meshes.remove(me_vc)
     for m in slot_list:
         bpy.data.materials.remove(m)
-    for im in images + albedo + normals:
+    for im in images + albedo + normals + ambient:
         bpy.data.images.remove(im)
     for me, _, _ in occ_meshes:
         bpy.data.meshes.remove(me)
@@ -4278,6 +4746,83 @@ def bake_chunk(F, cid, a):
     dump(os.path.join(BAKE_OUT, "chunks", cid + ".json"), out, indent=1)
     log("CHUNK DONE", cid, json.dumps(T))
     return out
+
+
+LIVE_AMBIENT_SCALE = 2.0       # the page's ambient map holds linear radiance / this, on the sRGB curve, in 8 bits
+
+
+def _srgb_curve(x):
+    x = np.clip(x, 0.0, 1.0)
+    return np.where(x <= 0.0031308, x * 12.92, 1.055 * np.power(x, 1.0 / 2.4) - 0.055)
+
+
+def _image_rgb(im):
+    w, h = im.size
+    buf = np.empty(w * h * 4, np.float32)
+    im.pixels.foreach_get(buf)
+    return buf.reshape(h, w, 4)[:, :, :3]
+
+
+def _save_png8(name, rgb, path):
+    """rgb (h, w, 3) floats 0..1 stored as they are (a data image: no colour management), 8 bit PNG."""
+    h, w, _ = rgb.shape
+    im = bpy.data.images.new(name, w, h, alpha=False, float_buffer=False, is_data=True)
+    px = np.ones((h, w, 4), np.float32)
+    px[:, :, :3] = np.clip(rgb, 0.0, 1.0)
+    im.pixels.foreach_set(px.ravel())
+    im.filepath_raw = path
+    im.file_format = "PNG"
+    im.save()
+    bpy.data.images.remove(im)
+
+
+def write_live_maps(cid, atlases, albedo, ambient, normals, a):
+    """out/web/full/live/<chunk>/: what the page needs to light a chunk itself (--live; docs/sect/live-gate.md). Per
+    atlas, in the atlas's own UV layout: <atlas>_albedo.png (the surface colour with no light on it, sRGB),
+    <atlas>_ambient.png (the bake with the sun and the key off: linear radiance / LIVE_AMBIENT_SCALE on the sRGB
+    curve) and <atlas>_normal.png (the surface normal in three.js axes: x east, y up, z = -Blender y, as n / 2 + 0.5).
+    index.json names them and gives the two lamps the page stands in for (directions toward the lamp, three.js axes;
+    strengths in Blender's W/m2), and the exposure and saturation the bake's own post applies."""
+    out = os.path.join(EW.FULL, "live", cid)
+    os.makedirs(out, exist_ok=True)
+    files = {}
+    for j, at in enumerate(atlases):
+        nm = at["name"]
+        entry = dict(size=int(at["size"]))
+        _save_png8(nm + "_albedo8", _srgb_curve(_image_rgb(albedo[j])), os.path.join(out, nm + "_albedo.png"))
+        entry["albedo"] = nm + "_albedo.png"
+        amb = _image_rgb(ambient[j])
+        entry["ambientMax"] = round(float(np.percentile(amb, 99.9)), 4)
+        _save_png8(nm + "_ambient8", _srgb_curve(amb / LIVE_AMBIENT_SCALE), os.path.join(out, nm + "_ambient.png"))
+        entry["ambient"] = nm + "_ambient.png"
+        if j < len(normals):
+            raw = _image_rgb(normals[j])
+            n = raw * 2.0 - 1.0
+            enc = np.stack([n[:, :, 0], n[:, :, 2], -n[:, :, 1]], axis=2) * 0.5 + 0.5
+            enc[raw.sum(axis=2) < 1e-4] = 0.5          # never baked: no direction (the page keeps the baked texel)
+            _save_png8(nm + "_normal8", enc, os.path.join(out, nm + "_normal.png"))
+            entry["normal"] = nm + "_normal.png"
+        files[nm] = entry
+
+    def three(v):
+        return [round(float(v[0]), 5), round(float(v[2]), 5), round(float(-v[1]), 5)]
+
+    sun = bpy.data.objects["look.sun"]
+    sdir = sun.matrix_world.to_3x3().col[2].normalized()
+    az = math.atan2(sdir.y, sdir.x)
+    e = math.radians(BAKE_LIGHT["fill_elev_deg"])
+    kdir = Vector((math.cos(az) * math.cos(e), math.sin(az) * math.cos(e), math.sin(e)))
+    dump(os.path.join(out, "index.json"), dict(
+        version=1, chunk=cid, ambientScale=LIVE_AMBIENT_SCALE, atlases=files,
+        light=dict(
+            sun=dict(dir=three(sdir), color=[round(float(c), 4) for c in sun.data.color],
+                     strength=round(float(sun.data.energy), 4), angleDeg=round(math.degrees(sun.data.angle), 3)),
+            key=dict(dir=three(kdir), color=[round(float(c), 4) for c in BAKE_LIGHT["fill_color"]],
+                     strength=float(BAKE_LIGHT["fill_energy"]), angleDeg=float(BAKE_LIGHT["fill_angle_deg"])),
+            worldStrength=float(BAKE_LIGHT["world_strength"])),
+        post=dict(exposureStops=float(a.exposure), saturation=float(a.sat), view="AgX", look="AgX - Punchy"),
+        quality=a.quality, samples=int(a.samples)))
+    log(cid, "live maps:", len(files), "atlases ->", out)
 
 
 def _prev_chunk_stats(cid):
@@ -4500,6 +5045,14 @@ def cmd_bakefull(a):
             log("PLAN SUMMARY", r["id"], "tris", r.get("tris_blender"), "(last %s)" % p.get("tris_blender"),
                 "gscale", ("%.3f (last %.3f, %+.1f%%)" % (g, g0, 100.0 * (g / g0 - 1.0))) if g and g0 else g,
                 "split", json.dumps(r.get("split_tris", r.get("split_far", {}))))
+        for r in done:                                 # (round 59) one rock floor line per chunk, for the gate
+            if r["id"] != "backdrop":
+                log("PLAN", (r.get("rock_floor") or {}).get("line") or "ROCK FLOOR %s: off" % r["id"])
+        log("PLAN relief:", json.dumps(chk.get("relief", {})))
+        for r in done:                                 # (round 59) one relief line per chunk, for the gate
+            if r["id"] != "backdrop":
+                rl = r.get("relief") or {}
+                log("PLAN", (rl.get("lod") or {}).get("line") if rl.get("on") else "RELIEF LOD %s: off" % r["id"])
         return
     p = os.path.join(BAKE_OUT, "bake_stats.json")
     old = {}
@@ -5337,7 +5890,7 @@ def cmd_verify_full(a):
 # ---- main ---------------------------------------------------------------------------------------
 
 def main():
-    global BAKE_OUT, RAW, CACHE_DIR
+    global BAKE_OUT, RAW, CACHE_DIR, ROCK_FLOOR, RELIEF, RELIEF_ONLY, RELIEF_SET
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     ap = argparse.ArgumentParser(prog="bake_web.py")
     ap.add_argument("command", help="bake, post, trees, verify, water, bakefull (full profile); several may be "
@@ -5361,12 +5914,30 @@ def main():
                     help="bake / bakefull: stop after LOD, atlas grouping and unwrap (bakefull: bake/plan_<chunk>.json, "
                          "bake/plan_stats.json with the range normal / border / island checks; no bake, no post)")
     ap.add_argument("--debug-proxy", action="store_true", help="bake: save the unwrap proxies (out/web/bake/debug)")
+    ap.add_argument("--no-rock-floor", action="store_true",
+                    help="full bakefull: no round 59 rock texel floor (ROCK_FLOOR False: the plan as before, for A/B)")
+    ap.add_argument("--rock-floor-units", type=float, default=0.0,
+                    help="full bakefull: try the rock floor with a texel budget of this many 4096^2 atlases per chunk "
+                         "(at least the chunk's own; meant for --plan-only runs; default: the chunk's own budget)")
+    ap.add_argument("--relief", action="store_true",
+                    help="full bakefull: the round 59 bake-time rock relief and its relief floors (RELIEF True; off by "
+                         "default, docs/scene/rock-r59.md)")
+    ap.add_argument("--no-relief", action="store_true",
+                    help="full bakefull: no bake-time rock relief (the default; kept so older command lines still run)")
+    ap.add_argument("--relief-only", default="",
+                    help="full bakefull: relieve only the objects whose name matches this regex too (tests)")
+    ap.add_argument("--relief-set", action="append", default=[],
+                    help="full bakefull: KEY=value override of a sect/relief_rules.py or sect/relief.py constant "
+                         "(repeatable; a dict merges into the constant), e.g. \"COL={'k': 0.5}\"")
     ap.add_argument("--vc-samples", type=int, default=0,
                     help="vertex colour samples (default from --quality: dev proto 512 / full 256, production 1024)")
     ap.add_argument("--atlas-tris", type=int, default=0, help="proto: 1M for both areas; full: per chunk (700k)")
     ap.add_argument("--vc-tris", type=int, default=220_000)
     ap.add_argument("--max-atlases", type=float, default=3.0, help="texel budget in 4096^2 atlases")
     ap.add_argument("--exposure", type=float, default=1.2)
+    ap.add_argument("--light", default="", help="look tests: BAKE_LIGHT overrides, e.g. fill_energy=0.5,world_strength=1.0")
+    ap.add_argument("--live", action="store_true",
+                    help="full bakefull: also bake an ambient atlas (sun and key off) and write out/web/full/live/<chunk>")
     ap.add_argument("--sat", type=float, default=1.15)
     ap.add_argument("--skip-atlas", action="store_true")
     ap.add_argument("--glb-dir", default="")
@@ -5399,6 +5970,7 @@ def main():
     a.samples = a.samples or Q["samples"][PROFILE]
     a.vc_samples = a.vc_samples or Q["vc_samples"][PROFILE]
     log_bake_quality(a)
+    set_bake_light(a.light)
     a.atlas_tris = a.atlas_tris or (FULL_ATLAS_TRIS if full else 1_000_000)
     a.out = EW.fix_path(a.out)
     a.glb_dir = EW.fix_path(a.glb_dir) if a.glb_dir else RAW
@@ -5406,6 +5978,23 @@ def main():
     if a.debug_proxy:
         global DEBUG_PROXY
         DEBUG_PROXY = True
+    if a.no_rock_floor:
+        ROCK_FLOOR = False
+    if a.relief:
+        RELIEF = True
+    if a.no_relief:
+        RELIEF = False
+    if a.relief_only:
+        re.compile(a.relief_only)                  # a bad pattern stops here, before the 5 minute setup
+        RELIEF_ONLY = a.relief_only
+    RELIEF_SET = list(a.relief_set)
+    if full and "bakefull" in a.command.split(","):
+        log("rock floor", "on" if ROCK_FLOOR else "off (--no-rock-floor)",
+            ("units %.2f (--rock-floor-units)" % a.rock_floor_units) if ROCK_FLOOR and a.rock_floor_units else "")
+        if RELIEF and RELIEF_SET:
+            RF.apply_overrides(RELIEF_SET, log)    # before the setup, so a bad KEY=value stops the run at once
+        log("relief", "on (--relief)" if RELIEF else "off", ("only %r" % RELIEF_ONLY) if RELIEF_ONLY else "",
+            ("set %s" % RELIEF_SET) if RELIEF_SET else "")
     for cmd in a.command.split(","):
         t0 = time.time()
         if cmd == "trees":

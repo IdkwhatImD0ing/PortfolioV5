@@ -72,6 +72,17 @@ RIM_GAP = 8.5       # the arrival landing (8 m wide) crosses the rail: the openi
 RIM_SEGS = (20, 26) # segments per span (west / east of the gap), 2 panels each: the web export keys every post and
                     # panel by its index, so sect/patch_abode_rail.py moves the rail without a new audit
 RIM_SINK = 0.02     # the rail's feet sit this far into the lawn (its posts and sills reach 4-5 cm lower by design)
+# Round 56 (docs/scene/form-r56.md, part B): the lawn's edge stood 0.02-0.38 m over the terrace with an open gap under
+# it, a step ring 1-4 m short of the cliff, outside the rail. Past LAWN_EDGE[0] the lawn dives under the terrace as the
+# mirror's does (mirror.lawn_edge: smoothstep to LAWN_EDGE[2] at the lawn's edge, then seated on the vertices past
+# LAWN_EDGE[0] only). The rail stands at RIM_R 48.5, inside. The two depart lanterns (DEPART_LANTERN_AT, r 49.1) stand
+# past it: within LAWN_KEEP[0] m of each the lawn stays as it was, the dive coming back over LAWN_KEEP[1] m
+LAWN_EDGE = (49.55, LAWN_R, -0.6)   # from r 49 the dive tilted the faces the rail's posts stand on (the lawn's
+                                    # rings sit at r 48.55 and 49.28, jittered 0.22): from 49.55 only the edge
+                                    # ring moves and nothing inside r 49.06 changes
+LAWN_EDGE_R55 = None                # until round 55: no dive
+DEPART_LANTERN_AT = ((-49.0, -3.4), (-49.0, 3.4))   # the depart landing's outer corners (stone lanterns on the lawn)
+LAWN_KEEP = (0.9, 0.8)              # m: keep radius round each depart lantern (its base is 0.86 m across), ramp
 KOI_FROM = (-6.3, 2.0)    # flagstones from the path's east edge ...
 KOI_LEDGE = (6.0, 12.0)   # ... to a 3 x 2 m stone ledge at the koi pool
 KOI_STONES = 8
@@ -655,23 +666,35 @@ def _rim_rail(coll, root, gz):
         A.balustrade(U.name(K, "rim_rail"), coll, pts, height=1.0, mat="stone_grey", parent=root)
 
 
+def lawn_edge(ground):
+    """Round 56: abode.ground's outer band dives under the terrace past LAWN_EDGE[0], kept off the depart lanterns
+    (mirror.lawn_edge; patch_r56_form.py runs this on out/sect_chase.blend). Returns (vertices dived, seated)."""
+    from sect.areas import mirror as MR
+    return MR.lawn_edge(ground, LAWN_EDGE, keep=DEPART_LANTERN_AT, keep_r=LAWN_KEEP[0], keep_ramp=LAWN_KEEP[1],
+                        floor_z=-0.4, clear=MR.LAWN_CLEAR, sink=MR.LAWN_SINK)
+
+
 def _ground(coll, root, pool):
+    # (round 56: the garden mask before the edge, which is cut in the order a built file got it: the paving press and
+    # the mask, then lawn_edge. Its values come from XY only; the edge's new vertices take theirs from their edges.
+    # Everything set on the lawn takes its height from the lawn as it was before the edge, as in a built file)
     g = N.ground_patch(coll, radius=LAWN_R, seed=7, height=0.3, edge_drop=0.2,
                        holes=[(pool[0], pool[1], 7.7, 1.3)], name=K + ".ground", parent=root)
     rects = _routes(coll, root)
     _seat_lawn(g, rects)
-    gz = _lawn_sampler(g)
-    _koi_walk(coll, root, gz)
     pts, (ux, uy) = _koi_layout()
     lx, ly = KOI_LEDGE
     keep_clear = rects + [(x - 0.6, x + 0.6, y - 0.6, y + 0.6, 0.0) for x, y in pts] + \
         [(lx - 1.8, lx + 1.8, ly - 1.8, ly + 1.8, 0.0)] + duet_keep_clear()
     _garden_mask(g, keep_clear)
+    gz = _lawn_sampler(g)
+    lawn_edge(g)
+    _koi_walk(coll, root, gz)
     N.scatter_on(g, N.plant_prototypes("garden"), density=0.012, seed=5, max_slope=math.radians(25),
                  collection=coll, name=K + ".garden_scatter", mask_attribute="garden_mask")
     # two stone lanterns at the depart landing's outer corners
-    for sy in (-3.4, 3.4):
-        P.lantern_stone(coll, 2.6, name=K + ".depart_lantern", parent=root, location=(-49.0, sy, gz(-49.0, sy)))
+    for x, y in DEPART_LANTERN_AT:
+        P.lantern_stone(coll, 2.6, name=K + ".depart_lantern", parent=root, location=(x, y, gz(x, y)))
     _rim_rail(coll, root, gz)
 
 

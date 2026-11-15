@@ -411,7 +411,7 @@ def _register_materials():
     V("nature_lotus_pod", "moss", colours=[(0.2, "#a9a83c"), (0.6, "#c8c25a"), (1.0, "#e2d77a")],
       rough=(0.45, 0.6), scale=6.0, bump=0.4, sheen=0.1)
     V("nature_bark_blossom", "bark_dark", c1="#2e2420", c2="#4e3e36", crack="#100b09", scale=1.4)
-    # boulders are 1-5 m: rock_cliff's marble_cliff_06 scan at a finer tile (M.ROCK_SMALL_SCAN_SCALE, 0.5)
+    # boulders are 1-5 m: rock_cliff's mtn_cliff scan at a finer tile (M.ROCK_SMALL_SCAN_SCALE, 0.5)
     V("nature_rock_small", "rock_cliff", strata=0.45, joints=0.25, stain=0.4, moss_amt=0.8,
       scan_scale="ROCK_SMALL_SCAN_SCALE")
     V("nature_taihu", "stone_grey", c1="#7b7f80", c2="#4f5456", speck="#25292b", rough=(0.5, 0.78),

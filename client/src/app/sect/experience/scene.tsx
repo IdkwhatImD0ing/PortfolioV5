@@ -37,8 +37,9 @@ import {
   WebGLRenderTarget,
 } from "three";
 import { BVH_MS_PER_KTRI, bvhCostMs, bvhWanted, deferUpload, mayBuildBvh, mayPostBvh, updateBvhRate, uploadWaitedMs } from "@/lib/sect/background-work";
+import { setUploadPriority } from "@/lib/sect/gpu-queue";
 import { fovForAspect, samplePath, sampleCamera } from "@/lib/sect/camera-path";
-import { framingAt, framingFrame, framingTable } from "@/lib/sect/framing";
+import { framingAt, framingFrame, framingSide, framingTable } from "@/lib/sect/framing";
 import {
   clampLook,
   composeLook,
@@ -48,6 +49,7 @@ import {
   isTurning,
   lookCursor,
   lookLimits,
+  pathPitch,
   pressCancel,
   pressDown,
   pressMove,
@@ -57,9 +59,11 @@ import {
   setTurnKey,
   takeClick,
   turnByKeys,
+  turnLevel,
 } from "@/lib/sect/free-look";
 import { packPuffs, PUFF_STRIDE, RESORT_DISTANCE2, sortFarToNear } from "@/lib/sect/clouds";
 import { lookFogConstants, puffDensityScale, SECT_LOOK, twilightAmount } from "@/lib/sect/look";
+import { FRAME_LOOK } from "@/lib/sect/looks";
 import { flattenPuff, hazeScaleAt, RANGE_LOOK } from "@/lib/sect/range-look";
 import { isLoreId, loreUnderPointer, type LoreHit, type LoreId } from "@/lib/sect/lore";
 import { turnKeyIntent } from "@/lib/sect/nav";
@@ -75,8 +79,10 @@ import {
   type LadderStatus,
   type Quality,
 } from "@/lib/sect/runtime";
+import { luxBuilt, luxLive, LUX_OFF, parseLuxParam } from "@/lib/sect/lux";
 import { ATMOS, atmosFeatures, holdAt, holdFocusStep, nearestHold, planPipeline, type PipelineShape } from "@/lib/sect/post";
 import { easeInOut, nearestStop, uToFrame } from "@/lib/sect/scroll-map";
+import { glideAt, SCROLL_DAMP } from "@/lib/sect/snap";
 import type { CloudPuff, FlyerPath, SectMeta, Vec3 } from "@/lib/sect/types";
 import { fxTier } from "@/lib/sect/water";
 import { fallPickQuads, rayQuad } from "@/lib/sect/waterfall";
@@ -90,6 +96,8 @@ import { Cranes, ForgeFire, FormationCore, IncenseSmoke, Petals } from "./fx";
 import { createGrassDebug, Grass, type GrassDebug } from "./grass";
 import { IDLE_ON, IDLE_TIME, updateIdle } from "./idle";
 import { Life } from "./life";
+import { LiveLight } from "./live";
+import { VegShells } from "./veg";
 import { breathe } from "@/lib/sect/idle";
 import {
   aimPondMirror,
@@ -98,11 +106,18 @@ import {
   createGlowMaterial,
   createMoonMaterial,
   createSkyMaterial,
+  releasePageTextures,
+  SECT_ENV,
   SOFT_DEPTH,
 } from "./materials";
+import { releaseDepthMaterials } from "./live-shadow";
+import { lookNow, lookNowAt, pushLookGpu, type LookNow } from "./look-now";
+import { LOOK_MODE } from "./look-switch";
 import { bvhStats, buildBvhOffThread } from "./bvh-build";
 import { ensureBvh, hasBvh, imageClosed, triangleCount } from "./prepare";
-import { cameraStill, framesToGo, glowKey, HOVER_BURST_MS, isMoving, recenterView, wake, wakeForRecenter, wakeHover, type SectStore } from "./store";
+import { gpuQueue } from "./gpu-queue";
+import { keepPrograms, materialsOf, primePrograms, programsReady } from "./program-prime";
+import { cameraStill, framesToGo, glowKey, HOVER_BURST_MS, isMoving, recenterView, sceneView, wake, wakeForRecenter, wakeHover, type SectStore } from "./store";
 import type { ChunkStreamer } from "./streaming";
 import { WaterfallFx } from "./waterfall-fx";
 
@@ -178,6 +193,26 @@ const noop = () => {};
  */
 const PORTRAIT_SHIFT = 0.2;
 
+/** The development readout's one object (rewritten every frame, not reallocated). */
+let devScroll: { u: number; targetU: number; frame: number; speed: number; flight: "glide" | "flight" | null; glides: number; t: number } | null = null;
+
+/**
+ * Development only: the camera's scroll state for checks in the browser, as window.__sectScroll
+ * (u, targetU, frame, speed in units per second, the flight under way, snap glides started so far,
+ * and performance.now() when it was written).
+ */
+function devScrollReadout(store: SectStore): void {
+  devScroll ??= { u: 0, targetU: 0, frame: 0, speed: 0, flight: null, glides: 0, t: 0 };
+  devScroll.u = store.u;
+  devScroll.targetU = store.targetU;
+  devScroll.frame = store.frame;
+  devScroll.speed = store.speed;
+  devScroll.flight = store.flight ? (store.flight.v0 !== undefined ? "glide" : "flight") : null;
+  devScroll.glides = store.glides;
+  devScroll.t = performance.now();
+  (window as unknown as { __sectScroll?: typeof devScroll }).__sectScroll = devScroll;
+}
+
 function CameraRig({ store }: { store: SectStore }) {
   const camera = useThree((s) => s.camera);
   const size = useThree((s) => s.size);
@@ -187,32 +222,54 @@ function CameraRig({ store }: { store: SectStore }) {
     let frame: number;
     const fl = store.flight;
     if (fl) {
-      // A programmatic jump: ease from where the camera was to the destination, then arrive.
+      // A programmatic jump: ease from where the camera was to the destination, then arrive. A snap
+      // glide, or a key's step begun while the camera moved (v0 set), carries on the speed the camera
+      // had when it began (lib/sect/snap.ts).
       const t = fl.duration > 0 ? (performance.now() - fl.t0) / (fl.duration * 1000) : 1;
       if (t >= 1 || store.reducedMotion) {
         store.u = fl.toU;
+        store.speed = 0;
         store.flight = null;
         if (fl.onArrive) setTimeout(fl.onArrive, 0);
+      } else if (fl.v0 !== undefined) {
+        const g = glideAt({ fromU: fl.fromU, toU: fl.toU, v0: fl.v0, duration: fl.duration }, t * fl.duration);
+        store.u = g.u;
+        store.speed = g.v;
       } else {
         store.u = fl.fromU + (fl.toU - fl.fromU) * easeInOut(t, 1);
+        // The derivative of the ease (3t^2 - 2t^3).
+        store.speed = ((fl.toU - fl.fromU) * 6 * t * (1 - t)) / fl.duration;
       }
       frame = uToFrame(map, store.u);
     } else if (store.reducedMotion) {
       const stop = nearestStop(map, store.targetU);
       store.u = stop.u;
+      store.speed = 0;
       frame = stop.frame;
     } else {
-      store.u = damp(store.u, store.targetU, 5, delta);
+      store.u = damp(store.u, store.targetU, SCROLL_DAMP, delta);
+      // The damping's own speed (u' = rate x (target - u)): smooth, unlike a difference of frames.
+      store.speed = SCROLL_DAMP * (store.targetU - store.u);
       frame = uToFrame(map, store.u);
     }
     if (store.frameOverride !== null) frame = store.frameOverride;
     store.frame = frame;
+    if (process.env.NODE_ENV !== "production") devScrollReadout(store);
     // A few stops frame their subject (lib/sect/framing.ts): near the hold the camera takes the
     // film's pose of a few frames earlier (it stands back along the path), easing in and out; on a
     // portrait screen some stand further back (framingTable).
     const table = framingTable(size.width, size.height);
     const s = sampleCamera(store.camera.frames, framingFrame(store.camera.holds, frame, table));
     camera.position.set(s.p[0], s.p[1], s.p[2]);
+    // And a step to the side at a stop the path passes off its centre line (the gate): along the
+    // path camera's own right axis, before any turn.
+    const side = framingSide(store.camera.holds, frame, table);
+    if (side !== 0) {
+      const [qx, qy, qz, qw] = s.q;
+      camera.position.x += (1 - 2 * (qy * qy + qz * qz)) * side;
+      camera.position.y += 2 * (qx * qy + qz * qw) * side;
+      camera.position.z += 2 * (qx * qz - qy * qw) * side;
+    }
     // Free look turns the rendered camera on top of the path's orientation; a new path position
     // (scroll, jump, voice) swings it back. The path sample stays the flight's own camera.
     const look = store.look;
@@ -228,7 +285,10 @@ function CameraRig({ store }: { store: SectStore }) {
     const c = clampLook(look, look.limits);
     look.yaw = c.yaw;
     look.pitch = c.pitch;
-    const q = composeLook(framed, look);
+    // Turned to the side or behind, a view that the path tilts up comes down to level (free-look.ts
+    // turnLevel): the visitor's own tilt goes on top of that.
+    const level = turnLevel(pathPitch(framed), look.yaw);
+    const q = composeLook(framed, level === 0 ? look : { yaw: look.yaw, pitch: look.pitch + level });
     camera.quaternion.set(q[0], q[1], q[2], q[3]);
     const cam = camera as PerspectiveCamera;
     const fov = fovForAspect(s.fovY, store.camera.refAspect, size.width / Math.max(size.height, 1));
@@ -399,10 +459,10 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
   const fog = useMemo(() => lookFogConstants(meta), [meta]);
   const sky = ctx.sky;
 
-  // The fog chunks (lib/sect/glsl.ts) take their density from the look's constants; three's own
-  // density uniform carries the per-stop haze multiplier instead (lib/sect/range-look.ts
-  // RANGE_LOOK.haze, on meta.fog.density, which the look already scaled by haze.densityScale).
-  const hazeAt = (frame: number) => hazeScaleAt(frame, store.camera.holds) / SECT_LOOK.haze.densityScale;
+  // The fog chunks (lib/sect/glsl.ts) take their density from the look's constants (or the
+  // journey's, uSectLook); three's own density uniform carries the per-stop haze multiplier instead
+  // (lib/sect/range-look.ts RANGE_LOOK.haze, on meta.fog.density, which the look already scaled by
+  // haze.densityScale), set each frame below.
   useLayoutEffect(() => {
     scene.fog = new FogExp2(new Color(meta.fog.color), hazeScaleAt(store.frame, store.camera.holds) / SECT_LOOK.haze.densityScale);
     scene.background = new Color(meta.fog.color);
@@ -423,6 +483,8 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
         below: meta.sky.belowHorizon,
         fogColor: meta.fog.color,
         sunColor: meta.sun.color,
+        // A look or the journey builds the stars in (the journey turns them up by frame).
+        stars: LOOK_MODE !== "dusk",
       }),
     );
     m.scale.setScalar(8500);
@@ -469,7 +531,7 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
   const cloudSea = useMemo(() => {
     const m = new Mesh(
       new CircleGeometry(8800, 96).rotateX(-Math.PI / 2),
-      createCloudSeaMaterial(fog, meta.cloudSea.color, "#8f93ad", meta.fog.color),
+      createCloudSeaMaterial(fog, meta.cloudSea.color, FRAME_LOOK.cloudSeaShade, meta.fog.color),
     );
     m.position.y = meta.cloudSea.y;
     // Drawn after the solid world, just before the sky (1000), for the sky's reason (the comment
@@ -482,42 +544,61 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
     return m;
   }, [fog, meta]);
 
-  // Twilight: from the jade slip to the summit the sky's colours, clouds and the moon's halo blend
-  // toward the film's blue dusk (lib/sect/look.ts SECT_LOOK.twilight).
-  const twilight = useMemo(() => {
+  // The look along the flight (look-now.ts: the journey's, or one look's, or today's): the sky's
+  // colours, clouds and haze, the reflections' sky, the cloud sea, the moon and its halo and the
+  // land's haze. On top, from the jade slip to the summit, the twilight blends the sky, the clouds,
+  // the haze, the cloud sea and the halo toward the look's twilight colours (SECT_LOOK.twilight), by
+  // frame as before. All uniforms: nothing is compiled as the look moves.
+  const look = useMemo(() => {
     const L = SECT_LOOK.twilight;
     const from = store.camera.holds.find((h) => h.id === L.from)?.frame;
     const to = store.camera.holds.find((h) => h.id === L.to)?.frame;
-    if (from === undefined || to === undefined || to <= from) return null;
-    const u = (dome.material as ShaderMaterial).uniforms;
-    const pairs: [Color, Color, Color][] = [];
-    const add = (name: string, night: string) => {
-      const v = u[name]?.value as Color | undefined;
-      if (v) pairs.push([v, v.clone(), new Color(night)]);
-    };
-    add("uLookZenith", L.zenith);
-    add("uLookMid", L.mid);
-    add("uLookHorizon", L.horizon);
-    add("uLookSun", L.sunHorizon);
-    add("uFogColor", L.haze);
-    add("uCloudSunLit", L.cloudSunLit);
-    add("uCloudLit", L.cloudLit);
-    add("uCloudShade", L.cloudShade);
-    add("uCloudRim", L.cloudRim);
-    // The cloud sea under everything, so the horizon is not a warm band under a blue sky.
-    const sea = (cloudSea.material as ShaderMaterial).uniforms;
-    for (const [name, night] of [
-      ["uTop", L.cloudSea],
-      ["uFogColor", L.haze],
-    ] as const) {
-      const v = sea[name]?.value as Color | undefined;
-      if (v) pairs.push([v, v.clone(), new Color(night)]);
-    }
+    const range = from !== undefined && to !== undefined && to > from ? ([from, to] as const) : null;
     const halo = moon?.children[0] as Mesh | undefined;
+    const disc = moon?.children[1] as Mesh | undefined;
+    // The meshes it writes to: a rebuilt dome or cloud sea starts at today's colours, so it starts
+    // again (version -1) and the look is written into the new ones on the next frame.
+    return { range, halo, disc, dome, sea: cloudSea, version: -1, k: -1, a: new Color(), b: new Color() };
+  }, [dome, moon, cloudSea, store]);
+
+  // Writes the look's colours (the twilight `k` of the way to its end colours) into the uniforms.
+  const applyLookNow = (now: LookNow, k: number) => {
+    const S = now.sect;
+    const T = S.twilight;
+    const blend = (target: Color, day: string, night: string) => target.copy(look.a.set(day)).lerp(look.b.set(night), k);
+    const u = (look.dome.material as ShaderMaterial).uniforms;
+    blend(u.uLookZenith.value as Color, S.sky.zenith, T.zenith);
+    blend(u.uLookMid.value as Color, S.sky.mid, T.mid);
+    blend(u.uLookHorizon.value as Color, S.sky.horizon, T.horizon);
+    blend(u.uLookSun.value as Color, S.sky.sunHorizon, T.sunHorizon);
+    blend(u.uFogColor.value as Color, S.haze.color, T.haze);
+    blend(u.uCloudSunLit.value as Color, S.skyClouds.sunLit, T.cloudSunLit);
+    blend(u.uCloudLit.value as Color, S.skyClouds.lit, T.cloudLit);
+    blend(u.uCloudShade.value as Color, S.skyClouds.shade, T.cloudShade);
+    blend(u.uCloudRim.value as Color, S.skyClouds.rim, T.cloudRim);
+    u.uCoverage.value = S.skyClouds.coverage + (T.coverage - S.skyClouds.coverage) * k;
+    u.uGradeMix.value = S.sky.gradeMix;
+    if (u.uStars) u.uStars.value = now.frame.stars;
+    // The sun in the sky and in every reflection (shared with SECT_ENV): none at night.
+    (u.uSunColor.value as Color).set(now.meta.sun.color).multiplyScalar(now.frame.skySun);
+    SECT_ENV.uSectEnvGround.value.set(S.surfaces.ground);
+    SECT_ENV.uSectEnvMountains.value.set(S.surfaces.mountains);
+    // The cloud sea under everything, so the horizon is not a warm band under a blue sky.
+    const sea = (look.sea.material as ShaderMaterial).uniforms;
+    blend(sea.uTop.value as Color, S.cloudSeaColor, T.cloudSea);
+    blend(sea.uFogColor.value as Color, S.haze.color, T.haze);
+    (sea.uShadow.value as Color).set(now.frame.cloudSeaShade);
+    (sea.uRim.value as Color).set(S.puffs.rim);
     // The land's haze follows the sky's (scene.fog's colour: every material three fogs reads it).
-    const land: [Color, Color] = [new Color(meta.fog.color), new Color(L.haze)];
-    return { from, to, pairs, land, coverage: [u.uCoverage.value as number, L.coverage] as const, halo, last: -1 };
-  }, [dome, moon, cloudSea, store, meta]);
+    const fogNow = scene.fog as FogExp2 | null;
+    if (fogNow) blend(fogNow.color, S.haze.color, T.haze);
+    if (look.disc) {
+      const m = (look.disc.material as ShaderMaterial).uniforms;
+      (m.uColor.value as Color).set(now.meta.moon.color);
+      (m.uFogColor.value as Color).set(S.haze.color);
+    }
+    if (look.halo) ((look.halo.material as ShaderMaterial).uniforms.uColor.value as Color).set(now.meta.moon.color);
+  };
 
   useEffect(
     () => () => {
@@ -542,23 +623,23 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
       moon.quaternion.copy(camera.quaternion);
       moon.updateMatrixWorld();
     }
+    // The look at this frame: the journey moves it along the flight (look-now.ts).
+    const now = lookNowAt(store.frame, store.camera.holds, meta);
     const fogNow = scene.fog as FogExp2 | null;
-    if (fogNow?.isFogExp2) fogNow.density = hazeAt(store.frame);
-    if (twilight) {
-      const k = twilightAmount(store.frame, twilight.from, twilight.to);
-      if (Math.abs(k - twilight.last) > 1e-3) {
-        twilight.last = k;
-        for (const [v, day, night] of twilight.pairs) v.copy(day).lerp(night, k);
-        if (fogNow) fogNow.color.copy(twilight.land[0]).lerp(twilight.land[1], k);
-        const [c0, c1] = twilight.coverage;
-        (dome.material as ShaderMaterial).uniforms.uCoverage.value = c0 + (c1 - c0) * k;
-      }
-      // The halo strengthens toward the summit, where it also breathes slowly (its idle motion).
-      const hm = twilight.halo?.material as ShaderMaterial | undefined;
-      if (hm) {
-        const base = SECT_LOOK.moonHalo.day + (SECT_LOOK.moonHalo.twilight - SECT_LOOK.moonHalo.day) * twilight.last;
-        hm.uniforms.uStrength.value = base * (1 + 0.25 * twilight.last * breathe(t, 7));
-      }
+    if (fogNow?.isFogExp2) fogNow.density = hazeScaleAt(store.frame, store.camera.holds, now.range) / now.sect.haze.densityScale;
+    const k = look.range ? twilightAmount(store.frame, look.range[0], look.range[1]) : 0;
+    if (now.version !== look.version) pushLookGpu(now, meta);
+    if (now.version !== look.version || Math.abs(k - look.k) > 1e-3) {
+      look.version = now.version;
+      look.k = k;
+      applyLookNow(now, k);
+    }
+    // The halo strengthens toward the summit, where it also breathes slowly (its idle motion).
+    const hm = look.halo?.material as ShaderMaterial | undefined;
+    if (hm && look.range) {
+      const h = now.sect.moonHalo;
+      const base = h.day + (h.twilight - h.day) * look.k;
+      hm.uniforms.uStrength.value = base * (1 + 0.25 * look.k * breathe(t, 7));
     }
   }, -2);
 
@@ -644,9 +725,23 @@ function CloudPuffs({
   );
 
   const cam: Vec3 = useMemo(() => [0, 0, 0], []);
+  const lookSeen = useRef<{ version: number; material: ShaderMaterial | null }>({ version: -1, material: null });
   useFrame((state) => {
     if (!built) return;
     built.material.uniforms.uTime.value = store.reducedMotion ? 0 : state.clock.elapsedTime;
+    // The look's puff colours (look-now.ts; the journey moves them along the flight), again into a
+    // rebuilt material (a tier change rebuilds the puffs while the look stands still).
+    const now = lookNow();
+    if (now && (now.version !== lookSeen.current.version || built.material !== lookSeen.current.material)) {
+      lookSeen.current = { version: now.version, material: built.material };
+      const u = built.material.uniforms;
+      const p = now.sect.puffs;
+      (u.uLit.value as Color).set(p.lit);
+      (u.uShade.value as Color).set(p.shade);
+      (u.uRim.value as Color).set(p.rim);
+      (u.uFogColor.value as Color).set(now.sect.haze.color);
+      u.uOpacity.value = p.opacity;
+    }
     // Re-sort (and re-upload) only when the camera has moved; at a hold nothing changes.
     if (built.last.distanceToSquared(camera.position) < RESORT_DISTANCE2) return;
     built.last.copy(camera.position);
@@ -751,16 +846,15 @@ function Lights({ meta, shadows, sky }: { meta: SectMeta; shadows: boolean; sky:
 
 // ---------------------------------------------------------------------------------------------
 
-function nextFrame(): Promise<void> {
-  return new Promise((r) => requestAnimationFrame(() => r()));
-}
-
 /**
  * The loaded sets. The global set is always drawn once ready; a chunk is drawn while the camera
  * frame is inside its need range, and the backdrop's proxy of that area is hidden while it is.
- * Before a set is first drawn its textures go to the GPU one per animation frame (not while the
- * camera moves fast or the view turns, lib/sect/background-work.ts deferUpload) and its shaders
- * compile in the background, so arriving at an area does not stall on uploads. A set is never drawn
+ * Before a set is first drawn its textures go to the GPU through the page's GPU queue (gpu-queue.ts:
+ * a big map in bands, paced by what the visitor sees, one step a frame while the camera moves; not
+ * while the camera moves fast or the view turns, lib/sect/background-work.ts deferUpload; where the
+ * camera is heading first) and its shaders compile in the background (alongside the uploads once
+ * the camera rests or the scene is covered, after them while it moves), so arriving at an area does
+ * not stall on uploads. A chunk's programs are kept for the page. A set is never drawn
  * before all of that is done (`ready`); until then the backdrop's proxy stands in for it.
  */
 function World({
@@ -840,35 +934,45 @@ function World({
     const alive = (s: LoadedSet) => mounted.current && !s.dropped && (live.current.global === s || live.current.chunks.includes(s));
     /** The set would be drawn at the camera's frame if it were ready (the global set always is). */
     const inView = (s: LoadedSet) => s.need === null || (store.frame >= s.need[0] && store.frame <= s.need[1]);
+    /**
+     * The set is wanted where the camera is heading: the end of a flight or glide, a far jump that is
+     * gathering, else where the scroll has put it.
+     */
+    const headed = (s: LoadedSet) => {
+      if (s.need === null) return true;
+      const to = store.gatherFrame ?? store.flight?.toFrame ?? (store.frameOverride ?? uToFrame(store.map, store.targetU));
+      return to >= s.need[0] && to <= s.need[1];
+    };
     const warm = async (s: LoadedSet) => {
       // When the set was first wanted on screen: its uploads share one wait from then on.
       let wantedSince: number | null = null;
-      for (const t of s.textures) {
-        // A 4096 px upload stalls the frame it lands in (6-30 ms): not during a jump, and not while
-        // the camera moves fast or the view turns (a drag, an arrow key, the swing back), except
-        // that an area already wanted on screen waits only so long, all its textures together.
-        for (;;) {
-          if (!alive(s)) break;
-          const now = performance.now();
-          if (wantedSince === null && inView(s)) wantedSince = now;
-          const wait = deferUpload({
-            flight: store.flight !== null,
-            framesToGo: framesToGo(store),
-            turning: isTurning(store.look),
-            inView: inView(s),
-            waitedMs: uploadWaitedMs(wantedSince, now),
-          });
-          if (!wait) break;
-          await nextFrame();
-        }
-        if (!alive(s)) return;
-        try {
-          gl.initTexture(t);
-        } catch (e) {
-          console.warn("[sect] texture upload failed", e);
-        }
-        await nextFrame();
-      }
+      // Uploads go through the page's GPU queue (gpu-queue.ts): one step a frame, a big map in bands
+      // of about 2 ms, never while the GPU is busy or a program links. They still keep out of a jump,
+      // a fast camera and a turning view (a drag, an arrow key, the swing back), except that an area
+      // already wanted on screen waits only so long, all its textures together.
+      const wait = () => {
+        const now = performance.now();
+        if (wantedSince === null && inView(s)) wantedSince = now;
+        return deferUpload({
+          flight: store.flight !== null,
+          framesToGo: framesToGo(store),
+          turning: isTurning(store.look),
+          inView: inView(s),
+          waitedMs: uploadWaitedMs(wantedSince, now),
+        });
+      };
+      // The global set first (the opening picture), then what the camera is heading for, then what is
+      // on screen, then what is ahead (lib/sect/gpu-queue.ts setUploadPriority).
+      const priority = () => setUploadPriority({ global: s === live.current.global, headed: headed(s), inView: inView(s) });
+      const queue = gpuQueue(gl);
+      let uploaded = false;
+      const uploads = Promise.all(s.textures.map((t) => queue.uploadTexture(t, { priority, wait, alive: () => alive(s) }))).finally(() => {
+        uploaded = true;
+      });
+      // The shaders compile alongside the uploads once nothing moves on screen (the camera at rest, or
+      // the scene covered), so a set's links and uploads overlap where a hitch hardly shows; while the
+      // camera moves they wait for the uploads, as the links and an upload's copy contend.
+      await queue.untilStill(() => uploaded || !alive(s));
       if (!alive(s)) return;
       try {
         // Compile for the buffer the set is really drawn into. Through the composer that is a
@@ -890,10 +994,31 @@ function World({
         } finally {
           gl.setRenderTarget(prev);
         }
+        // Kept for the page from now (as below, once ready): a set the stream drops while its programs
+        // still link would free them, and deleting a program the driver is still linking makes the GPU
+        // process wait for that link. With no shader cache yet that froze the whole page for 0.65 to
+        // 0.8 s when the visitor scrolled past an area still arriving on a slow line.
+        if (s !== live.current.global) keepPrograms(gl, materialsOf(s.scenes));
         await Promise.all(pending);
+        if (!alive(s)) return;
+        // The uploads, if they are still going.
+        await uploads;
+        if (!alive(s)) return;
+        // Every program ready (compileAsync waits for each material's last one only), and its first
+        // use run before the set is drawn (program-prime.ts): on the set's first frame it waited
+        // behind that frame's geometry uploads.
+        const mats = materialsOf(s.scenes);
+        await programsReady(gl, mats);
+        if (!alive(s)) return;
+        await primePrograms(gl, mats);
+        if (!alive(s)) return;
+        // A chunk's programs stay for the page when the stream drops it: coming back links nothing.
+        if (s !== live.current.global) keepPrograms(gl, mats);
       } catch (e) {
         console.warn("[sect] shader warm-up failed", e);
       }
+      // Never drawn before its textures are all up (a failed warm-up may have left before they were).
+      await uploads;
       if (!alive(s)) return;
       if (s === live.current.global) {
         s.ready = true;
@@ -1545,6 +1670,19 @@ function Post({
     [quality.msaa, quality.bloom, cloudShadows, holdFocus],
   );
   const [built, setBuilt] = useState<PipelineShape>(want);
+  // The lux passes follow the tier (built once for its top); the ladder only rests them (setLux).
+  const luxDebug = useMemo(() => parseLuxParam(typeof window === "undefined" ? "" : window.location.search), []);
+  const top = ceiling ?? quality;
+  const luxWant = useMemo(
+    () => (luxDebug === "off" ? LUX_OFF : luxBuilt(top)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [luxDebug, top.post, top.msaa],
+  );
+  const luxNow = useMemo(
+    () => (luxDebug === "off" ? LUX_OFF : luxLive(top, quality)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [luxDebug, top.post, top.msaa, quality.post, quality.msaa, quality.bloom],
+  );
   const shapes = useMemo(() => new WeakMap<Pipeline, PipelineShape>(), []);
   // Created in an effect, not a memo: StrictMode runs memos twice, and the discarded pipeline's
   // (never written) depth texture would win the shared soft-depth uniform.
@@ -1565,6 +1703,9 @@ function Post({
         sunDir: new Vector3(...meta.sun.direction),
         sunHaze: SECT_LOOK.sunHaze,
         atmos: { fog, features: { cloudShadows: built.cloudShadows, holdFocus: built.holdFocus } },
+        lux: { features: luxWant, debug: luxDebug },
+        // A look or the journey grades the frame (its numbers are uniforms); today's dusk has none.
+        grade: LOOK_MODE !== "dusk",
       },
       (t) => {
         SOFT_DEPTH.tDepth.value = t;
@@ -1588,7 +1729,16 @@ function Post({
       setPipe((cur) => (cur === p ? null : cur));
       if (w.__sectPost === p) delete w.__sectPost;
     };
-  }, [gl, scene, overlay, camera, meta, fog, built, shapes, invalidate]);
+  }, [gl, scene, overlay, camera, meta, fog, built, luxWant, luxDebug, shapes, invalidate]);
+  useLayoutEffect(() => {
+    pipe?.setLux(luxNow);
+    invalidate();
+  }, [pipe, luxNow, invalidate]);
+  // The hold focus's blur is first drawn at the first stop the camera holds at: its programs are
+  // made ready as soon as the chain is built (behind the loading screen, which waits for links).
+  useEffect(() => {
+    if (pipe?.holdFocus) void pipe.holdFocus.prime(gl);
+  }, [pipe, gl]);
   // Whether the built chain still holds a pass the quality has dropped (replaced at the next rest).
   const settle = useRef(false);
   useLayoutEffect(() => {
@@ -1620,17 +1770,31 @@ function Post({
     return m;
   }, [store, meta]);
   const atmos = useMemo(() => ({ rest: 0, fwd: new Vector3(), frame: Number.NaN, yaw: 0, pitch: 0 }), []);
+  const shaftEpoch = useRef(-1);
   useEffect(
     () => () => {
       store.report.focus = false;
     },
     [store],
   );
+  const lookSeen = useRef<{ version: number; pipe: Pipeline | null }>({ version: -1, pipe: null });
   useFrame((state, delta) => {
     store.report.focus = false;
     if (!pipe) {
       state.gl.render(state.scene, state.camera);
       return;
+    }
+    // The look's post numbers (look-now.ts; the journey moves them along the flight), again after a rebuild.
+    const now = lookNow();
+    if (now && (now.version !== lookSeen.current.version || pipe !== lookSeen.current.pipe)) {
+      lookSeen.current = { version: now.version, pipe };
+      pipe.setLook({
+        lux: now.lux,
+        bloom: now.atmos.bloom.intensity,
+        cloudShadow: now.atmos.cloudShadow.strength,
+        sunHaze: now.sect.sunHaze,
+        vignette: now.meta.vignette,
+      });
     }
     // At rest (the same signal the climb waits for): replace a chain that still holds passes a step
     // down switched off with an exact build of the wanted one. The new chain draws from the next
@@ -1673,6 +1837,19 @@ function Post({
         if (framed) hf.focus = axial;
       }
     }
+    if (pipe.shafts) {
+      // The stop's own haze thickens the shafts; a chunk drawn or dropped redraws the sun's shadow map.
+      pipe.shafts.haze = (scene.fog as FogExp2 | null)?.density ?? 1;
+      let epoch = 0;
+      for (let i = 0; i < sets.length; i++) if (sets[i].drawn) epoch = (epoch * 31 + i + 1) | 0;
+      if (epoch !== shaftEpoch.current) {
+        shaftEpoch.current = epoch;
+        pipe.shafts.invalidate();
+        // The redraw waits out the map's minimum interval: keep frames coming until it has run.
+        wake(store, 600);
+      }
+    }
+    if (pipe.finish) pipe.finish.still = store.reducedMotion;
     pipe.sunHaze.updateFromCamera(camera, size.width / Math.max(size.height, 1));
     gl.getDrawingBufferSize(db);
     SOFT_DEPTH.uResolution.value.copy(db);
@@ -2134,9 +2311,16 @@ function WarmDecor({ sets, overlay, post }: { sets: LoadedSet[]; overlay: Scene;
         const prev = gl.getRenderTarget();
         try {
           gl.setRenderTarget(target);
-          const pending = scene.children.filter((o) => !roots.has(o)).map((o) => gl.compileAsync(o, camera, scene));
+          const decor = scene.children.filter((o) => !roots.has(o));
+          const pending = decor.map((o) => gl.compileAsync(o, camera, scene));
           pending.push(gl.compileAsync(overlay, camera));
-          void Promise.all(pending).catch((e) => console.warn("[sect] decoration warm-up failed", e));
+          // Every program ready, and its first use run as soon as it is (program-prime.ts): left to
+          // the frame that first shows the piece, it waited there behind that frame's uploads.
+          const mats = materialsOf([...decor, overlay]);
+          void Promise.all(pending)
+            .then(() => programsReady(gl, mats))
+            .then(() => (cancelled ? 0 : primePrograms(gl, mats)))
+            .catch((e) => console.warn("[sect] decoration warm-up failed", e));
         } catch (e) {
           console.warn("[sect] decoration warm-up failed", e);
         } finally {
@@ -2166,7 +2350,37 @@ function FrameReport({ store }: { store: SectStore }) {
     r.geometries = gl.info.memory.geometries;
     r.textures = gl.info.memory.textures;
     r.programs = gl.info.programs?.length ?? 0;
+    r.gpu = gpuQueue(gl).busy();
   }, 4.5);
+  return null;
+}
+
+/**
+ * Tells the renderer's GPU queue what the visitor can see (store.ts sceneView), which it reads at
+ * every display frame to pace itself: one step a frame while the camera moves, a few milliseconds of
+ * steps at rest, flat out behind the loading screen or the ink (lib/sect/gpu-queue.ts GPU_PACE).
+ */
+function GpuPaceFromStore({ store }: { store: SectStore }) {
+  const gl = useThree((s) => s.gl);
+  useEffect(() => gpuQueue(gl).watchView(() => sceneView(store)), [gl, store]);
+  return null;
+}
+
+/**
+ * When the canvas goes (a tier change that loads again, an error, the page view), the page's own
+ * textures and the shadow maps' depth materials let go of its renderer: each holds a dispose
+ * listener of every renderer that used it, and through it that renderer's whole state
+ * (materials.ts releasePageTextures, live-shadow.ts releaseDepthMaterials).
+ */
+function ReleaseWithCanvas() {
+  const gl = useThree((s) => s.gl);
+  useEffect(
+    () => () => {
+      releasePageTextures();
+      releaseDepthMaterials();
+    },
+    [gl],
+  );
   return null;
 }
 
@@ -2452,6 +2666,9 @@ function SectCanvas(props: SectCanvasProps) {
       style={{ position: "absolute", inset: 0, cursor: "grab" }}
       aria-hidden
       onCreated={({ gl }) => {
+        // A program's first use asks for its link status and logs (blocking round trips to the GPU
+        // process) only in development; a production build skips them (its shaders are the same).
+        gl.debug.checkShaderErrors = process.env.NODE_ENV !== "production";
         gl.domElement.addEventListener("webglcontextlost", (e) => {
           e.preventDefault();
           if (mounted.current) onContextLost();
@@ -2491,13 +2708,15 @@ function SectCanvas(props: SectCanvasProps) {
       {global && <Cranes areas={anchors} store={store} fog={fog} fogColor={meta.fog.color} />}
       {global && <Life meta={meta} store={store} fog={fog} quality={quality} />}
       {global && <Grass chunks={chunks} ctx={ctx} meta={meta} store={store} quality={quality} debug={grassDebug} />}
+      {global && <VegShells global={global} chunks={chunks} ctx={ctx} store={store} quality={quality} />}
+      {global && <LiveLight chunks={chunks} ctx={ctx} store={store} quality={quality} />}
       {global && <WaterfallFx meta={meta} base={ctx.data.base} time={ctx.waterfallMaterial.uniforms.uTime} sets={sets} store={store} fog={fog} quality={quality} overlay={overlay} />}
-      <ForgeFire set={forgeSet} store={store} />
+      <ForgeFire set={forgeSet} store={store} post={quality.post} />
       {chunks.map((s) => (
         <Flames key={s.id} set={s} meta={meta} store={store} fog={fog} quality={quality} overlay={overlay} debug={debug} />
       ))}
-      <FormationCore set={formationSet} store={store} meta={meta} />
-      <IncenseSmoke set={mirrorSet} store={store} />
+      <FormationCore set={formationSet} store={store} meta={meta} post={quality.post} />
+      <IncenseSmoke set={mirrorSet} store={store} post={quality.post} />
       <Hotspots
         store={store}
         ctx={ctx}
@@ -2519,6 +2738,8 @@ function SectCanvas(props: SectCanvasProps) {
       {global && <WarmDecor sets={sets} overlay={overlay} post={quality.post} />}
       <UncullOnce store={store} sets={sets} />
       <FrameReport store={store} />
+      <GpuPaceFromStore store={store} />
+      <ReleaseWithCanvas />
       {debug && (
         <DebugProbe
           el={debugEl}

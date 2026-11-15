@@ -87,13 +87,14 @@ import {
   type RockSoup,
 } from "@/lib/sect/grass";
 import { fringeInstances, grassEdgeSteps, rimClumps } from "@/lib/sect/grass-edge";
+import { GRASS_SLICE } from "@/lib/sect/gpu-queue";
 import { gradeGlsl, SECT_LOOK } from "@/lib/sect/look";
 import type { Quality } from "@/lib/sect/runtime";
 import type { SectMeta } from "@/lib/sect/types";
 import { dominantFlatLevel } from "@/lib/sect/water";
 import type { LoadedSet, WorldContext } from "./assets";
-import { enableFogEncodeOnce, getGroundNoiseTexture } from "./materials";
-import { wake, type SectStore } from "./store";
+import { enableFogEncodeOnce, getGroundNoiseTexture, SECT_LOOK_GPU } from "./materials";
+import { sceneView, wake, type SectStore } from "./store";
 
 const f = glslFloat;
 
@@ -667,20 +668,29 @@ class Clock {
   }
 }
 
-/** Runs a generator in slices of at most `budget` ms of main-thread time; null when cancelled. */
-async function sliced<T>(name: string, it: Generator<unknown, T>, alive: () => boolean, clock: Clock, budget = 6): Promise<T | null> {
+/**
+ * Runs a generator in slices of at most `budget` ms of main-thread time (asked at each slice when a
+ * function: lib/sect/gpu-queue.ts GRASS_SLICE); null when cancelled.
+ */
+async function sliced<T>(name: string, it: Generator<unknown, T>, alive: () => boolean, clock: Clock, budget: number | (() => number) = 6): Promise<T | null> {
+  const budgetOf = typeof budget === "function" ? budget : () => budget;
+  // A task of its own to start in: the step before may have just spent its budget in this one.
+  await nextTask();
+  if (!alive()) return null;
   let t0 = performance.now();
+  let ms = budgetOf();
   for (;;) {
     const r = it.next();
     if (r.done) {
       clock.add(performance.now() - t0, name);
       return r.value;
     }
-    if (performance.now() - t0 > budget) {
+    if (performance.now() - t0 > ms) {
       clock.add(performance.now() - t0, name);
       await nextTask();
       if (!alive()) return null;
       t0 = performance.now();
+      ms = budgetOf();
     }
   }
 }
@@ -745,7 +755,7 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
     const material = new ShaderMaterial({
       name: "sect.grass",
       // Not through UniformsUtils.merge: that would clone the shared uniforms and textures.
-      uniforms: { ...UniformsUtils.clone(UniformsLib.fog), ...uniforms },
+      uniforms: { ...UniformsUtils.clone(UniformsLib.fog), ...uniforms, ...SECT_LOOK_GPU },
       vertexShader: grassVertexShader(),
       fragmentShader: GRASS_FRAGMENT,
       fog: true,
@@ -798,7 +808,9 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
       const tier = GRASS.tiers[name];
       const ok = () => alive(set);
       const clock = new Clock();
-      const soups = await sliced("collect", collectSoups(set, ctx), ok, clock);
+      // Bigger slices while nothing of the scene shows (the loading screen and the ink wait for the grass).
+      const slice = () => GRASS_SLICE[sceneView(store)];
+      const soups = await sliced("collect", collectSoups(set, ctx), ok, clock, slice);
       if (!soups || soups.ground.pos.length === 0 || soups.atlases.length === 0) return;
       const prep = await step(
         "prep",
@@ -811,14 +823,14 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
       );
       if (!prep) return;
       const { cams, sheets } = prep;
-      const tufts = await sliced("scatter", scatterSteps(soups.ground, prep.index, { tier, ponds: soups.ponds, sheets }), ok, clock);
+      const tufts = await sliced("scatter", scatterSteps(soups.ground, prep.index, { tier, ponds: soups.ponds, sheets }), ok, clock, slice);
       if (!tufts) return;
       // The edge fringe and rim bushes are extras: if they fail, the tufts still grow. The edges are
       // found first, over several frames (grass-edge.ts keeps them for the soups, so the fringe and
       // the bushes then take a millisecond or two).
       let edgesFailed = false;
       try {
-        const edges = await sliced("edges", grassEdgeSteps(soups.ground, soups.rock), ok, clock);
+        const edges = await sliced("edges", grassEdgeSteps(soups.ground, soups.rock), ok, clock, slice);
         if (!edges) return;
       } catch (e) {
         console.warn(`[sect] grass edges for ${set.id} failed; the tufts go on without them`, e);
@@ -840,16 +852,18 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
       if (!rim) return;
       const all = await step("merge", () => mergeInstances([tufts, fringe, rim]), ok, clock);
       if (!all) return;
-      // The roots are read from the atlases once they are on the GPU (the set is ready).
+      // The roots are read from the atlases once they are on the GPU (the set is ready). Asked every
+      // 50 ms: the loading screen and fast travel's ink wait for the grass, and a 200 ms poll alone
+      // held them up to a fifth of a second.
       while (!set.ready) {
-        await new Promise((res) => setTimeout(res, 200));
+        await new Promise((res) => setTimeout(res, 50));
         if (!ok()) return;
       }
       const texels = await readRoots(gl, all, soups.atlases, ok, clock);
       if (!texels) return;
-      const rooted = await sliced("roots", rootSteps(all, texels), ok, clock);
+      const rooted = await sliced("roots", rootSteps(all, texels), ok, clock, slice);
       if (!rooted) return;
-      const cells = await sliced("cells", cellSteps(rooted), ok, clock);
+      const cells = await sliced("cells", cellSteps(rooted), ok, clock, slice);
       if (!cells) return;
       const draws = await step(
         "meshes",

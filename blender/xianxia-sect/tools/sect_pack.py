@@ -100,10 +100,12 @@ import time
 import numpy as np
 from PIL import Image
 
-ROOT = "E:/Github/PortfolioV5/blender/xianxia-sect"
+# this checkout (a git worktree packs into its own client folder, not the main checkout's)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace("\\", "/")
+REPO = os.path.dirname(os.path.dirname(ROOT))
 RAW = os.path.join(ROOT, "out", "web", "raw")
 PROTO_MIRROR = os.path.join(ROOT, "out", "web", "proto")
-CLIENT = "E:/Github/PortfolioV5/client/public/sect/proto"
+CLIENT = REPO + "/client/public/sect/proto"
 ORDER = ["gate", "backdrop", "trees", "mirror"]          # load order: the opening view first
 DEFERRED = ["mirror"]                                    # may load after the page opens (first needed ~frame 150)
 LOW_PX = 2048
@@ -116,7 +118,7 @@ FULL_RAW = os.path.join(FULL, "raw")
 FULL_SITE = os.path.join(FULL, "site")                   # the export agent's data files (camera, meta, ...)
 FULL_BAKE = os.path.join(FULL, "bake")
 FULL_TMP = os.path.join(FULL_BAKE, "packtmp")
-FULL_CLIENT = "E:/Github/PortfolioV5/client/public/sect/full"
+FULL_CLIENT = REPO + "/client/public/sect/full"
 GLOBAL_NAMES = ["backdrop", "backdrop_trees", "backdrop_water"]
 DATA_FILES = ["camera.json", "meta.json", "clouds.json", "flyer.glb", "flyer.json", "sky.webp",
               "detail.webp"]                     # detail.webp: optional (tools/prep_textures.mjs)
@@ -1655,9 +1657,7 @@ def manifest_revs(man, folder):
             data = fh.read()
         if n.endswith(".json"):
             # install_full writes JSON in text mode, which gives CRLF on Windows; git and the host keep LF
-            data = data.replace(b"
-", b"
-")
+            data = data.replace(b"\r\n", b"\n")
         revs[n] = hashlib.sha256(data).hexdigest()[:16]
     return revs
 

@@ -8,6 +8,7 @@
  * only changes colours and decoration. Pure data and maths (no three.js), so it is testable.
  */
 import { fogConstantsFromMeta, glslFloat, glslVec3, hexToLinear, type FogConstants } from "./glsl";
+import { gradeLookDefines } from "./look-gpu";
 import type { SectMeta, Vec3 } from "./types";
 
 export interface SectLook {
@@ -378,8 +379,8 @@ export const SECT_LOOK: SectLook = {
   },
   skyClouds: { sunLit: "#ffd9a6", lit: "#f9c6b6", shade: "#ae98bd", rim: "#fff1d6", coverage: 0.68 },
   puffs: {
-    lit: "#fff0dc",
-    shade: "#d4b6a8",
+    lit: "#ffe9c8",
+    shade: "#c6aeb4",
     rim: "#ffdcae",
     opacity: 0.9,
     areaThin: 0.65,
@@ -388,15 +389,15 @@ export const SECT_LOOK: SectLook = {
   },
   grade: {
     exposure: 1.42,
-    contrast: 1.16,
+    contrast: 1.24,
     pivot: 0.18,
     shadowTint: "#8b88c6",
     highlightTint: "#ffd9b0",
-    split: 0.34,
+    split: 0.28,
     splitShadow: 0.6,
-    saturation: 0.86,
-    greenTame: 1.0,
-    shoulder: 0.9,
+    saturation: 1.0,
+    greenTame: 0.45,
+    shoulder: 0.74,
   },
   cloudSeaColor: "#f0d2b4",
   cloudFogColor: "#dccbc6",
@@ -414,7 +415,7 @@ export const SECT_LOOK: SectLook = {
   waterfall: { color: "#cfe3ee", foam: "#f7fbff", opacity: 0.82, mist: "#eef3f6" },
   petals: { count: 520, colorA: "#f6b3c3", colorB: "#ffdbe3", size: 0.05, radius: 22 },
   cranes: { count: 5, color: "#f3eee6", dark: "#23211f", crown: "#c8302a" },
-  sunHaze: { color: "#ffc88a", strength: 0.2 },
+  sunHaze: { color: "#ffc88a", strength: 0.3 },
   beams: { opacity: 0.55 },
   trees: {
     rim: "#ffc890",
@@ -611,41 +612,41 @@ export function gradeLinearWith(c: Vec3, g: SectLook["grade"], tame: number, st:
 /**
  * GLSL for the grade: `vec3 sectGrade( vec3 linear )`. A material that defines SECT_KEEP_GREEN
  * keeps green's lead (no greenTame): the Five Element Banners' cloth (idle.ts swayCut), so the
- * wood flag reads green, not slate blue.
+ * wood flag reads green, not slate blue. Its numbers are `g`'s, unless the look's uniform array
+ * holds others (look-gpu.ts gradeLookDefines: the journey moves them at run time).
  */
 export function gradeGlsl(g: SectLook["grade"] = SECT_LOOK.grade): string {
-  const k = glslFloat(g.shoulder);
   return /* glsl */ `
-vec3 sectGrade( vec3 c ) {
-  c *= ${glslFloat(g.exposure)};
-#ifndef SECT_KEEP_GREEN
-  c.g -= max( c.g - max( c.r, c.b ), 0.0 ) * ${glslFloat(g.greenTame)};
-#endif
-  float l0 = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
-  float l1 = l0 > 0.0 ? ${glslFloat(g.pivot)} * pow( l0 / ${glslFloat(g.pivot)}, ${glslFloat(g.contrast)} ) : 0.0;
-  c *= l0 > 1e-6 ? l1 / l0 : 1.0;
-  float w = smoothstep( ${glslFloat(SPLIT_LO)}, ${glslFloat(SPLIT_HI)}, l1 );
-  c *= mix( mix( vec3( 1.0 ), ${glslVec3(unitTint(g.shadowTint))}, ${glslFloat(g.splitShadow ?? g.split)} ),
-    mix( vec3( 1.0 ), ${glslVec3(unitTint(g.highlightTint))}, ${glslFloat(g.split)} ), w );
-  float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
-  c = max( vec3( l ) + ( c - vec3( l ) ) * ${glslFloat(g.saturation)}, 0.0 );
-  vec3 rolled = ${k} + ( 1.0 - ${k} ) * ( 1.0 - exp( - ( c - ${k} ) / ( 1.0 - ${k} ) ) );
-  return mix( c, rolled, step( vec3( ${k} ), c ) );
-}
-// The same grade with the green tame, the shadow tint (luminance 1) and the shadow split given
+${gradeLookDefines(g)}
+// The grade with the green tame, the shadow tint (luminance 1) and the shadow split given
 // (lib/sect/range-look.ts: the range's foliage). Mirrors gradeLinearWith.
 vec3 sectGradeWith( vec3 c, float tame, vec3 shadowTint, float splitShadow ) {
-  c *= ${glslFloat(g.exposure)};
+  c *= SECT_GRADE_EXPOSURE;
   c.g -= max( c.g - max( c.r, c.b ), 0.0 ) * tame;
   float l0 = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
-  float l1 = l0 > 0.0 ? ${glslFloat(g.pivot)} * pow( l0 / ${glslFloat(g.pivot)}, ${glslFloat(g.contrast)} ) : 0.0;
+  float p = SECT_GRADE_PIVOT;
+  float l1 = l0 > 0.0 ? p * pow( l0 / p, SECT_GRADE_CONTRAST ) : 0.0;
   c *= l0 > 1e-6 ? l1 / l0 : 1.0;
   float w = smoothstep( ${glslFloat(SPLIT_LO)}, ${glslFloat(SPLIT_HI)}, l1 );
-  c *= mix( mix( vec3( 1.0 ), shadowTint, splitShadow ), mix( vec3( 1.0 ), ${glslVec3(unitTint(g.highlightTint))}, ${glslFloat(g.split)} ), w );
+  vec4 hi = SECT_GRADE_HIGH;
+  c *= mix( mix( vec3( 1.0 ), shadowTint, splitShadow ), mix( vec3( 1.0 ), hi.rgb, hi.w ), w );
   float l = dot( c, vec3( 0.2126, 0.7152, 0.0722 ) );
-  c = max( vec3( l ) + ( c - vec3( l ) ) * ${glslFloat(g.saturation)}, 0.0 );
-  vec3 rolled = ${k} + ( 1.0 - ${k} ) * ( 1.0 - exp( - ( c - ${k} ) / ( 1.0 - ${k} ) ) );
-  return mix( c, rolled, step( vec3( ${k} ), c ) );
+  c = max( vec3( l ) + ( c - vec3( l ) ) * SECT_GRADE_SATURATION, 0.0 );
+  float k = SECT_GRADE_SHOULDER;
+  vec3 rolled = k + ( 1.0 - k ) * ( 1.0 - exp( - ( c - k ) / ( 1.0 - k ) ) );
+  return mix( c, rolled, step( vec3( k ), c ) );
+}
+// The stops' green tame: none where a material keeps green's lead.
+float sectGradeTame() {
+#ifdef SECT_KEEP_GREEN
+  return 0.0;
+#else
+  return SECT_GRADE_TAME;
+#endif
+}
+vec3 sectGrade( vec3 c ) {
+  vec4 sh = SECT_GRADE_SHADOW;
+  return sectGradeWith( c, sectGradeTame(), sh.rgb, sh.w );
 }
 `;
 }

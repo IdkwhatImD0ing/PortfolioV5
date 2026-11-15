@@ -118,6 +118,18 @@ TERRACE_Z = -0.4             # world.py's flat terrace under the area
 LAWN_CLEAR = 0.04            # the lawn keeps at least this much over the terrace or dives LAWN_SINK under it
 LAWN_SINK = 0.2              # (seat_lawn: round the pond basin it crossed the terrace's plane 0-12 mm off it; 0.2,
                              # the basin's own depth under it, so the lawn's box stays as it was)
+# Round 56 (docs/scene/form-r56.md, part B): the lawn's edge stood 0.15-0.25 m over the terrace with an open gap under
+# it, a dark step ring 7.5-9 m inside the rail. Past LAWN_EDGE[0] the lawn now dives smoothly (smoothstep) to
+# LAWN_EDGE[2] at LAWN_EDGE[1], its edge, then seat_lawn cuts it at LAWN_CLEAR over the terrace and drops what is
+# under that to LAWN_SINK under it: the visible lawn ends in a 4 cm soil lip on the terrace. Nothing seated on the lawn
+# stands past r 40 (pines 35.4-38, path lanterns to 39.2). The two paths that cross the edge reach PATH_BOTTOM so their
+# sides do not hover over the lowered lawn (path_east stays inside r 23). lawn_edge() does it on a built object
+# (patch_r56_form.py runs the same function on out/sect_chase.blend)
+LAWN_EDGE = (40.0, 43.0, -0.6)     # (r where the dive starts, r where it ends (the lawn's radius), z there)
+LAWN_EDGE_R55 = None               # until round 55: no dive
+PATH_BOTTOM = -0.6                 # path_main and path_forge: their bottom (path_east keeps -0.35)
+PATH_BOTTOM_R55 = -0.35
+LAWN_EDGE_TAG = "lawn_edge"        # mesh property lawn_edge() sets: the edge it applied ('r56 r0 r1 z1')
 STEP_SINK = 0.12             # the arrival / depart steps' blocks reach this far into the terrace (round 11 sank the
                              # range under the link stairs: they stood up to 6 cm over it)
 LOTUS_LIFT = 0.04            # the lotus pads float this much higher (their rims dipped into the water: 0-8 mm)
@@ -210,28 +222,31 @@ def _box_obj(name, coll, size, center, mat, parent, rotation=(0, 0, 0), location
 
 # ---------------------------------------------------------------- pieces
 
-def seat_lawn(lawn, floor_z=TERRACE_Z, clear=LAWN_CLEAR, sink=LAWN_SINK):
+def seat_lawn(lawn, floor_z=TERRACE_Z, clear=LAWN_CLEAR, sink=LAWN_SINK, only=None):
     """Keep the lawn off the world terrace's plane (floor_z, flat under the area): every vertex less than ``clear``
     over it goes ``sink`` under it (or stays where it is if it is deeper already), so the lawn meets the terrace at a
     steep angle with no surface within ``clear`` of it. Works on the built object (sect/patch_r12_areas.py seats a
     built file's lawn the same way). Round 12 verify: the lawn is first cut along z = floor_z + clear (bisect), so
     its lip follows the lawn's own smooth contour there; moving whole vertices left a zigzag of the 0.8 m grid along
-    the edge. The lip's top edge is sharp and its steep faces are soil, as ground_patch makes steep faces. Returns
-    the number of vertices moved (0 when the lawn is seated already)."""
+    the edge. The lip's top edge is sharp and its steep faces are soil, as ground_patch makes steep faces. ``only``:
+    f(co) -> bool (round 56): only vertices it accepts move, only faces with such a vertex are cut. Returns the number
+    of vertices moved (0 when the lawn is seated already)."""
     me = lawn.data
     zc, zs = floor_z + clear, floor_z - sink
-    if not any(zs + 1e-6 < v.co.z < zc - 1e-6 for v in me.vertices):
+    ok = (lambda co: True) if only is None else only
+    if not any(zs + 1e-6 < v.co.z < zc - 1e-6 and ok(v.co) for v in me.vertices):
         return 0
     bm = bmesh.new()
     bm.from_mesh(me)
     cut = [f for f in bm.faces
-           if min(v.co.z for v in f.verts) < zc - 1e-6 and max(v.co.z for v in f.verts) > zc + 1e-6]
+           if min(v.co.z for v in f.verts) < zc - 1e-6 and max(v.co.z for v in f.verts) > zc + 1e-6
+           and any(ok(v.co) for v in f.verts)]
     if cut:
         geom = list({v for f in cut for v in f.verts}) + list({e for f in cut for e in f.edges}) + cut
         bmesh.ops.bisect_plane(bm, geom=geom, dist=1e-6, plane_co=(0.0, 0.0, zc), plane_no=(0.0, 0.0, 1.0))
     moved = set()
     for v in bm.verts:
-        if zs + 1e-6 < v.co.z < zc - 1e-6:
+        if zs + 1e-6 < v.co.z < zc - 1e-6 and ok(v.co):
             v.co.z = zs
             moved.add(v)
     bm.normal_update()
@@ -245,6 +260,55 @@ def seat_lawn(lawn, floor_z=TERRACE_Z, clear=LAWN_CLEAR, sink=LAWN_SINK):
     bm.free()
     me.update()
     return len(moved)
+
+
+def _smoothstep(e0, e1, x):
+    t = min(1.0, max(0.0, (x - e0) / (e1 - e0)))
+    return t * t * (3.0 - 2.0 * t)
+
+
+def edge_dive(x, y, z, edge, keep=(), keep_r=0.9, keep_ramp=0.8):
+    """Round 56: the lawn's height at (x, y) (its own frame, centred on the area) after the edge dive: past r = edge[0]
+    it goes toward edge[2] by smoothstep(edge[0], edge[1], r), never up. ``keep``: (x, y) points with something standing
+    on the lawn there; within keep_r of one the lawn stays put, the dive coming back in over keep_ramp m. Pure maths."""
+    r0, r1, z1 = edge
+    r = math.hypot(x, y)
+    if r <= r0:
+        return z
+    t = _smoothstep(r0, r1, r)
+    for kx, ky in keep:
+        t *= _smoothstep(keep_r, keep_r + keep_ramp, math.hypot(x - kx, y - ky))
+    return min(z, z + (z1 - z) * t)
+
+
+def edge_tag(edge):
+    return "r56 %.3f %.3f %.3f" % tuple(edge)
+
+
+def edge_free(x, y, edge, keep=(), keep_r=0.9):
+    """Round 56: may lawn_edge move the lawn at (x, y)? Past edge[0] and more than keep_r from every keep point."""
+    return math.hypot(x, y) > edge[0] and all(math.hypot(x - kx, y - ky) > keep_r for kx, ky in keep)
+
+
+def lawn_edge(lawn, edge=LAWN_EDGE, keep=(), keep_r=0.9, keep_ramp=0.8, floor_z=TERRACE_Z, clear=LAWN_CLEAR,
+              sink=LAWN_SINK):
+    """Round 56: dive a ground_patch lawn's outer band under the terrace (edge_dive on every vertex past edge[0]), then
+    seat it there (seat_lawn on the vertices edge_free accepts only: inside edge[0] and round the keep points the lawn
+    is left exactly as it was) and tag the mesh (LAWN_EDGE_TAG). Works on a fresh build and on a built file's lawn
+    alike (patch_r56_form.py). Vertex coordinates are the lawn's own (its object sits at its area's origin). Returns
+    (vertices dived, vertices seated)."""
+    me = lawn.data
+    dived = 0
+    for v in me.vertices:
+        z = edge_dive(v.co.x, v.co.y, v.co.z, edge, keep, keep_r, keep_ramp)
+        if z < v.co.z - 1e-7:
+            v.co.z = z
+            dived += 1
+    me.update()
+    seated = seat_lawn(lawn, floor_z=floor_z, clear=clear, sink=sink,
+                       only=lambda co: edge_free(co.x, co.y, edge, keep, keep_r))
+    me[LAWN_EDGE_TAG] = edge_tag(edge)
+    return dived, seated
 
 
 def sink_steps(st, depth):
@@ -317,13 +381,16 @@ def drum_plinths(st, sink=STEP_SINK):
 def _ground(coll, root):
     # edge_drop 0.2 (was 0.5): the lawn rim stays above the paths' -0.35 bottoms, so no path
     # hovers over a dip near the rim. Round 12: kept off the terrace's plane round the pond (seat_lawn)
+    # Round 56: then its outer band dives under the terrace past LAWN_EDGE[0] (lawn_edge, in the order a built file
+    # got them: seat_lawn in round 12, lawn_edge in round 56), and the paths that cross the edge reach PATH_BOTTOM
     lawn = N.ground_patch(coll, radius=43.0, seed=5, height=0.08,
                           holes=[(POND_C[0], POND_C[1], POND_R - 0.8, 0.6)], edge_drop=0.2,
                           name=_n("lawn"), parent=root)
     seat_lawn(lawn)
-    _strip(_n("path_main"), coll, PATH_MAIN, 3.0, PATH_Z, -0.35, "marble_paving", root)
+    lawn_edge(lawn)
+    _strip(_n("path_main"), coll, PATH_MAIN, 3.0, PATH_Z, PATH_BOTTOM, "marble_paving", root)
     _strip(_n("path_east"), coll, PATH_EAST, 2.4, PATH_Z, -0.35, "marble_paving", root)
-    _strip(_n("path_forge"), coll, PATH_FORGE, 2.4, PATH_Z, -0.35, "marble_paving", root)
+    _strip(_n("path_forge"), coll, PATH_FORGE, 2.4, PATH_Z, PATH_BOTTOM, "marble_paving", root)
     return lawn
 
 
@@ -597,6 +664,23 @@ def _shrine(coll, root):
     return sh
 
 
+# Boulders on the lawn (x, y, size), each sunk 0.1 m. Round 55 (docs/scene/placement-r55.md): the east scholar's rock
+# (12.5, -13) has a boulder at its foot; the west one (-22.5, -2) stood alone, its boulder 7.5 m off at (-21.5, -9.5)
+# (BOULDERS_R54), so that boulder (mirror.boulder.003) moved to its foot.
+BOULDERS = ((-14.5, 15.0, 1.6), (-21.0, 17.5, 1.2), (15.5, -12.5, 1.4), (-24.4, -3.6, 1.1))
+BOULDERS_R54 = ((-14.5, 15.0, 1.6), (-21.0, 17.5, 1.2), (15.5, -12.5, 1.4), (-21.5, -9.5, 1.1))
+
+
+def boulder_name(k):
+    """Boulder k's object name, numbered by its place in BOULDERS."""
+    return "%s.boulder" % KEY + ("" if k == 0 else ".%03d" % k)
+
+
+def boulder_moves():
+    """Round 55's moved boulders: {name: ((x, y) now, (x, y) until round 54)} (sect/patch_r55_placement.py)."""
+    return {boulder_name(k): (a[:2], b[:2]) for k, (a, b) in enumerate(zip(BOULDERS, BOULDERS_R54)) if a[:2] != b[:2]}
+
+
 def _garden(coll, root):
     # one big peach tree beside the mirror dais (east), clear of the pavilion silhouette
     N.blossom_tree(coll, height=12.0, seed=1, kind="peach", name=_n("blossom"), parent=root,
@@ -613,8 +697,9 @@ def _garden(coll, root):
            rotation=math.radians(200))
     N.rock(coll, size=3.0, seed=4, kind="scholar", name=_n("taihu"), parent=root, location=(-22.5, -2.0, 0.0),
            rotation=math.radians(40))
-    for k, (x, y, s) in enumerate(((-14.5, 15.0, 1.6), (-21.0, 17.5, 1.2), (15.5, -12.5, 1.4), (-21.5, -9.5, 1.1))):
-        N.rock(coll, size=s, seed=20 + k, kind="boulder", name=_n("boulder"), parent=root, location=(x, y, -0.1))
+    for k, (x, y, s) in enumerate(BOULDERS):
+        N.rock(coll, size=s, seed=20 + k, kind="boulder", name=U.unique_name(boulder_name(k)), parent=root,
+               location=(x, y, -0.1))
     for k, (x, y) in enumerate(((-12.0, 18.5), (17.0, 14.0), (-22.0, 10.0))):
         N.shrub(coll, size=2.2, seed=k, kind="azalea" if k % 2 else "green", name=_n("shrub"), parent=root,
                 location=(x, y, 0.0))

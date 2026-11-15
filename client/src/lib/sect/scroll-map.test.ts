@@ -182,22 +182,48 @@ describe("the full flight's scroll map (eleven holds)", () => {
   ].map(([id, frame]) => ({ id: id as string, label: id as string, frame: frame as number }));
   const map = buildScrollMap(27, 1729, holds, FLIGHT_SCROLL);
 
-  it("keeps the first test's pace: one unit per frame plus the same dwell at every hold", () => {
+  it("keeps one unit per frame, with a hold of a single unit at every stop", () => {
     expect(map.totalUnits).toBe(1729 - 27 + 11 * FLIGHT_SCROLL.dwellUnits);
     expect(map.holds.map((h) => h.id)).toEqual(holds.map((h) => h.id));
-    for (const z of map.holds) expect(z.u1 - z.u0).toBe(FLIGHT_SCROLL.dwellUnits);
-    // About 36 screens on a 720 px viewport.
+    for (const z of map.holds) expect(z.u1 - z.u0).toBe(1);
+    // About 29 screens on a 720 px viewport (36 with the old 42-unit holds).
     const screens = (map.totalUnits * pxPerUnit(720)) / 720;
-    expect(screens).toBeGreaterThan(30);
-    expect(screens).toBeLessThan(42);
+    expect(screens).toBeGreaterThan(25);
+    expect(screens).toBeLessThan(33);
   });
 
-  it("stops at every hold frame and maps each back to the middle of its dwell", () => {
+  it("shows exactly the hold frame across its unit, and maps each back to the middle of it", () => {
     for (const z of map.holds) {
-      expect(uToFrame(map, z.u0 + 1)).toBe(z.frame);
-      expect(uToFrame(map, z.u1 - 1)).toBe(z.frame);
+      for (const u of [z.u0, z.uMid - 0.4, z.uMid, z.uMid + 0.4, z.u1]) expect(uToFrame(map, u)).toBe(z.frame);
       expect(frameToU(map, z.frame)).toBe(z.uMid);
     }
+  });
+
+  it("keeps the camera moving through a stop at a steady scroll (no dead stretch, no slow-down)", () => {
+    // The camera rig damps toward the scroll position (snap.ts SCROLL_DAMP = 5) at 60 frames a
+    // second; the scroll moves at a slow, steady 20 units a second (360 px/s on a 1080 px screen).
+    const speed = 20;
+    const dt = 1 / 60;
+    const gate = map.holds[0];
+    let target = gate.uMid - 60;
+    let u = target - speed / 5;
+    const frames: number[] = [];
+    while (target < gate.uMid + 60) {
+      target += speed * dt;
+      u += (target - u) * (1 - Math.exp(-5 * dt));
+      frames.push(uToFrame(map, u));
+    }
+    // The longest run of display frames with the camera standing still.
+    let run = 0;
+    let longest = 0;
+    for (let i = 1; i < frames.length; i++) {
+      run = frames[i] - frames[i - 1] < 1e-9 ? run + 1 : 0;
+      longest = Math.max(longest, run);
+    }
+    expect(longest * dt).toBeLessThanOrEqual(0.06);
+    // The time to pass the 20 frames around the stop against 20 frames of the leg before it.
+    const time = (f0: number, f1: number) => frames.filter((f) => f >= f0 && f < f1).length * dt;
+    expect(time(gate.frame - 40, gate.frame - 20) / time(gate.frame - 10, gate.frame + 10)).toBeGreaterThan(0.9);
   });
 
   it("is monotonic over the whole flight", () => {

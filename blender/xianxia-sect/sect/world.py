@@ -734,6 +734,22 @@ def _mat_moon_halo(g):
     g.output(g.add_shader(g.transparent(), em))
 
 
+# round 56 (docs/scene/form-r56.md, part C): the link stairways' side walls (world.link.*.rails, .foot_rail,
+# .rest_rail) baked as flat white sheets: marble_white's veins and blots are under a texel at the stairs' 3-20 texels a
+# metre, or barely change its value. They get their own marble, world_wall_marble (materials.wall_marble): marble_white's
+# base, veins and tint plus a grime gradient rising from the wall's foot, rain streaks hanging from under the coping and
+# soft panel joints every 2.0-2.4 m with one course line 0.3 m under the top, every feature 10 cm or wider. Mode 'B' reads
+# per-vertex wall coordinates (arch_gen / arch_dims, wall_coords) that _prisms_obj writes on a fresh build and
+# patch_r56_form writes on a built file; mode 'A' (the fallback) needs no attributes: marble_white with grime and
+# world-space vertical streaks. Slot 0 of the walls takes it; slot 1 (world_pier_stone, the .rails' undersides) stays.
+WALL_MATERIAL = "world_wall_marble"
+WALL_MATERIAL_R55 = "marble_white"          # until round 55
+WALL_MODE = "B"
+WALL_KINDS = {".rails": "ribbon", ".foot_rail": "prism", ".rest_rail": "prism"}   # object suffix -> its layout
+WALL_TOL = 2e-3            # m: wall_coords' layout tolerance (points the builder put at one place or height)
+WALL_COPING_TOL = 5e-3     # m: one side's top COPING under the other's, within this
+
+
 def _register_materials():
     M.register("world_cloud_sea", _mat_cloud_sea)
     M.register("world_cloud_fog", _mat_cloud_fog)
@@ -746,6 +762,17 @@ def _register_materials():
     # reads on top (they were stone_grey: pale, uniform, brighter than the halls; audit D1)
     M.variant("world_pier_stone", "rock_cliff", light="#8a8172", mid="#736c62", dark="#5e5a52",
               warm="#8a7a66", cool="#6c6e6c", moss_amt=0.5, joints=0.6)
+    M.register(WALL_MATERIAL, M.wall_marble, mode=WALL_MODE)
+
+
+def set_wall_mode(mode):
+    """Round 56: build world_wall_marble in ``mode`` ('A' or 'B') from now on, and rebuild it in place if the file has
+    it (patch_r56_form WALLS_MODE). Fresh builds after this call write the wall attributes only in mode 'B'."""
+    global WALL_MODE
+    if mode not in ("A", "B"):
+        raise ValueError("wall mode must be 'A' or 'B' (got %r)" % (mode,))
+    WALL_MODE = mode
+    M.register(WALL_MATERIAL, M.wall_marble, overwrite=True, mode=mode)
 
 
 _register_materials()
@@ -817,11 +844,34 @@ RIM_LIP = 0.5              # round 12: the underside starts this far under the r
                            # every edge of the range. Now the two are RIM_LIP apart everywhere
 
 
-def terrain_data(rng_, grid=None, lip=RIM_LIP):
+RIM_RULE = "corners"       # round 56 (docs/scene/form-r56.md, part A): near a terrace a top quad is grass only when all
+                           # four of its corners lie on the flat. Until round 55 ("diagonal", RIM_RULE_R55) only its
+                           # c00 and c11 corners were tested; the quad is split along that diagonal, so a grass quad
+                           # across the rim hung a green triangle 1-1.8 m past the flat, dropped 2.4-4 m per metre, and
+                           # the rock quads beside it poked up into the grass: the saw-tooth 'teeth' along every rim.
+                           # Now every quad across the rim is rock (its lip moss, materials.ROCK_LIP_MOSS, greens its
+                           # upper part); the grass ends on a level line on the flat. Only grass can turn to rock, and
+                           # only on quads with c00 and c11 on the flat and c01 or c10 off it
+RIM_RULE_R55 = "diagonal"
+
+
+def _rim_mats(nzc, in_c, near_c, flat_c):
+    """Top quad material (0 rock_cliff, 1 nature_soil_moss) from its normal z, all-corners-inside, near-a-terrace and
+    on-the-flat masks: green ledges away from the terraces, grass on the flat, rock everywhere else."""
+    green = (nzc > 0.8) & in_c & ~(near_c & ~flat_c)
+    return np.where(green | flat_c, 1, 0)
+
+
+def terrain_data(rng_, grid=None, lip=RIM_LIP, rim_rule=None):
     """build_terrain's mesh as arrays: dict(verts (n, 3), faces (m, 4) quads, mats, veg, grid, n_top, n_inside,
-    n_rim, n_lip). Vertices: the top's (inside and outline nodes, row by row), the underside's under the inside nodes,
-    then (with ``lip``) one more under each outline node. Faces: the top's, the underside's, then the lip's.
-    ``lip`` None: the knife edge built before round 12 (outline vertices shared, no lip; patch_r12_world's guard)."""
+    n_rim, n_lip, mats_r55, mats_r56, near_top). Vertices: the top's (inside and outline nodes, row by row), the
+    underside's under the inside nodes, then (with ``lip``) one more under each outline node. Faces: the top's, the
+    underside's, then the lip's. ``lip`` None: the knife edge built before round 12 (outline vertices shared, no lip;
+    patch_r12_world's guard). ``rim_rule``: RIM_RULE (default) or RIM_RULE_R55 picks 'mats'; 'mats_r55' and 'mats_r56'
+    are both rules' materials for every face, 'near_top' the near-a-terrace mask of the top quads (patch_r56_form)."""
+    rim_rule = RIM_RULE if rim_rule is None else rim_rule
+    if rim_rule not in (RIM_RULE, RIM_RULE_R55):
+        raise ValueError("rim_rule must be %r or %r (got %r)" % (RIM_RULE, RIM_RULE_R55, rim_rule))
     step = GRID if grid is None else grid
     x0, x1, y0, y1 = EXTENT
     xs = np.arange(x0, x1 + 1e-6, step)
@@ -900,18 +950,23 @@ def terrain_data(rng_, grid=None, lip=RIM_LIP):
     nrm = np.cross(d1, d2)
     nzc = nrm[:, 2] / np.maximum(np.linalg.norm(nrm, axis=1), 1e-9)
     near_c = f["near"][c00][cell] | f["near"][c11][cell]
-    flat_c = f["flat"][c00][cell] & f["flat"][c11][cell]
+    fl = f["flat"]
+    flat_diag = fl[c00][cell] & fl[c11][cell]                           # until round 55 (RIM_RULE_R55)
+    flat_all = flat_diag & fl[c01][cell] & fl[c10][cell]                # round 56 (RIM_RULE): all four corners
     in_c = inside[c00][cell] & inside[c01][cell] & inside[c11][cell] & inside[c10][cell]
-    green = (nzc > 0.8) & in_c & ~(near_c & ~flat_c)
-    mat_t = np.where(green | flat_c, 1, 0)
+    mat_r56 = _rim_mats(nzc, in_c, near_c, flat_all)
+    mat_r55 = _rim_mats(nzc, in_c, near_c, flat_diag)
+    mat_t = mat_r56 if rim_rule == RIM_RULE else mat_r55
     veg = (nzc > 0.78) & in_c & (~near_c) & (F[c00][cell] > 4.0)
     faces = np.concatenate([q_t, q_b, q_l])
-    mats = np.concatenate([mat_t, np.full(len(q_b) + len(q_l), 2)])
+    rest = np.full(len(q_b) + len(q_l), 2)
+    mats = np.concatenate([mat_t, rest])
     veg = np.concatenate([veg, np.zeros(len(q_b) + len(q_l), bool)])
     sink_chips(verts, faces)
     grid = dict(X=X, Y=Y, T=T, F=F, B=B, rim=rim, inside=inside)
     return dict(verts=verts, faces=faces, mats=mats, veg=veg, grid=grid, n_top=n_used, n_inside=n_in, n_rim=n_rim,
-                n_lip=len(q_l), n_qt=len(q_t), n_qb=len(q_b))
+                n_lip=len(q_l), n_qt=len(q_t), n_qb=len(q_b), mats_r55=np.concatenate([mat_r55, rest]),
+                mats_r56=np.concatenate([mat_r56, rest]), near_top=near_c)
 
 
 RANGE_CHIP_FACES = 200         # a loose part of the range with fewer faces than this is a chip: a few-m footprint the
@@ -1512,6 +1567,13 @@ BRIDGE_LANDING = 3.0       # level deck reaches this far past each end of the ar
 BRIDGE_CROWN = 2.5         # deck to intrados at the crown
 # chain bridge (W5)
 CHAIN_SAG = 2.0
+# round 56 (docs/scene/form-r56.md, part E): the plank bridge from the forge to the arena island hung only 2 m on a
+# 23.7 m climb over 113 m, so it read as a straight ramp. It hangs 5.5 m now: its free span (105 m between the level
+# ends) still rises all the way (slope 0.9 deg at the forge end, 23.5 deg at the arena end; 4 x sag must stay under the
+# 23.7 m climb or the deck dips first), every riser one plank's step (<= RISER) and every tread over TREAD_MIN
+FORGE_ARENA_SAG = 5.5
+LINK_SAG = {("forge", "arena"): FORGE_ARENA_SAG}     # (from, to) -> sag of that link's chain bridge
+LINK_SAG_R55 = {}                                    # until round 55: CHAIN_SAG everywhere
 CHAIN_LEVEL = 4.0          # level deck at each end (m)
 CHAIN_PLANK = 0.35         # plank spacing (m)
 CHAIN_W = 3.2
@@ -1824,13 +1886,14 @@ def _prism(q4, zb, zt):
            [(float(p[0]), float(p[1]), float(z)) for p, z in zip(q4, zt)]
 
 
-def _prisms_obj(name, coll, prisms, material, under=None, solids=(), smooth_solids=False):
+def _prisms_obj(name, coll, prisms, material, under=None, solids=(), smooth_solids=False, wall=None):
     """One mesh object from closed 8-corner prisms (see _prism) and closed quad solids ((verts,
     faces), see _ribbon). ``under``: a second material for the prisms' bottom faces (the stairs'
     undersides) and the solids' (with ``smooth_solids``; their first face of every four, _ribbon's
     bottoms). Every face is flat-shaded, except with ``smooth_solids``: the solids then shade smooth
     along their run, sharp along the corners of their cross-section and round their end caps
-    (_ribbon_sharp)."""
+    (_ribbon_sharp). ``wall``: 'ribbon' or 'prism' (WALL_KINDS): a link wall; in WALL_MODE 'B' its wall
+    coordinates are written (wall_attrs, round 56)."""
     verts, faces, mats, smooth, sharp = [], [], [], [], []
     for c in prisms:
         base = len(verts)
@@ -1855,17 +1918,173 @@ def _prisms_obj(name, coll, prisms, material, under=None, solids=(), smooth_soli
         me = ob.data
         if len(me.polygons) != len(smooth) or len(me.vertices) != len(verts):
             _log("WARN", name, "lost faces in validate: left flat-shaded")
-            return ob
-        me.polygons.foreach_set("use_smooth", np.array(smooth, bool))
-        ev = np.empty(len(me.edges) * 2, np.int32)
-        me.edges.foreach_get("vertices", ev)
-        ev = np.sort(ev.reshape(-1, 2), axis=1)
-        keys = {(min(a, b), max(a, b)) for a, b in sharp}
-        flags = np.array([(int(a), int(b)) in keys for a, b in ev], bool)
-        at = me.attributes.get("sharp_edge") or me.attributes.new("sharp_edge", "BOOLEAN", "EDGE")
-        at.data.foreach_set("value", flags)
-        me.update()
+        else:
+            me.polygons.foreach_set("use_smooth", np.array(smooth, bool))
+            ev = np.empty(len(me.edges) * 2, np.int32)
+            me.edges.foreach_get("vertices", ev)
+            ev = np.sort(ev.reshape(-1, 2), axis=1)
+            keys = {(min(a, b), max(a, b)) for a, b in sharp}
+            flags = np.array([(int(a), int(b)) in keys for a, b in ev], bool)
+            at = me.attributes.get("sharp_edge") or me.attributes.new("sharp_edge", "BOOLEAN", "EDGE")
+            at.data.foreach_set("value", flags)
+            me.update()
+    if wall and WALL_MODE == "B":
+        try:
+            wall_attrs(ob, wall)
+        except ValueError as exc:
+            _log("WARN", name, "wall coordinates not written (world_wall_marble shows plain marble there):", exc)
     return ob
+
+
+def wall_coords(co, faces, kind):
+    """Round 56: per-vertex wall coordinates of a link wall mesh (WALL_KINDS), read from its own vertices, for
+    world_wall_marble in mode 'B': arch_gen = (metres along the run / run length, 0 inner or 1 outer, 0 at the wall's
+    foot or 1 at its top), arch_dims = (run length, wall thickness, height of that vertex's side: foot to its top).
+    Inner is the side whose top stands COPING over the other's (the coping falls to the outer face).
+
+    ``co`` (n, 3) the mesh's vertices, ``faces`` its faces (vertex index sequences). Every loose part must have exactly
+    the layout its builder lays down, else ValueError (patch_r56_form stops; WALLS_MODE=A needs no attributes):
+    - 'ribbon' (_ribbon, the .rails): 4 vertices per station (l0 bottom, l1 bottom, l0 top, l1 top), l0 / l1 tops
+      over their bottoms, both bottoms at one height, one top COPING under the other (the same side at every station),
+      the thickness the same at every station, the faces exactly _ribbon's (4 per segment and 2 end caps);
+    - 'prism' (_prism, the .foot_rail and .rest_rail walls): 8 vertices, the 4 bottom corners at one height then the
+      4 tops over them, two adjacent tops COPING under the other two, the faces exactly _BOX_FACES.
+    Returns (gen (n, 3), dims (n, 3), parts [(kind, first vertex, vertex count, run length, thickness)])."""
+    co = np.asarray(co, float).reshape(-1, 3)
+    n = len(co)
+    F = [tuple(int(i) for i in f) for f in faces]
+    if not n or not F:
+        raise ValueError("no geometry")
+    if kind not in ("ribbon", "prism"):
+        raise ValueError("unknown wall layout %r" % (kind,))
+    if any(len(f) != 4 for f in F):
+        raise ValueError("faces that are not quads (%d)" % sum(1 for f in F if len(f) != 4))
+    Fa = np.array(F, np.int64)
+    lab = vertex_parts(n, Fa)
+    gen = np.zeros((n, 3))
+    dims = np.zeros((n, 3))
+    done = np.zeros(n, bool)
+    face_of = {}
+    for f in F:
+        face_of.setdefault(int(lab[f[0]]), set()).add(tuple(sorted(f)))
+    parts = []
+    tol, ctol = WALL_TOL, WALL_COPING_TOL
+    for b in sorted(set(lab.tolist())):
+        idx = np.nonzero(lab == b)[0]
+        cnt = len(idx)
+        if idx[0] != b or idx[-1] != b + cnt - 1:
+            raise ValueError("loose part at vertex %d is not one block of vertices" % b)
+        got = face_of.get(b, set())
+        if kind == "ribbon":
+            if cnt % 4 or cnt < 8:
+                raise ValueError("ribbon part at %d: %d vertices (want 4 per station, 2 stations or more)" % (b, cnt))
+            m = cnt // 4
+            P = co[b:b + cnt].reshape(m, 4, 3)
+            if np.abs(P[:, 0, :2] - P[:, 2, :2]).max() > tol or np.abs(P[:, 1, :2] - P[:, 3, :2]).max() > tol:
+                raise ValueError("ribbon part at %d: a top is not over its bottom" % b)
+            if np.abs(P[:, 0, 2] - P[:, 1, 2]).max() > tol:
+                raise ValueError("ribbon part at %d: its two bottoms differ in height" % b)
+            dz = P[:, 2, 2] - P[:, 3, 2]
+            if np.abs(np.abs(dz) - COPING).max() > ctol or not (np.all(dz > 0) or np.all(dz < 0)):
+                raise ValueError("ribbon part at %d: no COPING fall to one side at every station" % b)
+            if (P[:, 2:, 2].min(axis=1) - P[:, :2, 2].max(axis=1)).min() < 0.1:
+                raise ValueError("ribbon part at %d: a top is not over its bottom by 0.1 m" % b)
+            w = np.linalg.norm(P[:, 1, :2] - P[:, 0, :2], axis=1)
+            if np.ptp(w) > 2.0 * tol or not 0.2 < w.mean() < 1.0:
+                raise ValueError("ribbon part at %d: thickness %.3f..%.3f m" % (b, w.min(), w.max()))
+            want = set()
+            for i in range(m - 1):
+                p, q = b + 4 * i, b + 4 * (i + 1)
+                for f in ((p, p + 1, q + 1, q), (p + 2, q + 2, q + 3, p + 3), (p, q, q + 2, p + 2),
+                          (p + 1, p + 3, q + 3, q + 1)):
+                    want.add(tuple(sorted(f)))
+            e = b + 4 * (m - 1)
+            want |= {tuple(sorted((b, b + 2, b + 3, b + 1))), tuple(sorted((e, e + 1, e + 3, e + 2)))}
+            if got != want:
+                raise ValueError("ribbon part at %d: faces are not _ribbon's (%d extra, %d missing)" % (
+                    b, len(got - want), len(want - got)))
+            mid = 0.5 * (P[:, 0, :2] + P[:, 1, :2])
+            s = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(mid, axis=0), axis=1))])
+            L = float(s[-1])
+            if L < 0.1:
+                raise ValueError("ribbon part at %d: %.3f m long" % (b, L))
+            outer_l1 = bool(dz[0] > 0)              # l0's top is the higher: l0 inner, l1 outer
+            h0, h1 = P[:, 2, 2] - P[:, 0, 2], P[:, 3, 2] - P[:, 1, 2]
+            G = np.zeros((m, 4, 3))
+            D = np.zeros((m, 4, 3))
+            G[:, :, 0] = (s / L)[:, None]
+            for k in range(4):
+                side = k % 2                         # 0: l0, 1: l1
+                G[:, k, 1] = float(side == 1) if outer_l1 else float(side == 0)
+                G[:, k, 2] = 0.0 if k < 2 else 1.0
+                D[:, k, 0] = L
+                D[:, k, 1] = w.mean()
+                D[:, k, 2] = h1 if side else h0
+            gen[b:b + cnt] = G.reshape(-1, 3)
+            dims[b:b + cnt] = D.reshape(-1, 3)
+            parts.append(("ribbon", b, cnt, L, float(w.mean())))
+        else:
+            if cnt != 8:
+                raise ValueError("prism part at %d: %d vertices (want 8)" % (b, cnt))
+            Bv, Tv = co[b:b + 4], co[b + 4:b + 8]
+            if np.abs(Bv[:, :2] - Tv[:, :2]).max() > tol:
+                raise ValueError("prism part at %d: a top is not over its bottom" % b)
+            if np.ptp(Bv[:, 2]) > tol:
+                raise ValueError("prism part at %d: its bottom corners differ in height" % b)
+            order = np.argsort(-Tv[:, 2], kind="stable")
+            hi, lo = sorted(order[:2].tolist()), sorted(order[2:].tolist())
+            if abs(Tv[hi[0], 2] - Tv[hi[1], 2]) > tol or abs(Tv[lo[0], 2] - Tv[lo[1], 2]) > tol or \
+                    abs(Tv[hi[0], 2] - Tv[lo[0], 2] - COPING) > ctol:
+                raise ValueError("prism part at %d: no COPING fall from two tops to the other two" % b)
+            if (hi[1] - hi[0]) % 4 not in (1, 3):
+                raise ValueError("prism part at %d: its two high tops are not on one side" % b)
+            i0, i1 = (hi[0], hi[1]) if (hi[1] - hi[0]) % 4 == 1 else (hi[1], hi[0])   # i1 follows i0 (CCW)
+            o0 = (i0 - 1) % 4                                # the outer corner beside i0
+            u = Bv[i1, :2] - Bv[i0, :2]
+            L = float(np.linalg.norm(u))
+            if L < 0.1:
+                raise ValueError("prism part at %d: %.3f m long" % (b, L))
+            u = u / L
+            ac = np.array([-u[1], u[0]])
+            w = abs(float((Bv[o0, :2] - Bv[i0, :2]) @ ac))
+            if not 0.2 < w < 1.0:
+                raise ValueError("prism part at %d: thickness %.3f m" % (b, w))
+            want = {tuple(sorted(b + i for i in f)) for f in _BOX_FACES}
+            if got != want:
+                raise ValueError("prism part at %d: faces are not _BOX_FACES (%d extra, %d missing)" % (
+                    b, len(got - want), len(want - got)))
+            for c in range(4):
+                x = float((Bv[c, :2] - Bv[i0, :2]) @ u) / L
+                y = 0.0 if c in (i0, i1) else 1.0
+                h = float(Tv[c, 2] - Bv[c, 2])
+                gen[b + c] = (x, y, 0.0)
+                gen[b + 4 + c] = (x, y, 1.0)
+                dims[b + c] = dims[b + 4 + c] = (L, w, h)
+            parts.append(("prism", b, cnt, L, w))
+        done[b:b + cnt] = True
+    if not done.all():
+        raise ValueError("%d vertices in no face" % int((~done).sum()))
+    return gen, dims, parts
+
+
+def wall_attrs(ob, kind):
+    """Write wall_coords' arch_gen / arch_dims (POINT FLOAT_VECTOR, as lib/arch.py writes them; bake_web copies both
+    into the joined bake mesh) on the link wall ``ob`` from its own mesh. Returns wall_coords' parts."""
+    me = ob.data
+    co = np.empty(len(me.vertices) * 3, np.float32)
+    me.vertices.foreach_get("co", co)
+    gen, dims, parts = wall_coords(co.astype(np.float64).reshape(-1, 3), [tuple(p.vertices) for p in me.polygons],
+                                   kind)
+    for nm, val in (("arch_gen", gen), ("arch_dims", dims)):
+        at = me.attributes.get(nm)
+        if at is not None and (at.domain != 'POINT' or at.data_type != 'FLOAT_VECTOR'):
+            me.attributes.remove(at)
+            at = None
+        if at is None:
+            at = me.attributes.new(nm, 'FLOAT_VECTOR', 'POINT')
+        at.data.foreach_set("vector", val.astype(np.float32).ravel())
+    me.update()
+    return parts
 
 
 def _ribbon_sharp(m):
@@ -2267,10 +2486,15 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True, r11=False):
             arch_pr.append(_prism(q4, [bot[k], bot[k + 1], bot[k + 1], bot[k]],
                                   [topa[k], topa[k + 1], topa[k + 1], topa[k]]))
     # (the treads' and parapets' undersides in the supports' stone: a white soffit read as a lit band
-    # under every flight)
+    # under every flight). Round 56: the side walls (.rails, .foot_rail, .rest_rail) in WALL_MATERIAL with their wall
+    # coordinates (r11: as round 11 built them, marble_white)
+    wall_mat = WALL_MATERIAL_R55 if r11 else WALL_MATERIAL
+
+    def wall(suffix):
+        return None if r11 else WALL_KINDS[suffix]
     objs = [_prisms_obj(nm + ".stairs", coll, treads, "marble_white", under="world_pier_stone"),
-            _prisms_obj(nm + ".rails", coll, [], "marble_white", under="world_pier_stone", solids=rails,
-                        smooth_solids=True),
+            _prisms_obj(nm + ".rails", coll, [], wall_mat, under="world_pier_stone", solids=rails,
+                        smooth_solids=True, wall=wall(".rails")),
             _prisms_obj(nm + ".piers", coll, piers, "world_pier_stone", solids=footing),
             _prisms_obj(nm + ".arch", coll, arch_pr, "world_pier_stone")]
     extras = []
@@ -2318,7 +2542,7 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True, r11=False):
                 walls.append(_prism(_strip(cb, nb, 0, 2, l0, l1), zb_, cop))
                 l0, l1 = (lat, ho - RAIL_W) if sd > 0 else (-ho + RAIL_W, -lat)
                 walls.append(_prism(_strip(cb, nb, 1, 2, l0, l1), zb_, [top, top - COPING, top - COPING, top]))
-            objs.append(_prisms_obj(nm + ".foot_rail", coll, walls, "marble_white"))
+            objs.append(_prisms_obj(nm + ".foot_rail", coll, walls, wall_mat, wall=wall(".foot_rail")))
         if A is not None:
             try:
                 with _low_roofs(A):
@@ -2366,14 +2590,15 @@ def _stairway(rng_, coll, seg, nm, pa, pb, arch_extras=True, r11=False):
         t_out = _chord_lateral(cw, nw, A_ + mo * REVEAL, B_ + mo * REVEAL)
         t_in = _chord_lateral(cw, nw, A_ + mo * (REVEAL + RAIL_W), B_ + mo * (REVEAL + RAIL_W))
         lo, hi = (t_in, t_out) if side > 0 else (t_out, t_in)
-        wall = [_prism(_strip_l(cw, nw, 0, 1, lo, hi), zw, [zt, zt, zo, zo] if side > 0 else [zo, zo, zt, zt])]
+        wall_list = [_prism(_strip_l(cw, nw, 0, 1, lo, hi), zw, [zt, zt, zo, zo] if side > 0 else [zo, zo, zt, zt])]
         for a_, b_, cop in ((qa + REVEAL, qa + REVEAL + RAIL_W, [zo, zt, zt, zo]),
                             (qb - REVEAL - RAIL_W, qb - REVEAL, [zt, zo, zo, zt])):
             cc, nn, _ = _frame(s, xy, yaw, [a_, b_])
             e_in = np.full(2, side * lat)
             e_out = _chord_lateral(cc, nn, A_ + mo * (REVEAL + RAIL_W), B_ + mo * (REVEAL + RAIL_W))
-            wall.append(_prism(_strip_l(cc, nn, 0, 1, *((e_in, e_out) if side > 0 else (e_out, e_in))), zw, cop))
-        objs.append(_prisms_obj(nm + ".rest_rail", coll, wall, "marble_white"))
+            wall_list.append(_prism(_strip_l(cc, nn, 0, 1, *((e_in, e_out) if side > 0 else (e_out, e_in))), zw,
+                                    cop))
+        objs.append(_prisms_obj(nm + ".rest_rail", coll, wall_list, wall_mat, wall=wall(".rest_rail")))
         pc = cr[2] + nr[2] * side * (lat + REST_DEPTH * 0.5)
         hpc, _, _ = _ground(rng_, np.array([pc[0]]), np.array([pc[1]]), grid=PLAN_GRID)
         if zl - float(hpc[0]) > PIER_GAP:
@@ -2983,7 +3208,8 @@ def build_connectors(rng_, coll):
         if seg["mass"]:
             objs, rep, geo = _stairway(rng_, coll, seg, nm, pa, pb)
         elif kb in FLOATING:
-            objs, rep, geo = _chain_bridge(rng_, coll, pa["p"], pb["p"], nm + ".bridge")
+            objs, rep, geo = _chain_bridge(rng_, coll, pa["p"], pb["p"], nm + ".bridge",
+                                           sag=LINK_SAG.get((ka, kb), CHAIN_SAG))
         else:
             # the plan table's depart is the rear landing's centre; an area's own depart is
             # where the stones start

@@ -211,22 +211,29 @@ describe("gradeLinear", () => {
     gradeLinear(c, neutral).forEach((v, i) => expect(v).toBeCloseTo(c[i], 9));
   });
 
-  it("emits a GLSL function with the look's numbers", () => {
+  it("emits a GLSL function with the look's numbers, which the look's uniform array can override", () => {
     const src = gradeGlsl();
     expect(src).toContain("vec3 sectGrade( vec3 c )");
-    expect(src).toContain("c *= 1.4200000;");
-    expect(src).toContain("0.18");
+    // Built with today's numbers; the journey's switch (uSectLook) swaps in its own at run time.
+    expect(src).toMatch(/#define SECT_GRADE_EXPOSURE \( \( uSectLook\[ 8 \]\.w > 0\.5 \) \? uSectLook\[ 8 \]\.x : 1\.4200000 \)/);
+    expect(src).toContain("c *= SECT_GRADE_EXPOSURE;");
+    expect(src).toContain(": 0.18");
+    expect(src).toContain("uniform vec4 uSectLook[ 17 ];");
     expect(src).not.toMatch(/NaN|undefined/);
   });
 
   it("lets a material keep green's lead (SECT_KEEP_GREEN skips the green tame)", () => {
     const src = gradeGlsl();
-    expect(src).toContain("#ifndef SECT_KEEP_GREEN\n  c.g -= max( c.g - max( c.r, c.b ), 0.0 ) * ");
-    expect(src).toMatch(/c\.g -= max\( c\.g - max\( c\.r, c\.b \), 0\.0 \) \* [0-9.]+;\n#endif\n/);
+    // The stops' tame is none where a material keeps green (sectGradeTame), else the look's.
+    expect(src).toContain("#ifdef SECT_KEEP_GREEN\n  return 0.0;\n#else\n  return SECT_GRADE_TAME;\n#endif");
+    expect(src).toContain("return sectGradeWith( c, sectGradeTame(), sh.rgb, sh.w );");
+    expect(src).toContain("c.g -= max( c.g - max( c.r, c.b ), 0.0 ) * tame;");
     const jade: Vec3 = [0.021, 0.246, 0.064];
     const tamed = gradeLinear(jade);
     const kept = gradeLinear(jade, { ...SECT_LOOK.grade, greenTame: 0 });
-    expect(tamed[1]).toBeLessThanOrEqual(Math.max(tamed[0], tamed[2]) + 1e-9);
+    // The tame takes a share of green's lead (greenTame); keeping green skips that.
+    const lead = (c: Vec3) => c[1] - Math.max(c[0], c[2]);
+    expect(lead(tamed)).toBeLessThan(lead(kept) * 0.7);
     expect(kept[1]).toBeGreaterThan(Math.max(kept[0], kept[2]) * 1.5);
   });
 });
@@ -366,7 +373,9 @@ describe("near pine shade", () => {
     expect(luma(out)).toBeCloseTo(luma(slate), 9);
     expect(out[1]).toBeGreaterThan(out[0]);
     expect(out[1]).toBeGreaterThan(out[2]);
-    expect(out[2]).toBeLessThan(slate[2]);
+    // The softer grade leaves the shade olive with little blue, so the shade colour's hue raises blue
+    // a touch; green's lead over blue still grows.
+    expect(out[1] - out[2]).toBeGreaterThan(slate[1] - slate[2]);
   });
 
   it("leaves bark and blossom (red-led texels) and lit needles as graded", () => {
