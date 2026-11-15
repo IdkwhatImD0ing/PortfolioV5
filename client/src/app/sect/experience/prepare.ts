@@ -49,6 +49,7 @@ import { anyMissingColor, REPAIR_SLICE, repairColorSteps } from "@/lib/sect/vert
 import {
   bakedDetail,
   commitBuilt,
+  isTreeCardMaterial,
   markBuiltSliced,
   patchCardMaterial,
   patchMaterial,
@@ -722,6 +723,7 @@ function* prepareSteps(root: Object3D, opts: PrepareOptions): Generator<void, Pr
   const mergeable: Mesh[] = [];
   let farRock: Material | null = null;
   let standInRock: Material | null = null;
+  const standInCards = new Map<Material, Material>();
 
   for (const mesh of meshes) {
     yield;
@@ -769,6 +771,20 @@ function* prepareSteps(root: Object3D, opts: PrepareOptions): Generator<void, Pr
         standInRock.defines = { ...(mat.defines ?? {}), SECT_FAR_SET: "", SECT_STANDIN: "" };
       }
       mat = standInRock;
+    } else if (isTreeCardMaterial(mat) && proxyOf(mesh) !== null) {
+      // An area's stand-in trees. In the file they share one card material with the backdrop's own far trees.
+      // The crown shells cut the far trees' cards past a distance through a uniform on that material
+      // (veg-mesh.ts setCardFarCut), and stand-ins have no shells: on a copy with its own uniform they keep
+      // their cards. Sharing it left the far spires bare on High.
+      let copy = standInCards.get(mat);
+      if (!copy) {
+        copy = mat.clone();
+        const own = { ...mat.userData };
+        delete own.sectCardFar;
+        copy.userData = own;
+        standInCards.set(mat, copy);
+      }
+      mat = copy;
     }
     mat = prepMaterial(mat);
 

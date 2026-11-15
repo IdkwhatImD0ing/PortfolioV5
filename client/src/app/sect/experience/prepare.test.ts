@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { BoxGeometry, BufferAttribute, type BufferGeometry, Group, Mesh, MeshBasicMaterial, type Object3D, SphereGeometry, Texture } from "three";
+import { BoxGeometry, BufferAttribute, type BufferGeometry, Group, Mesh, MeshBasicMaterial, type Object3D, SphereGeometry, Texture, Vector2, Vector3 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { boundsSliced, disposeObjects, imageClosed, isFarSetMesh, mergeSliced, PREPARE_SLICE_MS, prepareScene, prepareSceneSliced, sliceBudget, type PrepareOptions } from "./prepare";
+import { boundsSliced, disposeObjects, imageClosed, isFarSetMesh, mergeSliced, PREPARE_SLICE_MS, prepareScene, prepareSceneSliced, proxyOf, sliceBudget, type PrepareOptions } from "./prepare";
+import { farCardMeshes, setCardFarCut } from "./veg-mesh";
 
 /** A stand-in-like scene: rows of small static meshes sharing two materials (they merge per cell). */
 function scene(): Object3D {
@@ -279,5 +280,44 @@ describe("the backdrop's far set", () => {
     expect(isFarSetMesh(under("backdropfar", "farglow"))).toBe(false);
     expect(isFarSetMesh(under("proxyabode", "proxyabodec0"))).toBe(false);
     expect(isFarSetMesh(under("sect.gate", "farc0"))).toBe(false);
+  });
+});
+
+describe("the backdrop's stand-in trees", () => {
+  // backdrop_trees.glb.gz: the far trees and every area's stand-in trees are meshes of ONE card material.
+  const build = (proxyFirst: boolean) => {
+    const root = new Group();
+    const cards = new MeshBasicMaterial({ name: "trees.cards.backdrop", map: new Texture(), alphaTest: 0.5 });
+    const far = new Mesh(new BoxGeometry(1, 1, 1), cards);
+    const standIn = new Group();
+    standIn.userData = { proxyOf: "steles" };
+    standIn.add(new Mesh(new BoxGeometry(1, 1, 1), cards));
+    if (proxyFirst) root.add(standIn, far);
+    else root.add(far, standIn);
+    const result = prepareScene(root, { ...options(), cards: { alphaToCoverage: false, sunDir: new Vector3(0, 1, 0) } });
+    const mats = { far: [] as MeshBasicMaterial[], standIn: [] as MeshBasicMaterial[] };
+    root.traverse((o) => {
+      const m = o as Mesh;
+      if (m.isMesh) (proxyOf(m) === null ? mats.far : mats.standIn).push(m.material as MeshBasicMaterial);
+    });
+    return { root, result, ...mats };
+  };
+  const cut = (m: MeshBasicMaterial) => (m.userData.sectCardFar as { value: Vector2 }).value.toArray();
+
+  it.each([true, false])("keep their cards when the crown shells cut the far trees' (stand-in first: %s)", (proxyFirst) => {
+    const { root, result, far, standIn } = build(proxyFirst);
+    expect(far).toHaveLength(1);
+    expect(standIn).toHaveLength(1);
+    // Their own material, still a tree card's (same name, same program, switched with the other cards).
+    expect(standIn[0]).not.toBe(far[0]);
+    expect(standIn[0].name).toBe("trees.cards.backdrop");
+    expect(standIn[0].customProgramCacheKey()).toBe(far[0].customProgramCacheKey());
+    expect(result.cardMaterials).toEqual(expect.arrayContaining([far[0], standIn[0]]));
+    // What veg.tsx does once the backdrop's shells are in: only the far trees' cards are cut.
+    const hidden = farCardMeshes([root], new Map());
+    expect(hidden.map((m) => m.material)).toEqual([far[0]]);
+    setCardFarCut(hidden, 150, 230);
+    expect(cut(far[0])).toEqual([150, 230]);
+    expect(cut(standIn[0])).toEqual([0, 0]);
   });
 });

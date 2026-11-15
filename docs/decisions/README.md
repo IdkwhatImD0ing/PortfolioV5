@@ -978,6 +978,20 @@ commit had stored outside LFS.
 commit message for keys and private data, and every file for its kind, its size and text hidden inside it.
 Nothing was found that had to stay out.
 
+### 2026-11-14 · Stand-in trees keep their cards
+
+**Decided.** The backdrop's stand-in trees get their own copy of the tree card material, so the distance past
+which the crown shells take over from the cards applies to the backdrop's own far trees only.
+
+**Why.** An independent review of the pull request found that both kinds of tree share one material in the
+backdrop's file. The cut was set on that material, and stand-ins have no shells. On High every far stand-in lost
+its trees: at the gate, the first thing a visitor sees, the far spires were bare.
+
+**Checked.** A capture at the gate before and after, and a test that builds the shared material as the file has
+it. The summit view did not change by a pixel.
+
+**See.** "Stand-in trees keep their cards" in [`../sect/veg-shells.md`](../sect/veg-shells.md).
+
 ### 2026-11-14 · Scrolling snaps to a scene, and no longer sticks on one
 
 **Decided.** A stop is no longer a stretch of the scroll where the camera stands still. Each stop keeps one scroll

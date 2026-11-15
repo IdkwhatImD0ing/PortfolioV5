@@ -146,6 +146,27 @@ the lumps are harmless and nearly invisible at their present strength. Making fa
 canopy needs real crown shapes (cards baked from the new leafy trees, or shells with gaps), which is
 a Blender job, not more shader.
 
+## Stand-in trees keep their cards (2026-11-14)
+
+An area that is not loaded shows as a stand-in from the backdrop: its rock, its buildings and its
+trees as cards. Stand-in trees get no shells, because an area's shells come with its own files.
+
+They lost their cards anyway. In `backdrop_trees.glb.gz` the backdrop's own far trees and all eleven
+areas' stand-in trees are meshes of one material, `trees.cards.backdrop`. The switch distance is a
+uniform on the material (`setCardFarCut`), and `farCardMeshes` leaves the stand-in meshes out, but
+the material it set the distance on was theirs too. So on High every stand-in tree further than
+150 to 230 m was cut and nothing drew in its place. At the gate the far spires stood bare.
+
+An independent review of the pull request found it by reading the code, and a capture confirmed it.
+
+- `prepare.ts` now gives stand-in tree meshes their own copy of the card material, with its own
+  switch-distance uniform that stays at 0. It is the same shader, so no extra program is built.
+- A test in `prepare.test.ts` builds the far trees and a stand-in on one shared material, as the
+  file has them, and checks that the cut reaches the far trees only. The older test in
+  `veg-mesh.test.ts` gave every mesh a material of its own, which is why it did not catch this.
+- Checked in a capture on High, 1600 x 900: at the gate the spires have their trees again
+  (4,249 pixels change, all among the far stand-ins), and the summit view is the same to the pixel.
+
 ## Not done
 
 - Near trees are still the baked models. From close up some read as low-polygon lumps.
