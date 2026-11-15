@@ -168,7 +168,8 @@ Every reader compares the version with the one it last used, so a frame where no
 nothing:
 
 - Atmosphere: the sky dome's gradient, clouds, coverage, stars and sun, the reflections' sky
-  (`SECT_ENV`), the cloud sea, the moon and its halo, the land's haze colour (`scene.fog.color`)
+  (`SECT_ENV`), the cloud sea, the moon and its halo, the land's haze colour (`scene.fog.color`),
+  the effects' haze colour (`SECT_HAZE_COLOR`, kept the same as the land's)
   and the haze per stop (`scene.fog.density`), and the shared uniforms below (`pushLookGpu`).
 - The twilight is part of it. Today's blend toward `SECT_LOOK.twilight` from the scroll to the
   summit still runs by frame, but from the journey's colours to the journey's twilight colours.
@@ -220,8 +221,9 @@ shared uniform array, `uSectLook` (17 vec4s, `client/src/lib/sect/look-gpu.ts` p
 The haze and the grade each have a switch in the array. Off (the default, and what any material
 the page never handed the array reads), every shader uses the numbers it was built with. Only the
 journey turns them on. Stars are built into the sky once (with a look or the journey) and scaled by
-a `uStars` uniform. The tree cards' rim, the ponds' sky and the haze colour of the waterfall mist
-and the light beams are shared uniforms too.
+a `uStars` uniform. The tree cards' rim, the ponds' sky and the effects' haze colour
+(the waterfalls' mist, spray and puffs, the light beams, the furnace mouths, the cranes, birds and
+butterflies) are shared uniforms too.
 
 The surfaces' grade shoulder (`grade.shoulder`, where highlights start to roll off) is in
 `uSectLook` too, and it is a journey lever, since the day look sets it.
@@ -239,7 +241,11 @@ every lever a look sets is in exactly one of the two lists.
 - Low has no post pass. The same grade (`glsl.ts` `sectLookGrade`) runs at the end of every shader
   that draws to the screen there: in the fog chunk just before the hue clip (all baked surfaces,
   the waterfalls, grass and veg shells), and before the colour encode in the sky, the cloud sea,
-  the moon, the cloud puffs and the mist. On High and Mid that code is folded away. So a forced
+  the moon, the cloud puffs and the mist, and since 2026-11-15 in the cranes, birds, butterflies,
+  petals, incense smoke, furnace mouths and the waterfalls' spray and mist puffs. Additive lights
+  (flames, embers, fireflies, beams, shafts, the formation's dome, glows) take no grade there: a
+  shader that only adds light cannot grade it together with what it lands on. On High and Mid
+  that code is folded away. So a forced
   look such as `?look=moon` grades the whole frame on Low, the land as well as the sky.
 - Low still has no bloom, shafts, contact shade, finish or vignette, so it is paler than High at
   the same stop (bright paving reads near white at the forge and the gate).
@@ -336,8 +342,11 @@ other ten stops are copies of journey3's.
 - The shafts' air density follows the haze per stop but not each look's near haze
   (`haze.densityScale`), so the shafts are a little weaker in thick-haze looks than a forced look
   shows them.
-- Small fogged effects outside the list above (flames, petals, fireflies, spray) keep today's haze
-  constants and get no Low-tier frame grade.
+- Fixed on 2026-11-15: the small fogged effects (furnace mouths, petals, cranes, birds, spray) kept
+  today's haze numbers and colour for the whole flight and got no Low-tier frame grade, because
+  their materials were never handed the look array. What is left: additive lights get no Low-tier
+  grade, and on Low the grade has no hue clip after it, so a very bright petal tip can go white
+  at night where High keeps it pink.
 - Arriving at a stop used to freeze the page for 0.1 to 1.3 s on High while the live light's
   shader programs loaded. That is fixed ("Lighting a stop without freezing the page" in
   [`live-gate.md`](live-gate.md)). Why those waits were longer with the journey on was never

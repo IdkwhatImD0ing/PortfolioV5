@@ -26,11 +26,12 @@ import {
   type Object3D,
 } from "three";
 import { craneFlights, cranePose, PETAL_STRIDE, PETAL_WIND, petalSeeds } from "@/lib/sect/fx";
-import { fogLibrary, type FogConstants } from "@/lib/sect/glsl";
+import { fogLibrary, SCREEN_GRADE_GLSL, SCREEN_GRADE_PARS, type FogConstants } from "@/lib/sect/glsl";
 import { breathe } from "@/lib/sect/idle";
 import { SECT_LOOK } from "@/lib/sect/look";
 import type { SectMeta, Vec3 } from "@/lib/sect/types";
 import type { LoadedSet } from "./assets";
+import { SECT_LOOK_GPU, sharedHazeColor } from "./materials";
 import { keepShaderProgramsBeforeFree, materialsOf, primePrograms, programsReady } from "./program-prime";
 import type { SectStore } from "./store";
 
@@ -96,7 +97,8 @@ function usePrimed(object: Object3D | null, post: boolean): RefObject<boolean> {
   return primed;
 }
 
-function petalMaterial(sunDir: Vector3): ShaderMaterial {
+/** The petals (exported, with the other materials here, for the tests). */
+export function petalMaterial(sunDir: Vector3): ShaderMaterial {
   const p = SECT_LOOK.petals;
   return new ShaderMaterial({
     name: "sect.petals",
@@ -112,6 +114,8 @@ function petalMaterial(sunDir: Vector3): ShaderMaterial {
       uColorA: { value: new Color(p.colorA) },
       uColorB: { value: new Color(p.colorB) },
       uSun: { value: sunDir },
+      // The look's frame grade, for the Low tier's screen.
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec3 iSeed;
@@ -156,6 +160,7 @@ varying vec2 vUv;
 varying float vMix;
 varying float vShade;
 varying float vFade;
+${SCREEN_GRADE_PARS}
 void main() {
   // A peach petal: an egg shape with a small notch at the wide end.
   vec2 q = vUv;
@@ -170,6 +175,7 @@ void main() {
   col *= 1.0 - 0.08 * ( 1.0 - smoothstep( 0.0, 0.07, abs( q.x ) ) ) * smoothstep( -0.8, 0.4, q.y );
   col *= vShade;
   gl_FragColor = vec4( col, a * 0.92 );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
@@ -214,7 +220,7 @@ export function Petals({ count, store, sunDir }: { count: number; store: SectSto
   return built ? <primitive object={built.mesh} /> : null;
 }
 
-function craneMaterial(fog: FogConstants, fogColor: string): ShaderMaterial {
+export function craneMaterial(fog: FogConstants, fogColor: string): ShaderMaterial {
   return new ShaderMaterial({
     name: "sect.cranes",
     transparent: true,
@@ -224,7 +230,9 @@ function craneMaterial(fog: FogConstants, fogColor: string): ShaderMaterial {
       uColor: { value: new Color(SECT_LOOK.cranes.color) },
       uDark: { value: new Color(SECT_LOOK.cranes.dark) },
       uCrown: { value: new Color(SECT_LOOK.cranes.crown) },
-      uFogColor: { value: new Color(fogColor) },
+      // The land's haze and the look's numbers (materials.ts), so far cranes fade as the land does.
+      uFogColor: sharedHazeColor(fogColor),
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec3 iPos;
@@ -297,6 +305,7 @@ void main() {
   float od = sectHazeDepth( cameraPosition.y, vDir.y, vDist );
   col = mix( col, sectHazeColor( uFogColor, vDir ), 1.0 - exp( - od ) );
   gl_FragColor = vec4( col, a );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
@@ -334,7 +343,7 @@ export const FORGE_FIRE_GLOW = { value: 1 };
  * frame and its radius), so one draw holds many fires. A fire at the mesh's origin flickers in the
  * forge's original phase.
  */
-function fireMaterial(shape: FireShape = FORGE_FIRE, glow: { value: number } = { value: 1 }): ShaderMaterial {
+export function fireMaterial(shape: FireShape = FORGE_FIRE, glow: { value: number } = { value: 1 }): ShaderMaterial {
   return new ShaderMaterial({
     name: "sect.forgefire",
     transparent: true,
@@ -556,7 +565,7 @@ export function FormationCore({ set, store, meta, post }: { set: LoadedSet | nul
 const WISPS = 18;
 const WISP_HEIGHT = 3.6;
 
-function smokeMaterial(): ShaderMaterial {
+export function smokeMaterial(): ShaderMaterial {
   return new ShaderMaterial({
     name: "sect.incense",
     transparent: true,
@@ -565,6 +574,8 @@ function smokeMaterial(): ShaderMaterial {
     uniforms: {
       uTime: { value: 0 },
       uColor: { value: new Color("#e9e2d6") },
+      // The look's frame grade, for the Low tier's screen.
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iSeed;
@@ -594,11 +605,13 @@ void main() {
 uniform vec3 uColor;
 varying vec2 vUv;
 varying float vLife;
+${SCREEN_GRADE_PARS}
 void main() {
   float q = length( vUv );
   if ( q > 1.0 ) discard;
   float a = exp( - q * q * 3.0 ) * smoothstep( 0.0, 0.12, vLife ) * pow( 1.0 - vLife, 1.6 ) * 0.32;
   gl_FragColor = vec4( uColor, a );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,

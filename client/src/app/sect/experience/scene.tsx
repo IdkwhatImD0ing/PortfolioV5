@@ -108,6 +108,7 @@ import {
   createSkyMaterial,
   releasePageTextures,
   SECT_ENV,
+  setLookHaze,
   SOFT_DEPTH,
 } from "./materials";
 import { releaseDepthMaterials } from "./live-shadow";
@@ -144,7 +145,8 @@ export interface SectCanvasProps {
   quality: Quality;
   /**
    * The tier's own quality: where the ladder climbs back to once frames have room again (none
-   * without it).
+   * without it). Live light is left out once the ladder has given up on it (lib/sect/runtime.ts
+   * ladderCeiling); Post reads only the post, MSAA and bloom from it.
    */
   ceiling?: Quality;
   /** The quality ladder may step down when frames run long (off for screenshots and forced tiers). */
@@ -592,6 +594,9 @@ function Atmosphere({ meta, ctx, store }: { meta: SectMeta; ctx: WorldContext; s
     // The land's haze follows the sky's (scene.fog's colour: every material three fogs reads it).
     const fogNow = scene.fog as FogExp2 | null;
     if (fogNow) blend(fogNow.color, S.haze.color, T.haze);
+    // The effects that fade to the shared haze (materials.ts SECT_HAZE_COLOR: the furnace mouths,
+    // cranes, birds, butterflies, waterfall mist and spray, beams) take exactly the land's colour.
+    setLookHaze(fogNow ? fogNow.color : blend(look.a, S.haze.color, T.haze));
     if (look.disc) {
       const m = (look.disc.material as ShaderMaterial).uniforms;
       (m.uColor.value as Color).set(now.meta.moon.color);
@@ -1632,8 +1637,9 @@ function Flyer({ store, object, path }: { store: SectStore; object: Object3D; pa
 
 /**
  * Composer pipeline (high and mid tiers): world, overlay with depth, cloud shade / bloom / haze /
- * vignette. `ceiling` is the tier's own quality: the atmosphere passes follow the tier, not the
- * ladder's step (lib/sect/post.ts atmosFeatures).
+ * vignette. `ceiling` is the tier's own quality in everything read here (post, MSAA, bloom; the
+ * ladder may have taken live light out of it, which nothing here reads): the atmosphere passes
+ * follow the tier, not the ladder's step (lib/sect/post.ts atmosFeatures).
  */
 function Post({
   quality,
@@ -2072,7 +2078,7 @@ function Driver({
   adaptive: boolean;
   budgetMs: number;
   maxFps: number;
-  /** climbCost of the next step up, or null at the tier's own quality. */
+  /** climbCost of the next step up, or null at the ladder's ceiling (lib/sect/runtime.ts ladderCeiling). */
   climbScale: number | null;
   /** The next step up rebuilds the postprocessing pipeline (lib/sect/runtime.ts climbRebuildsPipeline). */
   climbAtRest?: boolean;
@@ -2649,7 +2655,7 @@ function SectCanvas(props: SectCanvasProps) {
   const climbScale = ceiling ? climbCost(quality, ceiling, screenDpr) : null;
   const climbAtRest = ceiling ? climbRebuildsPipeline(quality, ceiling, screenDpr) : false;
   useEffect(() => {
-    store.qualityLabel = `${quality.post ? "post" : "plain"} · msaa ${quality.msaa} · bloom ${quality.bloom ? "on" : "off"} · ${quality.lowTextures ? "2k" : "4k"} textures${quality.standIns ? " · stand-ins" : ""}${quality.noCards ? " · no cards" : ""}${quality.maxFps > 0 ? ` · ${quality.maxFps} fps cap` : ""}`;
+    store.qualityLabel = `${quality.post ? "post" : "plain"} · msaa ${quality.msaa} · bloom ${quality.bloom ? "on" : "off"} · ${quality.lowTextures ? "2k" : "4k"} textures${quality.liveLight ? " · live" : ""}${quality.vegShells ? " · shells" : ""}${quality.standIns ? " · stand-ins" : ""}${quality.noCards ? " · no cards" : ""}${quality.maxFps > 0 ? ` · ${quality.maxFps} fps cap` : ""}`;
     wake(store, 600);
   }, [quality, store]);
 

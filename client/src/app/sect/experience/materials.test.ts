@@ -26,9 +26,6 @@ import {
   ZeroFactor,
   type WebGLRenderer,
 } from "three";
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { DETAIL_LOOK, DETAIL_NOISE, detailProgramKey, weatherApplyGlsl, weatherGlsl } from "@/lib/sect/detail";
 import { fogConstantsFromMeta, fogDefines, glslFloat, SCREEN_GRADE_PARS } from "@/lib/sect/glsl";
@@ -1046,19 +1043,7 @@ describe("moon", () => {
     }
   });
 
-  it("adds the forge fire and the life motes as linear light too (fx.tsx, life.tsx)", () => {
-    // Their materials are built inside components; the shader sources are read from the files.
-    const dir = path.dirname(fileURLToPath(import.meta.url));
-    for (const [file, name] of [["fx.tsx", "sect.forgefire"], ["life.tsx", "sect.life.motes"]]) {
-      const src = readFileSync(path.join(dir, file), "utf8").replace(/\r\n/g, "\n");
-      const start = src.indexOf(`name: "${name}"`);
-      expect(start).toBeGreaterThan(0);
-      const body = src.slice(start, src.indexOf("\n  });\n}", start));
-      expect(body).toContain("blending: AdditiveBlending");
-      expect(body).toContain("fragmentShader:");
-      expect(body).not.toContain("colorspace_fragment");
-    }
-  });
+  // The forge fire, the fires and the life motes add linear light the same way: effect-look.test.ts.
 });
 
 describe("the range look (lib/sect/range-look.ts)", () => {

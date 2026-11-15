@@ -1029,6 +1029,74 @@ named when it was built ("the camera can no longer rest halfway between two scen
 
 **See.** "Which stop, and when it stays" in [`../sect/scroll-snap.md`](../sect/scroll-snap.md).
 
+### 2026-11-15 · Four fixes from the review of the pull request
+
+An independent review of the pull request found four things worth fixing before the merge. Each was built by one
+agent and checked by another that had not seen it built.
+
+**Decided.**
+
+1. *The quality ladder turns off first what only High has.* On a High the page picked by itself, slow frames now
+   turn off live light, then the far trees' crown shells, right after the resolution has dropped to 1x and before
+   MSAA, bloom or anything Medium also has. The climb back is the exact reverse. Live light may come back once;
+   the second time it goes off it stays off for the visit. A High the visitor picked keeps both.
+2. *Live light's maps download two at a time, and stop when the stop is left.* The stop at the camera goes before
+   maps loaded ahead. The view table, one small file, skips the queue.
+3. *Leftover wheel momentum and a tap no longer end a flight part-way.* A flight that begins inside a running wheel
+   stream ignores the rest of that stream. A tap pauses the flight while the finger is down, and it carries on
+   when the finger lifts. A drag, a new push, a turn the other way, Space and a pause all still take over.
+4. *The small effects follow the look.* The furnace mouths, petals, cranes, birds, butterflies, incense smoke, the
+   waterfalls' spray and the beams read the same haze numbers and colour as the land. On Low, the ones that cover
+   what is behind them take the frame grade as well.
+
+**Why.**
+
+1. An older GPU that got High ended at low resolution, stand-ins and 30 fps while still paying for the heaviest
+   shader. Live light gets one more try because a slow stretch can be something else on the PC. It gets no more
+   because its cost only shows at a lit stop, after the ladder has stopped watching the climb: without a limit it
+   came back and went off again at every stop.
+2. A steady scroll through four stops on a slow line downloaded four sets of maps and threw them away (86 MB over
+   the whole flight), while the next area's models, which load one at a time, waited.
+3. Since the snap went in, ending a flight leaves the camera where it coasts to. That is right for a visitor who
+   scrolls. It is wrong for momentum left over from before a key press, and for a tap on a button.
+4. These shaders were written for one dusk. They declared the look's numbers but were never handed them, so at the
+   summit at night far cranes faded into dusk's pale haze.
+
+**Checked.** Unit tests for each rule (the ladder's order both ways and its retry limit, the download queue, the
+wheel tail, the tap, every effect's look uniforms): 2,616 tests, the typecheck and lint pass. Then in a browser
+(Playwright, 1600 by 900), a production build of the pull request as pushed against one with the fixes:
+
+1. Stepped by hand at the gate on High, the ladder went resolution, live light, crown shells, MSAA 4 to 2 to 0,
+   bloom, render scale, stand-ins, no cards, 30 fps, and back up in reverse. Live light went off with no reload
+   and was back within 2 s. The crowns emptied and refilled. After live light had gone off a second time, the
+   ceiling had lost it and climbing left it off.
+2. With every map slowed by 4 s: before, 6 maps downloaded at once (12 when a stop was left early) and none was
+   cancelled. After, never more than 2 at once, and leaving a stop cancelled the 2 on their way and dropped the
+   2 to 4 still waiting. The counters added up.
+3. A dying wheel stream (59 events, a third of the way to the next stop) with J pressed after the sixth: before,
+   the flight was dropped 2 ms after the key and the camera ended between the gate and the mirror, three runs of
+   three. After, the scroll stayed at the flight's end and the camera landed on the mirror, two of two. One wheel
+   notch 60 ms and 150 ms before J: landed. Five strong wheel turns 400 ms into a flight, and again after a
+   250 ms pause in the momentum: the visitor took over both times. A tap 300 ms into a flight: before, stranded
+   two of two; after, landed three of three. A drag still took over.
+   The first build of this fix failed the momentum run. Chrome was still easing the earlier wheel turns in when
+   the key was pressed, and that scroll ended the flight before the next wheel event could mark the tail.
+   `wheelSettling` closes that gap, and the run was repeated after it.
+4. On the dev server, all eleven stops on Low and four on High compiled with no shader errors. Stills of every
+   stop on High and Low, before against after: High changed in at most 0.11% of its pixels (the effects' haze
+   colour). Low changed in at most 0.12%, except the abode at night (2.8%), where the waterfall's mist and foam
+   now take the night grade.
+
+**Limits.** Not tried on a real trackpad, a phone or a slow GPU. A new push has to be clearly faster than the
+momentum to end the tail at once (three to five times its speed); a gentler one waits for a pause. For 600 ms
+after leftover wheel input, a scroll from the scrollbar is put back too. When live light goes off the picture
+changes in one frame, with no fade (a fade would keep the heavy shader on while frames are slow). Additive lights
+(flames, embers, beams) still take no frame grade on Low.
+
+**See.** "Switches and numbers" in [`../sect/live-gate.md`](../sect/live-gate.md) and
+[`../sect/veg-shells.md`](../sect/veg-shells.md); "The visitor always wins" in
+[`../sect/scroll-snap.md`](../sect/scroll-snap.md); "Tiers" in [`../sect/lux.md`](../sect/lux.md).
+
 ---
 
 ## Longer write-ups

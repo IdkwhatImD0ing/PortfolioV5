@@ -320,23 +320,25 @@ export const SECT_WATER_SKY = {
 };
 
 /**
- * The haze colour (SECT_LOOK.haze.color) for the waterfall mist and the light beams, shared so the
- * journey moves it (look-now.ts setLookHaze). Until the look sets it, each such material starts it
- * at the colour it was given.
+ * The haze colour (linear) the custom effects fade to: the waterfall mist and spray, the light
+ * beams, the furnace mouths, the cranes, birds and butterflies. It is the land's haze (scene.fog's
+ * colour, twilight included), shared so the look moves them all at once (scene.tsx applyLookNow,
+ * setLookHaze). Until the look sets it, each such material starts it at the colour it was given.
  */
 export const SECT_HAZE_COLOR = { value: new Color(SECT_LOOK.haze.color) };
 
-/** True once the look sets the shared haze colour: a mist or beam made later keeps the look's. */
+/** True once the look sets the shared haze colour: an effect made later keeps the look's. */
 let hazeFromLook = false;
 
-/** The look's haze colour into SECT_HAZE_COLOR (look-now.ts, each time the look moves). */
-export function setLookHaze(hex: string): void {
-  SECT_HAZE_COLOR.value.set(hex);
+/** The look's haze colour (a hex string or a linear Color) into SECT_HAZE_COLOR, each time the look moves. */
+export function setLookHaze(color: string | Color): void {
+  SECT_HAZE_COLOR.value.set(color);
   hazeFromLook = true;
 }
 
-function sharedHaze(fogColor: string): { value: Color } {
-  // A mist or beam streaming in while the camera rests must not put today's haze back.
+/** The shared haze uniform (SECT_HAZE_COLOR) for a material's uFogColor, starting at `fogColor` until the look sets it. */
+export function sharedHazeColor(fogColor: string): { value: Color } {
+  // An effect streaming in while the camera rests must not put today's haze back.
   if (!hazeFromLook) SECT_HAZE_COLOR.value.set(fogColor);
   return SECT_HAZE_COLOR;
 }
@@ -1698,6 +1700,11 @@ const GLOW_SCREEN_BACK = 0.3;
  * Added unencoded onto that screen, the halo still showed 1.3-1.7 times as bright as on High over
  * the bright evening sky (the sRGB curve is flat there), so on the Low tier it adds the step its
  * light makes over a typical sky behind the moon (glsl.ts screenAdd, GLOW_SCREEN_BACK).
+ *
+ * The lights that only add (this halo, the beams, shafts and dome, the fires, embers and motes) do
+ * not take the look's frame grade on the Low tier, as the shaders that cover what is behind them do
+ * (SCREEN_GRADE_GLSL). On High the post pass grades the light together with what it lands on, and
+ * keeps bright glows through its own gain; a shader that adds on top cannot know what is under it.
  */
 export function createGlowMaterial(color: string, strength: number): ShaderMaterial {
   return new ShaderMaterial({
@@ -2353,7 +2360,7 @@ export function createMistMaterial(fog: FogConstants, fogColor: string, time: IU
       tNoise: { value: getNoiseTexture() },
       uTime: time,
       uColor: { value: linear(SECT_LOOK.waterfall.mist) },
-      uFogColor: sharedHaze(fogColor),
+      uFogColor: sharedHazeColor(fogColor),
       ...SOFT_DEPTH,
       ...SECT_LOOK_GPU,
     },
@@ -2428,8 +2435,10 @@ export function createBeamMaterial(fog: FogConstants, fogColor: string, time: IU
     uniforms: {
       uTime: time,
       uOpacity: { value: SECT_LOOK.beams.opacity },
-      uFogColor: sharedHaze(fogColor),
+      uFogColor: sharedHazeColor(fogColor),
       ...SOFT_DEPTH,
+      // The look's haze numbers (its fog library reads them).
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec3 iBase;
@@ -2517,6 +2526,8 @@ export function createShaftMaterial(fog: FogConstants, time: IUniform<number>, m
       uStreaks: { value: 1 },
       tNoise: { value: getNoiseTexture() },
       ...SOFT_DEPTH,
+      // The look's haze numbers (its fog library reads them).
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec3 iBase;
@@ -2626,6 +2637,9 @@ export function createDomeMaterial(fog: FogConstants, color: string, time: IUnif
       uDetail: { value: 1 },
       uColor: { value: linear(color) },
       ...SOFT_DEPTH,
+      // The look's haze numbers (its fog library reads them). Nothing else writes this dome's
+      // uniforms: its colour stays the look's dome colour as built.
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 varying vec3 vNormalW;

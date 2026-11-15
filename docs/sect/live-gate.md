@@ -170,17 +170,24 @@ Getting there took three fixes, each found by comparing against the bake:
 
 ## Switches and numbers
 
-- Quality: `liveLight`, on for High, off for Medium and Low.
+- Quality: `liveLight`, on for High, off for Medium and Low. On a High the page picked by itself, the
+  quality ladder turns it off when frames run slow, right after the resolution has dropped to 1x
+  (it is the heaviest thing High adds, and the bake underneath is what Medium shows). It may climb
+  back once. Its cost only shows at a lit stop, after the ladder has stopped watching the climb, so
+  the second time it goes off it stays off for the visit (`LIVE_LIGHT_TRIES` and `ladderCeiling` in
+  `lib/sect/runtime.ts`). A High the visitor picked keeps it.
 - URL: `?live=0` keeps the bake, `?live=1` lights live on any tier.
 - Look: everything is in `LIVE_LOOK` in `client/src/lib/sect/live.ts`.
 - `?debug=1` puts the state on `window.__sectLive`: change `look`, call `apply()`. `setMix(0)` shows
-  the bake.
+  the bake. `downloads` counts the map files (started, finished, failed, aborted, dropped, running,
+  waiting, peak). `window.__sectLadder` (`quality()`, `ceiling()`, `down()`, `up()`) steps the
+  quality ladder by hand.
 - Cost on the development PC at 1600 x 900: no measurable change in frame time (about 1.7 ms
   either way). The two shadow maps draw once, in 7 ms. GPU memory is the price, about 420 MB: the
   colour maps at 4096 px, the sky-light and direction maps at 2048 px (`sect_live.py` halves those
   two; sky light is soft and the page normalises directions), and two 4096 px depth maps. A
   stop's maps are a 5 to 10 MB download (83 MB for all eleven; the page fetches one stop's at a
-  time, and the next stop's ahead).
+  time and the next stop's ahead, two files at once: "Downloads" below).
 
 ## The balance
 
@@ -268,6 +275,13 @@ stop's live disc is at most 90 m across its radius, so two never meet.
   freed, and the new one only has to draw its shadow maps and fade in. One stop's maps are about
   255 MB on the GPU, so the peak is about 420 + 255 MB while a neighbour is held
   (`LIVE_LOOK.handover.preload` switches the holding off).
+- **Downloads (2026-11-15).** At most two map files download at once (`LIVE_FETCH_LIMIT` in
+  `live.tsx`; the queue is `lib/sect/fetch-gate.ts`), the stop at the camera before the maps loaded
+  ahead. Area models load one at a time and share the line with these. Leaving a stop, or letting
+  held maps go, cancels their downloads: each load has an `AbortController`, and the image loader
+  (`bitmap-decode.ts`) takes its signal. A cancelled download is not a failure, so the stop still
+  lights on a later visit. The view table is one 432 KB file and skips the queue. Before, a stop's
+  six or more maps all started at once and ran to the end even when the flight had moved on.
 - **Fast travel.** Under the ink the old stop ends at once, the new one lights with no fade, and
   the ink waits for it, at most 2.5 s.
 - **Per-stop numbers.** `LIVE_LOOK.stops.<id>` can override the gains, exposure and saturation

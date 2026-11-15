@@ -78,6 +78,7 @@ import {
   chooseTier,
   degradeQuality,
   isAppleGpu,
+  ladderCeiling,
   parseSectParams,
   readTierChoice,
   resolveTier,
@@ -108,6 +109,7 @@ import {
 } from "@/lib/sect/scroll-map";
 import { detailHolds, SETTLE, SETTLE_GATE, SettleWatch } from "@/lib/sect/settle";
 import { coastTarget, commitUnits, planCarry, planGlide, SNAP, snapTarget, wheelPixels } from "@/lib/sect/snap";
+import { createTouchTakeover, createWheelTail, endWheelTail, touchDown, touchScrolled, touchUp, wheelSettling, wheelTail } from "@/lib/sect/takeover";
 import type { Vec3 } from "@/lib/sect/types";
 import type { VoiceCommand } from "@/lib/voice-bus";
 import { AreaPanel, AreaReader, ContentFallback, hotspotLabel, hotspotTarget, type ContentTarget } from "../content";
@@ -362,14 +364,26 @@ export default function SectExperience() {
    */
   const shownTier = useRef(tier);
   const [quality, setQuality] = useState<Quality>(() => tierLook(tier, probe));
-  /** The shown tier's own quality: the ladder steps down from it and climbs back to it. */
-  const [ceiling, setCeiling] = useState<Quality>(() => tierLook(tier, probe));
-  /** The renderer back at tier `t`'s own settings (the ladder starts over from there). */
+  /** The shown tier's own quality: the ladder steps down from it. */
+  const [tierCeiling, setTierCeiling] = useState<Quality>(() => tierLook(tier, probe));
+  /** Times a ladder step turned live light off since the tier's ceiling was set (ladderCeiling). */
+  const [liveOffs, setLiveOffs] = useState(0);
+  /**
+   * Where the ladder climbs back to, in onClimb and the scene's climb maths: the tier's own quality,
+   * without live light once the ladder has turned it off LIVE_LIGHT_TRIES times.
+   */
+  const ceiling = useMemo(() => ladderCeiling(tierCeiling, liveOffs), [tierCeiling, liveOffs]);
+  /** The quality the ladder steps from: the one shown, or a step taken that React has not rendered yet. */
+  const ladderNow = useRef(quality);
+  ladderNow.current = quality;
+  /** The renderer back at tier `t`'s own settings (the ladder starts over from there, live light's tries too). */
   const resetQuality = useCallback(
     (t: Tier) => {
       const q = tierLook(t, probe);
+      ladderNow.current = q;
       setQuality(q);
-      setCeiling(q);
+      setTierCeiling(q);
+      setLiveOffs(0);
     },
     [probe],
   );
@@ -439,6 +453,11 @@ export default function SectExperience() {
   const touching = useRef(false);
   const pendingResync = useRef(false);
   const jumpToken = useRef(0);
+  /**
+   * Flights, snap glides and far jumps begun so far. A tap lets the flight it ended carry on only
+   * when nothing newer has begun since (lib/sect/takeover.ts touchUp).
+   */
+  const movesBegun = useRef(0);
   /** Where a far jump that is gathering will land (keys pressed meanwhile step on from there). */
   const gather = useRef<{ frame: number; u: number } | null>(null);
   /** A voice command that arrived while the scene loaded: it runs once the page is ready. */
@@ -791,12 +810,41 @@ export default function SectExperience() {
   const keepLook = source === "choice";
   const keepLookRef = useRef(keepLook);
   keepLookRef.current = keepLook;
-  const onDegrade = useCallback((cadenceMs: number | null) => {
-    setQuality((q) => degradeQuality(q, window.devicePixelRatio, { keepLook: keepLookRef.current, cadenceMs }) ?? q);
+  // A step is worked out from ladderNow here, not inside a state updater: React runs updaters twice
+  // in development, and the live light count would go up twice for one step.
+  const stepLadder = useCallback((next: Quality | null) => {
+    if (next) {
+      if (ladderNow.current.liveLight && !next.liveLight) setLiveOffs((n) => n + 1);
+      ladderNow.current = next;
+      setQuality(next);
+    }
+    return ladderNow.current;
   }, []);
+  const onDegrade = useCallback(
+    (cadenceMs: number | null) => {
+      stepLadder(degradeQuality(ladderNow.current, window.devicePixelRatio, { keepLook: keepLookRef.current, cadenceMs }));
+    },
+    [stepLadder],
+  );
   const onClimb = useCallback(() => {
-    setQuality((q) => upgradeQuality(q, ceiling, window.devicePixelRatio) ?? q);
-  }, [ceiling]);
+    stepLadder(upgradeQuality(ladderNow.current, ceiling, window.devicePixelRatio));
+  }, [stepLadder, ceiling]);
+  // Development or ?debug=1: window.__sectLadder steps the ladder by hand with the same calls (down
+  // as for a tier the page picked, up toward the same ceiling), to check a step in a browser.
+  useEffect(() => {
+    if (!params.debug && process.env.NODE_ENV === "production") return;
+    const hook = {
+      quality: () => ladderNow.current,
+      ceiling: () => ceiling,
+      down: () => stepLadder(degradeQuality(ladderNow.current, window.devicePixelRatio, { keepLook: false, cadenceMs: null })),
+      up: () => stepLadder(upgradeQuality(ladderNow.current, ceiling, window.devicePixelRatio)),
+    };
+    const w = window as unknown as { __sectLadder?: typeof hook };
+    w.__sectLadder = hook;
+    return () => {
+      if (w.__sectLadder === hook) delete w.__sectLadder;
+    };
+  }, [params, ceiling, stepLadder]);
 
   // --- graphics -----------------------------------------------------------------------------------
 
@@ -951,6 +999,7 @@ export default function SectExperience() {
   const startFlight = useCallback(
     (toU: number, onArrive?: () => void, instant = false, carry = false) => {
       if (!store) return;
+      movesBegun.current++;
       store.frameOverride = null;
       store.gatherFrame = null;
       setGathering(null);
@@ -981,6 +1030,7 @@ export default function SectExperience() {
   const startGlide = useCallback(
     (toU: number) => {
       if (!store) return;
+      movesBegun.current++;
       const g = planGlide(store.u, toU, store.speed);
       store.targetU = toU;
       store.flight = { fromU: g.fromU, toU, t0: performance.now(), duration: g.duration, toFrame: uToFrame(store.map, toU), v0: g.v0 };
@@ -1005,6 +1055,7 @@ export default function SectExperience() {
     async (toU: number, onArrive?: () => void, carry = false): Promise<boolean> => {
       if (!store) return false;
       const token = ++jumpToken.current;
+      movesBegun.current++;
       if (Math.abs(store.u - toU) < 1 && !store.flight) {
         store.targetU = toU;
         store.gatherFrame = null;
@@ -1232,7 +1283,9 @@ export default function SectExperience() {
   // (wheel, touch, keys); a flight or a snap glide is cancelled the same way, and the camera coasts
   // on from where it is at the speed it had (lib/sect/snap.ts coastTarget: the page scroll is put
   // there, and the visitor's own scrolling moves on from it, rather than from where the flight was
-  // going). The page's own scrolls (instantScrollTo) clear neither.
+  // going). The page's own scrolls (instantScrollTo) clear neither. Two inputs are not the visitor
+  // taking over (lib/sect/takeover.ts): a flick's leftover momentum after a flight began goes on
+  // being ignored until the wheel pauses, and a tap lets the flight it ended carry on.
   //
   // Snap: once the visitor's own scrolling rests (SNAP.restMs with no scroll from them and no finger
   // down) close to a stop, the camera glides on to it by itself (lib/sect/snap.ts snapTarget,
@@ -1286,32 +1339,67 @@ export default function SectExperience() {
       moved = true;
       if (!touching.current) arm();
     };
+    /**
+     * The wheel stream: the tail of a flick from before a flight began is not the visitor taking over,
+     * and neither is the browser still scrolling the page for it (onScroll puts that back).
+     */
+    const wheel = createWheelTail();
+    /** What a finger down ended, so that a tap lets it carry on (lib/sect/takeover.ts). */
+    const touch = createTouchTakeover();
+    /**
+     * The visitor takes over from a flight or a snap glide: it ends, and the scroll is put where the
+     * camera coasts to (`px` further: a wheel turn the page applies itself, onWheel). Under a reader
+     * or the map the scroll stays at the flight's end, and the camera eases on there by itself.
+     */
+    const endFlight = (px = 0) => {
+      const fl = store.flight;
+      if (!fl) return;
+      store.flight = null;
+      if (!modalRef.current) {
+        store.targetU = coastTarget(store.u, store.speed, store.map.totalUnits, fl.toU);
+        instantScrollTo(uToScroll(store.targetU, maxScroll(), store.map.totalUnits) + px);
+      }
+    };
+    /** The visitor's own scrolling cancels a far jump still gathering. */
+    const cancelGather = () => {
+      if (store.gatherFrame === null) return;
+      jumpToken.current++;
+      store.gatherFrame = null;
+      setGathering(null);
+    };
     /** `px`: the wheel turn that took over from a flight, which the page applies itself (onWheel). */
     const userInput = (px = 0) => {
       if (store.frameOverride !== null) store.frameOverride = null;
-      const fl = store.flight;
-      if (fl) {
-        store.flight = null;
-        if (!modalRef.current) {
-          store.targetU = coastTarget(store.u, store.speed, store.map.totalUnits, fl.toU);
-          instantScrollTo(uToScroll(store.targetU, maxScroll(), store.map.totalUnits) + px);
-        }
-      }
-      if (store.gatherFrame !== null) {
-        jumpToken.current++;
-        store.gatherFrame = null;
-        setGathering(null);
-      }
+      endFlight(px);
+      cancelGather();
+      // Whatever scrolls next is the visitor's, not a flick's leftover momentum (onScroll), and so is
+      // the rest of that momentum's wheel stream: left as tail, it would put Space's own scroll back.
+      // A wheel turn only gets here when it was not tail.
+      endWheelTail(wheel, store.flight !== null || store.gatherFrame !== null);
       visitor();
     };
     // Putting the scroll at the coast point drops the browser's own scroll for the wheel turn that
     // is already on its way (it never lands), so that one turn is the page's to apply: the browser's
     // is cancelled. Not listening passively costs nothing here: the camera follows the scroll through
     // the rig's damping, never the browser's scrolling itself.
+    //
+    // The tail of a trackpad flick keeps sending wheel events for a second or so. When a key or the
+    // rail starts a flight meanwhile, what is left of the stream is not the visitor taking over
+    // (lib/sect/takeover.ts wheelTail): the flight goes on, and the tail's own scroll is cancelled.
+    // Chrome sends the later events of a scroll it has begun as not cancelable, so their scroll can
+    // still land: onScroll puts it back.
     const onWheel = (e: WheelEvent) => {
-      const px = store.flight && !modalRef.current && !e.ctrlKey && e.cancelable ? wheelPixels(e.deltaY, e.deltaMode, window.innerHeight) : 0;
-      if (px !== 0) e.preventDefault();
-      userInput(px);
+      const px = wheelPixels(e.deltaY, e.deltaMode, window.innerHeight);
+      const covered = modalRef.current;
+      const now = performance.now();
+      // The event's own time: a long frame that holds several back must not look like a pause.
+      if (wheelTail(wheel, e.timeStamp || now, px, store.flight !== null || store.gatherFrame !== null, now)) {
+        if (e.cancelable && !covered && !e.ctrlKey) e.preventDefault();
+        return;
+      }
+      const take = store.flight && !covered && !e.ctrlKey && e.cancelable ? px : 0;
+      if (take !== 0) e.preventDefault();
+      userInput(take);
     };
     const keyInput = (e: KeyboardEvent) => {
       if ([" ", "Spacebar"].includes(e.key) && !(e.target as HTMLElement | null)?.closest?.("button, a, input, textarea")) userInput();
@@ -1319,10 +1407,22 @@ export default function SectExperience() {
     const onScroll = () => {
       const own = takeOwnScroll();
       const total = store.map.totalUnits;
+      // A finger dragged the page: the touch was no tap (touchEnd), and a far jump still gathering
+      // gives way to it, as to any scroll of the visitor's.
+      if (!own && touchScrolled(touch)) cancelGather();
       if (modalRef.current) {
         // Something scrolled the page under the reader or page view (an anchor, the voice orb
         // scrolling to a section id the page view also has): put it back.
         const want = uToScroll(store.targetU, maxScroll(), total);
+        if (Math.abs(window.scrollY - want) > 1) instantScrollTo(want);
+        return;
+      }
+      if (!own && wheelSettling(wheel, performance.now(), store.flight !== null || store.gatherFrame !== null)) {
+        // The browser still scrolling the page for wheel events that are not the visitor taking over
+        // (lib/sect/takeover.ts wheelSettling): the tail of a flick from before the flight, where it
+        // would not let them be cancelled (onWheel), or a wheel turn from just before the flight
+        // began that Chrome is still easing in. Back where the page has it.
+        const want = uToScroll(store.flight ? store.flight.toU : store.targetU, maxScroll(), total);
         if (Math.abs(window.scrollY - want) > 1) instantScrollTo(want);
         return;
       }
@@ -1352,10 +1452,32 @@ export default function SectExperience() {
       store.targetU = at;
       wake(store);
     };
-    const touchEnd = () => {
+    // A finger down ends a flight at once, as any input does, so a drag takes over cleanly from the
+    // coast point. A far jump still gathering waits for the first scroll under the finger (onScroll).
+    // The touch remembers the flight it ended: under a reader or the map there is none to remember,
+    // as the camera eases on to the flight's end by itself there (endFlight).
+    const touchStart = (e: TouchEvent) => {
+      if (store.frameOverride !== null) store.frameOverride = null;
+      const fl = store.flight;
+      touchDown(touch, e.touches.length, fl && !modalRef.current ? { toU: fl.toU, onArrive: fl.onArrive, moves: movesBegun.current } : null);
+      endFlight();
+      // As in userInput: the rest of a flick's wheel stream is the visitor's too, or it would put the
+      // finger's drag back. A far jump still gathering stays on, so it is no flight begun since.
+      endWheelTail(wheel, store.flight !== null || store.gatherFrame !== null);
+      visitor();
+    };
+    const touchEnd = (e: TouchEvent) => {
+      const tap = touchUp(touch, e.touches.length, { busy: store.flight !== null || store.gatherFrame !== null, moves: movesBegun.current });
+      if (tap) {
+        // A tap, or a drag that only turned the view: the flight it ended carries on to where it was
+        // going, at the camera's speed, and what was to run on arrival runs there (once: the ended
+        // flight never arrives). A tap on a panel's Open button lands its click after this.
+        moved = false;
+        startFlight(tap.toU, tap.onArrive, false, true);
+        return;
+      }
       if (moved) arm();
     };
-    const touchStart = () => userInput();
     window.addEventListener("wheel", onWheel, { passive: false });
     window.addEventListener("touchstart", touchStart, { passive: true });
     window.addEventListener("touchend", touchEnd, { passive: true });
@@ -1384,7 +1506,7 @@ export default function SectExperience() {
       window.removeEventListener("keydown", keyInput);
       window.removeEventListener("scroll", onScroll);
     };
-  }, [store, phase, startGlide]);
+  }, [store, phase, startGlide, startFlight]);
 
   // Keys between holds: PageDown/PageUp, arrows, J/K; Home/End to the ends. Not while a reader,
   // the page view, the voice panel or any input has focus.

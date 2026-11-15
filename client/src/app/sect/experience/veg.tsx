@@ -168,7 +168,12 @@ export function VegShells({ global, chunks, ctx, store, quality }: VegShellsProp
       kit.built.delete(s);
       delete kit.stats.chunks[vegChunkId(s.id)];
     }
-    if (!on) return;
+    if (!on) {
+      // The last shell material is gone, and three frees a program no material uses: when the ladder
+      // brings the shells back, their program is compiled off the frame again, not on its first draw.
+      kit.warmed = false;
+      return;
+    }
     const alive = (s: LoadedSet) => mounted.current && live.current.on && !s.dropped && live.current.sets.includes(s);
     /** Compiles the shell program for the buffer it is drawn into, off the frame (as Grass does). */
     const warm = async (mesh: Mesh) => {
@@ -208,11 +213,12 @@ export function VegShells({ global, chunks, ctx, store, quality }: VegShellsProp
       const mesh = createShellMesh(inst, material);
       if (!kit.warmed) {
         await warm(mesh);
-        kit.warmed = true;
         if (!alive(set)) {
           disposeShellMesh(mesh);
           return;
         }
+        // Set only when this shell stays: one thrown away may have taken the warmed program with it.
+        kit.warmed = true;
       }
       // MSAA may have changed while it compiled.
       const shellMaterial = mesh.material as ShaderMaterial;

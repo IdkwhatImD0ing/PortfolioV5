@@ -94,7 +94,8 @@ Flights from keys, the rail, links and the map keep their old ease-in-out curve.
 
 ## The visitor always wins
 
-- Any input during a glide or a flight ends it at once. The page scroll is put where the camera
+- Input during a glide or a flight ends it at once, with the two exceptions below (leftover wheel
+  momentum, and a tap). The page scroll is put where the camera
   would coast to at the speed it has (`coastTarget`), never past where the flight was going, and
   the visitor's scrolling moves on from there. Before, the scroll sat at the flight's end, so the
   camera jumped ahead toward it.
@@ -104,6 +105,26 @@ Flights from keys, the rail, links and the map keep their old ease-in-out curve.
   rig's damping, never through the browser's own scrolling.
 - The page's own scroll moves never count as the visitor's (`instantScrollTo` marks them,
   `takeOwnScroll` reads the mark). Without that, arriving at a stop would start the next glide.
+- **Leftover momentum does not count (2026-11-15).** A trackpad flick keeps sending wheel events
+  for a second or so after the fingers lift. If a key, the rail or the map started a flight in
+  that second, those events ended it at once and left the camera between two scenes. Now a flight
+  that begins inside a running wheel stream makes the rest of that stream its tail (`wheelTail` in
+  `lib/sect/takeover.ts`), and the tail is ignored. The page cancels those events where the
+  browser allows it. Chrome sends the later events of a scroll as not cancelable, and it eases a
+  mouse wheel's turn in over several frames. So the page also puts back any scroll it did not
+  make for 600 ms after a wheel event that is tail, or that came before the flight began with
+  none since (`wheelSettling`). Without that second case, one notch of a mouse wheel just before
+  a key press ended the flight a few milliseconds after it began. The tail ends at a pause of
+  120 ms, a turn the other way, or a new push: the scroll speed, smoothed over about 60 ms, at
+  least doubling. The
+  speed is smoothed because Chrome merges the events that pile up during a long frame, and one
+  merged event looks like a push. Space or a finger down ends the tail too. It outlives the
+  flight, so the last of the momentum does not nudge the camera off the stop it has just reached.
+- **A tap does not strand a flight (2026-11-15).** A finger down still ends the flight at once, so
+  a drag takes over cleanly. When the finger lifts and the page has not scrolled under it, the
+  flight starts again to the same place, with the same follow-up (a reader to open, say), carrying
+  the camera's speed (`touchDown`, `touchScrolled`, `touchUp` in `takeover.ts`). A far jump that
+  is still gathering is left alone by a tap. The first scroll under the finger cancels it.
 
 ## When it does not snap
 
@@ -120,7 +141,8 @@ Two things changed around it:
   and a click on a place in the moment before a snap would have opened its reader over a view
   between two scenes.
 - A panel's Open button, clicked while a glide is leaving that stop, opens the reader when the
-  camera arrives if the glide is going there, and otherwise flies back first (`openFromPanel`).
+  camera arrives if the glide is going there, and otherwise flies back first (`openFromPanel`). On a
+  touch screen the tap itself no longer stops the glide (above).
 
 ## What was checked on the gentle version
 
@@ -181,7 +203,10 @@ In development the rig writes `window.__sectScroll` (`u`, `targetU`, `frame`, `s
   with drawing off. The click tour and the scroll above were timed in a real window afterwards,
   but whether the glide feels right is the owner's call.
 - Real touch devices (on iOS the page moving the scroll at touch start may fight momentum
-  scrolling), a real trackpad's momentum, and Chrome's own smooth wheel scrolling.
+  scrolling), a real trackpad's momentum, and Chrome's own smooth wheel scrolling. The two fixes
+  of 2026-11-15 are aimed at these. They were only driven by script in Chrome: wheel events
+  Chrome smooth-scrolls as it does a mouse wheel's, its own scroll gesture, and touch events sent through
+  the DevTools protocol. No real trackpad or phone has been tried.
 - A pull on to a scene starts about 0.2 to 0.4 s after the scrolling stops (the browser's own
   scroll plus the 180 ms rest).
 - A click the other way during a glide works, but the camera drifts on for about 0.3 s before it

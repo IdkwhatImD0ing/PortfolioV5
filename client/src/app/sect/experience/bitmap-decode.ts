@@ -12,6 +12,7 @@
  * on demand.
  */
 import { ImageBitmapLoader } from "three";
+import { abortError } from "@/lib/sect/fetch-gate";
 
 const DECODE_WORKER = `
 self.onmessage = async (e) => {
@@ -128,6 +129,13 @@ export class WorkerBitmapLoader extends ImageBitmapLoader {
    */
   onFetched: ((url: string) => void) | null = null;
 
+  /**
+   * Cancels the loads started while it is set (null: none, as three's loader). The fetch, on the
+   * main thread, stops; the worker only ever gets the bytes. A file all here is not decoded, and a
+   * decode already running finishes and its bitmap is closed. Each reports an AbortError to onError.
+   */
+  signal: AbortSignal | null = null;
+
   override load(url: string, onLoad?: (bitmap: ImageBitmap) => void, _onProgress?: unknown, onError?: (err: unknown) => void): void {
     let u = url ?? "";
     if (this.path !== undefined) u = this.path + u;
@@ -135,10 +143,11 @@ export class WorkerBitmapLoader extends ImageBitmapLoader {
     const manager = this.manager;
     const options = { ...(this.options as ImageBitmapOptions), colorSpaceConversion: "none" as const };
     const abort = (this as unknown as { _abortController?: AbortController })._abortController;
+    const signal = this.signal;
     const init: RequestInit = {
       credentials: this.crossOrigin === "anonymous" ? "same-origin" : "include",
       headers: this.requestHeader as HeadersInit,
-      signal: abort?.signal,
+      signal: eitherSignal(abort?.signal, signal),
     };
     manager.itemStart(u);
     const fetched = this.onFetched;
@@ -146,18 +155,33 @@ export class WorkerBitmapLoader extends ImageBitmapLoader {
       .then((res) => res.blob())
       .then((blob) => {
         fetched?.(u);
+        // Cancelled once its bytes were here: not worth a decode.
+        if (signal?.aborted) throw abortError(signal);
         return decodeBitmap(blob, options);
       })
       .then((bitmap) => {
+        if (signal?.aborted) {
+          // Cancelled while it decoded: nobody takes this bitmap, so it goes now.
+          bitmap.close();
+          throw abortError(signal);
+        }
         onLoad?.(bitmap);
         manager.itemEnd(u);
       })
       .catch((e: unknown) => {
-        onError?.(e);
+        onError?.(signal?.aborted ? abortError(signal) : e);
         manager.itemError(u);
         manager.itemEnd(u);
       });
   }
+}
+
+/** The fetch's signal: three's own (its abort()) and the caller's, either one stopping it. */
+function eitherSignal(own: AbortSignal | undefined, given: AbortSignal | null): AbortSignal | undefined {
+  if (!given) return own;
+  if (!own) return given;
+  // Without AbortSignal.any the caller's wins: nothing on this page calls three's abort().
+  return typeof AbortSignal.any === "function" ? AbortSignal.any([own, given]) : given;
 }
 
 /**

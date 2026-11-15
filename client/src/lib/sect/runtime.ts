@@ -263,12 +263,16 @@ export interface Quality {
   noCards?: boolean;
   /**
    * Far trees are drawn as lit crown shells (lib/sect/veg.ts) in place of the baked cards: High
-   * only (absent: false). ?veg=0 / ?veg=1 overrides it (veg.ts vegShellsOn).
+   * only (absent: false). A ladder step for a tier the page picked, right after live light: off,
+   * the far trees show the baked cards, as on Medium. ?veg=0 / ?veg=1 overrides it (veg.ts
+   * vegShellsOn).
    */
   vegShells?: boolean;
   /**
-   * The gate's atlas surfaces are lit live in the shader (lib/sect/live.ts) instead of read from the
-   * bake: High only (LIVE_LOOK.on; absent: false). ?live=0 / ?live=1 overrides it (live.ts liveOn).
+   * A stop's atlas surfaces are lit live in the shader (lib/sect/live.ts) instead of read from the
+   * bake: High only (LIVE_LOOK.on; absent: false). A ladder step for a tier the page picked, the
+   * first after resolution: it costs the most, and off it shows the bake, Medium's own look.
+   * ?live=0 / ?live=1 overrides it (live.ts liveOn).
    */
   liveLight?: boolean;
 }
@@ -328,8 +332,8 @@ export function capIsMoot(maxFps: number, cadenceMs: number | null): boolean {
 
 export interface DegradeOptions {
   /**
-   * The visitor picked the tier: only resolution steps down (to the render scale), never MSAA,
-   * bloom or the render rate, so what they chose still looks like it.
+   * The visitor picked the tier: only resolution steps down (to the render scale), never live
+   * light, the crown shells, MSAA, bloom or the render rate, so what they chose still looks like it.
    */
   keepLook?: boolean;
   /** The screen's frame interval (FrameLadder.cadenceMs): no render-rate cap where it is moot. */
@@ -337,16 +341,20 @@ export interface DegradeOptions {
 }
 
 /**
- * One step down the quality ladder: resolution first (to 1x), then MSAA, then bloom, then the
- * render scale (RENDER_SCALE_MIN), then the other areas as their stand-ins (standIns), then the
- * tree cards off (noCards), then the render rate (30 fps while moving). Returns null at the bottom.
- * A tier the visitor picked (`keepLook`) only loses resolution. Textures never change at runtime
- * (that would need a reload).
+ * One step down the quality ladder: resolution first (to 1x), then live light off (liveLight), then
+ * the crown shells off (vegShells), then MSAA, then bloom, then the render scale (RENDER_SCALE_MIN),
+ * then the other areas as their stand-ins (standIns), then the tree cards off (noCards), then the
+ * render rate (30 fps while moving). Returns null at the bottom. Live light and the shells go before
+ * MSAA: live light costs the most, and without both, High draws what Medium draws (the bake, the
+ * baked cards) before it gets worse than Medium. A tier the visitor picked (`keepLook`) only loses
+ * resolution. Textures never change at runtime (that would need a reload).
  */
 export function degradeQuality(q: Quality, devicePixelRatio: number, opts: DegradeOptions = {}): Quality | null {
   const d = effectiveDpr(q, devicePixelRatio);
   if (d > 1) return { ...q, maxDpr: Math.max(1, d - 0.25) };
   if (!opts.keepLook) {
+    if (q.liveLight) return { ...q, liveLight: false };
+    if (q.vegShells) return { ...q, vegShells: false };
     if (q.msaa > 0) return { ...q, msaa: q.msaa > 2 ? 2 : 0 };
     if (q.bloom) return { ...q, bloom: false };
   }
@@ -361,8 +369,9 @@ export function degradeQuality(q: Quality, devicePixelRatio: number, opts: Degra
 /**
  * One step back up toward the tier's own quality (`top`) once frames have room again, in the
  * reverse order of the steps down: the render-rate cap off, the tree cards back, the other areas
- * back, the render scale back to 1x, bloom, MSAA (to 2 samples, then the tier's own), and last the
- * resolution above 1x, 0.25 at a time. Null when there is nothing to climb.
+ * back, the render scale back to 1x, bloom, MSAA (to 2 samples, then the tier's own), the crown
+ * shells, live light, and last the resolution above 1x, 0.25 at a time. A feature comes back only
+ * when `top` has it. Null when there is nothing to climb.
  */
 export function upgradeQuality(q: Quality, top: Quality, devicePixelRatio: number): Quality | null {
   if (q.maxFps > 0 && q.maxFps !== top.maxFps) return { ...q, maxFps: top.maxFps };
@@ -373,15 +382,18 @@ export function upgradeQuality(q: Quality, top: Quality, devicePixelRatio: numbe
   if (d < 1 && t >= 1) return { ...q, maxDpr: 1 };
   if (!q.bloom && top.bloom) return { ...q, bloom: true };
   if (q.msaa < top.msaa) return { ...q, msaa: q.msaa === 0 ? Math.min(2, top.msaa) : top.msaa };
+  if (!q.vegShells && top.vegShells) return { ...q, vegShells: true };
+  if (!q.liveLight && top.liveLight) return { ...q, liveLight: true };
   if (d >= t - 1e-6) return null;
   return { ...q, maxDpr: Math.min(t, d + 0.25) };
 }
 
 /**
  * The cost the ladder assumes for a climb that adds work rather than pixels (tree cards, the other
- * areas, bloom, MSAA): the frame must be predicted to fit with this much more. The margin is the
- * ladder's hysteresis there (a step comes back only with clear room, not at the edge where it was
- * dropped); a climb that still drops frames is undone and blocked for a while (FrameLadder).
+ * areas, bloom, MSAA, the crown shells, live light): the frame must be predicted to fit with this
+ * much more. The margin is the ladder's hysteresis there (a step comes back only with clear room,
+ * not at the edge where it was dropped); a climb that still drops frames is undone and blocked for
+ * a while (FrameLadder).
  */
 export const FEATURE_CLIMB_COST = 1.3;
 
@@ -406,6 +418,25 @@ export function climbCost(q: Quality, top: Quality, devicePixelRatio: number): n
 export function climbRebuildsPipeline(q: Quality, top: Quality, devicePixelRatio: number): boolean {
   const up = upgradeQuality(q, top, devicePixelRatio);
   return up !== null && (up.msaa !== q.msaa || up.bloom !== q.bloom);
+}
+
+/**
+ * How many times the ladder may turn live light off before it stops climbing it back for the visit
+ * (ladderCeiling). Live light only costs once the camera rests at a stop with live maps and they
+ * have loaded. Between stops nothing is lit live, so frames have room and the ladder climbs it back;
+ * the next stop is usually more than LADDER.probeMs away, so the watch on that climb ends clean.
+ * There the maps load, upload and fade in, frames run long, and live light goes off again as an
+ * ordinary step with no backoff. Unchecked, that repeats at every stop, each time a full live start
+ * and a visible pop. So it gets one more try, then stays off.
+ */
+export const LIVE_LIGHT_TRIES = 2;
+
+/**
+ * The quality the ladder climbs back to: the tier's own (`top`), less live light once the ladder has
+ * turned it off LIVE_LIGHT_TRIES times (`liveOffs`). Otherwise `top` itself, the same object.
+ */
+export function ladderCeiling(top: Quality, liveOffs: number): Quality {
+  return liveOffs >= LIVE_LIGHT_TRIES && top.liveLight ? { ...top, liveLight: false } : top;
 }
 
 /** The ladder's frame budget for a tier the page picked (20 ms = under 50 fps). */

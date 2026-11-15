@@ -93,13 +93,13 @@ import {
   openingQuads,
   type FireSource,
 } from "@/lib/sect/flames";
-import { fogLibrary, glslFloat, type FogConstants } from "@/lib/sect/glsl";
+import { fogLibrary, glslFloat, SCREEN_GRADE_GLSL, type FogConstants } from "@/lib/sect/glsl";
 import type { Quality } from "@/lib/sect/runtime";
 import type { SectMeta } from "@/lib/sect/types";
 import { distanceFade, fxTier } from "@/lib/sect/water";
 import type { LoadedSet } from "./assets";
 import { FORGE_FIRE_GLOW } from "./fx";
-import { getNoiseTexture, SOFT_DEPTH } from "./materials";
+import { getNoiseTexture, SECT_LOOK_GPU, sharedHazeColor, SOFT_DEPTH } from "./materials";
 import { keepShaderProgramsBeforeFree, materialsOf, primePrograms, programsReady } from "./program-prime";
 import type { SectStore } from "./store";
 
@@ -129,7 +129,7 @@ float flameSoftFade( float fragViewZ, float len ) {
 `;
 
 /** Per-fire uniforms the draws share (a fire's weight is 0 when it is not drawn). */
-interface SourceUniforms {
+export interface SourceUniforms {
   uOn: { value: Float32Array };
   /** right.xz, normal.xz (openings); unused for beds. */
   uFrame: { value: Vector4[] };
@@ -139,7 +139,8 @@ interface SourceUniforms {
   uBase: { value: Vector4[] };
 }
 
-function sourceUniforms(sources: readonly FireSource[]): SourceUniforms {
+/** The fires' shared uniforms (exported, with the materials below, for the tests). */
+export function sourceUniforms(sources: readonly FireSource[]): SourceUniforms {
   const frame = Array.from({ length: N }, () => new Vector4());
   const dim = Array.from({ length: N }, () => new Vector4());
   const base = Array.from({ length: N }, () => new Vector4());
@@ -167,7 +168,7 @@ vec3 flameAir( vec3 col, vec3 world ) {
 // ---------------------------------------------------------------------------------------------
 // Mouths: a fire box seen through the opening
 
-function mouthMaterial(src: SourceUniforms, fog: FogConstants, fogColor: string, sheets: number): ShaderMaterial {
+export function mouthMaterial(src: SourceUniforms, fog: FogConstants, fogColor: string, sheets: number): ShaderMaterial {
   return new ShaderMaterial({
     name: "sect.fire.mouths",
     transparent: true,
@@ -180,7 +181,9 @@ function mouthMaterial(src: SourceUniforms, fog: FogConstants, fogColor: string,
       tFlameNoise: { value: getNoiseTexture() },
       uTime: { value: 0 },
       uCalm: { value: 0 },
-      uFogColor: { value: new Color(fogColor) },
+      // The land's haze and the look's numbers (materials.ts), so the far furnaces fade as it does.
+      uFogColor: sharedHazeColor(fogColor),
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec2 aLocal;
@@ -278,6 +281,8 @@ void main() {
   rd /= max( dist, 1e-3 );
   col = sectAerial( col, uFogColor, rd, sectHazeDepth( cameraPosition.y, rd.y, dist ) );
   gl_FragColor = vec4( col, vOn );
+  // It covers what is behind it, so on the Low tier's screen it takes the look's frame grade itself.
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
@@ -287,7 +292,7 @@ void main() {
 // ---------------------------------------------------------------------------------------------
 // Flame cards over the beds
 
-function cardMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
+export function cardMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
   return new ShaderMaterial({
     name: "sect.fire.flames",
     transparent: true,
@@ -305,6 +310,8 @@ function cardMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
       tFlameNoise: { value: getNoiseTexture() },
       uTime: { value: 0 },
       uCalm: { value: 0 },
+      // The look's haze numbers: the air in between takes the look's share of the light.
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iA;
@@ -379,7 +386,8 @@ void main() {
   if ( h <= 0.0 ) discard;
   float k = vOn * flameSoftFade( vViewZ, ${f(FLAMES.soft)} );
   vec3 col = sectFlameColor( h ) * k;
-  // Linear light, added unencoded (as fx.tsx's fire): see the note there on the Low tier.
+  // Linear light, added unencoded (as fx.tsx's fire): see the note there on the Low tier. No frame
+  // grade of its own there either (see materials.ts createGlowMaterial).
   gl_FragColor = vec4( flameAir( col, vWorld ), smoothstep( 0.15, 0.85, h ) * vCover * k );
 }
 `,
@@ -389,7 +397,7 @@ void main() {
 // ---------------------------------------------------------------------------------------------
 // Embers, and the blazes' glow
 
-function emberMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
+export function emberMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
   const B = FLAMES.blaze;
   return new ShaderMaterial({
     name: "sect.fire.embers",
@@ -406,6 +414,8 @@ function emberMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
       uViewH: { value: 1000 },
       uStill: { value: 0 },
       uGlowColor: { value: new Color(FLAMES.blazeGlow) },
+      // The look's haze numbers: the air in between takes the look's share of the light.
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iE;
@@ -540,7 +550,7 @@ void main() {
  * anything far behind are left alone. A quad round the light's sphere, the whole screen when the
  * camera is in or near it. Needs the depth (High, Medium) and a buffer that holds light above 1.
  */
-function lightMaterial(src: SourceUniforms): ShaderMaterial {
+export function lightMaterial(src: SourceUniforms): ShaderMaterial {
   const L = FLAMES.blaze.light;
   return new ShaderMaterial({
     name: "sect.fire.light",

@@ -45,7 +45,10 @@ lights live. Far trees now work that way.
 
 ## Switches and numbers
 
-- Quality: `vegShells`, on for High, off for Medium and Low (they keep the cards everywhere).
+- Quality: `vegShells`, on for High, off for Medium and Low (they keep the cards everywhere). On a
+  High the page picked by itself, the quality ladder turns the crowns off when frames run slow,
+  right after live light, and the cards come back. It climbs them back right after MSAA. A High
+  the visitor picked keeps them.
 - URL: `?veg=0` forces the cards, `?veg=1` forces the crowns on any tier.
 - Look: everything is in `VEG_LOOK` in `lib/sect/veg.ts` (round 58's parts: `boughs`, `depth`).
   The switch distances are in `CARD_LOOK.farCut`.

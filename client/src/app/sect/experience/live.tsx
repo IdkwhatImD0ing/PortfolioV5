@@ -32,8 +32,14 @@
  * still downloading (store.report.liveArriving, live.ts liveArriving): on a slow line the maps come
  * after Enter, and the light then fades in as at every later stop.
  *
- * With ?debug=1, window.__sectLive holds the state (`held`: the stop whose maps are held) and a copy
- * of LIVE_LOOK to retune from the console (change it, then call apply()).
+ * Downloads: every start's and preload's maps wait in one queue for the page (LIVE_FETCH_LIMIT files
+ * at once, the start before maps loaded ahead), and stop when their load does (stop, dropHeld, the
+ * canvas gone): a stop scrolled through does not keep downloading maps nobody will use while the
+ * next area's models wait.
+ *
+ * With ?debug=1, window.__sectLive holds the state (`held`: the stop whose maps are held;
+ * `downloads`: the map downloads so far) and a copy of LIVE_LOOK to retune from the console (change
+ * it, then call apply()).
  */
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
@@ -91,6 +97,7 @@ import {
   type LiveShadowBox,
   type LiveStopBox,
 } from "@/lib/sect/live";
+import { createFetchGate } from "@/lib/sect/fetch-gate";
 import { fetchUrl } from "@/lib/sect/parse";
 import { keepProgramFields, programVariant } from "@/lib/sect/program-key";
 import type { Quality } from "@/lib/sect/runtime";
@@ -145,6 +152,8 @@ export interface LiveStats {
   /** The stop whose maps are held ahead of need (loading or ready), or null; and whether they are on the GPU. */
   held: string | null;
   heldReady: boolean;
+  /** The live map downloads since the page loaded (the queue's: LIVE_FETCH_LIMIT at once). */
+  downloads: LiveDownloads;
   /**
    * A copy of LIVE_LOOK: change it, then call apply() (tap counts, the coarse factor and the grade
    * need a reload).
@@ -156,12 +165,63 @@ export interface LiveStats {
   setMix: (v: number) => void;
 }
 
+/**
+ * Live map files counted as they go through the queue (the view table and the small JSON files skip
+ * it and are not counted). Each file started ends as one of finished, failed or aborted, so started
+ * is those three plus running.
+ */
+export interface LiveDownloads {
+  /** Given their turn: their download began. */
+  started: number;
+  /** All their bytes here. */
+  finished: number;
+  /** The fetch failed (a missing file still arrives, and fails at decoding). */
+  failed: number;
+  /** Cut off mid-download: the start or preload they were for had stopped. */
+  aborted: number;
+  /** Taken out of the queue before their turn, for the same reason: never downloaded. */
+  dropped: number;
+  /** Downloading now, waiting for their turn now, and the most that ever downloaded at once. */
+  readonly running: number;
+  readonly waiting: number;
+  readonly peak: number;
+}
+
+/**
+ * At most this many live map files download at once. The areas' models download one at a time on
+ * purpose (streaming.ts) and share the line with these: a start's six or more maps, all at once,
+ * took most of it from the next area's models.
+ */
+const LIVE_FETCH_LIMIT = 2;
+/** The page's queue for live map files, shared by every start and preload (lib/sect/fetch-gate.ts). */
+const liveFetches = createFetchGate(LIVE_FETCH_LIMIT);
+const liveDownloads: LiveDownloads = {
+  started: 0,
+  finished: 0,
+  failed: 0,
+  aborted: 0,
+  dropped: 0,
+  get running() {
+    return liveFetches.running;
+  },
+  get waiting() {
+    return liveFetches.waiting;
+  },
+  get peak() {
+    return liveFetches.peak;
+  },
+};
+
 /** index.json per asset folder and chunk, fetched once (null: none or unreadable). */
 const indexes = new Map<string, Promise<LiveIndex | null>>();
 
-/** A file with a fingerprint may come from the browser's cache as is; the rest are checked each time. */
-function liveFetch(base: string, file: string, rev: Readonly<Record<string, string>> | undefined): Promise<Response> {
-  return fetch(fetchUrl(base, file, rev), rev?.[file] ? undefined : { cache: "no-cache" });
+/**
+ * A file with a fingerprint may come from the browser's cache as is; the rest are checked each time.
+ * `signal` cancels it (never for the JSON files: they are fetched once and shared by every load).
+ */
+function liveFetch(base: string, file: string, rev: Readonly<Record<string, string>> | undefined, signal?: AbortSignal): Promise<Response> {
+  const cache: RequestInit | undefined = rev?.[file] ? undefined : { cache: "no-cache" };
+  return fetch(fetchUrl(base, file, rev), signal ? { ...cache, signal } : cache);
 }
 
 function loadIndex(base: string, rev: Readonly<Record<string, string>> | undefined, chunk: string): Promise<LiveIndex | null> {
@@ -209,6 +269,16 @@ function downloading(f: Fetching): () => void {
   };
 }
 
+/** One start's or preload's downloads: counted, queued and cancelled together. */
+interface LiveLoad {
+  /** Its files not here yet, those waiting in the queue too (liveArriving). */
+  fetching: Fetching;
+  /** Its turn in the queue (liveFetches): START_PRIORITY or PRELOAD_PRIORITY. */
+  priority: number;
+  /** Aborted once the load stops: its downloads stop, and its files still waiting leave the queue. */
+  signal: AbortSignal;
+}
+
 /** Frees a map, closing its decoded image if it never reached the GPU. */
 function freeTexture(t: Texture): void {
   const img = t.image as unknown;
@@ -220,52 +290,84 @@ function freeTexture(t: Texture): void {
  * One live map: data straight from the file (no premultiply, no colour conversion), not flipped
  * (the glTF way, as the atlases), mipmapped, `srgb` for colour, none for the normals. Its decoded
  * image is closed once it is on the GPU (the GPU copy is then the only one: never set needsUpdate
- * on it again). Counted in `fetching` until its file is here (or failed).
+ * on it again). It waits its turn in the page's queue (liveFetches), holding a place until its file
+ * is here, failed or was aborted. Counted in `load.fetching` until then, its wait in the queue too.
+ * When `load.signal` aborts, it rejects (its file still waiting leaves the queue).
  */
-function loadMap(url: string, name: string, srgb: boolean, anisotropy: number, fetching: Fetching): Promise<Texture> {
+function loadMap(url: string, name: string, srgb: boolean, anisotropy: number, load: LiveLoad): Promise<Texture> {
   return new Promise((resolve, reject) => {
     const tex = new Texture();
     tex.name = name;
     tex.flipY = false;
     tex.colorSpace = srgb ? SRGBColorSpace : NoColorSpace;
     tex.anisotropy = anisotropy;
-    const arrived = downloading(fetching);
-    const done = (image: ImageBitmap | HTMLImageElement) => {
-      arrived();
-      tex.image = image;
-      tex.needsUpdate = true;
-      tex.onUpdate = () => {
-        const img = tex.image as unknown;
-        if (typeof ImageBitmap !== "undefined" && img instanceof ImageBitmap) img.close();
-        tex.onUpdate = null;
-      };
-      resolve(tex);
-    };
-    const failed = (e: unknown) => {
-      arrived();
-      reject(e);
-    };
-    if (typeof createImageBitmap !== "undefined") {
-      const loader = new WorkerBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" });
-      // Here: decoding is work on what has arrived.
-      loader.onFetched = arrived;
-      loader.load(url, done, undefined, failed);
-    } else {
-      new ImageLoader().load(url, done, undefined, failed);
-    }
+    const arrived = downloading(load.fetching);
+    void liveFetches.acquire({ priority: load.priority, signal: load.signal }).then(
+      (release) => {
+        liveDownloads.started++;
+        let open = true;
+        // The download is over: the next file in the queue may start (decoding does not hold the line).
+        const over = (how: "finished" | "failed" | "aborted") => {
+          if (!open) return;
+          open = false;
+          arrived();
+          release();
+          liveDownloads[how]++;
+        };
+        const done = (image: ImageBitmap | HTMLImageElement) => {
+          over("finished");
+          tex.image = image;
+          tex.needsUpdate = true;
+          tex.onUpdate = () => {
+            const img = tex.image as unknown;
+            if (typeof ImageBitmap !== "undefined" && img instanceof ImageBitmap) img.close();
+            tex.onUpdate = null;
+          };
+          resolve(tex);
+        };
+        const failed = (e: unknown) => {
+          over(load.signal.aborted ? "aborted" : "failed");
+          reject(e);
+        };
+        try {
+          if (typeof createImageBitmap !== "undefined") {
+            const loader = new WorkerBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" });
+            // Stops with its load; a bitmap decoded after that is closed (bitmap-decode.ts).
+            loader.signal = load.signal;
+            // Here: decoding is work on what has arrived.
+            loader.onFetched = () => over("finished");
+            loader.load(url, done, undefined, failed);
+          } else {
+            // This one cannot be cancelled: it keeps its place until it has loaded.
+            new ImageLoader().load(url, done, undefined, failed);
+          }
+        } catch (e) {
+          failed(e);
+        }
+      },
+      (e: unknown) => {
+        // Its load stopped while it waited for its turn: never downloaded.
+        arrived();
+        liveDownloads.dropped++;
+        reject(e);
+      },
+    );
   });
 }
 
 /**
  * Blender's view transform (live.ts LIVE_VIEW) as an sRGB 3D texture, filtered: the shader reads
  * linear display light from it. Rejects when the file is missing or not the size the shader expects.
- * Counted in `fetching` until its bytes are here.
+ * Counted in `load.fetching` until its bytes are here, and stopped with its load. It skips the
+ * queue: one small file (48^3 x 4 bytes, 432 KB, against 0.9 to 2.4 MB a map at the gate), the same
+ * for every stop, which a start needs as much as its maps; queued after them it would only add a
+ * wait at the end.
  */
-async function loadView(base: string, rev: Readonly<Record<string, string>> | undefined, fetching: Fetching): Promise<Data3DTexture> {
-  const arrived = downloading(fetching);
+async function loadView(base: string, rev: Readonly<Record<string, string>> | undefined, load: LiveLoad): Promise<Data3DTexture> {
+  const arrived = downloading(load.fetching);
   let bytes: Uint8Array;
   try {
-    const res = await liveFetch(base, LIVE_VIEW.file, rev);
+    const res = await liveFetch(base, LIVE_VIEW.file, rev, load.signal);
     if (!res.ok) throw new Error(`${LIVE_VIEW.file}: ${res.status}`);
     bytes = new Uint8Array(await res.arrayBuffer());
   } finally {
@@ -294,7 +396,9 @@ function nextFrame(): Promise<void> {
 /**
  * A stop's maps for these atlases (albedo, ambient, normal each, in that order) and the view table,
  * fetched and decoded, not yet on the GPU. Whatever loaded comes back even when something failed
- * (`error`), for the caller to free. `fetching` counts the files still downloading.
+ * (`error`), for the caller to free. `load` counts the files still downloading, queues the maps and
+ * stops them all once it aborts (they then come back as errors: the caller checks it is still alive
+ * before it looks at `error`).
  */
 async function loadStopMaps(
   base: string,
@@ -302,17 +406,17 @@ async function loadStopMaps(
   index: LiveIndex,
   atlases: readonly string[],
   anisotropy: number,
-  fetching: Fetching,
+  load: LiveLoad,
 ): Promise<{ textures: Texture[]; view: Data3DTexture | null; error: string | null }> {
   const jobs = atlases.flatMap((a) => {
     const e = index.atlases[a];
     return [
-      loadMap(fetchUrl(base, liveMapFile(index.chunk, e.albedo), rev), `sect.live.${a}.albedo`, true, anisotropy, fetching),
-      loadMap(fetchUrl(base, liveMapFile(index.chunk, e.ambient), rev), `sect.live.${a}.ambient`, true, anisotropy, fetching),
-      loadMap(fetchUrl(base, liveMapFile(index.chunk, e.normal), rev), `sect.live.${a}.normal`, false, anisotropy, fetching),
+      loadMap(fetchUrl(base, liveMapFile(index.chunk, e.albedo), rev), `sect.live.${a}.albedo`, true, anisotropy, load),
+      loadMap(fetchUrl(base, liveMapFile(index.chunk, e.ambient), rev), `sect.live.${a}.ambient`, true, anisotropy, load),
+      loadMap(fetchUrl(base, liveMapFile(index.chunk, e.normal), rev), `sect.live.${a}.normal`, false, anisotropy, load),
     ];
   });
-  const viewJob = loadView(base, rev, fetching).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e))));
+  const viewJob = loadView(base, rev, load).catch((e: unknown) => (e instanceof Error ? e : new Error(String(e))));
   const got = await Promise.allSettled(jobs);
   const gotView = await viewJob;
   const textures: Texture[] = [];
@@ -337,7 +441,7 @@ async function uploadEach(gl: WebGLRenderer, textures: readonly Texture[], alive
   return done.every(Boolean) && alive();
 }
 
-/** The live start's uploads go before the maps loaded ahead for the next stop. */
+/** The live start's downloads and uploads go before the maps loaded ahead for the next stop (both queues: higher first). */
 const START_PRIORITY = 2;
 const PRELOAD_PRIORITY = 0;
 
@@ -586,6 +690,11 @@ interface Held {
   done: Promise<void>;
   /** Its files still downloading (a start waiting for these maps counts them as its own: liveArriving). */
   fetching: Fetching;
+  /**
+   * Aborted when these maps are let go (dropHeld) or their load gives up: their downloads stop. Never
+   * by a start waiting for them: that start dying leaves them held.
+   */
+  abort: AbortController;
 }
 
 export interface LiveLightProps {
@@ -611,6 +720,8 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
       starting: null as LoadedSet | null,
       /** The files the start under way still waits to download (its own, or the held maps' it waits for). */
       startFetch: null as Fetching | null,
+      /** Stops the downloads of the start under way (not those of held maps it waits for). */
+      startAbort: null as AbortController | null,
       /** The stops with live maps, once live/index.json is read. */
       stops: null as string[] | null,
       /** Sets that cannot be lit live (no index, no maps), with why: not tried again. */
@@ -638,6 +749,7 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
         },
         held: null,
         heldReady: false,
+        downloads: liveDownloads,
         look,
         apply: () => {},
         setMix: () => {},
@@ -655,6 +767,9 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
       kit.gen++;
       kit.starting = null;
       kit.startFetch = null;
+      // A start in flight stops downloading: what it gets would only be thrown away.
+      kit.startAbort?.abort();
+      kit.startAbort = null;
       const s = kit.session;
       kit.session = null;
       SECT_LIVE.uSectLiveMix.value = 0;
@@ -689,8 +804,8 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
   );
 
   /**
-   * Lets go of the maps held ahead. Ready ones are freed now; a load under way sees it is no longer
-   * kit.held and gives back what it made as each piece lands.
+   * Lets go of the maps held ahead. Ready ones are freed now; a load under way stops its downloads,
+   * sees it is no longer kit.held and gives back what it made as each piece lands.
    */
   const dropHeld = useMemo(
     () => () => {
@@ -698,7 +813,9 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
       kit.held = null;
       kit.stats.held = null;
       kit.stats.heldReady = false;
-      if (!h || !h.ready) return;
+      if (!h) return;
+      h.abort.abort();
+      if (!h.ready) return;
       h.ready = false;
       for (const t of h.textures) freeTexture(t);
       h.view?.dispose();
@@ -711,16 +828,28 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
   /** Loads a stop's maps ahead of need and holds them (Held) for its start to take. */
   const preload = useMemo(
     () => (stop: string) => {
-      const held: Held = { stop, ready: false, failed: null, index: null, atlases: [], textures: [], view: null, done: Promise.resolve(), fetching: { n: 0 } };
+      const held: Held = {
+        stop,
+        ready: false,
+        failed: null,
+        index: null,
+        atlases: [],
+        textures: [],
+        view: null,
+        done: Promise.resolve(),
+        fetching: { n: 0 },
+        abort: new AbortController(),
+      };
       kit.held = held;
       kit.stats.held = stop;
       kit.stats.heldReady = false;
       // Let go of (dropHeld), live turned off, or the canvas gone.
-      const alive = () => kit.held === held && mounted.current && live.current.on;
+      const alive = () => kit.held === held && mounted.current && live.current.on && !held.abort.signal.aborted;
       const run = async () => {
         let textures: Texture[] = [];
         let view: Data3DTexture | null = null;
         const undo = () => {
+          held.abort.abort();
           for (const t of textures) freeTexture(t);
           view?.dispose();
         };
@@ -735,9 +864,11 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
           if (!alive()) return undo();
           if (!index || index.chunk !== stop) return fail(`${stop}: no live maps`);
           const atlases = Object.keys(index.atlases).sort();
-          const got = await loadStopMaps(base, manifest.rev, index, atlases, Math.min(8, gl.capabilities.getMaxAnisotropy()), held.fetching);
+          const load: LiveLoad = { fetching: held.fetching, priority: PRELOAD_PRIORITY, signal: held.abort.signal };
+          const got = await loadStopMaps(base, manifest.rev, index, atlases, Math.min(8, gl.capabilities.getMaxAnisotropy()), load);
           textures = got.textures;
           view = got.view;
+          // Before the errors: an aborted download is not a failure.
           if (!alive()) return undo();
           if (got.error || !view) return fail(got.error ?? "the view table failed to load");
           if (!(await uploadEach(gl, [...textures, view], alive, PRELOAD_PRIORITY))) return undo();
@@ -745,6 +876,7 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
           Object.assign(held, { index, atlases, textures, view, ready: true });
           kit.stats.heldReady = true;
         } catch (e) {
+          if (!alive()) return undo();
           fail(e instanceof Error ? e.message : String(e));
         }
       };
@@ -760,9 +892,15 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
       // This start's files still downloading (liveArriving), while it is the start under way.
       const own: Fetching = { n: 0 };
       kit.startFetch = own;
+      // Its own downloads, stopped with it (stop, or its undo). An older start's stop already did
+      // this; aborting it again here costs nothing and leaves no start downloading behind a newer one.
+      kit.startAbort?.abort();
+      const abort = new AbortController();
+      kit.startAbort = abort;
       const stats = kit.stats;
       // A newer start or a stop (the flight left this stop, the set dropped, live turned off) bumps gen.
-      const alive = () => gen === kit.gen && mounted.current && live.current.on && !target.dropped && live.current.chunks.includes(target);
+      const alive = () =>
+        gen === kit.gen && !abort.signal.aborted && mounted.current && live.current.on && !target.dropped && live.current.chunks.includes(target);
       // What this start has made so far, given back if it does not finish. A newer start may have
       // begun meanwhile: only what is still this one's own is taken back.
       const textures: Texture[] = [];
@@ -774,6 +912,7 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
       const bindings = new Map<Material, LiveBinding>();
       const filled: string[] = [];
       const undo = () => {
+        abort.abort();
         for (const [m, b] of bindings) if (materialLive(m) === b) setMaterialLive(m, null);
         if (warm) releaseCopies(gl, warm.copies);
         for (const a of filled) {
@@ -848,9 +987,11 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
         }
         if (!taken) {
           const { base, manifest } = ctx.data;
-          const got = await loadStopMaps(base, manifest.rev, index, atlases, Math.min(8, gl.capabilities.getMaxAnisotropy()), own);
+          const load: LiveLoad = { fetching: own, priority: START_PRIORITY, signal: abort.signal };
+          const got = await loadStopMaps(base, manifest.rev, index, atlases, Math.min(8, gl.capabilities.getMaxAnisotropy()), load);
           textures.push(...got.textures);
           view = got.view;
+          // Before the errors: an aborted download is not a failure.
           if (!alive()) return undo();
           if (got.error) return giveUp(got.error);
           if (!(await uploadEach(gl, view ? [view, ...textures] : textures, alive, START_PRIORITY))) return undo();
@@ -958,6 +1099,8 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
       } catch (e) {
         // Stored, the session owns what was made (stop gives it back).
         if (kit.session?.set === target) return;
+        // Stopped meanwhile: nothing to say, and the set is not marked failed.
+        if (!alive()) return undo();
         console.warn(`[sect] live light failed; ${area.id} stays baked`, e);
         giveUp(e instanceof Error ? e.message : String(e));
       } finally {
@@ -965,6 +1108,7 @@ export function LiveLight({ chunks, ctx, store, quality }: LiveLightProps) {
           kit.starting = null;
           kit.startFetch = null;
         }
+        if (kit.startAbort === abort) kit.startAbort = null;
       }
     },
     [kit, ctx, gl, scene, camera, store],

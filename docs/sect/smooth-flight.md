@@ -66,7 +66,8 @@ On the code before this round, over six production flights:
 
 - **Images are decoded and handed over in a worker** (`experience/bitmap-decode.ts`). It is three's
   own loader with the decode moved, with the same options, and it falls back to the main thread if
-  the worker does not start.
+  the worker does not start. It takes an optional abort signal (the live light's maps use it): the
+  download stops, and an image decoded too late is closed.
 - **Big jobs are cut smaller**: the vertex colour repair, the built-mask grow (it redoes only the
   cells that changed, and gives the same mask), the grass steps, the mesh decoder's hand-off.
 - **A tier change gives its memory back.** Page-level textures and the shadow depth materials each
