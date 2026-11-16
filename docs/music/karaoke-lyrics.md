@@ -89,6 +89,13 @@ block in `client/src/app/sect/sect.css`.
   brush hand), and a second press brings the English back. Each song starts in English. The Chinese
   versions sit beside the English in `song-notes.ts`. Instrumentals have none: their card ends at
   the credits.
+- **The note's Chinese** is written as an inscription is: upright columns, read from the right,
+  hung from one line at the top. `noteColumns()` in `song-notes.ts` cuts the columns: at most seven
+  characters each, filled evenly, and a comma or full stop never opens one. The block sits in the
+  middle of the drawer. On a small phone the characters shrink until every column fits. The note
+  is as tall as the side it shows, so the Chinese (taller) opens the note's place and the lyrics
+  under it move down; the English keeps its own height. The lyrics stay written across: sung
+  lines are read that way everywhere. A screen reader gets the Chinese in one piece.
 - **The lyrics.** The complete ordered song. A Chinese line is in the brush hand with `lang="zh"` (below), its
   English under it, smaller, in the body face. An English-only line is one line in the serif, never
   the same text twice. Pinyin is not shown.
@@ -115,6 +122,14 @@ The lyric lines, the shows' names and the notes' Chinese use a second cut of the
 is opened (`data-brush`, which then stays on so a closing drawer keeps its hand), and the CJK serif stands in until then and for any character it
 lacks. After the songs or their lyrics change, rerun
 `client/scripts/subset-lyrics-font.mjs <MaShanZheng-Regular.ttf> <server/.music-prepared>`.
+Check that the prepared folder holds every sung track first: the script only keeps the characters
+it finds there, so an old folder drops a newer song's characters.
+
+Ma Shan Zheng has no forms for upright columns: its full stop sits at the foot of its square on the
+left and its comma at the foot in the middle. In a column they belong in the upper right, under the
+character they follow. `client/scripts/vertical-punctuation.py` (run by the subset script) adds a
+copy of each moved there and a `vert` feature that swaps it in. Browsers turn `vert` on for upright
+text in a column by themselves, and lines written across are unchanged.
 
 ### Where it sits
 

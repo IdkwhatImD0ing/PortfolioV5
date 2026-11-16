@@ -10,8 +10,9 @@ page reuses its look and its lyric data.
 
 - **Top bar.** The site's seal and "Back to the sect" (one link to `/`), and the page's name, 乐曲.
 - **The card.** The open song as the drawer shows it: title in the brush hand, its English, the
-  show, the artist, and the owner's note (press it to swap English and Chinese). Under it, the
-  songs in the flight's order. Press one to play it.
+  show, the artist, and the owner's note (press it to swap English and Chinese; the Chinese is in
+  upright columns read from the right, as in the drawer, and taller, so the songs under it move
+  down). Under it, the songs in the flight's order. Press one to play it.
 - **The lyrics.** Every line of the song, Chinese with its English under it. They can be read
   without playing anything. While the song plays, the line being sung fills with gold word by word
   and moves toward the middle. A click or tap on a line plays from that line.

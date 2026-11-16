@@ -876,6 +876,28 @@ change. Counting shader programs is not a timing.
 
 **See.** "Lighting a stop without freezing the page" in [`../sect/live-gate.md`](../sect/live-gate.md).
 
+### 2026-11-13 · A song note's Chinese is written in columns, from the right
+
+**Decided.** In the soundtrack drawer and on `/music` (the same note), the Chinese side of a
+song's note is set in upright columns read from the right, at most seven characters to a column,
+as an inscription on a scroll is written. The English side and the lyrics are unchanged; lyrics stay written across, as sung lines
+are everywhere. The note is now as tall as the side it shows: the Chinese is taller, so pressing
+the note opens its place and the lyrics under it move down, and the English view keeps the height
+it had. The lyrics' brush font gained the comma and the full stop as a column writes them, in the
+upper right of their squares (Ma Shan Zheng has no such forms). Details are in
+[`../music/karaoke-lyrics.md`](../music/karaoke-lyrics.md).
+
+**Why.** The owner asked whether the notes' Chinese would be more culturally correct written
+vertically, starting from the right. It would for this spot: the note is dressed as the inscription
+at a scroll's end, in a brush hand, and that is how one is written. Across is not wrong (it is how
+the mainland has printed since the 1950s), it only reads as modern.
+
+**Checked** on a preview page with the real drawer component and stylesheet, a made-up engine and
+made-up lyrics, at 1024×768 and at a 250 px drawer (a 320 px phone), and the `/music` card on its
+own stylesheet at 1024×768 and 375×812. Not checked in the full 3D page or the real `/music` page
+with music playing, and the opening and closing motion was not watched (the preview pane was
+hidden, where animation does not run).
+
 ### 2026-11-14 · GPU work goes through one queue, and Enter waits for the first stop
 
 **Decided.** Smoothness is now measured on the path a visitor takes: a production build, the interface on, the
