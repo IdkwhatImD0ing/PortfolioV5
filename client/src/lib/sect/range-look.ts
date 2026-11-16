@@ -157,6 +157,29 @@ export const RANGE_LOOK = {
     openingM: 60,
   },
   /**
+   * Ice-Fire Island's steam rises (2026-11-15; the owner: "The ice fire mountain smoke doesnt
+   * animate"). The steam is the small puffs of the mist's `keep` zone (isSteamPuff): bounding radius
+   * at most `maxRadius` metres (the plume's are 1.2-4.9 m; the zone also holds three untagged banks
+   * 32-37 m across, kept as they were and left still). Each one is drawn as two copies half a loop
+   * apart that climb through its place in the shader (steam.ts steamLoop), each fading in at the
+   * bottom and out at the top while the other takes its share, so the place is never empty:
+   * - speed: metres a second it climbs (its copies, and the world noise inside the steam sprites);
+   * - span: its loop's length, as a multiple of its vertical half-extent, held to `spanM` metres
+   *   (short: a copy never strays far from its place, so the plume keeps its shape);
+   * - grow: its size from the bottom of the loop to the top (multiplies the semi-axes);
+   * - drift: metres downwind (along `mist.wind`) per metre risen;
+   * - churn: sprite heights a second the sprite's own noise moves down it, so its wisps climb.
+   */
+  steam: {
+    maxRadius: 8,
+    speed: 1.3,
+    span: 1.4,
+    spanM: [2, 7] as const,
+    grow: [0.92, 1.12] as const,
+    drift: 0.2,
+    churn: 0.12,
+  },
+  /**
    * What is built (stairs, bridges, piers, terraces, shrines, halls) keeps its stone: the stairways'
    * piers and undersides bake with the cliff's rock material (world_pier_stone), so range rock under
    * anything built is left as it was. A grid of `cellM`-metre cells over the areas' anchors +-
@@ -543,10 +566,27 @@ export function hazeScaleAt(frame: number, holds: readonly Pick<Hold, "id" | "fr
   return pts[pts.length - 1].v;
 }
 
-/** True for the puffs the mist pass leaves as they were (Ice-Fire's steam, the opening bank). */
+/**
+ * True for an untagged puff in the mist's `keep` zone over Ice-Fire Island (within keep.radius
+ * metres of keep.xz, above keep.aboveY): the steam and the few banks round the island.
+ */
+function inSteamZone(p: CloudPuff, look: RangeLook): boolean {
+  const k = look.mist.keep;
+  return !p.kind && p.c[1] > k.aboveY && Math.hypot(p.c[0] - k.xz[0], p.c[2] - k.xz[1]) < k.radius;
+}
+
+/**
+ * True for Ice-Fire Island's steam: the small puffs (bounding radius at most RANGE_LOOK.steam.maxRadius)
+ * of the keep zone. These rise (steam.ts); the zone's big banks do not.
+ */
+export function isSteamPuff(p: CloudPuff, look: RangeLook = RANGE_LOOK): boolean {
+  return inSteamZone(p, look) && boundRadius(p) <= look.steam.maxRadius;
+}
+
+/** True for the puffs the mist pass leaves as they were (Ice-Fire's steam and the banks round it, the opening bank). */
 export function keepPuffShape(p: CloudPuff, opening: readonly Vec3[], look: RangeLook = RANGE_LOOK): boolean {
   const m = look.mist;
-  if (!p.kind && p.c[1] > m.keep.aboveY && Math.hypot(p.c[0] - m.keep.xz[0], p.c[2] - m.keep.xz[1]) < m.keep.radius) return true;
+  if (inSteamZone(p, look)) return true;
   return opening.some((o) => Math.hypot(p.c[0] - o[0], p.c[1] - o[1], p.c[2] - o[2]) < m.openingM + boundRadius(p));
 }
 

@@ -169,16 +169,26 @@ function smooth01(t: number): number {
 }
 
 /**
- * How much each hold's panel shows at scroll position u. With `lastToEnd`, the last hold's panel
- * stays up from its dwell to the end of the track (the contact panel at the bottom of the page).
+ * How much each hold's panel shows at scroll position u. The last hold's panel fades out past its
+ * dwell like every other (the owner, 2026-11-15: past the Moon-Gazing Terrace, looking at the moon,
+ * the contact panel goes; it used to stay up to the end of the track). The music does not go by
+ * this: it follows the camera's area (music.ts areaAtFrame), so the summit's song plays on.
  */
-export function holdPresence(map: ScrollMap, u: number, fadeUnits = 14, lastToEnd = false): Presence[] {
-  const last = map.holds.length - 1;
-  return map.holds.map((z, i) => {
-    const after = lastToEnd && i === last ? 0 : u - z.u1;
-    const d = u < z.u0 ? z.u0 - u : u > z.u1 ? Math.max(after, 0) : 0;
+export function holdPresence(map: ScrollMap, u: number, fadeUnits = 14): Presence[] {
+  return map.holds.map((z) => {
+    const d = u < z.u0 ? z.u0 - u : u > z.u1 ? u - z.u1 : 0;
     return { id: z.id, amount: fadeUnits > 0 ? smooth01(1 - d / fadeUnits) : d === 0 ? 1 : 0 };
   });
+}
+
+/**
+ * True once scroll position u is past the last hold's dwell: the stretch where the flight looks at
+ * the moon after the Moon-Gazing Terrace. Nothing names a place there: the contact panel has faded
+ * (holdPresence) and the rails keep their place label off, so the view is the moon alone.
+ */
+export function pastLastHold(map: ScrollMap, u: number): boolean {
+  const last = map.holds[map.holds.length - 1];
+  return last !== undefined && u > last.u1;
 }
 
 /** 1 at the very top of the page, 0 after `fadeUnits` of scrolling. */

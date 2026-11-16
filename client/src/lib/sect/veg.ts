@@ -8,7 +8,9 @@
  * fragment shader (wrap sun, sky ambient, light through the leaves toward the sun), with a ragged
  * silhouette eroded out of an object-space noise. Boughs a few metres across change the light only:
  * each has a lit side, a shaded side and a darker crease. A crown deep among its neighbours
- * (vegDepth, worked out here from the plant list) has a darker lower half. Nothing but the plant list is
+ * (vegDepth, worked out here from the plant list) has a darker lower half. Under each tree's crowns a
+ * trunk (plantTrunk), a camera-facing ribbon from the foot into the crown, so the crown does not float.
+ * Nothing but the plant list is
  * downloaded: blender/xianxia-sect/tools/sect_veg.py writes one small binary per area,
  * public/sect/full/veg/<chunk>.veg, from the Blender export.
  *
@@ -266,6 +268,27 @@ export interface VegLook {
   leaves: { fineM: number; coarseM: number; dark: number; bright: number };
   /** Share of the scene's grade (look.ts sectGrade, then the near pines' shade) applied, as on the baked cards. */
   grade: number;
+  /**
+   * Trunks under the crowns (plantTrunk): a crown covers only the upper part of its tree, so without one it
+   * floats. A camera-facing ribbon from the foot to the crown's centre (a huangshan pine's: its top pad's).
+   * Radius at the foot: the height x `girth` (per archetype; shrubs have none), at most `share` of the tree's
+   * radius, then clamped to `radius` (m); at the top, the foot's x `taper`. Never thinner on screen than
+   * `minPx` pixels: a narrower one is drawn that wide and its coverage is the true width's share, so a far
+   * trunk fades instead of flickering or vanishing. Colour: `bark` per tone (VEG_TONES), mixed `shade` of the
+   * way toward the tone's darkest canopy colour, so a far trunk sits in its canopy's shade. The side away from
+   * the light keeps `dark` of the brightness, the ribbon's edges `edge` (a round trunk).
+   */
+  trunk: {
+    girth: Record<Exclude<VegArchetype, "shrub">, number>;
+    share: number;
+    radius: readonly [number, number];
+    taper: number;
+    minPx: number;
+    bark: Record<VegTone, string>;
+    shade: number;
+    dark: number;
+    edge: number;
+  };
 }
 
 export const VEG_LOOK: VegLook = {
@@ -324,6 +347,24 @@ export const VEG_LOOK: VegLook = {
   vary: { value: 0.24, hue: 0.09 },
   leaves: { fineM: 0.32, coarseM: 0.95, dark: 0.66, bright: 1.22 },
   grade: 1,
+  trunk: {
+    // The scene's own trunks (nature.py), which scale with the tree: a broadleaf's tube is 0.034 of the prototype's
+    // height x 1.15 at the ground; a huangshan pine's 0.36-0.43 m and a masson's 0.2-0.26 m on a 10 m pine (x 1.12
+    // just above the flare); a peach's 0.24 m at 6 m (a plum's 0.22 m at 5 m); a bamboo culm 0.062 m at 8 m. As
+    // shares of the .veg height (the tree's box, a little shorter than the prototype's for the trees).
+    girth: { broadleaf: 0.04, huangshan: 0.045, masson: 0.025, blossom: 0.04, bamboo: 0.008 },
+    share: 0.3,
+    radius: [0.04, 0.6],
+    taper: 0.45,
+    minPx: 1.4,
+    // nature.py: nature_bark_blossom (bark_dark, #2e2420 to #4e3e36) on broadleaf and blossom trees, _mat_pine_bark's
+    // grey-brown lower trunk (#3a332f to #5a5048) on pines, bamboo_stalk's green culm (#5f8a35 toward #a3a64e).
+    // Shrubs have no trunk; theirs only fill the table.
+    bark: { broadleaf: "#3a2e28", pine: "#433a33", shrub: "#3a2e28", scrub: "#3a2e28", blossom: "#3a2e28", bamboo: "#6a8a38" },
+    shade: 0.4,
+    dark: 0.45,
+    edge: 0.6,
+  },
 };
 
 /** The archetype a family draws as, or null when no VEG_LOOK.families prefix matches (skipped). */
@@ -449,6 +490,24 @@ export function seedRandom(seed: number, k: number): number {
 /** Floats per instance in each attribute. */
 export const SHELL_STRIDE = { center: 3, shape: 4, params: 4, depth: 1 } as const;
 
+/** Floats per trunk in each attribute. */
+export const TRUNK_STRIDE = { foot: 3, top: 3, params: 4 } as const;
+
+/**
+ * The trunks of the plants turned into crowns (plantTrunk), packed for instanced attributes:
+ * - foot: the plant's foot (world), 3 per trunk;
+ * - top: the trunk's top (world), 3 per trunk;
+ * - params: foot radius, top radius (m), the plant's sun (0..1) and tone (VEG_TONES index), 4 per trunk.
+ */
+export interface TrunkInstances {
+  count: number;
+  foot: Float32Array;
+  top: Float32Array;
+  params: Float32Array;
+  /** A sphere and a box round every trunk (foot and top, with the foot's radius), or null with none. */
+  bounds: { center: Vec3; radius: number; min: Vec3; max: Vec3 } | null;
+}
+
 /**
  * Shell instances, packed for instanced attributes:
  * - center: the crown's centre (world), 3 per instance;
@@ -472,6 +531,8 @@ export interface ShellInstances {
   skipped: { hotspot: number; invalid: number; families: Record<string, number> };
   /** A sphere round every instance (with its lumps), or null with no instances. */
   bounds: { center: Vec3; radius: number; min: Vec3; max: Vec3 } | null;
+  /** The trunks of exactly the plants turned into crowns, shrubs left out (they have none). */
+  trunks: TrunkInstances;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -488,7 +549,8 @@ export function padCount(seed: number, look: VegLook = VEG_LOOK): number {
   return lo + Math.min(Math.floor(seedRandom(seed, 0) * (hi - lo + 1)), hi - lo);
 }
 
-interface Crown {
+/** One crown of a plant (plantCrowns): its centre relative to the foot, half-extents, taper and yaw. */
+export interface Crown {
   dx: number;
   cy: number;
   dz: number;
@@ -545,6 +607,32 @@ export function plantCrowns(archetype: VegArchetype, height: number, radius: num
   return out;
 }
 
+/** A plant's trunk relative to its foot: a straight tapering stick from `foot` to `top` (m). */
+export interface Trunk {
+  foot: Vec3;
+  top: Vec3;
+  /** Radius at the foot and at the top (m). */
+  footR: number;
+  topR: number;
+}
+
+/**
+ * The trunk under a plant's crowns (from plantCrowns), or null: shrubs have none. A one-crown tree's runs from
+ * the foot to its crown's centre, so it ends inside the crown and no gap shows under it whatever the crown's
+ * lumps do. A huangshan pine's runs to its top pad's centre: one straight leaning trunk, near the line its pads
+ * were laid along. Radius at the foot: height x the archetype's girth, at most trunk.share of the tree's
+ * `radius`, clamped to trunk.radius; at the top, that x trunk.taper.
+ */
+export function plantTrunk(archetype: VegArchetype, height: number, radius: number, crowns: readonly Crown[], look: VegLook = VEG_LOOK): Trunk | null {
+  if (archetype === "shrub" || crowns.length === 0) return null;
+  const T = look.trunk;
+  // The highest crown: a one-crown tree's only one, a huangshan pine's top pad.
+  let c = crowns[0];
+  for (const k of crowns) if (k.cy > c.cy) c = k;
+  const footR = Math.min(Math.max(Math.min(height * T.girth[archetype], radius * T.share), T.radius[0]), T.radius[1]);
+  return { foot: [0, 0, 0], top: [c.dx, c.cy, c.dz], footR, topR: footR * T.taper };
+}
+
 export interface ShellOptions {
   look?: VegLook;
   /** Direction toward the scene's sun (meta.json), for the shade part of vegDepth; none: no shade part. */
@@ -556,7 +644,7 @@ export interface ShellOptions {
  * bamboo give one crown each, its top at the foot + height, covering the upper `crown.cover` of the
  * height (shrubs: all of it, on the ground); huangshan pines give 3 to 5 flat pads. Click targets keep
  * their cards (skipped here), and so do families with no archetype. Each crown's depth among the
- * others comes from vegDepth.
+ * others comes from vegDepth. `trunks` holds a trunk (plantTrunk) for each of these plants but shrubs.
  */
 export function shellInstances(veg: VegData, families: readonly string[], opts: ShellOptions = {}): ShellInstances {
   const look = opts.look ?? VEG_LOOK;
@@ -645,7 +733,52 @@ export function shellInstances(veg: VegData, families: readonly string[], opts: 
     bounds = { center: c, radius, min, max };
   }
   const depth = vegDepth(center, shape, count, opts.sun ?? null, look);
-  return { count, center, shape, params, depth, byArchetype, plantsByArchetype, plants: crowns.length, cards, skipped, bounds };
+  const trunks = trunkInstances(veg, crowns, tone, look);
+  return { count, center, shape, params, depth, byArchetype, plantsByArchetype, plants: crowns.length, cards, skipped, bounds, trunks };
+}
+
+/** The trunks of the plants shellInstances turned into crowns (the same list, so the same skip rules), packed. */
+function trunkInstances(veg: VegData, crowns: readonly { i: number; a: VegArchetype; list: Crown[] }[], tone: readonly number[], look: VegLook): TrunkInstances {
+  const list: { i: number; t: Trunk }[] = [];
+  for (const { i, a, list: c } of crowns) {
+    const t = plantTrunk(a, veg.height[i], veg.radius[i], c, look);
+    if (t) list.push({ i, t });
+  }
+  const count = list.length;
+  const foot = new Float32Array(count * TRUNK_STRIDE.foot);
+  const top = new Float32Array(count * TRUNK_STRIDE.top);
+  const params = new Float32Array(count * TRUNK_STRIDE.params);
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  for (let n = 0; n < count; n++) {
+    const { i, t } = list[n];
+    const x = veg.pos[i * 3];
+    const y = veg.pos[i * 3 + 1];
+    const z = veg.pos[i * 3 + 2];
+    foot.set([x + t.foot[0], y + t.foot[1], z + t.foot[2]], n * 3);
+    top.set([x + t.top[0], y + t.top[1], z + t.top[2]], n * 3);
+    params.set([t.footR, t.topR, veg.sun[i] / 255, tone[veg.family[i]]], n * 4);
+    // The foot's radius holds the whole ribbon (it tapers toward the top).
+    for (const p of [foot, top]) {
+      for (let k = 0; k < 3; k++) {
+        min[k] = Math.min(min[k], p[n * 3 + k] - t.footR);
+        max[k] = Math.max(max[k], p[n * 3 + k] + t.footR);
+      }
+    }
+  }
+  let bounds: TrunkInstances["bounds"] = null;
+  if (count > 0) {
+    const c: Vec3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+    let radius = 0;
+    for (let n = 0; n < count; n++) {
+      for (const p of [foot, top]) {
+        const d = Math.hypot(p[n * 3] - c[0], p[n * 3 + 1] - c[1], p[n * 3 + 2] - c[2]) + params[n * 4];
+        if (d > radius) radius = d;
+      }
+    }
+    bounds = { center: c, radius, min, max };
+  }
+  return { count, foot, top, params, bounds };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1197,6 +1330,149 @@ void main() {
   float toward = pow( max( dot( - V, uVegSun ), 0.0 ), ${f(T.power)} );
   col += ${glslVec3(hexToLinear(T.color))} * toward * pow( 1.0 - facing, ${f(T.rim)} ) * ${f(T.amount)} * vVegInfo.x;
   // The scene's grade, as the baked cards get it.
+  col *= ${f(L.gain)};
+  col = mix( col, sectTreeShade( sectGrade( col ), col ), ${f(look.grade)} );
+  gl_FragColor = vec4( col, alpha );
+  #include <colorspace_fragment>
+  #include <fog_fragment>
+}
+`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Trunks
+
+/** The trunks' colours as linear colours, tone by tone: the bark mixed trunk.shade of the way toward the tone's darkest canopy colour. */
+export function vegBarkLinear(look: VegLook = VEG_LOOK): Vec3[] {
+  return VEG_TONES.map((t) => {
+    const bark = hexToLinear(look.trunk.bark[t]);
+    const dark = hexToLinear(look.palettes[t][0]);
+    return [0, 1, 2].map((k) => lerp(bark[k], dark[k], look.trunk.shade)) as Vec3;
+  });
+}
+
+const TRUNK_VARYINGS = /* glsl */ `
+varying vec3 vVegWorld;
+// The foot (world): the ground cell the tree's switch between card and crown goes by.
+varying vec3 vVegFoot;
+// Across the ribbon (unit, world), and the way it faces (toward the camera, square to the trunk).
+varying vec3 vVegSide;
+varying vec3 vVegFace;
+// Across the ribbon (-1..1), the true width over the drawn one (1 unless it was widened to the least width), the plant's sun.
+varying vec3 vVegRib;
+varying vec3 vVegBark;
+`;
+
+/**
+ * The trunk's vertex stage: a camera-facing ribbon, two triangles a tree (at 150 m and more a trunk is a few
+ * pixels wide). The unit quad's y runs from the foot (0) to the top (1) of the instance's iFoot and iTop, its x
+ * across: the point on the axis is pushed sideways along normalize( cross( axis, point - cameraPosition ) ) by
+ * the radius there (iTrunk: foot radius, top radius, sun, tone). Never thinner on screen than trunk.minPx
+ * pixels (a pixel's size in metres as the birds' sectLifePixel in experience/life.tsx, from uVegViewH, the
+ * drawing buffer's height): a narrower trunk is drawn that wide and passes the share of its true width on, as
+ * its coverage. The same switch as the crowns: the card-shading lines on the foot's ground cell, and the ribbon
+ * is moved off screen while the cell is near (the baked card draws the tree there, its own trunk with it).
+ * Instance positions are world positions and radii world metres (the mesh sits unscaled at the origin).
+ */
+export function vegTrunkVertexGlsl(look: VegLook = VEG_LOOK): string {
+  const bark = vegBarkLinear(look);
+  return /* glsl */ `
+uniform vec2 uVegNear;
+uniform float uVegViewH;
+attribute vec3 iFoot;
+attribute vec3 iTop;
+attribute vec4 iTrunk;
+${TRUNK_VARYINGS}
+#include <common>
+#include <fog_pars_vertex>
+const vec3 SECT_VEG_BARK[ ${bark.length} ] = vec3[ ${bark.length} ](
+  ${bark.map((c) => glslVec3(c)).join(",\n  ")}
+);
+void main() {
+  vVegFoot = ( modelMatrix * vec4( iFoot, 1.0 ) ).xyz;
+  vec3 axis = ( modelMatrix * vec4( iTop, 1.0 ) ).xyz - vVegFoot;
+  float along = position.y;
+  vec3 onAxis = vVegFoot + axis * along;
+  float radius = mix( iTrunk.x, iTrunk.y, along );
+  vec3 side = cross( axis, onAxis - cameraPosition );
+  float sideL = length( side );
+  side = sideL > 1e-6 ? side / sideL : vec3( 1.0, 0.0, 0.0 );
+  vec3 face = cross( axis, side );
+  float faceL = length( face );
+  vVegFace = faceL > 1e-6 ? face / faceL : vec3( 0.0, 1.0, 0.0 );
+  vVegSide = side;
+  // A pixel's size in metres at the axis (2 z / ( P11 x height )); half the least width is the least half-width.
+  float px = 2.0 * max( - ( viewMatrix * vec4( onAxis, 1.0 ) ).z, 0.1 ) / ( projectionMatrix[ 1 ][ 1 ] * uVegViewH );
+  float drawn = max( radius, ${f(look.trunk.minPx * 0.5)} * px );
+  vec4 worldP = vec4( onAxis + side * position.x * drawn, 1.0 );
+  vVegWorld = worldP.xyz;
+  vVegRib = vec3( position.x, radius / drawn, iTrunk.z );
+  vVegBark = SECT_VEG_BARK[ clamp( int( iTrunk.w + 0.5 ), 0, ${bark.length - 1} ) ];
+  vec4 mvPosition = viewMatrix * worldP;
+  gl_Position = projectionMatrix * mvPosition;
+  // Near the camera the baked card draws this tree, its own trunk with it: the same cell and hash as the crown's and
+  // the card's cut, on the foot (the fragment stage trims it by height to where the card is cut).
+  if ( uVegNear.y > 0.0 ) {
+${farCutCellGlsl("vVegFoot", "uVegNear")}
+    if ( ! sectCellFar ) gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );
+  }
+  #include <fog_vertex>
+}
+`;
+}
+
+/**
+ * The trunk's fragment stage. First the same switch per fragment, at the fragment's own height in the foot's
+ * cell: the card cuts each of its fragments by where it is, so where the card still draws its upper part (its
+ * crown, with its own trunk inside) the ribbon steps back and fills only what the card has cut. Coverage: with
+ * alpha to coverage (a multisampled buffer) the share of the true width, with a soft edge across the ribbon;
+ * without, a hard cut (a trunk under half the least width is not drawn) and opaque. Colour: the tone's bark in
+ * its canopy's shade (vegBarkLinear), round across the ribbon (darker toward both edges), lit by the bake's key
+ * light and the plant's sun value as the crowns are (wrap light with a floor, the sky's tint where the sun does
+ * not reach). Then the crowns' gain, grade and the page's haze (three's fog chunks). No noise.
+ */
+export function vegTrunkFragmentGlsl(look: VegLook = VEG_LOOK): string {
+  const L = look.light;
+  const A = look.ambient;
+  const T = look.trunk;
+  const above = unitTint(A.above).map((v) => v * A.aboveGain) as Vec3;
+  const below = unitTint(A.below).map((v) => v * A.belowGain) as Vec3;
+  return /* glsl */ `
+uniform vec3 uVegSun;
+uniform vec2 uVegNear;
+${TRUNK_VARYINGS}
+#include <common>
+#include <fog_pars_fragment>
+${gradeGlsl(SECT_LOOK.grade)}
+${treeShadeGlsl(SECT_LOOK.trees.shade)}
+void main() {
+  float across = vVegRib.x;
+  // Taken before any cut, so every pixel of a quad still has its neighbours.
+  float aa = max( fwidth( across ), 1e-4 );
+  if ( uVegNear.y > 0.0 ) {
+    vec3 vegCut = vec3( vVegFoot.x, vVegWorld.y, vVegFoot.z );
+${farCutCellGlsl("vegCut", "uVegNear")}
+    if ( ! sectCellFar ) discard;
+  }
+#ifdef ALPHA_TO_COVERAGE
+  float alpha = vVegRib.y * clamp( ( 1.0 - abs( across ) ) / aa + 0.5, 0.0, 1.0 );
+  if ( alpha <= 0.0 ) discard;
+#else
+  if ( vVegRib.y < 0.5 ) discard;
+  float alpha = 1.0;
+#endif
+  // A round trunk seen side on: the normal turns from the way the ribbon faces to its side across it.
+  float bulge = sqrt( max( 1.0 - across * across, 0.0 ) );
+  vec3 N = normalize( normalize( vVegSide ) * across + normalize( vVegFace ) * bulge );
+  vec3 key = normalize( uVegSun + vec3( 0.0, ${f(L.lift)}, 0.0 ) );
+  float wrap = clamp( ( dot( N, key ) + ${f(L.wrap)} ) / ( 1.0 + ${f(L.wrap)} ), 0.0, 1.0 );
+  float sun = clamp( wrap * mix( ${f(L.floor)}, 1.0, vVegRib.z ) * ${f(L.sun)}, 0.0, 1.0 );
+  vec3 col = vVegBark * mix( ${f(T.dark)}, 1.0, sun );
+  // Sky ambient where the sun does not reach, as on the crowns.
+  vec3 amb = mix( ${glslVec3(below)}, ${glslVec3(above)}, N.y * 0.5 + 0.5 );
+  col *= mix( vec3( 1.0 ), amb, ${f(A.amount)} * ( 1.0 - sun ) );
+  col *= mix( ${f(T.edge)}, 1.0, bulge );
+  // The crowns' gain and the scene's grade.
   col *= ${f(L.gain)};
   col = mix( col, sectTreeShade( sectGrade( col ), col ), ${f(look.grade)} );
   gl_FragColor = vec4( col, alpha );

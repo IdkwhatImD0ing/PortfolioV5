@@ -141,6 +141,35 @@ describe("TopLinks", () => {
   });
 });
 
+describe("SectionRail's active label", () => {
+  /** The label plate of the active place (mirror): its class list. */
+  const plate = (props: { atHold: boolean; labelHidden?: boolean }) => {
+    const html = renderToStaticMarkup(<SectionRail stops={stops} active="mirror" onJump={noop} {...props} />);
+    const at = html.indexOf('aria-current="location"');
+    return /<span class="sect-plate ([^"]*)"/.exec(html.slice(at))![1];
+  };
+
+  it("shows between stops", () => {
+    expect(plate({ atHold: false })).toContain("pointer-events-auto opacity-100");
+  });
+
+  it("hides at a stop, where the panel names the place", () => {
+    const c = plate({ atHold: true });
+    expect(c).toContain("opacity-0");
+    expect(c).not.toContain("pointer-events-auto opacity-100");
+  });
+
+  it("stays off past the last stop, so nothing sits over the moon; hover and focus still show it", () => {
+    for (const atHold of [false, true]) {
+      const c = plate({ atHold, labelHidden: true });
+      expect(c).toContain("opacity-0");
+      expect(c).not.toContain("pointer-events-auto opacity-100");
+      expect(c).toContain("group-hover:opacity-100");
+      expect(c).toContain("group-focus-visible:opacity-100");
+    }
+  });
+});
+
 describe("CompactRail's place name", () => {
   const name = (props: { atHold?: boolean; labelHidden?: boolean }) =>
     /<p aria-hidden="true"(?: data-hold="true")? class="sect-rail-place [^"]*"/.exec(

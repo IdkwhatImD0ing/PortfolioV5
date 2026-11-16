@@ -68,3 +68,46 @@ browser would fight the baked lighting and the character shapes, and the next ba
 **Bake needed.** Run `chunks,meta`, then `bakefull --chunks formation,abode,backdrop`. The bake takes about 8 to 9
 minutes of GPU time on the last box. After that, run mist, pack and install. The client's `FLAG_FLIES.abode` entry
 then finds no flag cloth and can be removed.
+
+## 3. The steam rises (2026-11-15)
+
+The owner: "The ice fire mountain smoke doesnt animate".
+
+**What was wrong.** The steam is 15 of the page's cloud puffs: 5 small ones at the crater and a plume of 10 above
+it. A cloud puff's only motion is the mist's noise drifting sideways at 0.7 m a second, in cells 31 to 230 m wide.
+On a puff 3 to 9 m across that shows nothing, so the plume was a still picture.
+
+**The fix (page only, no Blender).** The steam puffs climb in the cloud puff shader. Nothing runs on the CPU per
+frame.
+
+- Each steam puff is drawn as two copies. A copy climbs through the puff's place, from a little below it to a
+  little above, growing from 0.92 to 1.12 of its size and leaning downwind. Then it starts again at the bottom.
+- The two copies are half a loop apart. One fades in as the other fades out, and their two shares always add up
+  to the whole puff. So the puff's place is never empty and the plume stays one column on the crater.
+- The loop is short: 1.4 times the puff's half height, held between 2 and 7 m. At 1.3 m a second a crater puff
+  loops every 1.5 to 2.5 s and a puff at the plume's top every 3.8 to 5.4 s.
+- The noise inside a steam puff climbs with it, so the wisps travel up as well.
+- With "reduce motion" on, the plume is the still one of before, to the pixel.
+
+The code is `client/src/lib/sect/steam.ts` (the loop, with a TypeScript twin of the shader's maths), `isSteamPuff`
+and `RANGE_LOOK.steam` in `range-look.ts`, `packPuffs` in `clouds.ts` (a puff's record is 14 numbers now; the
+14th is its rise span, 0 for every puff that is not steam) and `createCloudPuffMaterial` in `materials.ts`.
+
+**The first try failed its check.** It moved one copy per puff and faded it to nothing at both ends of its loop.
+At any moment a few puffs were empty, so the plume broke into two or three balls with sky between them and came
+off the crater. The checker caught it in stills. The two-copy loop above replaced it.
+
+**Checked** in a browser against the build before, 10 stills half a second apart:
+
+- From the library the plume is 400 m away and about 100 pixels tall. Before, 0.13 percent of its pixels changed
+  between stills. Now 2.7 percent do, and it reads as one column climbing from the crater in every still.
+  Looking back from the summit (550 m): 0.30 percent before, 3.4 percent now.
+- No puff pops: across 24 stills 20 ms apart the largest step was 6 pixels.
+- Every other cloud is unchanged. Outside the plume the same number of pixels change per half second on both
+  builds, and with reduce motion the whole frame matches the build before.
+- At a stop the page draws 30 frames a second, and 20 after 20 s without input. The steam keeps moving.
+
+**Rough edges.** The plume is fuller than the still one at most moments and thins out now and then, as the
+large noise passes through it faster than before. Averaged over two minutes it is as bright as it was (0.99 of
+the old). If it breathes too much, let only the fine noise climb. Beyond 800 m puffs this small are faded out, as
+before, so the steam shows from the library to the summit and not from the gate.

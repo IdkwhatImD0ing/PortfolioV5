@@ -211,6 +211,16 @@ describe("wantedTrack", () => {
     expect(wantedTrack(false, null, SPANS)).toBeNull();
     expect(wantedTrack(false, NaN, SPANS)).toBeNull();
   });
+
+  it("past the Moon-Gazing Terrace, looking at the moon, the summit's song plays on", () => {
+    // The flight runs 82 frames past the summit's stop (1647) to its end (1729). The contact panel
+    // fades out there (scroll-map.ts holdPresence); the music goes by the camera's area and stays.
+    const last = Math.max(...SPANS.map((s) => s.frameEnd));
+    expect(wantedTrack(false, 1647, SPANS)).toBe("summit");
+    expect(wantedTrack(false, 1700, SPANS)).toBe("summit");
+    expect(wantedTrack(false, 1729, SPANS)).toBe("summit");
+    expect(wantedTrack(false, last + 500, SPANS)).toBe("summit");
+  });
 });
 
 describe("stepSwitcher", () => {

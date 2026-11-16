@@ -1,10 +1,12 @@
 /**
  * The crown shells' three.js side (lib/sect/veg.ts holds the maths and the GLSL): the material, one
- * instanced draw per chunk, and the baked far-tree cards a chunk's shells stand in for.
+ * instanced draw per chunk, the trunks under the crowns (one more instanced draw per chunk), and the
+ * baked far-tree cards a chunk's shells stand in for.
  */
 import {
   Box3,
   BufferAttribute,
+  DoubleSide,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
   type IUniform,
@@ -19,7 +21,17 @@ import {
   Vector3,
   type Vector4,
 } from "three";
-import { shellGeometry, vegFragmentGlsl, vegVertexGlsl, VEG_LOOK, type ShellGeometry, type ShellInstances } from "@/lib/sect/veg";
+import {
+  shellGeometry,
+  vegFragmentGlsl,
+  vegTrunkFragmentGlsl,
+  vegTrunkVertexGlsl,
+  vegVertexGlsl,
+  VEG_LOOK,
+  type ShellGeometry,
+  type ShellInstances,
+  type TrunkInstances,
+} from "@/lib/sect/veg";
 import { enableFogEncodeOnce, isTreeCardMaterial, SECT_LOOK_GPU } from "./materials";
 import { proxyOf } from "./prepare";
 
@@ -34,6 +46,11 @@ export interface VegUniforms {
    * kept when a cell is large on screen, unused. One object for every chunk, so it can be tuned live.
    */
   uVegBough: IUniform<Vector4>;
+  /**
+   * The drawing buffer's height in pixels (veg.tsx sets it every frame): the trunks' ribbons are never thinner
+   * on screen than VEG_LOOK.trunk.minPx. The shells do not read it.
+   */
+  uVegViewH: IUniform<number>;
 }
 
 /**
@@ -116,7 +133,70 @@ export function createShellMesh(inst: ShellInstances, material: ShaderMaterial):
   return mesh;
 }
 
-/** Frees a shell mesh's buffers and material and takes it off its parent. */
+let trunkShaders: { vertex: string; fragment: string } | null = null;
+
+/**
+ * A chunk's trunk material, made as the shell material is (createVegMaterial): one per chunk, one program
+ * for all, opaque and depth written, fogged by the page's haze, alpha to coverage on a multisampled buffer
+ * (the share of a trunk's true width when it is drawn at the least width, and its soft edge). Both sides:
+ * the ribbon turns to face the camera, so which side shows never matters.
+ */
+export function createVegTrunkMaterial(uniforms: VegUniforms, name: string, alphaToCoverage: boolean): ShaderMaterial {
+  trunkShaders ??= { vertex: vegTrunkVertexGlsl(), fragment: vegTrunkFragmentGlsl() };
+  const material = new ShaderMaterial({
+    name,
+    // Not through UniformsUtils.merge: that would clone the shared sun direction, switch distances and view height.
+    uniforms: { ...UniformsUtils.clone(UniformsLib.fog), ...uniforms, ...SECT_LOOK_GPU },
+    vertexShader: trunkShaders.vertex,
+    fragmentShader: trunkShaders.fragment,
+    fog: true,
+    side: DoubleSide,
+  });
+  material.alphaToCoverage = alphaToCoverage;
+  enableFogEncodeOnce(material);
+  material.toneMapped = false;
+  return material;
+}
+
+/** The unit ribbon: x across (-1..1), y from the foot (0) to the top (1); two triangles. */
+const TRUNK_QUAD = {
+  positions: Float32Array.of(-1, 0, 0, 1, 0, 0, 1, 1, 0, -1, 1, 0),
+  indices: Uint16Array.of(0, 1, 2, 0, 2, 3),
+};
+
+/**
+ * One instanced draw of a chunk's trunks (lib/sect/veg.ts TrunkInstances), as createShellMesh does the
+ * crowns: its own copy of the unit ribbon, culled as a whole by a sphere round every trunk, never picked, no
+ * shadow of its own, under the set's root beside the shells. Two triangles a trunk.
+ */
+export function createTrunkMesh(trunks: TrunkInstances, material: ShaderMaterial): Mesh {
+  const geo = new InstancedBufferGeometry();
+  geo.setIndex(new BufferAttribute(TRUNK_QUAD.indices.slice(), 1));
+  geo.setAttribute("position", new BufferAttribute(TRUNK_QUAD.positions.slice(), 3));
+  geo.setAttribute("iFoot", new InstancedBufferAttribute(trunks.foot, 3));
+  geo.setAttribute("iTop", new InstancedBufferAttribute(trunks.top, 3));
+  geo.setAttribute("iTrunk", new InstancedBufferAttribute(trunks.params, 4));
+  geo.instanceCount = trunks.count;
+  const b = trunks.bounds ?? { center: [0, 0, 0], radius: 0, min: [0, 0, 0], max: [0, 0, 0] };
+  geo.boundingSphere = new Sphere(new Vector3(...b.center), b.radius);
+  geo.boundingBox = new Box3(new Vector3(...b.min), new Vector3(...b.max));
+  const mesh = new Mesh(geo, material);
+  mesh.name = material.name;
+  mesh.frustumCulled = true;
+  mesh.castShadow = false;
+  mesh.receiveShadow = false;
+  mesh.matrixAutoUpdate = false;
+  // Never picked and never in a pointer ray's way (scene.tsx's occlusion test casts rays at its occluders).
+  mesh.raycast = () => {};
+  // Not a card (farCardMeshes), like the shells.
+  mesh.userData.sectVeg = true;
+  return mesh;
+}
+
+/** The trunks' triangles per tree. */
+export const TRUNK_TRIANGLES = TRUNK_QUAD.indices.length / 3;
+
+/** Frees a shell (or trunk) mesh's buffers and material and takes it off its parent. */
 export function disposeShellMesh(mesh: Mesh): void {
   mesh.removeFromParent();
   mesh.geometry.dispose();
@@ -128,7 +208,7 @@ export function disposeShellMesh(mesh: Mesh): void {
  * out: the backdrop's per-area stand-ins (extras.proxyOf: scene.tsx World shows and hides them by
  * the area's own chunk, and no shells stand in for them), click targets' vegetation (in the set's
  * hotspot lists, or tagged with a hotspot: their cards keep the highlight and the pick), and the
- * shells themselves.
+ * shells and trunks themselves.
  */
 export function farCardMeshes(roots: readonly Object3D[], hotspotMeshes: ReadonlyMap<string, readonly Mesh[]>): Mesh[] {
   const hot = new Set<Object3D>();

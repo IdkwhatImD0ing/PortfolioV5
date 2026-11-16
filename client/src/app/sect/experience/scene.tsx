@@ -66,6 +66,7 @@ import { packPuffs, PUFF_STRIDE, RESORT_DISTANCE2, sortFarToNear } from "@/lib/s
 import { lookFogConstants, puffDensityScale, SECT_LOOK, twilightAmount } from "@/lib/sect/look";
 import { FRAME_LOOK } from "@/lib/sect/looks";
 import { flattenPuff, hazeScaleAt, RANGE_LOOK } from "@/lib/sect/range-look";
+import { steamRise } from "@/lib/sect/steam";
 import { isLoreId, loreUnderPointer, type LoreHit, type LoreId } from "@/lib/sect/lore";
 import { turnKeyIntent } from "@/lib/sect/nav";
 import { boxHits, canStandIn, containedItemAt, onScreenDepth, pickWithBoxes, type BoxHit, type PickBox } from "@/lib/sect/pick";
@@ -689,13 +690,16 @@ function CloudPuffs({
   const built = useMemo(() => {
     const path: Vec3[] = store.camera.frames.filter((_, i) => i % 6 === 0).map((f) => f.p);
     // Mist as flat layers along the wind (range-look.ts RANGE_LOOK.mist), but for the opening bank
-    // the flight starts in and Ice-Fire Island's steam.
+    // the flight starts in and Ice-Fire Island's steam. The steam gets its rise span (steam.ts) and is
+    // packed twice (the second copy's span negated), so the shader climbs its two copies through it
+    // half a loop apart; every other puff gets 0 and is packed once.
     const opening: Vec3[] = store.camera.frames.filter((f) => f.f <= store.camera.frameStart + RANGE_LOOK.mist.openingFrames).map((f) => f.p);
     const packed = packPuffs(
       puffs.map((p) => flattenPuff(p, opening)),
       path,
       2600,
       (c) => puffDensityScale(c, anchors),
+      (p) => steamRise(p),
     );
     const n = packed.length / PUFF_STRIDE;
     if (n === 0) return null;
@@ -710,6 +714,7 @@ function CloudPuffs({
     geo.setAttribute("iA1", new InterleavedBufferAttribute(buf, 3, 6));
     geo.setAttribute("iA2", new InterleavedBufferAttribute(buf, 3, 9));
     geo.setAttribute("iDensity", new InterleavedBufferAttribute(buf, 1, 12));
+    geo.setAttribute("iRise", new InterleavedBufferAttribute(buf, 1, 13));
     geo.instanceCount = n;
     const material = createCloudPuffMaterial(fog, meta.fog.color);
     const mesh = new Mesh(geo, material);
@@ -735,6 +740,10 @@ function CloudPuffs({
   useFrame((state) => {
     if (!built) return;
     built.material.uniforms.uTime.value = store.reducedMotion ? 0 : state.clock.elapsedTime;
+    // Ice-Fire Island's steam climbs (steam.ts), but not with reduced motion: then it is the still
+    // plume (each puff's second copy is not drawn). It moves at a stop too: the canvas renders at its
+    // idle rate for the water and clouds.
+    built.material.uniforms.uSteam.value = store.reducedMotion ? 0 : 1;
     // The look's puff colours (look-now.ts; the journey moves them along the flight), again into a
     // rebuilt material (a tier change rebuilds the puffs while the look stands still).
     const now = lookNow();

@@ -94,6 +94,14 @@ import {
   type PositionSource,
   type RangeArea,
 } from "@/lib/sect/range-look";
+import {
+  STEAM_BRANCH,
+  STEAM_HIDE_STATEMENT,
+  steamChurnStatement,
+  steamClimbStatement,
+  steamVertexGlsl,
+  steamVertexStatements,
+} from "@/lib/sect/steam";
 import type { Vec3 } from "@/lib/sect/types";
 import type { WaterSurface } from "@/lib/sect/water";
 import { fallGlsl, packWetFalls, selectWetFalls, SHEET, WET, wetArrays, wetRockGlsl, type WetFall } from "@/lib/sect/waterfall";
@@ -2187,6 +2195,12 @@ export function createWetRock(falls: readonly WetFall[], o: { max: number; sunDi
  * like the scene, faded out when the camera
  * gets close (the film flies through the opening bank), and faded where it meets geometry (soft
  * particles, from the composer's depth texture) so no straight cut shows against cliffs.
+ *
+ * Ice-Fire Island's steam (iRise != 0: the puff's rise span in metres, negated on its second copy)
+ * climbs in a loop while uSteam is on (lib/sect/steam.ts): each steam puff is two copies half a loop
+ * apart that share its density. CloudPuffs turns uSteam off with reduced motion: the first copy is
+ * then the still puff and the second is not drawn. Every other puff skips all of it and comes out as
+ * before.
  */
 export function createCloudPuffMaterial(fog: FogConstants, fogColor: string, look: SectLook = SECT_LOOK): ShaderMaterial {
   return veilBlending(new ShaderMaterial({
@@ -2197,6 +2211,7 @@ export function createCloudPuffMaterial(fog: FogConstants, fogColor: string, loo
     uniforms: {
       tNoise: { value: getNoiseTexture() },
       uTime: { value: 0 },
+      uSteam: { value: 1 },
       uLit: { value: linear(look.puffs.lit) },
       uShade: { value: linear(look.puffs.shade) },
       uRim: { value: linear(look.puffs.rim) },
@@ -2212,7 +2227,10 @@ attribute vec3 iA0;
 attribute vec3 iA1;
 attribute vec3 iA2;
 attribute float iDensity;
+attribute float iRise;
 uniform vec3 uFogColor;
+uniform float uTime;
+uniform float uSteam;
 varying vec2 vUv;
 varying vec3 vR;
 varying vec3 vU;
@@ -2229,18 +2247,32 @@ varying vec3 vHaze;
 varying float vHazeMix;
 varying float vCloudMix;
 varying float vToward;
+// 1 on a rising steam sprite (its own noise climbs too), else 0.
+varying float vSteam;
 ${fogLibrary(fog)}
+${steamVertexGlsl()}
 void main() {
-  vec3 toC = iCenter - cameraPosition;
+  // The puff as drawn this frame: as packed, but for Ice-Fire Island's steam, whose two copies climb
+  // through its place half a loop apart (lib/sect/steam.ts steamLoop) while uSteam is on.
+  vec3 puffC = iCenter;
+  vec3 puffA0 = iA0;
+  vec3 puffA1 = iA1;
+  vec3 puffA2 = iA2;
+  float puffD = iDensity;
+  vSteam = 0.0;
+  ${STEAM_BRANCH}
+${steamVertexStatements()}
+  }
+  vec3 toC = puffC - cameraPosition;
   float dist = max( length( toC ), 1e-3 );
   vec3 f = toC / dist;
   vec3 up = abs( f.y ) > 0.985 ? vec3( 1.0, 0.0, 0.0 ) : vec3( 0.0, 1.0, 0.0 );
   vec3 r = normalize( cross( f, up ) );
   vec3 u = cross( r, f );
   // Half-extents of the ellipsoid along r, u and the view ray: |M^T e|.
-  float wr = length( vec3( dot( iA0, r ), dot( iA1, r ), dot( iA2, r ) ) );
-  float wu = length( vec3( dot( iA0, u ), dot( iA1, u ), dot( iA2, u ) ) );
-  float wf = length( vec3( dot( iA0, f ), dot( iA1, f ), dot( iA2, f ) ) );
+  float wr = length( vec3( dot( puffA0, r ), dot( puffA1, r ), dot( puffA2, r ) ) );
+  float wu = length( vec3( dot( puffA0, u ), dot( puffA1, u ), dot( puffA2, u ) ) );
+  float wf = length( vec3( dot( puffA0, f ), dot( puffA1, f ), dot( puffA2, f ) ) );
   // A flat bank seen edge on is a strip a few pixels tall: its soft rim has no room and it reads as
   // a length of tape across the cliff. Give the sprite at least a share of its width in height and
   // thin it by what it gained (the same mist over more of the screen), so the strip becomes a low
@@ -2252,7 +2284,7 @@ void main() {
   // angular size), so what is inside the puff is veiled rather than poking through the sprite.
   float lift = min( 0.6 * wf, 0.5 * dist );
   float k = ( dist - lift ) / dist;
-  vec3 wp = iCenter - f * lift + ( r * position.x * wr + u * position.y * wu ) * k;
+  vec3 wp = puffC - f * lift + ( r * position.x * wr + u * position.y * wu ) * k;
   vUv = position.xy;
   vWorld = wp;
   vR = r;
@@ -2264,7 +2296,7 @@ void main() {
   vCloudMix = 1.0 - exp( - sectCloudDepth( cameraPosition.y, f.y, dist ) );
   vToward = pow( max( dot( f, SECT_SUN_DIR ), 0.0 ), 5.0 );
   // Optical depth through the middle: Blender's normalised density times the chord length.
-  vDepth = iDensity * wf * 2.0 * spread;
+  vDepth = puffD * wf * 2.0 * spread;
   vFade = smoothstep( 0.55 * wf, 1.6 * wf, dist );
   // A small puff far off is a white disc stuck to its pillar: past 300 m the ones under 36 m across fade out.
   vFade *= mix( 1.0, smoothstep( 10.0, 36.0, wr ), smoothstep( 300.0, 800.0, dist ) );
@@ -2272,6 +2304,8 @@ void main() {
   vec4 mv = viewMatrix * vec4( wp, 1.0 );
   vViewZ = mv.z;
   gl_Position = projectionMatrix * mv;
+  // A steam puff's second copy is not drawn while the steam stands still (lib/sect/steam.ts).
+${STEAM_HIDE_STATEMENT}
   // Faded out (the camera is inside or next to the puff): collapse the quad off screen so it
   // costs no fill rate.
   if ( vFade < 0.003 ) gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );
@@ -2299,6 +2333,7 @@ varying vec3 vHaze;
 varying float vHazeMix;
 varying float vCloudMix;
 varying float vToward;
+varying float vSteam;
 ${SOFT_PARS}
 ${fogDefines(fog)}
 ${SCREEN_GRADE_PARS}
@@ -2309,6 +2344,8 @@ void main() {
   // row of them is one bank of mist and no puff shows its own ellipse. Three scales, stretched
   // along the horizontal (mist lies in bands), drifting slowly downwind.
   vec2 nw = vec2( vWorld.x * 0.82 + vWorld.z * 0.57, vWorld.y * 1.35 ) + vec2( uTime * 0.7, 0.0 );
+  // Steam: the field rises with the steam's copies, so its texture climbs (lib/sect/steam.ts).
+${steamClimbStatement()}
   float n1 = texture2D( tNoise, nw / 230.0 + vSeed * 0.07 ).r;
   float n2 = texture2D( tNoise, nw / 83.0 + 0.29 ).r;
   float n3 = texture2D( tNoise, nw / 31.0 + 0.61 ).r;
@@ -2318,6 +2355,8 @@ void main() {
   // One more field in the sprite's own frame, a few waves across whatever its size: a small thin
   // puff seen edge on is narrower than the world field's waves and would keep its lens outline.
   vec2 nl = vUv * vec2( 1.15, 1.9 ) + vSeed * 9.0 + vec2( uTime * 0.004, 0.0 );
+  // Steam: the field slides down the sprite, so its wisps climb (lib/sect/steam.ts).
+${steamChurnStatement()}
   float own = clamp( ( texture2D( tNoise, nl * 0.5 ).r * 0.6 + texture2D( tNoise, nl * 1.3 + 0.43 ).r * 0.4 - 0.5 ) * 3.6 + 0.5, 0.0, 1.0 );
   n = mix( n, own, 0.42 );
   // The body is densest in the middle of the ellipsoid; the noise eats in from the rim, deeper

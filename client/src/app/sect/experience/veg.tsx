@@ -12,8 +12,11 @@
  * the shells go). A missing or unreadable file, or one with no card plant, leaves the cards exactly
  * as they were. The backdrop's per-area stand-ins (extras.proxyOf) are left alone: the World
  * component shows them while their area is not drawn, as cards.
+ *
+ * Each set's trunks (one ribbon a tree under its crowns, lib/sect/veg.ts plantTrunk) are a second
+ * instanced draw made, compiled, shown and freed with its shells: no crowns, no trunks.
  */
-import { useThree } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import { Group, HalfFloatType, type Mesh, type ShaderMaterial, Vector2, Vector4, WebGLRenderTarget } from "three";
 import { CARD_LOOK } from "@/lib/sect/card-shading";
@@ -23,7 +26,18 @@ import type { Vec3 } from "@/lib/sect/types";
 import { parseVeg, parseVegIndex, parseVegParam, shellInstances, vegBoughUniform, vegChunkId, vegShellsOn, type ShellInstances, type VegIndex } from "@/lib/sect/veg";
 import type { LoadedSet, WorldContext } from "./assets";
 import { wake, type SectStore } from "./store";
-import { createShellMesh, createVegMaterial, disposeShellMesh, farCardMeshes, setCardFarCut, vegShell, type VegUniforms } from "./veg-mesh";
+import {
+  createShellMesh,
+  createTrunkMesh,
+  createVegMaterial,
+  createVegTrunkMaterial,
+  disposeShellMesh,
+  farCardMeshes,
+  setCardFarCut,
+  TRUNK_TRIANGLES,
+  vegShell,
+  type VegUniforms,
+} from "./veg-mesh";
 
 /** What the shells did per chunk (window.__sectVeg with ?debug=1). */
 export interface VegStats {
@@ -37,6 +51,9 @@ export interface VegStats {
       cards: number;
       instances: number;
       triangles: number;
+      /** Trunks under the crowns (every crown plant but shrubs), and their triangles. */
+      trunks: number;
+      trunkTriangles: number;
       /** Card meshes hidden in its place. */
       hidden: number;
       skipped: ShellInstances["skipped"] | null;
@@ -95,14 +112,18 @@ function loadShells(base: string, rev: Readonly<Record<string, string>> | undefi
 interface Built {
   set: LoadedSet;
   mesh: Mesh | null;
+  /** The trunks under its crowns (null: none, or no crowns). */
+  trunks: Mesh | null;
   hidden: Mesh[];
 }
 
-/** Takes a set's shells away (freed) and, unless the set is going too, shows its cards again. */
+/** Takes a set's shells and trunks away (freed) and, unless the set is going too, shows its cards again. */
 function unbuild(b: Built): void {
   if (b.mesh) disposeShellMesh(b.mesh);
+  if (b.trunks) disposeShellMesh(b.trunks);
   if (!b.set.dropped) setCardFarCut(b.hidden, 0, 0);
   b.mesh = null;
+  b.trunks = null;
   b.hidden = [];
 }
 
@@ -130,11 +151,14 @@ export function VegShells({ global, chunks, ctx, store, quality }: VegShellsProp
         uVegNear: { value: new Vector2(CARD_LOOK.farCut.from, CARD_LOOK.farCut.to) },
         // One object for every chunk's material, so a change shows on all of them (window.__sectVegBough with ?debug=1).
         uVegBough: { value: new Vector4(...vegBoughUniform()) },
+        // The drawing buffer's height, set every frame below: the trunks' least width on screen.
+        uVegViewH: { value: 1000 },
       } as VegUniforms,
       built: new Map<LoadedSet, Built>(),
       pending: new Set<LoadedSet>(),
-      /** The shell program has been compiled ahead of its first draw. */
+      /** The shell program, and the trunk program, have been compiled ahead of their first draw. */
       warmed: false,
+      trunksWarmed: false,
       warmTarget: null as WebGLRenderTarget | null,
       stats: { on: false, chunks: {} } as VegStats,
     }),
@@ -156,8 +180,14 @@ export function VegShells({ global, chunks, ctx, store, quality }: VegShellsProp
       kit.warmTarget?.dispose();
       kit.warmTarget = null;
       kit.warmed = false;
+      kit.trunksWarmed = false;
     };
   }, [kit]);
+
+  // A pixel's size in metres for the trunks' ribbons (as Grass and the birds read it).
+  useFrame((state) => {
+    if (live.current.on) kit.uniforms.uVegViewH.value = state.size.height * state.viewport.dpr;
+  });
 
   // Build the shells of each set that has none, and take them off sets that went (or all, when off).
   useEffect(() => {
@@ -169,16 +199,17 @@ export function VegShells({ global, chunks, ctx, store, quality }: VegShellsProp
       delete kit.stats.chunks[vegChunkId(s.id)];
     }
     if (!on) {
-      // The last shell material is gone, and three frees a program no material uses: when the ladder
-      // brings the shells back, their program is compiled off the frame again, not on its first draw.
+      // The last shell and trunk materials are gone, and three frees a program no material uses: when the
+      // ladder brings the shells back, their programs are compiled off the frame again, not on the first draw.
       kit.warmed = false;
+      kit.trunksWarmed = false;
       return;
     }
     const alive = (s: LoadedSet) => mounted.current && live.current.on && !s.dropped && live.current.sets.includes(s);
-    /** Compiles the shell program for the buffer it is drawn into, off the frame (as Grass does). */
-    const warm = async (mesh: Mesh) => {
+    /** Compiles the meshes' programs (shells, trunks: both in one go) for the buffer they are drawn into, off the frame (as Grass does). */
+    const warm = async (meshes: readonly Mesh[]) => {
       const holder = new Group();
-      holder.add(mesh);
+      for (const m of meshes) holder.add(m);
       try {
         const prev = gl.getRenderTarget();
         let pending: Promise<unknown>;
@@ -195,7 +226,7 @@ export function VegShells({ global, chunks, ctx, store, quality }: VegShellsProp
       } catch (e) {
         console.warn("[sect] crown shell shader warm-up failed", e);
       } finally {
-        holder.remove(mesh);
+        for (const m of meshes) holder.remove(m);
       }
     };
     const build = async (set: LoadedSet) => {
@@ -205,38 +236,61 @@ export function VegShells({ global, chunks, ctx, store, quality }: VegShellsProp
       const inst = got.inst;
       const root = set.scenes[0];
       if (!inst || inst.count === 0 || !root) {
-        kit.stats.chunks[id] = { status: got.status, plants: 0, cards: inst?.cards ?? 0, instances: 0, triangles: 0, hidden: 0, skipped: inst?.skipped ?? null };
-        kit.built.set(set, { set, mesh: null, hidden: [] });
+        kit.stats.chunks[id] = {
+          status: got.status,
+          plants: 0,
+          cards: inst?.cards ?? 0,
+          instances: 0,
+          triangles: 0,
+          trunks: 0,
+          trunkTriangles: 0,
+          hidden: 0,
+          skipped: inst?.skipped ?? null,
+        };
+        kit.built.set(set, { set, mesh: null, trunks: null, hidden: [] });
         return;
       }
       const material = createVegMaterial(kit.uniforms, `sect.veg.${id}`, live.current.coverage);
       const mesh = createShellMesh(inst, material);
-      if (!kit.warmed) {
-        await warm(mesh);
+      const trunks = inst.trunks.count > 0 ? createTrunkMesh(inst.trunks, createVegTrunkMaterial(kit.uniforms, `sect.veg.${id}.trunks`, live.current.coverage)) : null;
+      const made = trunks ? [mesh, trunks] : [mesh];
+      // The programs not compiled yet, both in one go.
+      const cold = made.filter((m) => (m === mesh ? !kit.warmed : !kit.trunksWarmed));
+      if (cold.length > 0) {
+        await warm(cold);
         if (!alive(set)) {
-          disposeShellMesh(mesh);
+          for (const m of made) disposeShellMesh(m);
           return;
         }
-        // Set only when this shell stays: one thrown away may have taken the warmed program with it.
-        kit.warmed = true;
+        // Set only when these stay: ones thrown away may have taken the warmed programs with them.
+        for (const m of cold) {
+          if (m === mesh) kit.warmed = true;
+          else kit.trunksWarmed = true;
+        }
       }
-      // MSAA may have changed while it compiled.
-      const shellMaterial = mesh.material as ShaderMaterial;
-      if (shellMaterial.alphaToCoverage !== live.current.coverage) {
-        shellMaterial.alphaToCoverage = live.current.coverage;
-        shellMaterial.needsUpdate = true;
+      // MSAA may have changed while they compiled.
+      for (const m of made) {
+        const mat = m.material as ShaderMaterial;
+        if (mat.alphaToCoverage !== live.current.coverage) {
+          mat.alphaToCoverage = live.current.coverage;
+          mat.needsUpdate = true;
+        }
       }
-      root.add(mesh);
-      mesh.updateMatrixWorld(true);
+      for (const m of made) {
+        root.add(m);
+        m.updateMatrixWorld(true);
+      }
       const hidden = farCardMeshes(set.scenes, set.hotspotMeshes);
       setCardFarCut(hidden, CARD_LOOK.farCut.from, CARD_LOOK.farCut.to);
-      kit.built.set(set, { set, mesh, hidden });
+      kit.built.set(set, { set, mesh, trunks, hidden });
       kit.stats.chunks[id] = {
         status: got.status,
         plants: inst.plants,
         cards: inst.cards,
         instances: inst.count,
         triangles: inst.count * vegShell().triangles,
+        trunks: trunks ? inst.trunks.count : 0,
+        trunkTriangles: trunks ? inst.trunks.count * TRUNK_TRIANGLES : 0,
         hidden: hidden.length,
         skipped: inst.skipped,
       };
@@ -249,19 +303,21 @@ export function VegShells({ global, chunks, ctx, store, quality }: VegShellsProp
       build(s)
         .catch((e: unknown) => {
           console.warn(`[sect] crown shells for ${s.id} failed; its baked cards stay`, e);
-          if (alive(s) && !kit.built.has(s)) kit.built.set(s, { set: s, mesh: null, hidden: [] });
+          if (alive(s) && !kit.built.has(s)) kit.built.set(s, { set: s, mesh: null, trunks: null, hidden: [] });
         })
         .finally(() => kit.pending.delete(s));
     }
   }, [sets, on, kit, ctx, store, gl, scene, camera]);
 
-  // Alpha to coverage follows MSAA (the ladder can take it off and give it back).
+  // Alpha to coverage follows MSAA (the ladder can take it off and give it back), on the shells and the trunks.
   useEffect(() => {
     for (const b of kit.built.values()) {
-      const m = b.mesh?.material as ShaderMaterial | undefined;
-      if (!m || m.alphaToCoverage === coverage) continue;
-      m.alphaToCoverage = coverage;
-      m.needsUpdate = true;
+      for (const mesh of [b.mesh, b.trunks]) {
+        const m = mesh?.material as ShaderMaterial | undefined;
+        if (!m || m.alphaToCoverage === coverage) continue;
+        m.alphaToCoverage = coverage;
+        m.needsUpdate = true;
+      }
     }
   }, [coverage, kit]);
 

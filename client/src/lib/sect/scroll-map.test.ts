@@ -8,6 +8,7 @@ import {
   holdPresence,
   introPresence,
   nearestStop,
+  pastLastHold,
   nextTrackViewport,
   pxPerUnit,
   scrollToU,
@@ -100,15 +101,39 @@ describe("presence", () => {
     expect(at(gate.u0 - 20)).toBe(0);
   });
 
-  it("can keep the last hold's panel up to the end of the track", () => {
+  it("fades the last hold's panel out past its dwell, so the end of the track shows the moon alone", () => {
     const last = map.holds[map.holds.length - 1];
-    const at = (u: number, tail: boolean) => holdPresence(map, u, 14, tail).find((p) => p.id === last.id)!.amount;
+    const at = (u: number) => holdPresence(map, u, 14).find((p) => p.id === last.id)!.amount;
     expect(map.totalUnits).toBeGreaterThan(last.u1 + 20);
-    expect(at(map.totalUnits, false)).toBe(0);
-    expect(at(map.totalUnits, true)).toBe(1);
-    // The other holds are unchanged.
-    const gate = (tail: boolean) => holdPresence(map, map.holds[0].u1 + 20, 14, tail).find((p) => p.id === "gate")!.amount;
-    expect(gate(true)).toBe(gate(false));
+    expect(at(last.uMid)).toBe(1);
+    expect(at(last.u1 + 7)).toBeGreaterThan(0);
+    expect(at(last.u1 + 7)).toBeLessThan(1);
+    expect(at(last.u1 + 14)).toBe(0);
+    expect(at(map.totalUnits)).toBe(0);
+    // Scrolling back up brings it back.
+    expect(at(last.u1)).toBe(1);
+  });
+
+  it("on the shipped flight the contact panel is gone well before the end (82 frames past the summit)", () => {
+    const flight = buildScrollMap(27, 1729, [{ id: "summit", label: "Moon-Gazing Terrace", frame: 1647 }], FLIGHT_SCROLL);
+    const summit = flight.holds[0];
+    const at = (u: number) => holdPresence(flight, u, 16)[0].amount;
+    expect(at(summit.uMid)).toBe(1);
+    expect(at(summit.u1 + 16)).toBe(0);
+    expect(flight.totalUnits - summit.u1).toBeGreaterThan(60);
+    expect(at(flight.totalUnits)).toBe(0);
+  });
+
+  it("knows the stretch past the last stop, where nothing names a place", () => {
+    const last = map.holds[map.holds.length - 1];
+    expect(pastLastHold(map, 0)).toBe(false);
+    expect(pastLastHold(map, map.holds[0].u1 + 5)).toBe(false);
+    expect(pastLastHold(map, last.uMid)).toBe(false);
+    expect(pastLastHold(map, last.u1)).toBe(false);
+    expect(pastLastHold(map, last.u1 + 0.01)).toBe(true);
+    expect(pastLastHold(map, map.totalUnits)).toBe(true);
+    // No stops at all: nothing to be past.
+    expect(pastLastHold(buildScrollMap(27, 288, [], FLIGHT_SCROLL), 100)).toBe(false);
   });
 
   it("intro fades out after the first units", () => {

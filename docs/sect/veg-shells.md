@@ -170,10 +170,64 @@ An independent review of the pull request found it by reading the code, and a ca
 - Checked in a capture on High, 1600 x 900: at the gate the spires have their trees again
   (4,249 pixels change, all among the far stand-ins), and the summit view is the same to the pixel.
 
+## Trunks (2026-11-15)
+
+The owner, looking at the far places drawn in full: "Far trees dont hav etrunks".
+
+A crown covers only the top of its tree. A broadleaf crown's centre sits at the tree's height
+less the crown's half height, so the lower 40 percent or more of the tree was empty air and the
+crown floated. In a forest nobody saw it. On single trees it read as green balls hanging over the
+ground, most of all on the far pagoda island seen from the arena. Since far places are drawn in
+full (`background-fill.md`), there are many more far trees with crowns on screen.
+
+Every crown tree now has a trunk.
+
+- **Where.** From the tree's foot to its crown's centre, so it ends inside the crown and no gap can
+  show. A Huangshan pine's trunk runs to its top pad's centre: one leaning line that the pads were
+  laid along. Shrubs have none.
+- **What it is.** A ribbon of two triangles that always faces the camera (`plantTrunk`,
+  `vegTrunkVertexGlsl` and `vegTrunkFragmentGlsl` in `lib/sect/veg.ts`; `createTrunkMesh` in
+  `experience/veg-mesh.ts`). At 150 m and more a trunk is 1 to 4 pixels wide, so a cylinder would
+  be wasted.
+- **How thick.** The foot's radius is a share of the tree's height, taken from the scene's own
+  trees in `blender/xianxia-sect/sect/lib/nature.py`: broadleaf and blossom 0.04, Huangshan pine
+  0.045, Masson pine 0.025, bamboo 0.008. It is held between 4 cm and 60 cm and under 0.3 of the
+  crown's radius, and the top is 0.45 of the foot.
+- **Never thinner than 1.4 pixels.** A thinner ribbon is widened to that and made fainter by the
+  same share, so a far trunk fades out and does not flicker.
+- **Colour.** The scene's bark, mixed 40 percent toward the darkest colour of the tree's own
+  canopy, so trunks sit in the canopy's shade. Lit by the key light and the plant's own sun value,
+  then the same grade and haze as the crowns.
+- **When.** By the same ground-cell switch as the crowns, tested at the foot, so a trunk is drawn
+  when its tree's crown is. Near the switch a card can still be drawing its top while the foot
+  already counts as far. There the ribbon draws only the part the card has cut (the same test run
+  per pixel at the pixel's height), so a card's own trunk and the ribbon never both show.
+- **Not drawn** with `?veg=0`, on Medium or Low, or after the ladder turns the crowns off: the
+  cards come back and they have their own trunks.
+
+All numbers are in `VEG_LOOK.trunk`. `window.__sectVeg` (with `?debug=1`) has `trunks` and
+`trunkTriangles` per area.
+
+Checked in a browser against the build before (production builds, 1600 by 900, High):
+
+- At the arena the pagoda island's trees stand on thin hazed trunks, and so does the grove on the
+  forge's pillar. At the gate the grove across the valley has a row of stems, and a pine's floating
+  pads are joined by one leaning trunk. Looking back from the summit, the far pillar tops' trees
+  have trunks. No crown was left floating, and no trunk stood without a crown, on a shrub, through
+  a roof or beside a card's own trunk.
+- 28,998 trunks in all, 58,000 triangles. A view gains 8 to 12 draw calls and at most 0.2 ms of
+  GPU time (2.37 to 2.45 ms at the arena).
+- Scrolling slowly past the arena and the steles, two stills 0.3 s apart differ by the same
+  number of pixels as before, so the trunks add no flicker.
+- With `?veg=0` and reduced motion the page draws what the build before drew, to the pixel.
+
+Not checked: High with MSAA off, where a far trunk cuts out once it is under 0.7 pixels wide. In a
+reflection the least width is counted in the main view's pixels, so it is a little thin there.
+
 ## Not done
 
 - Near trees are still the baked models. From close up some read as low-polygon lumps.
-- Crowns have no trunks and cast no shadows of their own.
+- Crowns cast no shadows of their own.
 - The changes after the review have not been captured. Worth looking at: the four stops that lost
   the most (mirror, mission, scroll, formation), crowns just past the 150 to 230 m switch and seen
   from above, pine pads in the sun, and High with MSAA off (a hard cut instead of the soft one).

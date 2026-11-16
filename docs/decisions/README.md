@@ -1177,6 +1177,60 @@ ladder's first step takes it off again.
 
 **See.** "Far places in full" in [`../sect/background-fill.md`](../sect/background-fill.md).
 
+### 2026-11-15 · Far crowns stand on trunks
+
+**Decided.** Every far tree drawn as a crown gets a trunk: a thin ribbon of two triangles from its foot into its
+crown, sized from the scene's own trees, never under 1.4 pixels wide, coloured as bark in the canopy's shade. It
+is drawn when the tree's crown is, and not with the baked cards, which have their own trunks.
+
+**Why.** The owner, looking at the far places now drawn in full: "Far trees dont hav etrunks". A crown covers
+only the top of its tree, so the lower 40 percent or more was empty air. In a forest that never showed. On single
+trees, like the far pagoda island seen from the arena, the crowns hung over the ground.
+
+**Checked** in a browser against the build before. No crown was left floating and no trunk stood alone, on a
+shrub or through a roof. 28,998 trunks cost 8 to 12 draw calls and at most 0.2 ms a frame. With the crowns off the
+page draws what it drew before, to the pixel.
+
+**Limits.** Not looked at with MSAA off, where a far trunk cuts out once it is under 0.7 pixels wide.
+
+**See.** "Trunks" in [`../sect/veg-shells.md`](../sect/veg-shells.md).
+
+### 2026-11-15 · Ice-Fire Island's steam rises
+
+**Decided.** The 15 puffs of steam over the volcano climb, in the shader. Each puff is drawn as two copies that
+loop through its place half a loop apart, one fading in as the other fades out, so the plume stays one column on
+the crater. With "reduce motion" on it is the still plume of before.
+
+**Why.** The owner: "The ice fire mountain smoke doesnt animate". A puff's only motion was the mist's noise
+drifting sideways in cells far wider than the steam, so the plume was a still picture.
+
+**Checked.** The first version looped one copy per puff and failed its check: the plume broke into separate balls
+with sky between them. The two-copy loop passed. From the library 2.7 percent of the plume's pixels now change
+every half second (0.13 before), and it reads as one column in every still. No other cloud changed.
+
+**Limits.** The plume is fuller than the still one at most moments and thins now and then. Over two minutes it
+averages the same brightness.
+
+**See.** "The steam rises" in
+[`2026-10-24-icefire-steam-and-element-flags.md`](2026-10-24-icefire-steam-and-element-flags.md).
+
+### 2026-11-15 · Past the Moon-Gazing Terrace the view is the moon alone
+
+**Decided.** The contact panel fades out past the summit's stop like every other panel. It used to stay up to
+the end of the flight. Past that stop the rails keep their place label off too, or a small "Contact" label would
+take the panel's place over the moon. The music is unchanged: it follows the place the camera is in, so the
+summit's song plays on. Scrolling back to the terrace brings the panel back.
+
+**Why.** The owner: "When we scroll past the moon-gazing terrace to look at the moon, the contact little box
+should disappear, but like the song should keep playing."
+
+**Checked** in a browser on a desktop and a phone size: the panel is up at the terrace, gone at the end of the
+page with no label on the rail, and back on the way up. Between two stops the rail names the place as before. The
+song could not be played here (the music files come from the live backend), so a unit test pins that the
+summit's track is the one wanted at every frame past the terrace.
+
+**See.** `holdPresence` and `pastLastHold` in `client/src/lib/sect/scroll-map.ts`.
+
 ---
 
 ## Longer write-ups
@@ -1204,4 +1258,6 @@ ladder's first step takes it off again.
 | 2026-11-14 | Scroll snap: why scenes felt stuck, the short stops, which stop a rest glides to, the glide that keeps the camera's speed, what was checked | [`../sect/scroll-snap.md`](../sect/scroll-snap.md) |
 | 2026-11-15 | Every place loads in the background on a strong desktop: what holding and drawing cost, who gets it, how it stays out of the way, the stand-in that lost its rock | [`../sect/background-fill.md`](../sect/background-fill.md) |
 | 2026-11-15 | Far places in full: what a far place has, when it first shows, the ladder's order, the cost stop by stop, what was checked | [`../sect/background-fill.md`](../sect/background-fill.md) |
+| 2026-11-15 | Trunks under far crowns: why crowns floated, the ribbon, its thickness and colour, when it is drawn, what was checked | [`../sect/veg-shells.md`](../sect/veg-shells.md) |
+| 2026-11-15 | Ice-Fire Island's steam rises: why it stood still, the two-copy loop, the first try that broke into balls, what was checked | [`2026-10-24-icefire-steam-and-element-flags.md`](2026-10-24-icefire-steam-and-element-flags.md) |
 | 2026-11-09 | Round 55: the gate seen square on, and prop moves at four stops (designed and scripted, not baked yet) | [`../scene/placement-r55.md`](../scene/placement-r55.md) |

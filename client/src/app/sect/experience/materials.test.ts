@@ -26,13 +26,25 @@ import {
   ZeroFactor,
   type WebGLRenderer,
 } from "three";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { PUFF_STRIDE } from "@/lib/sect/clouds";
 import { DETAIL_LOOK, DETAIL_NOISE, detailProgramKey, weatherApplyGlsl, weatherGlsl } from "@/lib/sect/detail";
 import { fogConstantsFromMeta, fogDefines, glslFloat, SCREEN_GRADE_PARS } from "@/lib/sect/glsl";
 import { heartMirrorGlsl } from "@/lib/sect/heart-mirror";
 import { LIVE_CLASSES, liveApplyGlsl, liveAtlasOf, liveSheenGlsl, liveSurfaceNormalGlsl } from "@/lib/sect/live";
 import { SECT_LOOK } from "@/lib/sect/look";
 import { parseMeta } from "@/lib/sect/parse";
+import {
+  STEAM_BRANCH,
+  STEAM_HIDE_STATEMENT,
+  STEAM_NW_PER_METRE,
+  steamChurnStatement,
+  steamClimbStatement,
+  steamVertexGlsl,
+  steamVertexStatements,
+} from "@/lib/sect/steam";
 import { wetFalls } from "@/lib/sect/waterfall";
 import { LiveShadowMap } from "./live-shadow";
 import { REFLECT } from "./reflect/plan";
@@ -1230,7 +1242,7 @@ describe("the mist reads one field of noise fixed in the world", () => {
     const vs = createCloudPuffMaterial(fogConstantsFromMeta(parseMeta({})), "#c8ada0").vertexShader;
     expect(vs).toContain("wu = max( wu, wr * 0.4 );");
     expect(vs).toContain("float spread = wu0 / wu;");
-    expect(vs).toContain("vDepth = iDensity * wf * 2.0 * spread;");
+    expect(vs).toContain("vDepth = puffD * wf * 2.0 * spread;");
   });
 
   it("adds a little relief to the light: the same field a step toward the sun", () => {
@@ -1238,6 +1250,95 @@ describe("the mist reads one field of noise fixed in the world", () => {
     expect(fs).toContain("vec2 sunStep = vec2( SECT_SUN_DIR.x * 0.82 + SECT_SUN_DIR.z * 0.57, SECT_SUN_DIR.y * 1.35 ) * 14.0;");
     expect(fs).toContain("float light = clamp( sun * 0.6 + ( vUv.y * 0.5 + 0.5 ) * 0.42 + ");
     expect(fs).toContain("+ relief * 1.8 - 0.1");
+  });
+});
+
+describe("Ice-Fire Island's steam rises (lib/sect/steam.ts)", () => {
+  const mat = () => createCloudPuffMaterial(fogConstantsFromMeta(parseMeta({})), "#c8ada0");
+  const BRANCH = STEAM_BRANCH;
+
+  it("loops a puff with a rise span upward in the vertex shader, only while uSteam is on", () => {
+    expect(BRANCH).toBe("if ( iRise != 0.0 && uSteam > 0.5 ) {");
+    const m = mat();
+    const vs = m.vertexShader;
+    expect(vs).toContain("attribute float iRise;");
+    expect(vs).toContain("uniform float uSteam;");
+    expect(vs).toContain("uniform float uTime;");
+    expect(vs).toContain(steamVertexGlsl());
+    expect(vs).toContain(`  ${BRANCH}\n${steamVertexStatements()}\n  }`);
+    expect(m.uniforms.uSteam.value).toBe(1);
+    // The puff is copied from its attributes before the branch, and drawn from the copies after it.
+    const before = vs.slice(vs.indexOf("void main() {"), vs.indexOf(BRANCH));
+    for (const line of ["vec3 puffC = iCenter;", "vec3 puffA0 = iA0;", "vec3 puffA1 = iA1;", "vec3 puffA2 = iA2;", "float puffD = iDensity;", "vSteam = 0.0;"]) {
+      expect(before).toContain(line);
+    }
+    const after = vs.slice(vs.indexOf(BRANCH));
+    const rest = after.slice(after.indexOf("\n  }\n"));
+    expect(rest).toContain("vec3 toC = puffC - cameraPosition;");
+    expect(rest).toContain("vec3 wp = puffC - f * lift + ");
+    expect(rest).toContain("float wf = length( vec3( dot( puffA0, f ), dot( puffA1, f ), dot( puffA2, f ) ) );");
+    // Only the sprite's noise seed reads the packed centre: it stays with the puff's place.
+    expect(rest.match(/iCenter/g)).toHaveLength(1);
+    expect(rest).toContain("vSeed = fract( iCenter.xz * 0.0137 );");
+    // After the branch only the hiding of the second copy reads iRise and uSteam.
+    const restBut = rest.replace(`${STEAM_HIDE_STATEMENT}\n`, "");
+    expect(restBut).not.toBe(rest);
+    expect(restBut).not.toMatch(/iA[012]|iDensity|iRise|uSteam|steam[A-Z]/);
+  });
+
+  it("does nothing else in the branch, so every other puff is drawn exactly as before", () => {
+    const vs = mat().vertexShader;
+    const start = vs.indexOf(BRANCH) + BRANCH.length;
+    const body = vs.slice(start, vs.indexOf("\n  }\n", start)).split("\n").filter((l) => l.trim());
+    expect(body.length).toBeGreaterThan(5);
+    for (const line of body) {
+      expect(line, line).toMatch(/^ {4}(float steam(Span|S|Up|Grow|Share) = |puffC \+= |puffA[012] \*= steamGrow;|puffD \*= |vSteam = 1\.0;)/);
+    }
+    // The hash runs only there.
+    expect(vs.split("sectSteamHash(").length - 1).toBe(2);
+  });
+
+  it("hides a steam puff's second copy while the steam stands still: set just before the faded quad collapses", () => {
+    const vs = mat().vertexShader;
+    const collapse = "  if ( vFade < 0.003 ) gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );";
+    expect(vs.split(STEAM_HIDE_STATEMENT).length - 1).toBe(1);
+    expect(vs.indexOf(STEAM_HIDE_STATEMENT)).toBeGreaterThan(vs.indexOf("gl_Position = projectionMatrix * mv;"));
+    expect(vs.indexOf(STEAM_HIDE_STATEMENT)).toBeLessThan(vs.indexOf(collapse));
+    // The fragment shader drops what the vertex shader faded out.
+    expect(mat().fragmentShader).toContain("if ( q2 > 1.0 || vFade < 0.003 ) discard;");
+  });
+
+  it("lets the steam sprite's noise climb in the fragment shader: the world field and its own", () => {
+    const fs = mat().fragmentShader;
+    expect(fs).toContain("varying float vSteam;");
+    const nl = "  vec2 nl = vUv * vec2( 1.15, 1.9 ) + vSeed * 9.0 + vec2( uTime * 0.004, 0.0 );\n";
+    expect(fs).toContain(nl);
+    expect(fs).toContain(steamChurnStatement());
+    expect(fs.indexOf(steamChurnStatement())).toBeGreaterThan(fs.indexOf(nl));
+    expect(fs.indexOf(steamChurnStatement())).toBeLessThan(fs.indexOf("float own = "));
+    expect(steamChurnStatement()).toMatch(/^ {2}if \( vSteam > 0\.5 \) nl\.y -= /);
+    // The world field: one metre up is STEAM_NW_PER_METRE units of nw.y, and it rises before any read.
+    const nw = `  vec2 nw = vec2( vWorld.x * 0.82 + vWorld.z * 0.57, vWorld.y * ${STEAM_NW_PER_METRE} ) + vec2( uTime * 0.7, 0.0 );\n`;
+    expect(fs).toContain(nw);
+    expect(fs.indexOf(steamClimbStatement())).toBeGreaterThan(fs.indexOf(nw));
+    expect(fs.indexOf(steamClimbStatement())).toBeLessThan(fs.indexOf("float n1 = "));
+    expect(steamClimbStatement()).toMatch(/^ {2}if \( vSteam > 0\.5 \) nw\.y -= uTime \* /);
+  });
+
+  it("is fed by scene.tsx CloudPuffs: the span as iRise, the 14th float, and uSteam off with reduced motion", () => {
+    const src = readFileSync(path.resolve(__dirname, "scene.tsx"), "utf8").replace(/\r\n/g, "\n");
+    const puffs = src.slice(src.indexOf("function CloudPuffs("), src.indexOf("function OverlayDecor("));
+    expect(puffs).toContain("(p) => steamRise(p),");
+    expect(puffs).toContain('geo.setAttribute("iRise", new InterleavedBufferAttribute(buf, 1, 13));');
+    expect(puffs).toContain("built.material.uniforms.uSteam.value = store.reducedMotion ? 0 : 1;");
+    // The attributes tile the packed puff exactly: 14 floats, none read twice or left out.
+    const used = new Array<number>(PUFF_STRIDE).fill(0);
+    for (const [, size, offset] of puffs.matchAll(/new InterleavedBufferAttribute\(buf, (\d+), (\d+)\)/g)) {
+      for (let k = Number(offset); k < Number(offset) + Number(size); k++) used[k]++;
+    }
+    expect(PUFF_STRIDE).toBe(14);
+    expect(used).toEqual(new Array<number>(PUFF_STRIDE).fill(1));
+    expect(puffs).toContain("new InstancedInterleavedBuffer(new Float32Array(packed), PUFF_STRIDE, 1)");
   });
 });
 

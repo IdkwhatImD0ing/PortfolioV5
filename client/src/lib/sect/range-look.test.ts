@@ -1,7 +1,9 @@
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { fogConstantsFromMeta, glslFloat, hazeLayerDepth, hexToLinear } from "./glsl";
 import { gradeGlsl, gradeLinear, gradeLinearWith, lookFogConstants, SECT_LOOK, unitTint } from "./look";
-import { parseMeta } from "./parse";
+import { parseClouds, parseMeta } from "./parse";
 import {
   barkWeight,
   builtAt,
@@ -16,6 +18,7 @@ import {
   groundRangeLinear,
   growBuilt,
   hazeScaleAt,
+  isSteamPuff,
   keepPuffShape,
   leafWeight,
   markBuiltTriangles,
@@ -390,6 +393,39 @@ describe("mist as layers", () => {
     const bank = puff([0, 20, 300], [[30, 0, 0], [0, 15, 0], [0, 0, 30]]);
     expect(keepPuffShape(bank, [[0, 25, 280]])).toBe(true);
     expect(keepPuffShape(bank, [[0, 25, -400]])).toBe(false);
+  });
+
+  it("calls the small untagged puffs over Ice-Fire Island steam, and keeps the big banks there as they were but still", () => {
+    const steam = puff([m.keep.xz[0] + 5, m.keep.aboveY + 20, m.keep.xz[1]], [[3, 0, 0], [0, 3, 0], [0, 0, 3]]);
+    expect(isSteamPuff(steam)).toBe(true);
+    expect(isSteamPuff({ ...steam, kind: "mist.isle" })).toBe(false);
+    expect(isSteamPuff({ ...steam, c: [m.keep.xz[0] + m.keep.radius + 1, steam.c[1], m.keep.xz[1]] })).toBe(false);
+    expect(isSteamPuff({ ...steam, c: [steam.c[0], m.keep.aboveY - 1, steam.c[2]] })).toBe(false);
+    const bank = puff(steam.c, [[35, 0, 0], [0, 11, 0], [0, 0, 23]]);
+    expect(isSteamPuff(bank)).toBe(false);
+    expect(keepPuffShape(bank, [])).toBe(true);
+    expect(flattenPuff(bank)).toBe(bank);
+    // Steam is always a kept puff.
+    expect(keepPuffShape(steam, [])).toBe(true);
+  });
+
+  it("finds exactly the 15 steam puffs in the installed clouds.json, and none of the tagged mist", () => {
+    const file = path.resolve(__dirname, "../../../public/sect/full/clouds.json");
+    if (!existsSync(file)) return;
+    const puffs = parseClouds(JSON.parse(readFileSync(file, "utf8")));
+    const steam = puffs.filter((p) => isSteamPuff(p));
+    expect(steam).toHaveLength(15);
+    expect(puffs.filter((p) => p.kind && isSteamPuff(p))).toHaveLength(0);
+    // The plume over the crater (10) and the puffs low by the lava stream (5), all within the island.
+    for (const p of steam) {
+      expect(p.kind).toBeUndefined();
+      expect(Math.hypot(p.c[0] - m.keep.xz[0], p.c[2] - m.keep.xz[1])).toBeLessThan(m.keep.radius);
+    }
+    expect(steam.filter((p) => p.c[1] > 295)).toHaveLength(10);
+    expect(steam.filter((p) => p.c[1] < 295)).toHaveLength(5);
+    // Every puff kept as it was before steam was told apart is still kept.
+    const zone = puffs.filter((p) => !p.kind && p.c[1] > m.keep.aboveY && Math.hypot(p.c[0] - m.keep.xz[0], p.c[2] - m.keep.xz[1]) < m.keep.radius);
+    for (const p of zone) expect(keepPuffShape(p, [])).toBe(true);
   });
 });
 

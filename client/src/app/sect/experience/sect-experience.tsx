@@ -99,6 +99,7 @@ import {
   easeInOut,
   frameToU,
   holdPresence,
+  pastLastHold,
   introPresence,
   nearestStop,
   nextTrackViewport,
@@ -470,6 +471,8 @@ export default function SectExperience() {
   const [lookedBack, setLookedBack] = useState(false);
   /** The intro title and its hint are up (the top of the flight): the Recentre button waits. */
   const [introUp, setIntroUp] = useState(true);
+  /** Past the last stop, looking at the moon (scroll-map.ts pastLastHold): the rails name no place. */
+  const [pastLast, setPastLast] = useState(false);
 
   const introRef = useRef<HTMLDivElement>(null);
   const panelRefs = useRef<Record<string, HTMLElement | null>>({});
@@ -1741,6 +1744,7 @@ export default function SectExperience() {
     let raf = 0;
     let lastArea: string | null = null;
     let lastHolding = false;
+    let lastPast = false;
     let lastU = NaN;
     let settledAt = 0;
     const shownAt = performance.now();
@@ -1774,8 +1778,9 @@ export default function SectExperience() {
       lastU = u;
       settledAt = performance.now();
       let presence = 0;
-      // The contact panel stays up from the summit to the end of the track (the bottom of the page).
-      for (const p of holdPresence(store.map, u, 16, true)) {
+      // Every panel fades out past its stop, the contact panel too: past the summit the view is the
+      // moon alone (the summit's song plays on; music follows the camera's area, not the panel).
+      for (const p of holdPresence(store.map, u, 16)) {
         presence = Math.max(presence, p.amount);
         const el = panelRefs.current[p.id];
         if (el) {
@@ -1788,6 +1793,12 @@ export default function SectExperience() {
       if (holding !== lastHolding) {
         lastHolding = holding;
         setAtHold(holding);
+      }
+      // Past the summit the rails' place label stays off too (it would take the panel's place over the moon).
+      const past = pastLastHold(store.map, u);
+      if (past !== lastPast) {
+        lastPast = past;
+        setPastLast(past);
       }
       const area = nearestHold(store.map, u);
       if (area !== lastArea) {
@@ -2461,8 +2472,8 @@ export default function SectExperience() {
               ) : null,
             )}
           </main>
-          <SectionRail stops={railStops} active={activeArea} atHold={atHold} onJump={onRail} />
-          <CompactRail stops={railStops} active={activeArea} atHold={atHold} labelHidden={introUp} onJump={onRail} />
+          <SectionRail stops={railStops} active={activeArea} atHold={atHold} labelHidden={pastLast} onJump={onRail} />
+          <CompactRail stops={railStops} active={activeArea} atHold={atHold} labelHidden={introUp || pastLast} onJump={onRail} />
           <div className="fixed right-[4.6rem] top-3 z-30 md:right-6 md:top-4">
             <MapButton open={mapOpen} onOpen={openMap} onPrefetch={prefetchMap} takesPickerFocus={phone} />
           </div>

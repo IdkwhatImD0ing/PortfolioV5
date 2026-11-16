@@ -9,15 +9,20 @@ import {
   parseVeg,
   parseVegIndex,
   parseVegParam,
+  plantCrowns,
+  plantTrunk,
   seedRandom,
   SHELL_STRIDE,
   shellGeometry,
   shellInstances,
+  TRUNK_STRIDE,
+  VEG_ARCHETYPES,
   VEG_BOUGH_TURN,
   VEG_FLAG,
   VEG_LOOK,
   VEG_TONES,
   vegArchetype,
+  vegBarkLinear,
   vegBough,
   vegBoughMeans,
   vegBoughNear,
@@ -35,6 +40,8 @@ import {
   vegSeed,
   vegShellsOn,
   vegTone,
+  vegTrunkFragmentGlsl,
+  vegTrunkVertexGlsl,
   vegTurnGlsl,
   vegVertexGlsl,
   vegYaw,
@@ -406,6 +413,253 @@ describe("shell instances", () => {
     }
     expect(seedRandom(0.25, 3)).toBe(seedRandom(0.25, 3));
     expect(seedRandom(0.25, 3)).not.toBe(seedRandom(0.25, 4));
+  });
+});
+
+describe("trunks", () => {
+  const T = VEG_LOOK.trunk;
+  const ONE_CROWN = ["broadleaf", "masson", "bamboo", "blossom"] as const;
+  const footR = (a: Exclude<(typeof VEG_ARCHETYPES)[number], "shrub">, h: number, r: number) =>
+    Math.min(Math.max(Math.min(h * T.girth[a], r * T.share), T.radius[0]), T.radius[1]);
+
+  it("follow the scene's own trunks: a share of the height per archetype, none for shrubs, tapering, dark bark", () => {
+    for (const a of VEG_ARCHETYPES) if (a !== "shrub") expect(T.girth[a], a).toBeGreaterThan(0);
+    expect("shrub" in T.girth).toBe(false);
+    // nature.py: a 10 m huangshan pine's trunk is about 0.4 m, a masson's 0.23 m, a bamboo culm 0.062 m at 8 m.
+    expect(T.girth.huangshan).toBeGreaterThan(T.girth.masson);
+    expect(T.girth.bamboo).toBeLessThan(0.01);
+    expect(T.radius[0]).toBeGreaterThan(0);
+    expect(T.radius[0]).toBeLessThan(T.radius[1]);
+    expect(T.taper).toBeGreaterThan(0);
+    expect(T.taper).toBeLessThan(1);
+    expect(T.minPx).toBeGreaterThanOrEqual(1);
+    expect(T.minPx).toBeLessThanOrEqual(2);
+    expect(plantTrunk("shrub", 3, 1.5, plantCrowns("shrub", 3, 1.5, 0, 0.3))).toBeNull();
+    expect(plantTrunk("broadleaf", 12, 5, [])).toBeNull();
+  });
+
+  it("run from a one-crown tree's foot to its crown's centre, so they end inside the crown whatever its lumps do", () => {
+    for (const a of ONE_CROWN) {
+      for (const [h, r, seed] of [
+        [12, 5, 0.17],
+        [7, 2.5, 0.61],
+        [20, 4, 0.93],
+      ] as const) {
+        const crowns = plantCrowns(a, h, r, 1.1, seed);
+        const t = plantTrunk(a, h, r, crowns)!;
+        const c = crowns[0];
+        expect(t.foot).toEqual([0, 0, 0]);
+        expect(t.top).toEqual([c.dx, c.cy, c.dz]);
+        expect(t.top[0]).toBe(0);
+        expect(t.top[2]).toBe(0);
+        // The crown floats: its bottom is above the ground, and the trunk reaches up past it into the crown.
+        expect(c.cy - c.ry, a).toBeGreaterThan(0.3 * h);
+        expect(t.top[1]).toBeGreaterThan(c.cy - c.ry * (1 - VEG_LOOK.displace.amount));
+        // The ribbon at the top is narrower than the crown, even with its lumps pulled in.
+        expect(t.topR).toBeLessThan(Math.min(c.rx, c.rz) * (1 - VEG_LOOK.displace.amount));
+        expect(t.footR, a).toBeCloseTo(footR(a, h, r), 12);
+        expect(t.topR).toBeCloseTo(t.footR * T.taper, 12);
+      }
+    }
+  });
+
+  it("clamp the radius to a sane range and to a share of the tree's radius, and taper toward the top", () => {
+    const broad = (h: number, r: number) => plantTrunk("broadleaf", h, r, plantCrowns("broadleaf", h, r, 0, 0.4))!;
+    expect(broad(0.5, 0.4).footR).toBe(T.radius[0]);
+    expect(broad(90, 40).footR).toBe(T.radius[1]);
+    // A tall tree with a slim crown keeps a slim trunk.
+    expect(broad(14, 1).footR).toBeCloseTo(Math.max(1 * T.share, T.radius[0]), 12);
+    expect(broad(14, 1).footR).toBeLessThan(14 * T.girth.broadleaf);
+    for (const [h, r] of [
+      [0.5, 0.4],
+      [6, 3],
+      [14, 6],
+      [90, 40],
+    ] as const) {
+      const t = broad(h, r);
+      expect(t.footR).toBeGreaterThanOrEqual(T.radius[0]);
+      expect(t.footR).toBeLessThanOrEqual(T.radius[1]);
+      expect(t.topR).toBeLessThan(t.footR);
+      expect(t.topR).toBeGreaterThan(0);
+    }
+  });
+
+  it("run a huangshan pine's from its foot to its top pad's centre: one leaning trunk through its pads, inside the tree's radius", () => {
+    const plants = forest(900).filter((p) => p.family === F["pine.huangshan.v1"]);
+    let leaning = 0;
+    for (const p of plants) {
+      const seed = vegSeed(p.x, p.y, p.z);
+      const pads = plantCrowns("huangshan", p.h, p.r, 0.7, seed);
+      const t = plantTrunk("huangshan", p.h, p.r, pads)!;
+      const top = pads[pads.length - 1];
+      expect(Math.max(...pads.map((d) => d.cy))).toBe(top.cy);
+      expect(t.foot).toEqual([0, 0, 0]);
+      expect(t.top).toEqual([top.dx, top.cy, top.dz]);
+      expect(Math.hypot(t.top[0], t.top[2]) + t.topR).toBeLessThanOrEqual(p.r + 1e-9);
+      expect(t.footR).toBeCloseTo(footR("huangshan", p.h, p.r), 12);
+      // At each pad's height the trunk passes within the pad, so no stretch of it hangs out in the air.
+      for (const d of pads) {
+        const k = d.cy / t.top[1];
+        expect(Math.hypot(t.top[0] * k - d.dx, t.top[2] * k - d.dz)).toBeLessThan(Math.min(d.rx, d.rz));
+      }
+      if (Math.hypot(t.top[0], t.top[2]) > 0.05 * p.r) leaning++;
+    }
+    expect(leaning).toBeGreaterThan(plants.length * 0.8);
+  });
+
+  it("come packed for exactly the plants turned into crowns, shrubs left out, with bounds that hold them", () => {
+    const plants = forest(400);
+    const inst = shellInstances(parseVeg(vegFile(plants)), FAMILIES);
+    const trunked = plants.filter((p) => !FAMILIES[p.family].startsWith("shrub."));
+    expect(trunked.length).toBeLessThan(plants.length);
+    const tr = inst.trunks;
+    expect(tr.count).toBe(trunked.length);
+    expect(tr.count).toBe(inst.plants - inst.plantsByArchetype.shrub);
+    expect(tr.foot.length).toBe(tr.count * TRUNK_STRIDE.foot);
+    expect(tr.top.length).toBe(tr.count * TRUNK_STRIDE.top);
+    expect(tr.params.length).toBe(tr.count * TRUNK_STRIDE.params);
+    // In plant order, each as the plant alone would give it.
+    trunked.forEach((p, n) => {
+      const alone = one(p).trunks;
+      expect(alone.count).toBe(1);
+      expect([...tr.foot.subarray(n * 3, n * 3 + 3)]).toEqual([...alone.foot]);
+      expect([...tr.top.subarray(n * 3, n * 3 + 3)]).toEqual([...alone.top]);
+      expect([...tr.params.subarray(n * 4, n * 4 + 4)]).toEqual([...alone.params]);
+      expect([...alone.foot]).toEqual([f32(p.x), f32(p.y), f32(p.z)]);
+      const name = FAMILIES[p.family];
+      const a = vegArchetype(name)!;
+      expect(alone.params[0]).toBeCloseTo(footR(a as Exclude<typeof a, "shrub">, f32(p.h), f32(p.r)), 5);
+      expect(alone.params[1]).toBeCloseTo(alone.params[0] * T.taper, 5);
+      expect(alone.params[2]).toBeCloseTo((p.sun ?? 255) / 255, 6);
+      expect(VEG_TONES[alone.params[3]]).toBe(vegTone(name, a));
+    });
+    const b = tr.bounds!;
+    for (let n = 0; n < tr.count; n++) {
+      for (const q of [tr.foot, tr.top]) {
+        const e = tr.params[n * 4];
+        expect(Math.hypot(q[n * 3] - b.center[0], q[n * 3 + 1] - b.center[1], q[n * 3 + 2] - b.center[2]) + e).toBeLessThanOrEqual(b.radius + 1e-3);
+        for (let k = 0; k < 3; k++) {
+          expect(q[n * 3 + k] - e).toBeGreaterThanOrEqual(b.min[k] - 1e-3);
+          expect(q[n * 3 + k] + e).toBeLessThanOrEqual(b.max[k] + 1e-3);
+        }
+      }
+    }
+  });
+
+  it("skip what the crowns skip: near meshes, click targets, unknown families and bad sizes", () => {
+    const inst = shellInstances(
+      parseVeg(
+        vegFile([
+          { x: 0, y: 0, z: 0, h: 10, r: 3, family: F["pine.broadleaf.v3"], flags: VEG_FLAG.mesh },
+          { x: 5, y: 0, z: 0, h: 10, r: 3, family: F["pine.broadleaf.v3"], flags: VEG_FLAG.hotspot },
+          { x: 9, y: 0, z: 0, h: 10, r: 3, family: F["pine.cliff.v0"] },
+          { x: 13, y: 0, z: 0, h: 0, r: 3, family: F["pine.broadleaf.v3"] },
+          { x: 17, y: 0, z: 0, h: 2, r: 1, family: F["shrub.green.v1"] },
+          { x: 20, y: 0, z: 0, h: 10, r: 3, family: F["pine.broadleaf.v3"] },
+        ]),
+      ),
+      FAMILIES,
+    );
+    expect(inst.plants).toBe(2);
+    expect(inst.trunks.count).toBe(1);
+    expect([...inst.trunks.foot]).toEqual([20, 0, 0]);
+    const empty = shellInstances(parseVeg(vegFile([])), FAMILIES).trunks;
+    expect(empty.count).toBe(0);
+    expect(empty.bounds).toBeNull();
+  });
+
+  it("sit in their canopy's shade: the bark mixed toward the tone's darkest canopy colour, darker than its lit leaves", () => {
+    const lum = (c: Vec3) => 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    const table = vegBarkLinear();
+    expect(table).toHaveLength(VEG_TONES.length);
+    VEG_TONES.forEach((t, i) => {
+      const bark = hexToLinear(T.bark[t]);
+      const dark = hexToLinear(VEG_LOOK.palettes[t][0]);
+      for (let k = 0; k < 3; k++) expect(table[i][k]).toBeCloseTo(bark[k] + (dark[k] - bark[k]) * T.shade, 9);
+      expect(lum(table[i]), t).toBeLessThan(lum(hexToLinear(VEG_LOOK.palettes[t][2])));
+    });
+    expect(T.shade).toBeGreaterThan(0);
+    expect(T.shade).toBeLessThan(1);
+    // Dark bark on the trees, a green culm on bamboo.
+    for (const t of ["broadleaf", "pine", "blossom"] as const) expect(lum(hexToLinear(T.bark[t])), t).toBeLessThan(0.06);
+    const culm = hexToLinear(T.bark.bamboo);
+    expect(culm[1]).toBeGreaterThan(culm[0]);
+    expect(culm[0]).toBeGreaterThan(culm[2]);
+  });
+});
+
+describe("the trunk shaders", () => {
+  const vs = vegTrunkVertexGlsl();
+  const fs = vegTrunkFragmentGlsl();
+  const L = VEG_LOOK;
+
+  it("draw a camera-facing ribbon from the instance's foot to its top, two triangles a tree", () => {
+    for (const a of ["attribute vec3 iFoot;", "attribute vec3 iTop;", "attribute vec4 iTrunk;"]) expect(vs).toContain(a);
+    expect(vs).toContain("vec3 onAxis = vVegFoot + axis * along;");
+    expect(vs).toContain("float radius = mix( iTrunk.x, iTrunk.y, along );");
+    // Pushed sideways, square to the trunk and to the view.
+    expect(vs).toContain("vec3 side = cross( axis, onAxis - cameraPosition );");
+    expect(vs).toContain("side = sideL > 1e-6 ? side / sideL : vec3( 1.0, 0.0, 0.0 );");
+    expect(vs).toContain("vec4 worldP = vec4( onAxis + side * position.x * drawn, 1.0 );");
+    expect(vs).toContain(`const vec3 SECT_VEG_BARK[ ${VEG_TONES.length} ]`);
+    expect(vs).toContain("#include <fog_pars_vertex>");
+    expect(vs.indexOf("#include <fog_vertex>")).toBeGreaterThan(vs.indexOf("gl_Position = projectionMatrix * mvPosition;"));
+    for (const s of [vs, fs]) {
+      expect(s).not.toMatch(/NaN|undefined|Infinity/);
+      // No noise textures, no erosion.
+      expect(s).not.toMatch(/sectVegNoise|sectVegHash|sampler2D/);
+      for (const v of ["varying vec3 vVegFoot;", "varying vec3 vVegRib;", "varying vec3 vVegBark;"]) expect(s).toContain(v);
+    }
+  });
+
+  it("never draw a trunk thinner than the least width: wider and fainter, as the birds are kept", () => {
+    // A pixel's size in metres as experience/life.tsx sectLifePixel works it out, from the drawing buffer's height.
+    expect(vs).toContain("uniform float uVegViewH;");
+    expect(vs).toContain("float px = 2.0 * max( - ( viewMatrix * vec4( onAxis, 1.0 ) ).z, 0.1 ) / ( projectionMatrix[ 1 ][ 1 ] * uVegViewH );");
+    expect(vs).toContain(`float drawn = max( radius, ${glslFloat(L.trunk.minPx * 0.5)} * px );`);
+    expect(vs).toContain("vVegRib = vec3( position.x, radius / drawn, iTrunk.z );");
+    // With alpha to coverage the true width's share is the coverage, with a soft edge; without, a hard cut.
+    expect(fs).toContain("#ifdef ALPHA_TO_COVERAGE");
+    expect(fs).toContain("float alpha = vVegRib.y * clamp( ( 1.0 - abs( across ) ) / aa + 0.5, 0.0, 1.0 );");
+    expect(fs).toContain("if ( vVegRib.y < 0.5 ) discard;");
+    expect(fs).toContain("gl_FragColor = vec4( col, alpha );");
+    // The derivative is taken before any cut.
+    expect(fs.indexOf("fwidth( across )")).toBeLessThan(fs.indexOf("discard"));
+  });
+
+  it("switch with the crowns: the same cell lines on the foot, and trimmed by height where the card still draws", () => {
+    expect(vs).toContain("uniform vec2 uVegNear;");
+    expect(vs).toContain(farCutCellGlsl("vVegFoot", "uVegNear"));
+    expect(vs).toContain("if ( ! sectCellFar ) gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );");
+    expect(vs.indexOf("if ( ! sectCellFar )")).toBeGreaterThan(vs.indexOf("gl_Position = projectionMatrix * mvPosition;"));
+    // The crowns' switch is the same lines on their centre (the card's on its own fragments).
+    expect(vegVertexGlsl()).toContain(farCutCellGlsl("vVegCenter", "uVegNear"));
+    expect(vs).toContain("vVegFoot = ( modelMatrix * vec4( iFoot, 1.0 ) ).xyz;");
+    expect(fs).toContain("uniform vec2 uVegNear;");
+    expect(fs).toContain("vec3 vegCut = vec3( vVegFoot.x, vVegWorld.y, vVegFoot.z );");
+    expect(fs).toContain(farCutCellGlsl("vegCut", "uVegNear"));
+    expect(fs).toContain("if ( ! sectCellFar ) discard;");
+  });
+
+  it("light the bark as the crowns are lit, then grade and haze it as they are", () => {
+    expect(fs).toContain("float bulge = sqrt( max( 1.0 - across * across, 0.0 ) );");
+    expect(fs).toContain("vec3 N = normalize( normalize( vVegSide ) * across + normalize( vVegFace ) * bulge );");
+    expect(fs).toContain(`vec3 key = normalize( uVegSun + vec3( 0.0, ${glslFloat(L.light.lift)}, 0.0 ) );`);
+    expect(fs).toContain(`float wrap = clamp( ( dot( N, key ) + ${glslFloat(L.light.wrap)} ) / ( 1.0 + ${glslFloat(L.light.wrap)} ), 0.0, 1.0 );`);
+    expect(fs).toContain(`float sun = clamp( wrap * mix( ${glslFloat(L.light.floor)}, 1.0, vVegRib.z ) * ${glslFloat(L.light.sun)}, 0.0, 1.0 );`);
+    expect(fs).toContain(`vec3 col = vVegBark * mix( ${glslFloat(L.trunk.dark)}, 1.0, sun );`);
+    // Darker toward both edges.
+    expect(fs).toContain(`col *= mix( ${glslFloat(L.trunk.edge)}, 1.0, bulge );`);
+    expect(L.trunk.edge).toBeLessThan(1);
+    expect(L.trunk.dark).toBeLessThan(1);
+    expect(fs).toContain(`col *= ${glslFloat(L.light.gain)};`);
+    expect(count(fs, "vec3 sectGrade( vec3 c )")).toBe(1);
+    expect(fs).toContain("sectTreeShade( sectGrade( col ), col )");
+    expect(fs).toContain("#include <fog_pars_fragment>");
+    const cs = fs.indexOf("#include <colorspace_fragment>");
+    expect(cs).toBeGreaterThan(fs.indexOf("gl_FragColor = vec4( col, alpha );"));
+    expect(fs.indexOf("#include <fog_fragment>")).toBeGreaterThan(cs);
+    expect(fs).not.toMatch(/specular|reflect\(/i);
   });
 });
 
