@@ -10,10 +10,10 @@
  * off (they read the main view's depth), and the samplers it writes into unbound from the materials
  * that read them: the pond's image while the pond is drawn, the mirror's cube while a face of it is.
  */
-import { Frustum, Matrix4, Sphere, Vector2, Vector3, type Object3D, type PerspectiveCamera, type Scene, type Vector4, type WebGLRenderer } from "three";
+import { Frustum, Matrix4, Sphere, Vector2, Vector3, type PerspectiveCamera, type Scene, type Vector4, type WebGLRenderer } from "three";
 import type { LoadedSet, PondReflection } from "../assets";
 import { SECT_MIRROR, SOFT_DEPTH, type WaterUniforms } from "../materials";
-import { isolateForReflection, type ReflectView } from "./isolate";
+import { isolateForReflection, reflectView } from "./isolate";
 import { PondReuse, REFLECT, type ReflectTier } from "./plan";
 import { PondReflector, type PondImage } from "./pond";
 import { MirrorProbe } from "./probe";
@@ -164,7 +164,7 @@ export class SectReflections {
       SOFT_DEPTH.uHasDepth.value = 0;
       try {
         if (face >= 0 && mirror) {
-          const restore = isolateForReflection(f.scene, this.view(f.sets, pond, REFLECT.mirror.view[this.tier], mirror.hide));
+          const restore = isolateForReflection(f.scene, reflectView(f.sets, pond, REFLECT.mirror.view[this.tier], mirror.hide));
           try {
             this.capture(f, pond, face);
           } finally {
@@ -173,7 +173,7 @@ export class SectReflections {
         }
         this.applyMirror(pond);
         if (img && drawPond) {
-          const restore = isolateForReflection(f.scene, this.view(f.sets, pond, REFLECT.pond.view));
+          const restore = isolateForReflection(f.scene, reflectView(f.sets, pond, REFLECT.pond.view));
           try {
             this.renderPond(f, pond, img);
           } finally {
@@ -194,26 +194,6 @@ export class SectReflections {
     st.complete = this.probe.schedule.complete;
     st.fade = this.probe.schedule.fade;
     return st;
-  }
-
-  /**
-   * What a pass draws: the global set and the mirror's area as they are, the grass if `o.grass`, and
-   * the other drawn areas either as they are or (`o.standIns`) as the backdrop's low stand-ins (in
-   * a reflection they are a few distant shapes, and their full meshes were most of its triangles).
-   */
-  private view(sets: readonly LoadedSet[], pond: PondReflection, o: { grass: boolean; standIns: boolean }, hide?: readonly Object3D[]): ReflectView {
-    const roots = new Set<Object3D>();
-    const show: Object3D[] = [];
-    const global = sets.find((s) => s.need === null) ?? null;
-    for (const s of sets) {
-      if (!s.drawn) continue;
-      if (s === global || s.pond === pond || !o.standIns) {
-        for (const r of s.scenes) roots.add(r);
-      } else {
-        for (const m of global?.proxies.get(s.id) ?? []) show.push(m);
-      }
-    }
-    return { roots, grass: o.grass, show, hide };
   }
 
   /** One cube face, with the face and its ring hidden, the pond showing only its sky, the cube unbound. */

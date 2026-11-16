@@ -240,7 +240,8 @@ export function VegShells({ global, chunks, ctx, store, quality }: VegShellsProp
         hidden: hidden.length,
         skipped: inst.skipped,
       };
-      if (set.drawn) wake(store, 200);
+      // On screen, near or as far scenery (LoadedSet.far): the shells show on the next frame.
+      if (set.drawn || set.far) wake(store, 200);
     };
     for (const s of sets) {
       if (s.dropped || kit.built.has(s) || kit.pending.has(s)) continue;

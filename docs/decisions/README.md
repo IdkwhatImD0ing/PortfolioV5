@@ -1151,6 +1151,32 @@ slow line, Firefox or Safari. Drawing far places in full is not built; it waits 
 
 **See.** [`../sect/background-fill.md`](../sect/background-fill.md).
 
+### 2026-11-15 · Far places are drawn in full once they are loaded
+
+**Decided.** Where the page holds every place (the entry above), a place outside its need range now shows as
+itself, with its own meshes and textures, in place of its light stand-in. Only the meshes: grass, fires, idle
+motion and hotspots stay with the places near the camera. A place first shows this way while the camera rests
+or the scene is covered, one per frame. It is the quality ladder's first step down: that step puts the far
+places back to stand-ins and keeps everything loaded, and only the next step gives the memory back. It does not
+climb back in the same visit. `?far=0` and `?far=1` switch it for a comparison.
+
+**Why.** The owner saw the gate both ways and said yes. Drawn as far scenery a place costs much less than in
+the first measurement, which drew its grass and fires too: at the gate 3.4 ms of GPU time a frame against 2.4,
+where the first measurement was 5.5. From the library on, facing forward, the far places are behind the camera
+and cost nothing.
+
+**Checked.** One agent built it and a second checked it in a browser at all eleven stops, with no blockers.
+With the switch off the page draws what the commit before drew. With it on, a full scroll with every place in
+had no frame over 50 ms in three runs (1 to 2 with it off), because a far place's buffers are already on the
+GPU when the camera gets there. Fast travel's worst frame under the ink fell from about 170 ms to about 30. The
+pond and the mirror did not change by a pixel. 19 new tests; 2,662 tests, the typecheck and lint pass.
+
+**Limits.** At the gate the far pillars sharpen one by one in the first six seconds after Enter. Far tree
+trunks are too thin to see, so the crowns on one far island seem to hang. Not tried on a slow GPU, where the
+ladder's first step takes it off again.
+
+**See.** "Far places in full" in [`../sect/background-fill.md`](../sect/background-fill.md).
+
 ---
 
 ## Longer write-ups
@@ -1177,4 +1203,5 @@ slow line, Firefox or Safari. Drawing far places in full is not built; it waits 
 | 2026-11-14 | A smooth flight: the visitor flight as the measure, the three causes of stutter, the GPU queue and banded uploads, the Enter wait, the worker decode, old against new | [`../sect/smooth-flight.md`](../sect/smooth-flight.md) |
 | 2026-11-14 | Scroll snap: why scenes felt stuck, the short stops, which stop a rest glides to, the glide that keeps the camera's speed, what was checked | [`../sect/scroll-snap.md`](../sect/scroll-snap.md) |
 | 2026-11-15 | Every place loads in the background on a strong desktop: what holding and drawing cost, who gets it, how it stays out of the way, the stand-in that lost its rock | [`../sect/background-fill.md`](../sect/background-fill.md) |
+| 2026-11-15 | Far places in full: what a far place has, when it first shows, the ladder's order, the cost stop by stop, what was checked | [`../sect/background-fill.md`](../sect/background-fill.md) |
 | 2026-11-09 | Round 55: the gate seen square on, and prop moves at four stops (designed and scripted, not baked yet) | [`../scene/placement-r55.md`](../scene/placement-r55.md) |

@@ -334,7 +334,8 @@ export function textureBytes(textures: readonly Texture[], shared: ReadonlySet<T
 }
 
 export interface StreamStatus {
-  resident: { id: string; ready: boolean; drawn: boolean; tris: number; bytes: number; texBytes: number; retained: boolean; handover: boolean }[];
+  /** `drawn` and `far`: what the render loop shows of it this frame (LoadedSet.drawn, LoadedSet.far). */
+  resident: { id: string; ready: boolean; drawn: boolean; far: boolean; tris: number; bytes: number; texBytes: number; retained: boolean; handover: boolean }[];
   loading: string[];
   /** Of `loading`, the background loads (lib/sect/chunks.ts ChunkPlan.fill). */
   filling: string[];
@@ -589,6 +590,7 @@ export class ChunkStreamer {
         id: s.id,
         ready: s.ready,
         drawn: s.drawn,
+        far: s.far,
         tris: s.tris,
         bytes: s.bytes,
         texBytes: this.costs.get(s.id)?.texBytes ?? 0,

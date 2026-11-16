@@ -259,6 +259,13 @@ export interface LoadedSet {
   ready: boolean;
   /** Set by the render loop: drawn this frame. */
   drawn: boolean;
+  /**
+   * Set by the render loop: shown as far scenery this frame (lib/sect/far.ts). Loaded and ready,
+   * outside its need range, drawn in full because the page holds it (Quality.farFull). Never true
+   * with `drawn`. Its scenes are visible while either is; everything else that follows `drawn`
+   * (grass, fires, decoration, idle motion, picking, reflections' own passes) ignores it.
+   */
+  far: boolean;
   /** What idles while the chunk is drawn (idle.ts); absent for the global set. */
   idle?: IdlePlan;
   /**
@@ -1305,6 +1312,7 @@ export async function loadSet(
     textures: collectTextures(scenes),
     ready: false,
     drawn: false,
+    far: false,
   };
 }
 
@@ -1370,6 +1378,7 @@ export function retireSet(set: LoadedSet): void {
   set.dropped = true;
   set.ready = false;
   set.drawn = false;
+  set.far = false;
   for (const r of set.scenes) r.visible = false;
 }
 

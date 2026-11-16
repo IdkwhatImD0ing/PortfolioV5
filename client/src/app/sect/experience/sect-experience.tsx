@@ -61,6 +61,7 @@ import { agentRoute, talismanInkOrigin } from "@/lib/sect/agent-travel";
 import { areaItemHotspots, commandTarget, isThing, parseContentHash, SECTION_NAMES } from "@/lib/sect/content";
 import { POSTER_ATTR, posterStart, startYaw, type NetworkHint } from "@/lib/sect/content-start";
 import { framingAt, framingFrame } from "@/lib/sect/framing";
+import { farFullOn, parseFarParam } from "@/lib/sect/far";
 import { composeLook, isDragging, isLookingBack, isTurned, type LookOffset } from "@/lib/sect/free-look";
 import { PREPARE_SLICE } from "@/lib/sect/gpu-queue";
 import { PageHistory } from "@/lib/sect/history";
@@ -239,9 +240,14 @@ function probeDevice(): Probe {
   }
 }
 
-/** What the renderer does at tier `t` on this device (the ladder's top for it). */
-function tierLook(t: Tier, probe: Probe): Quality {
-  return tierQuality(t, window.devicePixelRatio, { coarse: probe.coarse, appleGpu: probe.appleGpu });
+/**
+ * What the renderer does at tier `t` on this device (the ladder's top for it). High draws the far
+ * areas in full (Quality.farFull) where the page holds every area: background filling, unless it
+ * has struck out (`struck`, fillStruck), or ?far= says otherwise (lib/sect/far.ts farFullOn).
+ */
+function tierLook(t: Tier, probe: Probe, struck: boolean): Quality {
+  const holdsAll = farFullOn(pageBudget(t, probe, struck).fillTexBytes > 0, parseFarParam(window.location.search));
+  return tierQuality(t, window.devicePixelRatio, { coarse: probe.coarse, appleGpu: probe.appleGpu, holdsAll });
 }
 
 /** The stream budget for tier `t` on this device, without background filling once it has struck out (fillStruck). */
@@ -369,9 +375,9 @@ export default function SectExperience() {
    * and High share the textures and the pipeline); a new load sets both.
    */
   const shownTier = useRef(tier);
-  const [quality, setQuality] = useState<Quality>(() => tierLook(tier, probe));
+  const [quality, setQuality] = useState<Quality>(() => tierLook(tier, probe, false));
   /** The shown tier's own quality: the ladder steps down from it. */
-  const [tierCeiling, setTierCeiling] = useState<Quality>(() => tierLook(tier, probe));
+  const [tierCeiling, setTierCeiling] = useState<Quality>(() => tierLook(tier, probe, false));
   /** Times a ladder step turned live light off since the tier's ceiling was set (ladderCeiling). */
   const [liveOffs, setLiveOffs] = useState(0);
   /**
@@ -382,10 +388,23 @@ export default function SectExperience() {
   /** The quality the ladder steps from: the one shown, or a step taken that React has not rendered yet. */
   const ladderNow = useRef(quality);
   ladderNow.current = quality;
-  /** The renderer back at tier `t`'s own settings (the ladder starts over from there, live light's tries too). */
+  /**
+   * One strike: the first step down the quality ladder in this page view after the far areas' one
+   * (Quality.farFull, which goes first and keeps everything held) ends background filling
+   * (streaming.ts STREAM_BUDGETS.everything) for good. A machine short on GPU memory shows it as slow
+   * frames, and the ladder's step is the only sign of that the page has. It never comes back (a step
+   * up does not undo it), so the stream cannot swing between filling and dropping. Kept for the page
+   * view: a world loaded again for another tier starts without filling too, and without far areas
+   * in full (tierLook).
+   */
+  const fillStruck = useRef(false);
+  /**
+   * The renderer back at tier `t`'s own settings (the ladder starts over from there, live light's
+   * tries too); far areas in full only while filling has not struck out.
+   */
   const resetQuality = useCallback(
     (t: Tier) => {
-      const q = tierLook(t, probe);
+      const q = tierLook(t, probe, fillStruck.current);
       ladderNow.current = q;
       setQuality(q);
       setTierCeiling(q);
@@ -399,14 +418,6 @@ export default function SectExperience() {
   const resume = useRef<{ u: number; frame: number | null } | null>(null);
   /** The world being built or shown, for a live change (set as soon as it exists, before React has it). */
   const world = useRef<{ ctx: WorldContext; streamer: ChunkStreamer } | null>(null);
-  /**
-   * One strike: the first step down the quality ladder in this page view ends background filling
-   * (streaming.ts STREAM_BUDGETS.everything) for good. A machine short on GPU memory shows it as slow
-   * frames, and the ladder's step is the only sign of that the page has. It never comes back (a step
-   * up does not undo it), so the stream cannot swing between filling and dropping. Kept for the page
-   * view: a world loaded again for another tier starts without filling too.
-   */
-  const fillStruck = useRef(false);
   /** The focus was in the graphics popover when the page loaded again: the loading screen's picker takes it. */
   const [refocusPicker, setRefocusPicker] = useState(false);
 
@@ -829,12 +840,15 @@ export default function SectExperience() {
   keepLookRef.current = keepLook;
   // A step is worked out from ladderNow here, not inside a state updater: React runs updaters twice
   // in development, and the live light count would go up twice for one step.
-  // `down`: a step down, the first of which ends background filling (fillStruck): the live stream
-  // drops at its next update what its window does not hold, which gives that memory back.
+  // `down`: a step down. The far areas' step (Quality.farFull, the first) only puts them back to
+  // their stand-ins: every area stays held. The first other step down ends background filling
+  // (fillStruck): the live stream drops at its next update what its window does not hold, which
+  // gives that memory back. So on a slow machine: stand-ins first, then the strike as before.
   const stepLadder = useCallback(
     (next: Quality | null, down = false) => {
       if (next) {
-        if (down && !fillStruck.current) {
+        const farStep = ladderNow.current.farFull === true && next.farFull !== true;
+        if (down && !farStep && !fillStruck.current) {
           fillStruck.current = true;
           world.current?.streamer.setBudget(pageBudget(shownTier.current, probe, true));
         }

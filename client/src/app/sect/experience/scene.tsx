@@ -39,6 +39,7 @@ import {
 import { BVH_MS_PER_KTRI, bvhCostMs, bvhWanted, deferUpload, mayBuildBvh, mayPostBvh, updateBvhRate, uploadWaitedMs } from "@/lib/sect/background-work";
 import { setUploadPriority } from "@/lib/sect/gpu-queue";
 import { fovForAspect, samplePath, sampleCamera } from "@/lib/sect/camera-path";
+import { applyShow, type FarFrame } from "@/lib/sect/far";
 import { framingAt, framingFrame, framingSide, framingTable } from "@/lib/sect/framing";
 import {
   clampLook,
@@ -851,9 +852,17 @@ function Lights({ meta, shadows, sky }: { meta: SectMeta; shadows: boolean; sky:
 
 // ---------------------------------------------------------------------------------------------
 
+/** A chunk's scenes on screen or off (lib/sect/far.ts applyShow calls it when that changes). */
+function showScenes(set: LoadedSet, visible: boolean): void {
+  for (const r of set.scenes) r.visible = visible;
+}
+
 /**
  * The loaded sets. The global set is always drawn once ready; a chunk is drawn while the camera
  * frame is inside its need range, and the backdrop's proxy of that area is hidden while it is.
+ * With far places in full (Quality.farFull, lib/sect/far.ts) a ready chunk outside its range is
+ * shown too, as far scenery (LoadedSet.far), and its proxy hidden as well; one never on screen yet
+ * first shows that way only while nobody sees its long first frame, one a frame.
  * Before a set is first drawn its textures go to the GPU through the page's GPU queue (gpu-queue.ts:
  * a big map in bands, paced by what the visitor sees, one step a frame while the camera moves; not
  * while the camera moves fast or the view turns, lib/sect/background-work.ts deferUpload; where the
@@ -870,6 +879,7 @@ function World({
   post,
   standIns = false,
   noCards = false,
+  farFull = false,
   onGlobalReady,
 }: {
   global: LoadedSet | null;
@@ -885,6 +895,8 @@ function World({
   standIns?: boolean;
   /** The ladder's tree-card step (Quality.noCards): the sets' tree cards are not drawn. */
   noCards?: boolean;
+  /** Far places in full (Quality.farFull): ready chunks outside their range are shown too (LoadedSet.far). */
+  farFull?: boolean;
   onGlobalReady: () => void;
 }) {
   const gl = useThree((s) => s.gl);
@@ -892,8 +904,12 @@ function World({
   const camera = useThree((s) => s.camera);
   const warming = useRef(new WeakSet<LoadedSet>());
   const mounted = useRef(true);
-  const live = useRef({ global, chunks, post, standIns });
-  live.current = { global, chunks, post, standIns };
+  const live = useRef({ global, chunks, post, standIns, farFull });
+  live.current = { global, chunks, post, standIns, farFull };
+  /** The chunks that have been on screen (near or far) in this page view (lib/sect/far.ts applyShow). */
+  const seen = useRef(new WeakSet<LoadedSet>());
+  /** The draw rule's view of the frame, rewritten each frame. */
+  const farFrame = useRef<FarFrame>({ frame: 0, only: null, farFull: false, calm: false });
   // Tree cards off (or back) on every set, a set loaded later included. Their programs stay compiled
   // (the warm-up compiles hidden materials too), so they come back without a stall.
   useEffect(() => {
@@ -1050,18 +1066,22 @@ function World({
     }
     // The ladder's stand-in step: only the camera's own area is drawn (the rest as proxies).
     const only = live.current.standIns ? (streamer?.areaAt(f) ?? null) : null;
-    for (const s of chunks) {
-      // `chunks` comes through the canvas's own React root and may still hold a set the streamer
-      // has dropped (and disposed): that one stays hidden.
-      const on = drawable(s) && s.need !== null && f >= s.need[0] && f <= s.need[1] && (only === null || s.id === only);
-      if (s.drawn !== on) {
-        s.drawn = on;
-        for (const r of s.scenes) r.visible = on;
-      }
+    const ff = farFrame.current;
+    ff.frame = f;
+    ff.only = only;
+    ff.farFull = live.current.farFull;
+    // A first far show's long frame (its buffers' uploads) goes where nobody sees it.
+    ff.calm = ff.farFull && (store.veiled || store.inked || cameraStill(store));
+    // Near (drawn) or far, each chunk by lib/sect/far.ts. `chunks` comes through the canvas's own
+    // React root and may still hold a set the streamer has dropped (and disposed): that one stays
+    // hidden (drawable).
+    if (applyShow(chunks, seen.current, ff, drawable, showScenes)) {
+      // The canvas renders on demand: frames keep coming for the first shows still waiting.
+      wake(store, 400);
     }
     if (global) {
       for (const [area, meshes] of global.proxies) {
-        const show = !chunks.some((s) => s.id === area && s.drawn);
+        const show = !chunks.some((s) => s.id === area && (s.drawn || s.far));
         for (const m of meshes) if (m.visible !== show) m.visible = show;
       }
     }
@@ -1844,10 +1864,11 @@ function Post({
       }
     }
     if (pipe.shafts) {
-      // The stop's own haze thickens the shafts; a chunk drawn or dropped redraws the sun's shadow map.
+      // The stop's own haze thickens the shafts; a chunk shown (drawn, or far: the map renders
+      // whatever is visible) or hidden redraws the sun's shadow map.
       pipe.shafts.haze = (scene.fog as FogExp2 | null)?.density ?? 1;
       let epoch = 0;
-      for (let i = 0; i < sets.length; i++) if (sets[i].drawn) epoch = (epoch * 31 + i + 1) | 0;
+      for (let i = 0; i < sets.length; i++) if (sets[i].drawn || sets[i].far) epoch = (epoch * 31 + i + 1) | 0;
       if (epoch !== shaftEpoch.current) {
         shaftEpoch.current = epoch;
         pipe.shafts.invalidate();
@@ -2242,7 +2263,8 @@ function Driver({
         t.ready.add(s);
         ladder.settle(now);
       }
-      if (s.drawn && !t.drawn.has(s)) {
+      // First on screen, near or far (lib/sect/far.ts): its buffers upload in that frame.
+      if ((s.drawn || s.far) && !t.drawn.has(s)) {
         t.drawn.add(s);
         ladder.settle(now);
       }
@@ -2394,8 +2416,9 @@ function ReleaseWithCanvas() {
  * One frame with nothing in the drawn sets culled, when fast travel asks for it (store.uncull)
  * behind its ink: three uploads a mesh's buffers the first time it is drawn, so every mesh of the
  * areas around the place, and every grass cell on them (grass.tsx culls its own cells), reaches
- * the GPU then, rather than in the frames of a look round after the ink has cleared. Culling is back
- * on for the next frame.
+ * the GPU then, rather than in the frames of a look round after the ink has cleared. The sets shown
+ * as far scenery (LoadedSet.far) are unculled too; their areas have no grass. Culling is back on
+ * for the next frame.
  */
 function UncullOnce({ store, sets }: { store: SectStore; sets: LoadedSet[] }) {
   const scene = useThree((s) => s.scene);
@@ -2407,8 +2430,8 @@ function UncullOnce({ store, sets }: { store: SectStore; sets: LoadedSet[] }) {
     store.uncull = false;
     const drawn = new Set<string>();
     for (const s of sets) {
-      if (!s.drawn) continue;
-      drawn.add(s.id);
+      if (!s.drawn && !s.far) continue;
+      if (s.drawn) drawn.add(s.id);
       for (const root of s.scenes) {
         root.traverse((o) => {
           if (o.frustumCulled && (o as Mesh).isMesh) {
@@ -2499,6 +2522,8 @@ function DebugProbe({
         globalTris: global?.tris ?? 0,
         residentTris: (global?.tris ?? 0) + chunks.reduce((a, s) => a + s.tris, 0),
         drawnTris: (global?.drawn ? global.tris : 0) + chunks.reduce((a, s) => a + (s.drawn ? s.tris : 0), 0),
+        // The chunks shown as far scenery (lib/sect/far.ts).
+        farTris: chunks.reduce((a, s) => a + (s.far ? s.tris : 0), 0),
       }),
     };
     return () => {
@@ -2523,7 +2548,8 @@ function DebugProbe({
     const st = streamer?.status();
     const chunkLine = st
       ? [
-          ...st.resident.map((c) => `${c.id}${c.drawn ? "*" : c.ready ? "" : "~"}`),
+          // * drawn, ^ far scenery, ~ not ready yet.
+          ...st.resident.map((c) => `${c.id}${c.drawn ? "*" : c.far ? "^" : c.ready ? "" : "~"}`),
           ...st.loading.map((id) => `${id}${st.filling.includes(id) ? "+" : ""}...`),
           ...st.failed.map((id) => `${id}!`),
         ].join(" ") || "none"
@@ -2655,7 +2681,7 @@ function SectCanvas(props: SectCanvasProps) {
   const climbScale = ceiling ? climbCost(quality, ceiling, screenDpr) : null;
   const climbAtRest = ceiling ? climbRebuildsPipeline(quality, ceiling, screenDpr) : false;
   useEffect(() => {
-    store.qualityLabel = `${quality.post ? "post" : "plain"} · msaa ${quality.msaa} · bloom ${quality.bloom ? "on" : "off"} · ${quality.lowTextures ? "2k" : "4k"} textures${quality.liveLight ? " · live" : ""}${quality.vegShells ? " · shells" : ""}${quality.standIns ? " · stand-ins" : ""}${quality.noCards ? " · no cards" : ""}${quality.maxFps > 0 ? ` · ${quality.maxFps} fps cap` : ""}`;
+    store.qualityLabel = `${quality.post ? "post" : "plain"} · msaa ${quality.msaa} · bloom ${quality.bloom ? "on" : "off"} · ${quality.lowTextures ? "2k" : "4k"} textures${quality.liveLight ? " · live" : ""}${quality.vegShells ? " · shells" : ""}${quality.standIns ? " · stand-ins" : ""}${quality.noCards ? " · no cards" : ""}${quality.maxFps > 0 ? ` · ${quality.maxFps} fps cap` : ""}${quality.farFull ? " · far" : ""}`;
     wake(store, 600);
   }, [quality, store]);
 
@@ -2708,6 +2734,7 @@ function SectCanvas(props: SectCanvasProps) {
         post={quality.post}
         standIns={quality.standIns}
         noCards={quality.noCards}
+        farFull={quality.farFull === true}
         onGlobalReady={onGlobalReady}
       />
       {global && <Petals count={quality.post ? SECT_LOOK.petals.count : Math.round(SECT_LOOK.petals.count / 2)} store={store} sunDir={meta.sun.direction} />}

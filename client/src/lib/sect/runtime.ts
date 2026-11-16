@@ -275,6 +275,13 @@ export interface Quality {
    * ?live=0 / ?live=1 overrides it (live.ts liveOn).
    */
   liveLight?: boolean;
+  /**
+   * Loaded areas outside their need range are drawn in full in place of their stand-ins (lib/sect/far.ts,
+   * scene.tsx World): High only, and only where the page holds every area (TierOptions.holdsAll;
+   * absent: false). The ladder's first step down, before resolution and for a tier the visitor picked
+   * too; it does not climb back (upgradeQuality).
+   */
+  farFull?: boolean;
 }
 
 export interface TierOptions {
@@ -282,6 +289,11 @@ export interface TierOptions {
   coarse?: boolean;
   /** Safari on a Mac (isAppleGpu): Medium starts at up to 1.5x there too. */
   appleGpu?: boolean;
+  /**
+   * The page holds every area (streaming.ts STREAM_BUDGETS.everything, before the ladder's strike;
+   * ?far= overrides it, far.ts farFullOn): High then draws far areas in full (Quality.farFull).
+   */
+  holdsAll?: boolean;
 }
 
 /**
@@ -289,7 +301,8 @@ export interface TierOptions {
  * edge stairs (the ladder steps back to 1x when frames run long). The mid tier there also takes the
  * 2048 px textures: about 180 MB of 4K atlases per area is too much for a tablet's shared memory.
  * Safari on a Mac lands on Medium (it names every GPU "Apple GPU"), and at 1x a Retina screen would
- * show a quarter of its pixels with no MSAA, so Medium starts at 1.5x there as well.
+ * show a quarter of its pixels with no MSAA, so Medium starts at 1.5x there as well. High draws the
+ * far areas in full where the page holds them all (`holdsAll`, Quality.farFull); Medium and Low never do.
  */
 export function tierQuality(tier: Tier, devicePixelRatio = 1, opts: TierOptions = {}): Quality {
   const coarse = opts.coarse === true;
@@ -299,7 +312,7 @@ export function tierQuality(tier: Tier, devicePixelRatio = 1, opts: TierOptions 
   // screen at 125 % scaling) cost up to about 1 ms of GPU a frame, a third of a 360 Hz frame.
   // Never 0 here: tree cards need a multisampled buffer for alpha to coverage (setCardCoverage).
   const dpr = Math.min(Math.max(devicePixelRatio || 1, 1), 1.5);
-  return { maxDpr: 1.5, msaa: dpr >= 1.25 ? 2 : 4, bloom: true, post: true, lowTextures: false, maxFps: 0, vegShells: true, liveLight: LIVE_LOOK.on.high };
+  return { maxDpr: 1.5, msaa: dpr >= 1.25 ? 2 : 4, bloom: true, post: true, lowTextures: false, maxFps: 0, vegShells: true, liveLight: LIVE_LOOK.on.high, farFull: opts.holdsAll === true };
 }
 
 /**
@@ -332,8 +345,9 @@ export function capIsMoot(maxFps: number, cadenceMs: number | null): boolean {
 
 export interface DegradeOptions {
   /**
-   * The visitor picked the tier: only resolution steps down (to the render scale), never live
-   * light, the crown shells, MSAA, bloom or the render rate, so what they chose still looks like it.
+   * The visitor picked the tier: only the far areas' full draw (farFull) and resolution step down
+   * (to the render scale), never live light, the crown shells, MSAA, bloom or the render rate, so
+   * what they chose still looks like it.
    */
   keepLook?: boolean;
   /** The screen's frame interval (FrameLadder.cadenceMs): no render-rate cap where it is moot. */
@@ -341,15 +355,19 @@ export interface DegradeOptions {
 }
 
 /**
- * One step down the quality ladder: resolution first (to 1x), then live light off (liveLight), then
- * the crown shells off (vegShells), then MSAA, then bloom, then the render scale (RENDER_SCALE_MIN),
- * then the other areas as their stand-ins (standIns), then the tree cards off (noCards), then the
- * render rate (30 fps while moving). Returns null at the bottom. Live light and the shells go before
- * MSAA: live light costs the most, and without both, High draws what Medium draws (the bake, the
- * baked cards) before it gets worse than Medium. A tier the visitor picked (`keepLook`) only loses
- * resolution. Textures never change at runtime (that would need a reload).
+ * One step down the quality ladder: the far areas back to their stand-ins first (farFull), then
+ * resolution (to 1x), then live light off (liveLight), then the crown shells off (vegShells), then
+ * MSAA, then bloom, then the render scale (RENDER_SCALE_MIN), then the other areas as their
+ * stand-ins (standIns), then the tree cards off (noCards), then the render rate (30 fps while
+ * moving). Returns null at the bottom. The far areas go first: drawn in full they cost the most
+ * (at the gate 550 to 1,077 draw calls, 8.9 M to 22 M triangles), and without them the page draws
+ * what it drew before they came. Live light and the shells go before MSAA: live light costs the
+ * most after them, and without both, High draws what Medium draws (the bake, the baked cards)
+ * before it gets worse than Medium. A tier the visitor picked (`keepLook`) only loses the far areas'
+ * full draw and resolution. Textures never change at runtime (that would need a reload).
  */
 export function degradeQuality(q: Quality, devicePixelRatio: number, opts: DegradeOptions = {}): Quality | null {
+  if (q.farFull) return { ...q, farFull: false };
   const d = effectiveDpr(q, devicePixelRatio);
   if (d > 1) return { ...q, maxDpr: Math.max(1, d - 0.25) };
   if (!opts.keepLook) {
@@ -372,6 +390,10 @@ export function degradeQuality(q: Quality, devicePixelRatio: number, opts: Degra
  * back, the render scale back to 1x, bloom, MSAA (to 2 samples, then the tier's own), the crown
  * shells, live light, and last the resolution above 1x, 0.25 at a time. A feature comes back only
  * when `top` has it. Null when there is nothing to climb.
+ *
+ * The far areas' full draw (farFull) never comes back, whatever `top` says: each far area would
+ * swap from its stand-in to its full meshes again (a long frame each, and the step down after that
+ * swaps them all back), so a page view gets one try.
  */
 export function upgradeQuality(q: Quality, top: Quality, devicePixelRatio: number): Quality | null {
   if (q.maxFps > 0 && q.maxFps !== top.maxFps) return { ...q, maxFps: top.maxFps };

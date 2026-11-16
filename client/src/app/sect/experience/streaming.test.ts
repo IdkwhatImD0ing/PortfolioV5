@@ -15,10 +15,11 @@ vi.mock("./assets", () => ({
   chunkFiles: (c: { files: string[] }) => c.files,
   disposeSet: vi.fn(),
   // As assets.ts has it (tested there).
-  retireSet: (set: { dropped?: boolean; ready: boolean; drawn: boolean; scenes: { visible: boolean }[] }) => {
+  retireSet: (set: { dropped?: boolean; ready: boolean; drawn: boolean; far: boolean; scenes: { visible: boolean }[] }) => {
     set.dropped = true;
     set.ready = false;
     set.drawn = false;
+    set.far = false;
     for (const r of set.scenes) r.visible = false;
   },
   loadSet: vi.fn((ctx: WorldContext, id: string, need: [number, number], files: string[], opts: { signal: AbortSignal; calm?: () => Promise<void>; onBytes?: (url: string) => (loaded: number, total: number, done?: boolean) => void; onFileDone?: (url: string) => void }) => {
@@ -33,7 +34,7 @@ vi.mock("./assets", () => ({
         calm: opts.calm,
         onBytes: opts.onBytes,
         onFileDone: opts.onFileDone,
-        resolve: () => resolve({ id, need, scenes: [], ready: false, drawn: false, tris, bytes: 0, textures }),
+        resolve: () => resolve({ id, need, scenes: [], ready: false, drawn: false, far: false, tris, bytes: 0, textures }),
         reject,
       });
     });
@@ -152,6 +153,18 @@ describe("ChunkStreamer", () => {
     expect(st.areaAt(352)).toBe("forge");
     // Past the last area's stretch: still the nearest.
     expect(st.areaAt(1700)).toBe("forge");
+  });
+
+  it("reports each resident set as drawn or far as the render loop left it (the debug HUD)", async () => {
+    const st = new ChunkStreamer(three(), () => {});
+    await rest(st, 93);
+    const gate = st.list().find((s) => s.id === "gate")!;
+    const forge = st.list().find((s) => s.id === "forge")!;
+    gate.drawn = true;
+    forge.far = true;
+    const r = st.status().resident;
+    expect(r.find((x) => x.id === "gate")).toMatchObject({ drawn: true, far: false });
+    expect(r.find((x) => x.id === "forge")).toMatchObject({ drawn: false, far: true });
   });
 
   it("drops a load that comes back after it was cancelled (a half-prepared set is never kept)", async () => {
