@@ -4,8 +4,8 @@
  */
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { songNote } from "@/lib/sect/song-notes";
-import { SongHead } from "./karaoke-lyrics";
+import { noteColumns, songNote } from "@/lib/sect/song-notes";
+import { SongHead, SongNoteText } from "./karaoke-lyrics";
 
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
@@ -54,5 +54,28 @@ describe("SongHead", () => {
     expect(text(html)).toContain("Instrumental");
     // No note, so no brush rule to set one off.
     expect(html).not.toContain("sect-brushrule");
+  });
+});
+
+describe("SongNoteText", () => {
+  const note = songNote("arena")!;
+  const html = renderToStaticMarkup(<SongNoteText note={note} />);
+
+  it("starts in English, with the Chinese side closed", () => {
+    expect(html).toMatch(/<button[^>]*class="sect-lyrics-note"[^>]*data-lang="en"/);
+    expect(html).toMatch(/data-side="en"><span class="sect-lyrics-note-face" lang="en">/);
+    expect(html).toMatch(/data-side="zh"><span class="sect-lyrics-note-face" lang="zh" aria-hidden="true">/);
+  });
+
+  it("writes the Chinese in columns and tells the sheet how many", () => {
+    const columns = noteColumns(note.zh);
+    expect(columns.length).toBeGreaterThan(1);
+    expect(html).toContain(`--cols:${columns.length}`);
+    const written = [...html.matchAll(/<span aria-hidden="true" class="sect-lyrics-note-col">([^<]*)<\/span>/g)].map((m) => m[1]);
+    expect(written).toEqual(columns);
+  });
+
+  it("gives a screen reader the Chinese in one piece", () => {
+    expect(html).toContain(`<span class="sr-only">${note.zh}</span>`);
   });
 });

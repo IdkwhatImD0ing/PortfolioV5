@@ -91,6 +91,37 @@ export function songNote(key: MusicKey): SongNote | null {
   return SONG_NOTES[key] ?? null;
 }
 
+/** The most characters one column of a note's Chinese holds. */
+export const NOTE_COLUMN = 7;
+
+/** Marks that never open a column: each stays under the character it follows. */
+const CLOSING_MARKS = "，。、；：！？”’）」』》〉";
+
+/**
+ * A note's Chinese cut into the columns the panel writes it in (upright, read from the right, as an
+ * inscription is): as few columns as hold it at `longest` characters each, filled evenly so the last
+ * is not a stub. A mark that would open a column is kept under its character: the column takes it
+ * where it has the room, and otherwise sends its last character over to the next column with it.
+ */
+export function noteColumns(zh: string, longest = NOTE_COLUMN): string[] {
+  const chars = [...zh];
+  const columns: string[] = [];
+  let at = 0;
+  for (let left = Math.ceil(chars.length / longest); left > 0 && at < chars.length; left--) {
+    let end = at + Math.ceil((chars.length - at) / left);
+    if (end < chars.length && CLOSING_MARKS.includes(chars[end])) {
+      const full = end - at >= longest;
+      // The columns still to come can take one character more (they are not all full already).
+      const room = chars.length - (end - 1) <= (left - 1) * longest;
+      if (full && room && end - at > 1 && !CLOSING_MARKS.includes(chars[end - 1])) end--;
+      else while (end < chars.length && CLOSING_MARKS.includes(chars[end])) end++;
+    }
+    columns.push(chars.slice(at, end).join(""));
+    at = end;
+  }
+  return columns;
+}
+
 /** The manifest's artist for a track whose source names no one. */
 export const UNCREDITED_ARTIST = "Not credited";
 

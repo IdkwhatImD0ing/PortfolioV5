@@ -2459,12 +2459,19 @@ body:has(.sect-veil) .sect-lyrics-slip {
 
 /*
  * The owner's note on the song: a quiet inscription, centred, like the colophon at a scroll's end.
- * It is a button: a press swaps the English for the Chinese (karaoke-lyrics.tsx SongNoteText). Both
- * are laid in the same cell; the one showing fades out, then the other fades in.
+ * It is a button: a press swaps the English for the Chinese (karaoke-lyrics.tsx SongNoteText).
+ *
+ * Each language is one side of the note, closed to no height unless it is the one showing (a grid
+ * row of 0fr or 1fr), so the note is as tall as what it shows and the English keeps its own height.
+ * A press fades the one showing out, then the other side opens above it while the first closes
+ * (the two heights add up, so the lyrics under them move once, one way) and fades in.
  */
 .sect-lyrics-note {
-  display: grid;
+  /* The Chinese columns size themselves by its width (cqw, below). */
+  container-type: inline-size;
+  display: flex;
   flex: none;
+  flex-direction: column;
   width: 100%;
   margin: 0.85rem 0 0;
   padding: 0 1.4rem;
@@ -2477,9 +2484,19 @@ body:has(.sect-veil) .sect-lyrics-slip {
 .sect-lyrics-note:hover {
   color: var(--sect-paper);
 }
+.sect-lyrics-note-side {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.3s ease 0.3s;
+}
+.sect-lyrics-note[data-lang="en"] .sect-lyrics-note-side[data-side="en"],
+.sect-lyrics-note[data-lang="zh"] .sect-lyrics-note-side[data-side="zh"] {
+  order: -1;
+  grid-template-rows: 1fr;
+}
 .sect-lyrics-note-face {
-  grid-area: 1 / 1;
-  align-self: center;
+  min-height: 0;
+  overflow-y: clip;
   font-family: var(--font-instrument-serif), "Instrument Serif", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   font-size: 1.125rem;
   font-style: italic;
@@ -2490,18 +2507,36 @@ body:has(.sect-veil) .sect-lyrics-slip {
     opacity 0.3s ease,
     color 0.2s ease;
 }
+/*
+ * The Chinese is written as an inscription is: upright columns, read from the right, hung from one
+ * line at the top. karaoke-lyrics.tsx cuts the columns (song-notes.ts noteColumns) and sets --cols,
+ * how many there are. The block sits in the middle of the drawer; where the drawer is too narrow
+ * for the columns at full size (a small phone), the characters shrink until they all fit. The comma
+ * and the full stop sit in the upper right of their squares: the brush font carries those forms
+ * (scripts/vertical-punctuation.py), as the serif does.
+ */
 .sect-lyrics-note-face[lang="zh"] {
+  --size: 1.0625rem;
+  --leading: 1.7;
+  justify-self: center;
+  writing-mode: vertical-rl;
+  text-orientation: upright;
   font-family: var(--sect-zh);
-  font-size: 1.0625rem;
+  font-size: min(var(--size), calc(100cqw / (var(--cols, 8) * var(--leading))));
   font-style: normal;
-  line-height: 1.7;
+  line-height: var(--leading);
   letter-spacing: 0.04em;
+  text-align: start;
 }
 .sect-lyrics[data-brush] .sect-lyrics-note-face[lang="zh"] {
+  --size: 1.3rem;
+  --leading: 1.5;
   font-family: var(--sect-lyric-brush);
-  font-size: 1.3rem;
-  line-height: 1.5;
   letter-spacing: 0.06em;
+}
+.sect-lyrics-note-col {
+  display: block;
+  white-space: nowrap;
 }
 .sect-lyrics-note[data-lang="en"] .sect-lyrics-note-face[lang="en"],
 .sect-lyrics-note[data-lang="zh"] .sect-lyrics-note-face[lang="zh"] {
@@ -2736,6 +2771,7 @@ body:has(.sect-veil) .sect-lyrics-slip {
   .sect-lyrics[data-open] .sect-lyrics-drawer,
   .sect-lyrics-row,
   .sect-lyrics-row::before,
+  .sect-lyrics-note-side,
   .sect-lyrics-note-face,
   .sect-lyrics-note[data-lang] .sect-lyrics-note-face,
   .sect-lyrics-line,
