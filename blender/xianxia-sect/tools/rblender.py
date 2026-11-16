@@ -30,8 +30,11 @@ import sys
 import tarfile
 import uuid
 
-ROOT = 'E:/Github/PortfolioV5/blender/xianxia-sect'
-REMOTE_ROOT = '/E:/Github/PortfolioV5/blender/xianxia-sect'
+# ROOT is this checkout, so the wrapper also works from a git worktree. The box always mirrors it at the main
+# checkout's path (CANON), which is the path to write in Blender arguments whichever checkout this runs from.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__))).replace('\\', '/')
+CANON = 'E:/Github/PortfolioV5/blender/xianxia-sect'
+REMOTE_ROOT = '/' + CANON
 REMOTE_BLENDER = '/root/blender/blender'
 UPLOAD_DIRS = ('sect', 'docs', 'assets/web')   # assets/web only: the rest of assets/ is the raw downloads
 HASHED_DIRS = ('assets/web',)                   # big files: sent only when the box's copy differs (md5)
@@ -144,9 +147,12 @@ def _extract(data):
 
 
 def _fix_arg(a):
-    # Windows-style project paths -> forward slashes so they resolve inside the mirror.
+    # Windows-style project paths -> forward slashes so they resolve inside the mirror; a path into this
+    # checkout (a worktree) -> the same path under the main checkout's name, where the box keeps the mirror.
     if len(a) > 2 and a[1] == ':' and '\\' in a:
-        return a.replace('\\', '/')
+        a = a.replace('\\', '/')
+    if ROOT != CANON and a.lower().startswith(ROOT.lower() + '/'):
+        a = CANON + a[len(ROOT):]
     return a
 
 

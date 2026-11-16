@@ -25,7 +25,15 @@ they are tested offline with stand-in data).
                        slope instead of the 26-direction projection's strips 1-2 texels wide (the roof speckle)
     island_dims        long and short side of each UV island (principal axes), as pack_shelf lays them out
     group_vote         one decision per group (UV island, coplanar patch) by weighted majority
+    floor_bins         round 59: each face's hold-distance bin (the rock texel floor's ROCK_FLOOR_BINS), -1 outside
+    grow_faces         a face mask plus one ring of faces round it (shares a vertex)
+    yaw_matrix         a camera matrix turned about the world z axis on the spot (a visitor turning at a hold)
+    facing_dmin        per face: the nearest camera that holds it in its widened frame and that it faces
+    floor_reserve      texels for floor parts, nearest bin first, inside a budget the rest of the chunk shares at
+                       no less than a given density scale
 """
+import math
+
 import numpy as np
 
 ISLAND_WORDS = ("islet", "island", "floating_rock")
@@ -590,3 +598,192 @@ def group_vote(group, flag, weight=None):
     yes = np.bincount(g, w * f, n)
     tot = np.bincount(g, w, n)
     return (yes > 0.5 * tot)[g]
+
+
+# ---- round 59: the rock texel floor (bake_web.rock_floor, docs/scene/rock-r59.md) ------------------------------
+
+def floor_bins(d, edges):
+    """Per face: the index k of the distance bin [edges[k], edges[k + 1]) that its distance d (m) falls in; -1 before
+    the first edge, from the last one on, or when d is not finite (no hold view sees the face from the front)."""
+    d = np.asarray(d, float).reshape(-1)
+    e = np.asarray(edges, float).reshape(-1)
+    if len(e) < 2:
+        return np.full(len(d), -1, np.int64)
+    k = np.searchsorted(e, d, side="right") - 1
+    ok = np.isfinite(d) & (d >= e[0]) & (d < e[-1])
+    return np.where(ok, k, -1).astype(np.int64)
+
+
+def grow_faces(vi, ls, mask, nv=None):
+    """Per face: `mask`, plus every face that shares a vertex with a masked face (one ring of faces round it). vi, ls:
+    a Blender-style mesh's corner vertices and loop starts."""
+    m = np.asarray(mask, bool).reshape(-1)
+    vi = np.asarray(vi, np.int64)
+    if len(vi) == 0 or not m.any():
+        return m.copy()
+    vi, fol = _loops((vi, ls))
+    nv = int(vi.max()) + 1 if nv is None else int(nv)
+    on = np.zeros(nv, bool)
+    on[vi[m[fol]]] = True
+    hit = np.bincount(fol, on[vi].astype(np.float64), len(m)) > 0
+    return m | hit
+
+
+def yaw_matrix(M, deg):
+    """A camera's 4x4 world matrix M turned by `deg` degrees about the world z axis through its own position: the
+    visitor turning on the spot at a hold."""
+    M = np.array(M, float)
+    a = math.radians(float(deg))
+    c, s = math.cos(a), math.sin(a)
+    R = np.array([[c, -s, 0.0], [s, c, 0.0], [0.0, 0.0, 1.0]])
+    out = M.copy()
+    out[:3, :3] = R @ M[:3, :3]
+    return out
+
+
+def facing_dmin(centres, normals, cam_mats, tan_v, aspect_w, ndc=(1.3, 1.5), near=0.1):
+    """Per face (world centres and normals): the nearest distance (m) to a camera whose frame, widened to |x| <=
+    ndc[0] and |y| <= ndc[1] in NDC, holds the centre in front of it (deeper than `near` m) and which the face faces
+    (its normal points to the camera's side); inf when none. tan_v: tan of half the vertical field of view; aspect_w:
+    width / height. No occlusion test."""
+    c = np.asarray(centres, float).reshape(-1, 3)
+    n = np.asarray(normals, float).reshape(-1, 3)
+    out = np.full(len(c), np.inf)
+    for Mc in cam_mats:
+        Mc = np.asarray(Mc, float)
+        p = Mc[:3, 3]
+        inv = np.linalg.inv(Mc)
+        v = c @ inv[:3, :3].T + inv[:3, 3]
+        z = -v[:, 2]
+        with np.errstate(all="ignore"):
+            nx = v[:, 0] / z / (tan_v * aspect_w)
+            ny = v[:, 1] / z / tan_v
+        inside = (z > near) & (np.abs(nx) <= ndc[0]) & (np.abs(ny) <= ndc[1])
+        facing = ((p - c) * n).sum(1) > 0.0
+        d = np.linalg.norm(c - p, axis=1)
+        out = np.where(inside & facing, np.minimum(out, d), out)
+    return out
+
+
+def floor_reserve(bins, area, want, base, t_rest, limit, g_min, g_ref=None, keep=1.05):
+    """Texels for the floor parts of a chunk, nearest bin first, inside one budget.
+
+    Per part p (one distance bin of one item): bins[p] (0 = nearest), area[p] (m2 times the item's |det L|^(2/3), so
+    demand = area x density^2), want[p] (texels a metre wanted) and base[p] (the item's density before the chunk's
+    budget scale). t_rest: the demand at base density of everything else in the chunk (the items' other faces
+    included). limit: the budget in texels. g_min: the lowest budget scale the rest may get (absolute, e.g. 0.93 x
+    today's). g_ref: today's scale; a part is a floor only when it gets at least keep x what it gets anyway (keep x
+    max(g_ref, the rest's final scale) x base), so a split always buys a real gain.
+
+    Every part starts in the rest at scale g_min, which leaves spare = limit - g_min^2 x (all demand). The bins are
+    walked nearest first: a bin whose parts all fit takes their full want; the bin that does not fit is scaled down
+    by one factor (its parts that would fall under the keep line go back to the rest first), and the bins past it get
+    no floor. The rest then shares what is left: its scale is never under g_min. A part that ends under the keep line
+    of the rest's final scale (more room than today, e.g. a bigger budget) goes back to the rest.
+
+    Returns (rho per part: its floor density, 0 = not a floor; the rest's scale; texels the floor uses; info), info
+    with plain Python numbers only (it goes into json.dumps)."""
+    b = np.asarray(bins, np.int64).reshape(-1)
+    a = np.asarray(area, float).reshape(-1)
+    w = np.asarray(want, float).reshape(-1)
+    r0 = np.asarray(base, float).reshape(-1)
+    n = len(b)
+    t_all = max(float(t_rest), 0.0) + float((a * r0 * r0).sum())
+    limit = float(limit)
+    g_lo = min(float(g_min), 1.0)
+    ref = g_lo if g_ref is None else max(float(g_ref), g_lo)
+    rho = np.zeros(n)
+    spare = limit - g_lo * g_lo * t_all
+
+    def rest_scale(on):
+        used_ = float((a[on] * rho[on] ** 2).sum())
+        t_r = t_all - float((a[on] * r0[on] ** 2).sum())
+        if t_r <= 1e-9:
+            return used_, 1.0
+        return used_, min(1.0, math.sqrt(max(limit - used_, 0.0) / t_r))
+
+    thr = keep * ref * r0
+    cand = (w > thr) & (a > 0.0)
+    if n and t_all > 0.0 and spare > 0.0:
+        for k in np.unique(b[cand]).tolist():
+            idx = cand & (b == k)
+            extra = float((a[idx] * (w[idx] ** 2 - (g_lo * r0[idx]) ** 2)).sum())
+            if extra <= spare:
+                rho[idx] = w[idx]
+                spare -= extra
+                continue
+            # the bin that does not fit: one factor s on its wants, the parts that would fall under the keep line
+            # going back to the rest first (each time s grows)
+            sub = idx.copy()
+            s = 0.0
+            for _ in range(n + 1):
+                if not sub.any():
+                    break
+                aw = float((a[sub] * w[sub] ** 2).sum())
+                ab = float((a[sub] * (g_lo * r0[sub]) ** 2).sum())
+                s = math.sqrt(max(spare + ab, 0.0) / aw) if aw > 0.0 else 0.0
+                low = sub & (min(s, 1.0) * w < thr)
+                if not low.any():
+                    break
+                sub &= ~low
+            if sub.any() and s > 0.0:
+                s = min(s, 1.0)
+                rho[sub] = s * w[sub]
+                spare -= float((a[sub] * (rho[sub] ** 2 - (g_lo * r0[sub]) ** 2)).sum())
+            break                     # nothing past the bin that did not fit: a far bin never wins over a near one
+    on = rho > 0.0
+    used, g = rest_scale(on)
+    for _ in range(n + 1):
+        weak = on & (rho < keep * max(g, ref) * r0)
+        if not weak.any():
+            break
+        on &= ~weak
+        rho[weak] = 0.0
+        used, g = rest_scale(on)
+    info = dict(parts=int(n), candidates=int(cand.sum()), floor=int(on.sum()), g_min=round(g_lo, 6),
+                g_ref=round(ref, 6), g_rest=round(float(g), 6), used=float(round(used, 1)),
+                limit=float(round(limit, 1)), demand=float(round(t_all, 1)))
+    return rho, float(g), float(used), info
+
+
+def greedy_groups(demands, cap, spill=0.15):
+    """bake_web.bake_chunk's atlas grouping, on the items' texel demands in their order: a new group when the next
+    item would take the group past `cap`; a last group under `spill` x cap goes into the one before (the packer
+    shrinks that layout to fit). -> list of index lists."""
+    groups, tot = [], 0.0
+    for i, d in enumerate(demands):
+        if not groups or (tot + d > cap and tot > 0):
+            groups.append([])
+            tot = 0.0
+        groups[-1].append(i)
+        tot += float(d)
+    if len(groups) > 1 and sum(float(demands[i]) for i in groups[-1]) < spill * cap:
+        last = groups.pop()
+        groups[-1] += last
+    return groups
+
+
+def refit_groups(groups, demands, cap, n_max):
+    """Bring a grouping down to `n_max` groups without losing an item: while there are more, the last group's items
+    go, largest first, into the earlier group with the most room that still holds them under `cap`; what fits nowhere
+    is forced into the group with the most room (it goes past cap there, and the packer shrinks that layout).
+    -> (groups, info) with info = dict(moved, forced, over): items refitted, items forced, and the largest fill of
+    any group as a share of cap (1.0 or less when nothing was forced)."""
+    groups = [list(g) for g in groups]
+    dem = [float(d) for d in demands]
+    tot = [sum(dem[i] for i in g) for g in groups]
+    moved = forced = 0
+    while len(groups) > max(int(n_max), 1):
+        last = groups.pop()
+        tot.pop()
+        for i in sorted(last, key=lambda k: -dem[k]):
+            room = [cap - t for t in tot]
+            j = int(np.argmax(room))
+            if dem[i] <= room[j]:
+                moved += 1
+            else:
+                forced += 1
+            groups[j].append(i)
+            tot[j] += dem[i]
+    over = max(tot) / cap if tot and cap > 0 else 0.0
+    return groups, dict(moved=int(moved), forced=int(forced), over=float(round(over, 4)))

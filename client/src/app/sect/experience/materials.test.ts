@@ -2,33 +2,51 @@ import {
   AdditiveBlending,
   BufferGeometry,
   Color,
+  CustomBlending,
+  DepthTexture,
   DoubleSide,
   Float32BufferAttribute,
   FrontSide,
   Mesh,
   MeshBasicMaterial,
   Object3D,
+  OneMinusSrcAlphaFactor,
   RedFormat,
   RepeatWrapping,
   RGBAFormat,
   ShaderChunk,
   ShaderLib,
   ShaderMaterial,
+  SrcAlphaFactor,
   Texture,
+  Matrix4,
   Vector2,
   Vector3,
+  Vector4,
+  ZeroFactor,
   type WebGLRenderer,
 } from "three";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { DETAIL_NOISE, detailProgramKey } from "@/lib/sect/detail";
-import { fogConstantsFromMeta, fogDefines, glslFloat } from "@/lib/sect/glsl";
+import { PUFF_STRIDE } from "@/lib/sect/clouds";
+import { DETAIL_LOOK, DETAIL_NOISE, detailProgramKey, weatherApplyGlsl, weatherGlsl } from "@/lib/sect/detail";
+import { fogConstantsFromMeta, fogDefines, glslFloat, SCREEN_GRADE_PARS } from "@/lib/sect/glsl";
 import { heartMirrorGlsl } from "@/lib/sect/heart-mirror";
+import { LIVE_CLASSES, liveApplyGlsl, liveAtlasOf, liveSheenGlsl, liveSurfaceNormalGlsl } from "@/lib/sect/live";
 import { SECT_LOOK } from "@/lib/sect/look";
 import { parseMeta } from "@/lib/sect/parse";
+import {
+  STEAM_BRANCH,
+  STEAM_HIDE_STATEMENT,
+  STEAM_NW_PER_METRE,
+  steamChurnStatement,
+  steamClimbStatement,
+  steamVertexGlsl,
+  steamVertexStatements,
+} from "@/lib/sect/steam";
 import { wetFalls } from "@/lib/sect/waterfall";
+import { LiveShadowMap } from "./live-shadow";
 import { REFLECT } from "./reflect/plan";
 import {
   aimPondMirror,
@@ -39,6 +57,7 @@ import {
   createMistMaterial,
   createWaterfallMaterial,
   enableFogEncodeOnce,
+  ENV_GLSL,
   installFog,
   createDomeMaterial,
   createGlowMaterial,
@@ -53,22 +72,31 @@ import {
   getNoiseTexture,
   installAreas,
   isBuiltMaterial,
+  isLiveCandidate,
   isNearTreeMaterial,
+  liveAtlasUniforms,
+  liveClassOfMaterial,
+  liveClassUniforms,
   markBuiltSliced,
   commitBuilt,
   isTreeCardMaterial,
   patchCardMaterial,
+  veilBlending,
   patchMaterial,
   prepareBakedMaterial,
   prepareNeedleCard,
   SCREEN_DITHER_GLSL,
   SECT_AREAS,
   SECT_ENV,
+  SECT_LIVE,
   SECT_MIRROR,
+  SECT_WEATHER,
   SECT_WET,
   sectSurfaceOf,
   setCardAlphaMode,
+  setMaterialLive,
   setSheetStrands,
+  surfaceGlsl,
 } from "./materials";
 
 type Compiled = { uniforms: Record<string, unknown>; vertexShader: string; fragmentShader: string };
@@ -379,6 +407,8 @@ describe("detail layers on baked rock and ground", () => {
     expect(uniforms.uSectRockFar.value).toBe(1);
     expect(uniforms.uSectDetailOn.value).toBe(0);
     expect(uniforms.uSectRockOctaves.value).toBe(2);
+    // The rock photo's middle band starts at its look's gain (a uniform: tuned from the console).
+    expect(uniforms.uSectRockMid.value).toBe(DETAIL_LOOK.rockMid.gain);
     expect(uniforms.uSectTime).toBe(time);
     expect(uniforms.uSectSun.value).toBe(sun);
     expect(uniforms.tSectGroundNoise.value).toBe(getGroundNoiseTexture());
@@ -388,10 +418,16 @@ describe("detail layers on baked rock and ground", () => {
   it("binds the page's uniform objects, so a switch set on ctx.detail reaches every material", () => {
     for (const kind of ["rock", "ground"] as const) {
       const { shader } = detailed(kind);
-      for (const name of ["uSectGroundLayers", "uSectRockFar", "uSectTime", "uSectSun", "tSectClump", "tSectGroundNoise", "tSectDetail", "uSectDetailOn"] as const) {
+      for (const name of ["uSectGroundLayers", "uSectRockFar", "uSectRockMid", "uSectTime", "uSectSun", "tSectClump", "tSectGroundNoise", "tSectDetail", "uSectDetailOn"] as const) {
         expect(shader.uniforms[name], `${kind} ${name}`).toBe(uniforms[name]);
       }
     }
+    // So the band's gain set once on ctx.detail reaches every rock material, and B is read from the same texture.
+    const a = detailed("rock").shader;
+    const b = detailed("rock").shader;
+    expect(a.uniforms.uSectRockMid).toBe(b.uniforms.uSectRockMid);
+    expect(a.fragmentShader).toContain("* uSectDetailOn * uSectRockMid * sectRockMidOn;");
+    expect(count(a.fragmentShader, "uniform sampler2D tSectDetail;")).toBe(1);
   });
 
   it("keeps the texel before the grade, then applies the layers after the grade and before the wet rock", () => {
@@ -406,8 +442,11 @@ describe("detail layers on baked rock and ground", () => {
         expect(count(fs, `uniform ${u};`), `${kind} ${u}`).toBe(1);
       }
       expect(count(fs, "uniform float uSectRockFar;")).toBe(kind === "rock" ? 1 : 0);
+      expect(count(fs, "uniform float uSectRockMid;")).toBe(kind === "rock" ? 1 : 0);
       // Rock under anything built (stair piers) keeps its stone; lawns do not ask.
       expect(fs.includes("sectRangeW( vSectWorld ) * ( 1.0 - sectBuilt( vSectWorld ) )")).toBe(kind === "rock");
+      // An area's far stand-in does not read the built mask: it looks the same before and after its area has loaded.
+      expect(fs.includes("#ifdef SECT_STANDIN\n  float sectRw = sectRangeW( vSectWorld );\n#else\n  float sectRw = sectRangeW( vSectWorld ) * ( 1.0 - sectBuilt( vSectWorld ) );\n#endif")).toBe(kind === "rock");
       for (const name of includes(fs)) expect((ShaderChunk as unknown as Record<string, string>)[name], name).toBeTypeOf("string");
     }
   });
@@ -426,7 +465,11 @@ describe("detail layers on baked rock and ground", () => {
     prepareBakedMaterial(mat, uniforms);
     const fs = compile(mat).fragmentShader;
     expect(fs).not.toContain("sectGroundLayers");
-    expect(fs).not.toContain("tSectGroundNoise");
+    expect(fs).not.toContain("sectDetail");
+    expect(fs).not.toContain("tSectClump");
+    expect(fs).not.toContain("uSectGroundLayers");
+    // It reads the ground noise for its weathering instead (see below).
+    expect(fs).toContain("sectWeather(");
   });
 
   it("paving and roof tiles read their second UV set; tiles draw on the low tier too (no detail uniforms)", () => {
@@ -448,6 +491,172 @@ describe("detail layers on baked rock and ground", () => {
       for (const name of includes(sh.vertexShader + sh.fragmentShader)) expect((ShaderChunk as unknown as Record<string, string>)[name], name).toBeTypeOf("string");
     }
     expect(make("rock", null).fragmentShader).not.toContain("sectDetail");
+  });
+});
+
+describe("weathering on baked surfaces with no detail class", () => {
+  const uniforms = createDetailUniforms(new Texture(), { time: { value: 0 }, sunDir: new Vector3(0, 0.12, -1).normalize(), rockOctaves: 1 });
+  const baked = (name: string, userData: Record<string, unknown> = {}, detail: typeof uniforms | null = uniforms, map = true) => {
+    const mat = new MeshBasicMaterial(map ? { map: new Texture() } : {});
+    mat.name = name;
+    mat.userData = { baked: true, ...userData };
+    prepareBakedMaterial(mat, detail);
+    return mat;
+  };
+  const glsl = weatherGlsl();
+  const apply = weatherApplyGlsl();
+  const count = (s: string, sub: string) => s.split(sub).length - 1;
+
+  it("weathers walls, pillars and marble after the grade and before the wet rock, from the shared uniforms", () => {
+    const mat = baked("baked.abode_A0");
+    const sh = compile(mat);
+    const fs = sh.fragmentShader;
+    expect(count(fs, glsl)).toBe(1);
+    expect(count(fs, apply)).toBe(1);
+    const at = [glsl, "void main()", "diffuseColor.rgb = sectGraded * diffuse;", apply, "sectWetRock( diffuseColor.rgb, vSectWorld )", "#include <opaque_fragment>"].map((x) => fs.indexOf(x));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(sh.vertexShader).toContain("vSectWorld = ");
+    // One switch for every material, on; the ground noise every layer shares.
+    expect(sh.uniforms.uSectWeather).toBe(SECT_WEATHER.uSectWeather);
+    expect(SECT_WEATHER.uSectWeather.value).toBe(1);
+    expect((sh.uniforms.tSectGroundNoise as { value: unknown }).value).toBe(getGroundNoiseTexture());
+    expect(count(fs, "uniform sampler2D tSectGroundNoise;")).toBe(1);
+    for (const name of [...includes(fs), ...includes(sh.vertexShader)]) {
+      expect((ShaderChunk as unknown as Record<string, string>)[name], name).toBeTypeOf("string");
+    }
+  });
+
+  it("leaves the detail classes to their own layers: no weathering on paving, rock, ground or roof tiles", () => {
+    for (const kind of ["paving", "rock", "ground", "tiles"] as const) {
+      const mat = baked(`baked.gate_A0.detail.${kind}`, { detail: kind });
+      const fs = compile(mat).fragmentShader;
+      expect(fs, kind).not.toContain("sectWeather");
+      expect(fs, kind).not.toContain("uSectWeather");
+      expect(mat.customProgramCacheKey(), kind).not.toContain("weather");
+      // At most one declaration of the noise texture they share by name (a second would not compile).
+      expect(count(fs, "uniform sampler2D tSectGroundNoise;"), kind).toBe(kind === "tiles" ? 0 : 1);
+    }
+    // Roof tiles keep their class on the low tier too (no detail uniforms there).
+    expect(compile(baked("baked.gate_A0.detail.tiles", { detail: "tiles" }, null)).fragmentShader).not.toContain("sectWeather");
+  });
+
+  it("goes with the detail layers: none on a tier with no detail uniforms (low), whatever the class", () => {
+    for (const [name, ud] of [
+      ["baked.abode_A0", {}],
+      ["baked.gate_A0.detail.paving", { detail: "paving" }],
+      ["baked.gate_A0.detail.rock", { detail: "rock" }],
+      ["baked.gate_A1.detail.ground", { detail: "ground" }],
+    ] as const) {
+      for (const detail of [null, undefined]) {
+        const mat = new MeshBasicMaterial({ map: new Texture() });
+        mat.name = name;
+        mat.userData = { baked: true, ...ud };
+        prepareBakedMaterial(mat, detail);
+        const fs = compile(mat).fragmentShader;
+        expect(fs, `${name} ${detail}`).not.toContain("sectWeather");
+        expect(fs, `${name} ${detail}`).not.toContain("uSectWeather");
+        expect(mat.customProgramCacheKey(), `${name} ${detail}`).not.toContain("weather");
+      }
+    }
+    // With them, the plain wall has it.
+    const wall = baked("baked.abode_A0");
+    expect(compile(wall).fragmentShader).toContain(apply);
+    expect(wall.customProgramCacheKey()).toContain("|weather-");
+  });
+
+  it("never weathers a reflective class, even one tagged after patching: the key and the shader both follow", () => {
+    for (const kind of ["metal", "iron", "glaze", "mirror"] as const) {
+      const tagged = baked("baked.gate_A0", { sectSurface: kind });
+      expect(compile(tagged).fragmentShader, kind).not.toContain("sectWeather");
+      expect(tagged.customProgramCacheKey(), kind).not.toContain("weather");
+      // Tagged after loading (read at its next compile, like the class itself).
+      const mat = baked("baked.gate_A0");
+      const before = mat.customProgramCacheKey();
+      expect(before, kind).toContain("|weather-");
+      mat.userData.sectSurface = kind;
+      const key = mat.customProgramCacheKey();
+      expect(key, kind).not.toContain("weather");
+      expect(key, kind).toContain(`|surface-${kind}`);
+      const fs = compile(mat).fragmentShader;
+      expect(fs, kind).not.toContain("sectWeather");
+      expect(fs, kind).not.toContain("uniform sampler2D tSectGroundNoise;");
+      expect(fs, kind).toContain(surfaceGlsl(kind));
+      // And back.
+      delete mat.userData.sectSurface;
+      expect(mat.customProgramCacheKey(), kind).toBe(before);
+      expect(compile(mat).fragmentShader, kind).toContain(apply);
+    }
+  });
+
+  it("leaves out cloth that sways, hotspot copies, water, cards, trees, cut-outs and materials without the atlas map", () => {
+    const copy = new MeshBasicMaterial({ map: new Texture() });
+    copy.name = "baked.gate_A0";
+    copy.userData = { baked: true };
+    // A hotspot's copy (some of them move), even if asked for the weathering.
+    patchMaterial(copy, { lit: true, exposure: 1, highlight: { value: 0 }, weather: true });
+    const pond = new MeshBasicMaterial({ map: new Texture() });
+    pond.name = "baked.gate_A0";
+    pond.userData = { baked: true };
+    patchMaterial(pond, { lit: false, exposure: 1, water: createWaterUniforms({ level: 0, disc: null }), weather: true });
+    const cut = new MeshBasicMaterial({ map: new Texture(), alphaTest: 0.5 });
+    cut.name = "baked.gate_A0";
+    cut.userData = { baked: true };
+    prepareBakedMaterial(cut, uniforms);
+    const cases: [string, MeshBasicMaterial][] = [
+      ["sway", baked("baked.gate_A0", { sectSway: true })],
+      ["hotspot copy", copy],
+      ["pond", pond],
+      ["near pine", baked("trees.mesh.gate")],
+      ["far card", baked("trees.cards.gate")],
+      ["cut-out", cut],
+      ["no map", baked("baked.vc", {}, uniforms, false)],
+      ...(["needle", "twig", undefined] as const).map((k): [string, MeshBasicMaterial] => [`card ${k}`, prepareCard(k, false).mat]),
+    ];
+    for (const [label, mat] of cases) {
+      expect(compile(mat).fragmentShader, label).not.toContain("sectWeather");
+      expect(mat.customProgramCacheKey(), label).not.toContain("weather");
+    }
+    // The weathered twin of each plain case does have it.
+    expect(compile(baked("baked.gate_A0")).fragmentShader).toContain(apply);
+  });
+
+  it("changes the program key by its own tag and nothing else", () => {
+    const wall = baked("baked.abode_A0").customProgramCacheKey();
+    const flag = baked("baked.abode_A0", { sectSway: true }).customProgramCacheKey();
+    expect(wall).toMatch(/\|wet\|weather-[0-9a-z]+$/);
+    expect(wall).not.toBe(flag);
+    expect(wall.replace(/\|weather-[0-9a-z]+/, "")).toBe(flag);
+  });
+
+  it("keeps every baked material, lit live or not, within 16 texture units", () => {
+    const units = (fs: string) => 1 + [...fs.matchAll(/^uniform (?:highp )?sampler\w+ \w+;$/gm)].length;
+    const cases: [string, Record<string, unknown>][] = [
+      ["baked.gate_A0", {}],
+      ["baked.gate_A0.detail.paving", { detail: "paving" }],
+      ["baked.gate_A0.detail.rock", { detail: "rock" }],
+      ["baked.gate_A1.detail.ground", { detail: "ground" }],
+      ["baked.gate_A1.detail.tiles", { detail: "tiles" }],
+      ["baked.gate_A0.surface.metal", { sectSurface: "metal" }],
+    ];
+    for (const detail of [uniforms, null]) {
+      for (const [name, ud] of cases) {
+        const mat = baked(name, ud, detail);
+        expect(units(compile(mat).fragmentShader), name).toBeLessThanOrEqual(16);
+        setMaterialLive(mat, { atlas: liveAtlasOf(name)!, cls: liveClassOfMaterial(mat) });
+        expect(units(compile(mat).fragmentShader), `${name} live`).toBeLessThanOrEqual(16);
+      }
+    }
+  });
+
+  it("gives rock's middle band no texture unit of its own: a live rock stays at 15 (it reads B of the same detail texture)", () => {
+    const units = (fs: string) => 1 + [...fs.matchAll(/^uniform (?:highp )?sampler\w+ \w+;$/gm)].length;
+    const name = "baked.gate_A0.detail.rock";
+    const mat = baked(name, { detail: "rock" });
+    const plain = compile(mat).fragmentShader;
+    expect(plain).toContain("sectRockDetail( vSectWorld");
+    setMaterialLive(mat, { atlas: liveAtlasOf(name)!, cls: liveClassOfMaterial(mat) });
+    expect(units(compile(mat).fragmentShader)).toBe(15);
   });
 });
 
@@ -848,19 +1057,7 @@ describe("moon", () => {
     }
   });
 
-  it("adds the forge fire and the life motes as linear light too (fx.tsx, life.tsx)", () => {
-    // Their materials are built inside components; the shader sources are read from the files.
-    const dir = path.dirname(fileURLToPath(import.meta.url));
-    for (const [file, name] of [["fx.tsx", "sect.forgefire"], ["life.tsx", "sect.life.motes"]]) {
-      const src = readFileSync(path.join(dir, file), "utf8").replace(/\r\n/g, "\n");
-      const start = src.indexOf(`name: "${name}"`);
-      expect(start).toBeGreaterThan(0);
-      const body = src.slice(start, src.indexOf("\n  });\n}", start));
-      expect(body).toContain("blending: AdditiveBlending");
-      expect(body).toContain("fragmentShader:");
-      expect(body).not.toContain("colorspace_fragment");
-    }
-  });
+  // The forge fire, the fires and the life motes add linear light the same way: effect-look.test.ts.
 });
 
 describe("the range look (lib/sect/range-look.ts)", () => {
@@ -938,8 +1135,10 @@ describe("fog worked out once per sprite", () => {
     expect(mat.vertexShader).toContain("vHaze = sectHazeColor( uFogColor, f );");
     expect(mat.vertexShader).toContain("vCloudMix = 1.0 - exp( - sectCloudDepth( cameraPosition.y, f.y, dist ) );");
     expect(mat.vertexShader).toContain("vToward = pow( max( dot( f, SECT_SUN_DIR ), 0.0 ), 5.0 );");
+    // The Low tier's frame grade (SCREEN_GRADE_PARS: folded away on High and Mid) is the only pow left.
+    const fs = mat.fragmentShader.replace(SCREEN_GRADE_PARS, "");
     for (const call of ["sectHazeDepth(", "sectCloudDepth(", "sectHazeColor(", "pow("]) {
-      expect(mat.fragmentShader).not.toContain(call);
+      expect(fs).not.toContain(call);
     }
     expect(mat.fragmentShader).toContain("col = mix( col, vHaze, vHazeMix );");
     expect(mat.fragmentShader).toContain("col = mix( col, SECT_CLOUD_FOG, vCloudMix );");
@@ -985,5 +1184,620 @@ describe("one colour conversion on the low tier", () => {
     enableFogEncodeOnce(other);
     expect(other.defines.SECT_FOG_ONCE).toBe("");
     expect(other.uniforms.uSectFogLinear.value).toBeInstanceOf(Color);
+  });
+});
+
+describe("what veils the world says so in the frame's alpha", () => {
+  const fog = fogConstantsFromMeta(parseMeta({}));
+
+  it("draws the mist's colour as before and multiplies the alpha by what it lets through", () => {
+    // The contact shade (post/ao.ts) is worked out from the world's depth, which the mist is not in.
+    // It reads this alpha so it fades under the mist instead of being drawn on top of it.
+    for (const mat of [createCloudPuffMaterial(fog, "#c8ada0"), createMistMaterial(fog, "#c8ada0", { value: 0 })]) {
+      expect(mat.blending, mat.name).toBe(CustomBlending);
+      expect(mat.blendSrc).toBe(SrcAlphaFactor);
+      expect(mat.blendDst).toBe(OneMinusSrcAlphaFactor);
+      expect(mat.blendSrcAlpha).toBe(ZeroFactor);
+      expect(mat.blendDstAlpha).toBe(OneMinusSrcAlphaFactor);
+      expect(mat.transparent).toBe(true);
+      expect(mat.depthWrite).toBe(false);
+    }
+    const plain = veilBlending(new MeshBasicMaterial());
+    expect(plain.blending).toBe(CustomBlending);
+  });
+
+  it("keeps a far beam from thinning to a scratch: a floor under its width, dimmer for what it gains", () => {
+    const beam = createBeamMaterial(fog, "#c8ada0", { value: 0 });
+    expect(beam.vertexShader).toContain("float halfW = max( half0, length( toMid ) * 0.014 );");
+    expect(beam.vertexShader).toContain("vGain = sqrt( half0 / halfW );");
+    expect(beam.fragmentShader).toContain("* uOpacity * vGain *");
+  });
+
+  it("leaves lights that only add (beams, glows) out of it", () => {
+    expect(createBeamMaterial(fog, "#c8ada0", { value: 0 }).blending).toBe(AdditiveBlending);
+    expect(createGlowMaterial("#ffffff", 1).blending).toBe(AdditiveBlending);
+  });
+});
+
+describe("the mist reads one field of noise fixed in the world", () => {
+  it("so a row of puffs is one bank, with a second field at each puff's own scale", () => {
+    const mat = createCloudPuffMaterial(fogConstantsFromMeta(parseMeta({})), "#c8ada0");
+    expect(mat.vertexShader).toContain("vWorld = wp;");
+    expect(mat.fragmentShader).toContain("vec2 nw = vec2( vWorld.x * 0.82 + vWorld.z * 0.57, vWorld.y * 1.35 )");
+    expect(mat.fragmentShader).toContain("n = mix( n, own, 0.42 );");
+  });
+
+  it("ends in a wide soft rim, not an outline", () => {
+    const fs = createCloudPuffMaterial(fogConstantsFromMeta(parseMeta({})), "#c8ada0").fragmentShader;
+    // The band starts below zero and is squared: a narrow band (0 to 0.55) drew a line round every
+    // puff, and the puffs round the pillars read as stickers.
+    expect(fs).toContain("float edge = smoothstep( -0.2, 0.8, wisp );");
+    expect(fs).toContain("float alpha = ( 1.0 - exp( - tau ) ) * edge * edge;");
+    // A bank near the camera keeps a smooth lit body: density thinned all the way through by the
+    // field was tried and made the banks blotchy with a hard top edge.
+    expect(fs).not.toContain("float dens =");
+  });
+
+  it("gives a flat bank seen edge on room for that rim, and thins it for the height it gained", () => {
+    const vs = createCloudPuffMaterial(fogConstantsFromMeta(parseMeta({})), "#c8ada0").vertexShader;
+    expect(vs).toContain("wu = max( wu, wr * 0.4 );");
+    expect(vs).toContain("float spread = wu0 / wu;");
+    expect(vs).toContain("vDepth = puffD * wf * 2.0 * spread;");
+  });
+
+  it("adds a little relief to the light: the same field a step toward the sun", () => {
+    const fs = createCloudPuffMaterial(fogConstantsFromMeta(parseMeta({})), "#c8ada0").fragmentShader;
+    expect(fs).toContain("vec2 sunStep = vec2( SECT_SUN_DIR.x * 0.82 + SECT_SUN_DIR.z * 0.57, SECT_SUN_DIR.y * 1.35 ) * 14.0;");
+    expect(fs).toContain("float light = clamp( sun * 0.6 + ( vUv.y * 0.5 + 0.5 ) * 0.42 + ");
+    expect(fs).toContain("+ relief * 1.8 - 0.1");
+  });
+});
+
+describe("Ice-Fire Island's steam rises (lib/sect/steam.ts)", () => {
+  const mat = () => createCloudPuffMaterial(fogConstantsFromMeta(parseMeta({})), "#c8ada0");
+  const BRANCH = STEAM_BRANCH;
+
+  it("loops a puff with a rise span upward in the vertex shader, only while uSteam is on", () => {
+    expect(BRANCH).toBe("if ( iRise != 0.0 && uSteam > 0.5 ) {");
+    const m = mat();
+    const vs = m.vertexShader;
+    expect(vs).toContain("attribute float iRise;");
+    expect(vs).toContain("uniform float uSteam;");
+    expect(vs).toContain("uniform float uTime;");
+    expect(vs).toContain(steamVertexGlsl());
+    expect(vs).toContain(`  ${BRANCH}\n${steamVertexStatements()}\n  }`);
+    expect(m.uniforms.uSteam.value).toBe(1);
+    // The puff is copied from its attributes before the branch, and drawn from the copies after it.
+    const before = vs.slice(vs.indexOf("void main() {"), vs.indexOf(BRANCH));
+    for (const line of ["vec3 puffC = iCenter;", "vec3 puffA0 = iA0;", "vec3 puffA1 = iA1;", "vec3 puffA2 = iA2;", "float puffD = iDensity;", "vSteam = 0.0;"]) {
+      expect(before).toContain(line);
+    }
+    const after = vs.slice(vs.indexOf(BRANCH));
+    const rest = after.slice(after.indexOf("\n  }\n"));
+    expect(rest).toContain("vec3 toC = puffC - cameraPosition;");
+    expect(rest).toContain("vec3 wp = puffC - f * lift + ");
+    expect(rest).toContain("float wf = length( vec3( dot( puffA0, f ), dot( puffA1, f ), dot( puffA2, f ) ) );");
+    // Only the sprite's noise seed reads the packed centre: it stays with the puff's place.
+    expect(rest.match(/iCenter/g)).toHaveLength(1);
+    expect(rest).toContain("vSeed = fract( iCenter.xz * 0.0137 );");
+    // After the branch only the hiding of the second copy reads iRise and uSteam.
+    const restBut = rest.replace(`${STEAM_HIDE_STATEMENT}\n`, "");
+    expect(restBut).not.toBe(rest);
+    expect(restBut).not.toMatch(/iA[012]|iDensity|iRise|uSteam|steam[A-Z]/);
+  });
+
+  it("does nothing else in the branch, so every other puff is drawn exactly as before", () => {
+    const vs = mat().vertexShader;
+    const start = vs.indexOf(BRANCH) + BRANCH.length;
+    const body = vs.slice(start, vs.indexOf("\n  }\n", start)).split("\n").filter((l) => l.trim());
+    expect(body.length).toBeGreaterThan(5);
+    for (const line of body) {
+      expect(line, line).toMatch(/^ {4}(float steam(Span|S|Up|Grow|Share) = |puffC \+= |puffA[012] \*= steamGrow;|puffD \*= |vSteam = 1\.0;)/);
+    }
+    // The hash runs only there.
+    expect(vs.split("sectSteamHash(").length - 1).toBe(2);
+  });
+
+  it("hides a steam puff's second copy while the steam stands still: set just before the faded quad collapses", () => {
+    const vs = mat().vertexShader;
+    const collapse = "  if ( vFade < 0.003 ) gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );";
+    expect(vs.split(STEAM_HIDE_STATEMENT).length - 1).toBe(1);
+    expect(vs.indexOf(STEAM_HIDE_STATEMENT)).toBeGreaterThan(vs.indexOf("gl_Position = projectionMatrix * mv;"));
+    expect(vs.indexOf(STEAM_HIDE_STATEMENT)).toBeLessThan(vs.indexOf(collapse));
+    // The fragment shader drops what the vertex shader faded out.
+    expect(mat().fragmentShader).toContain("if ( q2 > 1.0 || vFade < 0.003 ) discard;");
+  });
+
+  it("lets the steam sprite's noise climb in the fragment shader: the world field and its own", () => {
+    const fs = mat().fragmentShader;
+    expect(fs).toContain("varying float vSteam;");
+    const nl = "  vec2 nl = vUv * vec2( 1.15, 1.9 ) + vSeed * 9.0 + vec2( uTime * 0.004, 0.0 );\n";
+    expect(fs).toContain(nl);
+    expect(fs).toContain(steamChurnStatement());
+    expect(fs.indexOf(steamChurnStatement())).toBeGreaterThan(fs.indexOf(nl));
+    expect(fs.indexOf(steamChurnStatement())).toBeLessThan(fs.indexOf("float own = "));
+    expect(steamChurnStatement()).toMatch(/^ {2}if \( vSteam > 0\.5 \) nl\.y -= /);
+    // The world field: one metre up is STEAM_NW_PER_METRE units of nw.y, and it rises before any read.
+    const nw = `  vec2 nw = vec2( vWorld.x * 0.82 + vWorld.z * 0.57, vWorld.y * ${STEAM_NW_PER_METRE} ) + vec2( uTime * 0.7, 0.0 );\n`;
+    expect(fs).toContain(nw);
+    expect(fs.indexOf(steamClimbStatement())).toBeGreaterThan(fs.indexOf(nw));
+    expect(fs.indexOf(steamClimbStatement())).toBeLessThan(fs.indexOf("float n1 = "));
+    expect(steamClimbStatement()).toMatch(/^ {2}if \( vSteam > 0\.5 \) nw\.y -= uTime \* /);
+  });
+
+  it("is fed by scene.tsx CloudPuffs: the span as iRise, the 14th float, and uSteam off with reduced motion", () => {
+    const src = readFileSync(path.resolve(__dirname, "scene.tsx"), "utf8").replace(/\r\n/g, "\n");
+    const puffs = src.slice(src.indexOf("function CloudPuffs("), src.indexOf("function OverlayDecor("));
+    expect(puffs).toContain("(p) => steamRise(p),");
+    expect(puffs).toContain('geo.setAttribute("iRise", new InterleavedBufferAttribute(buf, 1, 13));');
+    expect(puffs).toContain("built.material.uniforms.uSteam.value = store.reducedMotion ? 0 : 1;");
+    // The attributes tile the packed puff exactly: 14 floats, none read twice or left out.
+    const used = new Array<number>(PUFF_STRIDE).fill(0);
+    for (const [, size, offset] of puffs.matchAll(/new InterleavedBufferAttribute\(buf, (\d+), (\d+)\)/g)) {
+      for (let k = Number(offset); k < Number(offset) + Number(size); k++) used[k]++;
+    }
+    expect(PUFF_STRIDE).toBe(14);
+    expect(used).toEqual(new Array<number>(PUFF_STRIDE).fill(1));
+    expect(puffs).toContain("new InstancedInterleavedBuffer(new Float32Array(packed), PUFF_STRIDE, 1)");
+  });
+});
+
+describe("the sun in the sky", () => {
+  it("screens its glow onto the sky, so the sky beside it never passes 1.0 into the hue clip", () => {
+    const fog = fogConstantsFromMeta(parseMeta({}));
+    const sky = createSkyMaterial({ fog, texture: null, zenith: "#8b9ad0", horizon: "#f3cfb2", below: "#c8ada0", fogColor: "#c8ada0", sunColor: "#fff0d0" });
+    const fs = sky.fragmentShader;
+    expect(fs).toContain("col = 1.0 - ( 1.0 - min( col, vec3( 1.0 ) ) ) * ( 1.0 - min( glow, vec3( 1.0 ) ) );");
+    // Only the disc itself is added, after the screen.
+    expect(fs.indexOf("col += mix( uSunColor, vec3( 1.0 ), 0.88 )")).toBeGreaterThan(fs.indexOf("col = 1.0 - ( 1.0 - min( col"));
+  });
+});
+
+describe("live light (lib/sect/live.ts)", () => {
+  const baked = (name: string, userData: Record<string, unknown> = {}, map = true) => {
+    const mat = new MeshBasicMaterial(map ? { map: new Texture() } : {});
+    mat.name = name;
+    mat.userData = { baked: true, ...userData };
+    prepareBakedMaterial(mat);
+    return mat;
+  };
+  const names: [string, Record<string, unknown>][] = [
+    ["baked.gate_A0", {}],
+    ["baked.gate_A0.detail.paving", { detail: "paving" }],
+    ["baked.gate_A0.detail.rock", { detail: "rock" }],
+    ["baked.gate_A1.detail.ground", { detail: "ground" }],
+    ["baked.gate_A0.surface.metal", { sectSurface: "metal" }],
+    ["baked.gate_A1.detail.tiles.surface.glaze", { detail: "tiles", sectSurface: "glaze" }],
+  ];
+
+  it("leaves a material that is not lit live exactly as it was, and gives it back exactly", () => {
+    for (const [name, ud] of names) {
+      const mat = baked(name, ud);
+      const key = mat.customProgramCacheKey();
+      const sh = compile(mat);
+      expect(sh.fragmentShader).not.toMatch(/SectLive|SECT_LIVE|sectLive/);
+      expect(Object.keys(sh.uniforms).some((u) => /SectLive/.test(u))).toBe(false);
+      expect(key).not.toContain("live");
+      setMaterialLive(mat, { atlas: liveAtlasOf(name)!, cls: liveClassOfMaterial(mat) });
+      expect(mat.customProgramCacheKey()).not.toBe(key);
+      expect(compile(mat).fragmentShader).not.toBe(sh.fragmentShader);
+      setMaterialLive(mat, null);
+      expect(mat.customProgramCacheKey()).toBe(key);
+      const again = compile(mat);
+      expect(again.fragmentShader).toBe(sh.fragmentShader);
+      expect(again.vertexShader).toBe(sh.vertexShader);
+    }
+  });
+
+  it("keeps the surface classes' code as it was unless lit live, and metal and iron's even then", () => {
+    for (const kind of ["metal", "glaze", "iron", "mirror"] as const) {
+      expect(surfaceGlsl(kind)).toBe(surfaceGlsl(kind, SECT_LOOK.surfaces, false));
+      expect(surfaceGlsl(kind)).not.toContain("sectLive");
+    }
+    for (const kind of ["glaze", "mirror"] as const) {
+      const live = surfaceGlsl(kind, SECT_LOOK.surfaces, true);
+      // The normal map's normal takes over after the face's is turned to the eye, before the reflection.
+      const at = ["if ( dot( sN, sV ) > 0.0 ) sN = - sN;", "if ( sectLiveShare > 0.0 ) {", "vec3 sR = reflect( sV, sN );"].map((x) => live.indexOf(x));
+      expect(at.every((i) => i >= 0), kind).toBe(true);
+      expect([...at].sort((a, b) => a - b), kind).toEqual(at);
+      expect(live.replace(liveSurfaceNormalGlsl(), ""), kind).toBe(surfaceGlsl(kind));
+    }
+    // The half-size normal map is wrong on thin metal (a crescent, a blade): in a mirror that shows as blotches.
+    for (const kind of ["metal", "iron"] as const) {
+      expect(surfaceGlsl(kind, SECT_LOOK.surfaces, true), kind).toBe(surfaceGlsl(kind));
+    }
+  });
+
+  it("replaces the baked texel before the grade and the rest of the pipeline", () => {
+    const mat = baked("baked.gate_A0.detail.paving", { detail: "paving" });
+    setMaterialLive(mat, { atlas: "gate_A0", cls: liveClassOfMaterial(mat) });
+    const sh = compile(mat);
+    const fs = sh.fragmentShader;
+    expect(fs).toContain("#define SECT_LIVE");
+    // Blender's view transform as a table; the page's own AgX is not in an unlit material.
+    expect(fs).toContain("uniform highp sampler3D tSectLiveView;");
+    expect(fs).toContain("return sectLiveView( c * by.y );");
+    // The look's post on the live colour, the bake's own on the bake as the maps rebuild it.
+    expect(fs).toContain("return sectLivePostBy( c, vec3( uSectLiveGain, uSectLiveExposure, uSectLiveSat ) );");
+    expect(fs).toContain("sectLivePostBy( sectLiveBaked( lAlb, lAmb * uSectLiveAmbient, lFace, lVis ), uSectLiveBakePost )");
+    expect(fs).not.toContain("sectAgxPunchy");
+    const at = [
+      "#include <color_fragment>",
+      "vec3 sectTexel = diffuseColor.rgb / max( diffuse, vec3( 1e-4 ) );",
+      "lTex *= sectLiveDetail( sectTexel, lBake, lTrust );",
+      "sectTexel = mix( sectTexel, lTex, sectLiveShare );",
+      "sectGrade( sectTexel )",
+      "#include <opaque_fragment>",
+    ].map((x) => fs.indexOf(x));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(sh.vertexShader).toContain("vSectWorld = ");
+    // The shared uniforms are the page's own objects, the maps the atlas's, the shine the class's.
+    for (const name of Object.keys(SECT_LIVE) as (keyof typeof SECT_LIVE)[]) expect(sh.uniforms[name], name).toBe(SECT_LIVE[name]);
+    const maps = liveAtlasUniforms("gate_A0");
+    expect(sh.uniforms.tSectLiveAlbedo).toBe(maps.tSectLiveAlbedo);
+    expect(sh.uniforms.tSectLiveAmbient).toBe(maps.tSectLiveAmbient);
+    expect(sh.uniforms.tSectLiveNormal).toBe(maps.tSectLiveNormal);
+    expect(sh.uniforms.uSectLiveSpec).toBe(liveClassUniforms("paving").uSectLiveSpec);
+    expect(sh.uniforms.uSectLiveBump).toBe(liveClassUniforms("paving").uSectLiveBump);
+    expect(liveAtlasUniforms("gate_A0")).toBe(maps);
+    expect(mat.customProgramCacheKey()).toMatch(/\|live-[0-9a-z]+$/);
+    expect(fs).not.toMatch(/NaN|undefined/);
+    for (const name of [...includes(fs), ...includes(sh.vertexShader)]) {
+      expect((ShaderChunk as unknown as Record<string, string>)[name], name).toBeTypeOf("string");
+    }
+  });
+
+  it("gives each stop's atlases their own maps and every stop the one shared set of uniforms", () => {
+    const gate = baked("baked.gate_A0.detail.paving", { detail: "paving" });
+    const mirror = baked("baked.mirror_A0.detail.paving", { detail: "paving" });
+    const formation = baked("baked.formation_A2");
+    for (const mat of [gate, mirror, formation]) setMaterialLive(mat, { atlas: liveAtlasOf(mat.name)!, cls: liveClassOfMaterial(mat) });
+    const [g, m, f] = [gate, mirror, formation].map((mat) => compile(mat));
+    // One stop is lit at a time: the lamps, the centre, the blend and the shadow maps are the page's own objects.
+    for (const name of Object.keys(SECT_LIVE) as (keyof typeof SECT_LIVE)[]) {
+      expect(m.uniforms[name], name).toBe(SECT_LIVE[name]);
+      expect(f.uniforms[name], name).toBe(SECT_LIVE[name]);
+    }
+    // The maps are each atlas's own.
+    expect(m.uniforms.tSectLiveAlbedo).toBe(liveAtlasUniforms("mirror_A0").tSectLiveAlbedo);
+    expect(f.uniforms.tSectLiveNormal).toBe(liveAtlasUniforms("formation_A2").tSectLiveNormal);
+    expect(m.uniforms.tSectLiveAlbedo).not.toBe(g.uniforms.tSectLiveAlbedo);
+    expect(m.uniforms.tSectLiveAmbient).not.toBe(g.uniforms.tSectLiveAmbient);
+    expect(f.uniforms.tSectLiveNormal).not.toBe(g.uniforms.tSectLiveNormal);
+    // The same live code whichever stop: the programs can be shared.
+    expect(m.fragmentShader).toBe(g.fragmentShader);
+    expect(mirror.customProgramCacheKey()).toBe(gate.customProgramCacheKey());
+  });
+
+  it("feeds glaze the normal map's normal when lit live, and not metal or iron", () => {
+    const hook = "vec3 sLn = dot( sectLiveN, sV ) > 0.0 ? - sectLiveN : sectLiveN;";
+    const glaze = baked("baked.gate_A1.detail.tiles.surface.glaze", { detail: "tiles", sectSurface: "glaze" });
+    setMaterialLive(glaze, { atlas: "gate_A1", cls: liveClassOfMaterial(glaze) });
+    expect(liveClassOfMaterial(glaze)).toBe("glaze");
+    const gfs = compile(glaze).fragmentShader;
+    expect(gfs).toContain(hook);
+    expect(gfs.indexOf("vec3 sLn")).toBeGreaterThan(gfs.indexOf("sectTexel = mix( sectTexel, lTex, sectLiveShare );"));
+    expect(glaze.customProgramCacheKey()).toContain("|surface-glaze|");
+    expect(glaze.customProgramCacheKey()).toMatch(/\|live-[0-9a-z]+$/);
+    for (const [name, ud] of [
+      ["baked.gate_A0.surface.metal", { sectSurface: "metal" }],
+      ["baked.gate_A0", { sectSurface: "iron" }],
+    ] as const) {
+      const mat = baked(name, ud);
+      setMaterialLive(mat, { atlas: "gate_A0", cls: liveClassOfMaterial(mat) });
+      expect(liveClassOfMaterial(mat), name).toBe("metal");
+      const fs = compile(mat).fragmentShader;
+      // Lit live all the same, and its reflection from the face's own normal.
+      expect(fs, name).toContain("sectTexel = mix( sectTexel, lTex, sectLiveShare );");
+      expect(fs, name).not.toContain(hook);
+      expect(fs, name).not.toContain("sLn");
+      expect(fs, name).toContain("vec3 sR = reflect( sV, sN );");
+      expect(mat.customProgramCacheKey(), name).toContain(`|surface-${ud.sectSurface}|live-`);
+    }
+  });
+
+  it("provides every live, sky and environment uniform a live shader declares", () => {
+    for (const [name, ud] of names) {
+      const mat = baked(name, ud);
+      setMaterialLive(mat, { atlas: liveAtlasOf(name)!, cls: liveClassOfMaterial(mat) });
+      const sh = compile(mat);
+      const declared = [...sh.fragmentShader.matchAll(/^uniform (?:highp )?\w+ ([ut]Sect(?:Live|Env|Sky)\w*);$/gm)].map((m) => m[1]);
+      expect(declared, name).toContain("tSectLiveView");
+      expect(declared, name).toContain("tSectSky");
+      for (const u of declared) expect(sh.uniforms[u], `${name} ${u}`).toBeDefined();
+    }
+  });
+
+  it("gives each live uniform a value of the type it is declared with", () => {
+    const is: Record<string, (v: unknown) => boolean> = {
+      float: (v) => typeof v === "number",
+      vec2: (v) => v instanceof Vector2,
+      vec3: (v) => v instanceof Vector3,
+      vec4: (v) => v instanceof Vector4,
+      mat4: (v) => v instanceof Matrix4,
+      // A compare texture on a plain sampler, or a plain one on a shadow sampler, fails to draw.
+      sampler2D: (v) => v === null || (v instanceof Texture && !(v as DepthTexture).compareFunction),
+      sampler2DShadow: (v) => v === null || (v instanceof DepthTexture && !!v.compareFunction),
+      sampler3D: (v) => v === null || v instanceof Texture,
+    };
+    const check = (sh: Compiled, label: string) => {
+      const declared = [...sh.fragmentShader.matchAll(/^uniform (?:highp )?(\w+) ([ut]SectLive\w*);$/gm)];
+      expect(declared.map((m) => m[2]), label).toEqual(
+        expect.arrayContaining([
+          "uSectLiveSpec",
+          "uSectLiveBump",
+          "uSectLiveLift",
+          "uSectLivePaint",
+          "uSectLiveAmbientIrr",
+          "uSectLiveVis",
+          "uSectLiveGraze",
+          "uSectLiveClose",
+          "uSectLiveDetail",
+          "uSectLiveBakeGain",
+          "uSectLiveBakePost",
+          "uSectLiveCaps",
+          "uSectLiveTiles",
+          "tSectLiveSunShadow",
+          "tSectLiveShadowB",
+          "tSectLiveView",
+        ]),
+      );
+      for (const [, type, name] of declared) {
+        expect(is[type], `${label} ${name}: ${type}`).toBeDefined();
+        expect(is[type]((sh.uniforms[name] as { value: unknown }).value), `${label} ${name}: ${type}`).toBe(true);
+      }
+      return declared;
+    };
+    const more: [string, Record<string, unknown>][] = [
+      ["baked.gate_A0.detail.tiles", { detail: "tiles" }],
+      ["baked.gate_A0", { sectSway: true }],
+    ];
+    for (const [name, ud] of [...names, ...more]) {
+      const mat = baked(name, ud);
+      setMaterialLive(mat, { atlas: liveAtlasOf(name)!, cls: liveClassOfMaterial(mat) });
+      check(compile(mat), name);
+    }
+    // And with the shadow maps in place, as live.tsx sets them: the compare map on the shadow
+    // sampler, the coarse plain one on the plain sampler.
+    const mat = baked("baked.gate_A0");
+    setMaterialLive(mat, { atlas: "gate_A0", cls: "default" });
+    const sh = compile(mat);
+    const key = new LiveShadowMap(64, 4);
+    const sun = new LiveShadowMap(64, 4);
+    try {
+      SECT_LIVE.tSectLiveShadow.value = key.texture;
+      SECT_LIVE.tSectLiveShadowB.value = key.coarseTexture;
+      SECT_LIVE.tSectLiveSunShadow.value = sun.texture;
+      SECT_LIVE.tSectLiveSunShadowB.value = sun.coarseTexture;
+      const declared = check(sh, "with maps");
+      expect(declared.filter((m) => m[1] === "sampler2DShadow").map((m) => m[2])).toEqual(["tSectLiveShadow", "tSectLiveSunShadow"]);
+      // Swapped, they would not draw.
+      expect(is.sampler2DShadow(key.coarseTexture)).toBe(false);
+      expect(is.sampler2D(key.texture)).toBe(false);
+    } finally {
+      SECT_LIVE.tSectLiveShadow.value = null;
+      SECT_LIVE.tSectLiveShadowB.value = null;
+      SECT_LIVE.tSectLiveSunShadow.value = null;
+      SECT_LIVE.tSectLiveSunShadowB.value = null;
+      key.dispose();
+      sun.dispose();
+    }
+  });
+
+  it("rolls the normal across the courses only on a live roof of the tiles detail class", () => {
+    const plainBlock = liveApplyGlsl();
+    const tilesBlock = liveApplyGlsl(true);
+    const lit = (name: string, ud: Record<string, unknown>) => {
+      const mat = baked(name, ud);
+      setMaterialLive(mat, { atlas: liveAtlasOf(name)!, cls: liveClassOfMaterial(mat) });
+      return { mat, sh: compile(mat) };
+    };
+    const roof = lit("baked.gate_A0.detail.tiles", { detail: "tiles" });
+    expect(liveClassOfMaterial(roof.mat)).toBe("tiles");
+    // A glazed roof shines as glaze but its courses roll all the same.
+    const glazed = lit("baked.gate_A1.detail.tiles.surface.glaze", { detail: "tiles", sectSurface: "glaze" });
+    expect(liveClassOfMaterial(glazed.mat)).toBe("glaze");
+    for (const { mat, sh } of [roof, glazed]) {
+      expect(sh.fragmentShader, mat.name).toContain(tilesBlock);
+      expect(sh.fragmentShader.split("uSectLiveTiles.x").length - 1, mat.name).toBe(1);
+      // The tile coordinates the roll reads come from the vertex shader.
+      expect(sh.vertexShader, mat.name).toContain("vSectUv1 = vec2( uv1.x, 1.0 - uv1.y );");
+      expect(sh.fragmentShader, mat.name).toMatch(/varying vec2 vSectUv1;/);
+      expect(sh.fragmentShader.indexOf("varying vec2 vSectUv1;"), mat.name).toBeLessThan(sh.fragmentShader.indexOf(tilesBlock));
+      expect(sh.uniforms.uSectLiveTiles, mat.name).toBe(SECT_LIVE.uSectLiveTiles);
+    }
+    // Every other class: the plain block, no roll, and a program of its own.
+    for (const [name, ud] of names.filter(([, u]) => u.detail !== "tiles")) {
+      const { mat, sh } = lit(name, ud);
+      expect(sh.fragmentShader, name).toContain(plainBlock);
+      expect(sh.fragmentShader, name).not.toContain("uSectLiveTiles.x");
+      expect(mat.customProgramCacheKey(), name).not.toBe(roof.mat.customProgramCacheKey());
+    }
+    // A roof not lit live has no live code at all.
+    expect(roof.mat.customProgramCacheKey()).toMatch(/\|live-[0-9a-z]+$/);
+    setMaterialLive(roof.mat, null);
+    expect(compile(roof.mat).fragmentShader).not.toMatch(/sectLive|uSectLiveTiles/);
+    expect(roof.mat.customProgramCacheKey()).not.toContain("live");
+  });
+
+  it("gives a live paving material the slabs' relief, from the page's one uniform", () => {
+    const block = liveApplyGlsl(false, true);
+    const uniforms = createDetailUniforms(new Texture(), { time: { value: 0 }, sunDir: new Vector3(0, 0.12, -1).normalize(), rockOctaves: 1 });
+    const mat = new MeshBasicMaterial({ map: new Texture() });
+    mat.name = "baked.gate_A0.detail.paving";
+    mat.userData = { baked: true, detail: "paving" };
+    prepareBakedMaterial(mat, uniforms);
+    setMaterialLive(mat, { atlas: "gate_A0", cls: liveClassOfMaterial(mat) });
+    const sh = compile(mat);
+    const fs = sh.fragmentShader;
+    expect(fs.split(block).length - 1).toBe(1);
+    expect(fs.split("uSectLivePaving.x").length - 1).toBe(1);
+    // The slab helpers it calls (detail.ts pavingGlsl) and the slab coordinates are there before it.
+    for (const s of ["vec2 sectSlab( vec2 q, out vec2 e )", "vec2 sectSlabPos( vec2 q, vec2 id )", "vec3 sectHash3( vec2 p )", "varying vec2 vSectUv1;"]) {
+      expect(fs.indexOf(s), s).toBeGreaterThan(0);
+      expect(fs.indexOf(s), s).toBeLessThan(fs.indexOf(block));
+    }
+    expect(sh.vertexShader).toContain("vSectUv1 = vec2( uv1.x, 1.0 - uv1.y );");
+    expect(sh.uniforms.uSectLivePaving).toBe(SECT_LIVE.uSectLivePaving);
+    // Until live.tsx sets it, no lean and no bevel, with a bevel width above 0.
+    expect(SECT_LIVE.uSectLivePaving.value).toBeInstanceOf(Vector3);
+    expect(SECT_LIVE.uSectLivePaving.value.x).toBe(0);
+    expect(SECT_LIVE.uSectLivePaving.value.z).toBe(0);
+    expect(SECT_LIVE.uSectLivePaving.value.y).toBeGreaterThan(0);
+    // Without the paving detail (no detail uniforms: the low tier) there are no slabs to lean: the plain block.
+    const low = baked("baked.gate_A0.detail.paving", { detail: "paving" });
+    setMaterialLive(low, { atlas: "gate_A0", cls: liveClassOfMaterial(low) });
+    const lfs = compile(low).fragmentShader;
+    expect(lfs).toContain(liveApplyGlsl());
+    expect(lfs).not.toContain("uSectLivePaving.x");
+    // Not lit live: no relief either.
+    setMaterialLive(mat, null);
+    expect(compile(mat).fragmentShader).not.toContain("uSectLivePaving");
+  });
+
+  it("gives a live material with no reflective class the sky sheen and the sky", () => {
+    const sheen = liveSheenGlsl();
+    for (const [name, ud] of names.filter(([, u]) => !u.sectSurface)) {
+      const mat = baked(name, ud);
+      // Not lit live: no sky at all.
+      const plain = compile(mat);
+      expect(plain.fragmentShader, name).not.toContain(ENV_GLSL);
+      expect(Object.keys(plain.uniforms).some((u) => u in SECT_ENV), name).toBe(false);
+      setMaterialLive(mat, { atlas: liveAtlasOf(name)!, cls: liveClassOfMaterial(mat) });
+      const sh = compile(mat);
+      const fs = sh.fragmentShader;
+      expect(fs.split(sheen).length - 1, name).toBe(1);
+      expect(fs.split(ENV_GLSL).length - 1, name).toBe(1);
+      // The sky before main; the sheen after the live texel and the light, before the output.
+      const at = [ENV_GLSL, "void main()", "sectTexel = mix( sectTexel, lTex, sectLiveShare );", "vec3 outgoingLight", sheen, "#include <opaque_fragment>"].map(
+        (x) => fs.indexOf(x),
+      );
+      expect(at.every((i) => i >= 0), name).toBe(true);
+      expect([...at].sort((a, b) => a - b), name).toEqual(at);
+      expect(fs, name).not.toContain("vec3 sLn");
+      for (const u of Object.keys(SECT_ENV) as (keyof typeof SECT_ENV)[]) expect(sh.uniforms[u], `${name} ${u}`).toBe(SECT_ENV[u]);
+    }
+  });
+
+  it("gives a live metal or glaze its reflective class's code and no sheen", () => {
+    const sheen = liveSheenGlsl();
+    const kinds: [string, Record<string, unknown>, "metal" | "glaze" | "iron"][] = [
+      ["baked.gate_A0.surface.metal", { sectSurface: "metal" }, "metal"],
+      ["baked.gate_A1.detail.tiles.surface.glaze", { detail: "tiles", sectSurface: "glaze" }, "glaze"],
+      ["baked.gate_A0", { sectSurface: "iron" }, "iron"],
+    ];
+    for (const [name, ud, kind] of kinds) {
+      const mat = baked(name, ud);
+      setMaterialLive(mat, { atlas: liveAtlasOf(name)!, cls: liveClassOfMaterial(mat) });
+      const fs = compile(mat).fragmentShader;
+      const surface = surfaceGlsl(kind, SECT_LOOK.surfaces, true);
+      expect(fs, name).toContain(surface);
+      expect(fs.indexOf(surface), name).toBeLessThan(fs.indexOf("#include <opaque_fragment>"));
+      expect(fs, name).not.toContain(sheen);
+      expect(fs.split(ENV_GLSL).length - 1, name).toBe(1);
+    }
+  });
+
+  it("lights a material that sways as cloth, with the cloth class's own uniforms", () => {
+    const flag = baked("baked.gate_A0", { sectSway: true });
+    const banner = baked("baked.gate_A1.detail.paving", { detail: "paving", sectSway: true });
+    expect(liveClassOfMaterial(flag)).toBe("cloth");
+    expect(liveClassOfMaterial(banner)).toBe("cloth");
+    // Only the flag idle.ts sets (addSway), and only when true.
+    expect(liveClassOfMaterial(baked("baked.gate_A1.detail.paving", { detail: "paving" }))).toBe("paving");
+    expect(liveClassOfMaterial(baked("baked.gate_A0", { sectSway: 1 }))).toBe("default");
+    expect(liveClassOfMaterial(baked("baked.gate_A0", { sectSway: "true" }))).toBe("default");
+    const cloth = liveClassUniforms("cloth");
+    expect(liveClassUniforms("cloth")).toBe(cloth);
+    for (const mat of [flag, banner]) {
+      setMaterialLive(mat, { atlas: liveAtlasOf(mat.name)!, cls: liveClassOfMaterial(mat) });
+      const sh = compile(mat);
+      expect(sh.fragmentShader, mat.name).toContain("uniform float uSectLiveLift;");
+      // The lift moves where the shadow lookups start; the face normal is never flipped toward the lamps.
+      expect(sh.fragmentShader, mat.name).toContain("sectLiveShadow( vSectWorld + uSectLiveKeyDir * uSectLiveLift, lNg )");
+      expect(sh.fragmentShader, mat.name).not.toMatch(/lNg = - lNg/);
+      expect(sh.uniforms.uSectLiveLift, mat.name).toBe(cloth.uSectLiveLift);
+      expect(sh.uniforms.uSectLiveSpec, mat.name).toBe(cloth.uSectLiveSpec);
+      expect(sh.uniforms.uSectLiveBump, mat.name).toBe(cloth.uSectLiveBump);
+    }
+    // Each class has its own lift, so only cloth's is moved off 0 (live.tsx from LIVE_LOOK.classes).
+    const lifts = LIVE_CLASSES.map((c) => liveClassUniforms(c).uSectLiveLift);
+    expect(new Set(lifts).size).toBe(LIVE_CLASSES.length);
+    for (const c of LIVE_CLASSES) expect(typeof liveClassUniforms(c).uSectLiveLift.value, c).toBe("number");
+  });
+
+  it("keeps the bake's soft shadow off until a stop's index turns it on", () => {
+    // live.tsx applyLook sets it from live.ts liveValues(...).vis.
+    expect(SECT_LIVE.uSectLiveVis.value).toBeInstanceOf(Vector4);
+    expect(SECT_LIVE.uSectLiveVis.value.x).toBe(0);
+    const mat = baked("baked.gate_A0");
+    setMaterialLive(mat, { atlas: "gate_A0", cls: "default" });
+    const sh = compile(mat);
+    expect(sh.fragmentShader).toContain("uniform vec4 uSectLiveVis;");
+    expect(sh.uniforms.uSectLiveVis).toBe(SECT_LIVE.uSectLiveVis);
+  });
+
+  it("shares the graze, close, detail, the bake's gain and post and the caps as the page's own objects, the detail off until a stop's index turns it on", () => {
+    // live.tsx applyLook sets them from live.ts liveValues(...).
+    const want: [keyof typeof SECT_LIVE, string, (v: unknown) => boolean][] = [
+      ["uSectLiveGraze", "vec2", (v) => v instanceof Vector2],
+      ["uSectLiveClose", "vec3", (v) => v instanceof Vector3],
+      ["uSectLiveDetail", "vec4", (v) => v instanceof Vector4],
+      ["uSectLiveBakeGain", "vec3", (v) => v instanceof Vector3],
+      ["uSectLiveBakePost", "vec3", (v) => v instanceof Vector3],
+      ["uSectLiveCaps", "vec2", (v) => v instanceof Vector2],
+    ];
+    expect(SECT_LIVE.uSectLiveDetail.value.x).toBe(0);
+    for (const [name, ud] of names) {
+      const mat = baked(name, ud);
+      setMaterialLive(mat, { atlas: liveAtlasOf(name)!, cls: liveClassOfMaterial(mat) });
+      const sh = compile(mat);
+      for (const [u, type, is] of want) {
+        expect(sh.fragmentShader, `${name} ${u}`).toContain(`uniform ${type} ${u};`);
+        expect(sh.uniforms[u], `${name} ${u}`).toBe(SECT_LIVE[u]);
+        expect(is(SECT_LIVE[u].value), u).toBe(true);
+      }
+    }
+  });
+
+  it("tells which materials can be lit live", () => {
+    expect(isLiveCandidate(baked("baked.gate_A0"))).toBe(true);
+    expect(isLiveCandidate(baked("baked.gate_A1.detail.tiles.surface.glaze", { detail: "tiles", sectSurface: "glaze" }))).toBe(true);
+    expect(isLiveCandidate(baked("baked.vc"))).toBe(false);
+    expect(isLiveCandidate(baked("baked.vc.surface.metal", { sectSurface: "metal" }))).toBe(false);
+    expect(isLiveCandidate(baked("baked.gate_A0.glow.rune_cyan", { glow: 2 }))).toBe(false);
+    expect(isLiveCandidate(baked("baked.gate_A0", {}, false))).toBe(false);
+    expect(isLiveCandidate(baked("trees.mesh.gate"))).toBe(false);
+    const glowCopy = baked("baked.gate_A0");
+    glowCopy.color.multiplyScalar(1.8);
+    expect(isLiveCandidate(glowCopy)).toBe(false);
+    const cut = baked("baked.gate_A0");
+    cut.alphaTest = 0.5;
+    expect(isLiveCandidate(cut)).toBe(false);
+    const notBaked = new MeshBasicMaterial({ map: new Texture() });
+    notBaked.name = "baked.gate_A0";
+    expect(isLiveCandidate(notBaked)).toBe(false);
+  });
+
+  it("never lights a material without its atlas map, a tree card or water, even when bound", () => {
+    const noMap = baked("baked.gate_A0", {}, false);
+    const card = new MeshBasicMaterial({ map: new Texture(), alphaTest: 0.5 });
+    card.name = "trees.cards.gate";
+    card.userData = { baked: true };
+    prepareBakedMaterial(card);
+    const pond = new MeshBasicMaterial({ map: new Texture() });
+    pond.name = "baked.gate_A0";
+    pond.userData = { baked: true };
+    patchMaterial(pond, { lit: false, exposure: 1, water: createWaterUniforms({ level: 0, disc: null }) });
+    for (const mat of [noMap, card, pond]) {
+      const key = mat.customProgramCacheKey();
+      const fs = compile(mat).fragmentShader;
+      setMaterialLive(mat, { atlas: "gate_A0", cls: "default" });
+      expect(mat.customProgramCacheKey(), mat.name).toBe(key);
+      const bound = compile(mat).fragmentShader;
+      expect(bound, mat.name).not.toContain("SECT_LIVE");
+      expect(bound, mat.name).toBe(fs);
+    }
   });
 });

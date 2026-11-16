@@ -64,7 +64,7 @@ import {
   type V3,
 } from "@/lib/sect/idle";
 import { sectSurfaceOf } from "./materials";
-import { PREPARE_SLICE_MS, yieldToBrowser, type HotspotEntry, type SliceOptions } from "./prepare";
+import { sliceBudget, yieldToBrowser, type HotspotEntry, type SliceOptions } from "./prepare";
 
 /** Seconds since the page started, for the sway shader (one clock for every chunk). */
 export const IDLE_TIME: IUniform<number> = { value: 0 };
@@ -126,6 +126,17 @@ export interface IdlePlan {
   reset: () => void;
   /** At rest (reduced motion): everything shows as baked. */
   rested: boolean;
+}
+
+/**
+ * The meshes a plan moves as rigid pieces (the forge's artifacts on their hoop, the formation's
+ * core, the library's scrolls, the cranes). Live light's shadow maps are drawn once, so these must
+ * not cast into them: their shadow would stay behind while they travel.
+ */
+export function idleMovers(plan: IdlePlan | undefined): Set<Object3D> {
+  const out = new Set<Object3D>();
+  for (const r of plan?.rigid ?? []) for (const g of r.groups) for (const ref of g.meshes) out.add(ref.m);
+  return out;
 }
 
 // ---- what moves where ---------------------------------------------------------------------------
@@ -686,11 +697,12 @@ export async function planIdleSliced(
   slice: SliceOptions = {},
 ): Promise<IdlePlan> {
   const now = slice.now ?? (() => performance.now());
-  const budget = slice.budgetMs ?? PREPARE_SLICE_MS;
+  const budgetOf = sliceBudget(slice.budgetMs);
   const pause = slice.pause ?? yieldToBrowser;
   const partial: { plan: IdlePlan | null } = { plan: null };
   const steps = planSteps(id, main, hotspotMeshes, hotspots, partial);
   let t0 = now();
+  let budget = budgetOf();
   for (;;) {
     const r = steps.next();
     if (r.done) return r.value;
@@ -701,6 +713,7 @@ export async function planIdleSliced(
       return partial.plan!;
     }
     t0 = now();
+    budget = budgetOf();
   }
 }
 

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { BoxGeometry, BufferAttribute, type BufferGeometry, Group, Mesh, MeshBasicMaterial, type Object3D, SphereGeometry, Texture } from "three";
+import { BoxGeometry, BufferAttribute, type BufferGeometry, Group, Mesh, MeshBasicMaterial, type Object3D, SphereGeometry, Texture, Vector2, Vector3 } from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { boundsSliced, disposeObjects, imageClosed, mergeSliced, prepareScene, prepareSceneSliced, type PrepareOptions } from "./prepare";
+import { boundsSliced, disposeObjects, imageClosed, isFarSetMesh, mergeSliced, PREPARE_SLICE_MS, prepareScene, prepareSceneSliced, proxyOf, sliceBudget, type PrepareOptions } from "./prepare";
+import { farCardMeshes, setCardFarCut } from "./veg-mesh";
 
 /** A stand-in-like scene: rows of small static meshes sharing two materials (they merge per cell). */
 function scene(): Object3D {
@@ -61,6 +62,49 @@ describe("prepareSceneSliced", () => {
       pause: async () => ac.abort(new Error("cancelled")),
     });
     await expect(p).rejects.toThrow("cancelled");
+  });
+
+  it("asks a budget function at every slice (bigger slices while the scene is covered), same result", async () => {
+    const whole = scene();
+    const one = prepareScene(whole, options());
+    let t = 0;
+    let asked = 0;
+    let pauses = 0;
+    let budget = 2;
+    const r = await prepareSceneSliced(scene(), options(), {
+      budgetMs: () => {
+        asked++;
+        return budget;
+      },
+      now: () => (t += 1),
+      pause: async () => {
+        pauses++;
+        // The loading screen comes up: the slices that follow are ten times longer.
+        budget = 20;
+      },
+    });
+    expect(asked).toBe(pauses + 1);
+    expect(r.mergedInto).toBe(one.mergedInto);
+    // Fewer pauses than with 2 ms slices throughout (the first test's clock gives over 20).
+    let t2 = 0;
+    let pauses2 = 0;
+    await prepareSceneSliced(scene(), options(), { budgetMs: 2, now: () => (t2 += 1), pause: async () => void pauses2++ });
+    expect(pauses).toBeLessThan(pauses2 / 3);
+  });
+});
+
+describe("sliceBudget", () => {
+  it("takes a number, a function, or nothing (PREPARE_SLICE_MS), and never a bad value", () => {
+    expect(sliceBudget(undefined)()).toBe(PREPARE_SLICE_MS);
+    expect(sliceBudget(12)()).toBe(12);
+    expect(sliceBudget(() => 24)()).toBe(24);
+    expect(sliceBudget(() => Number.NaN)()).toBe(PREPARE_SLICE_MS);
+    expect(sliceBudget(-1)()).toBe(PREPARE_SLICE_MS);
+    expect(
+      sliceBudget(() => {
+        throw new Error("no store");
+      })(),
+    ).toBe(PREPARE_SLICE_MS);
   });
 });
 
@@ -217,5 +261,63 @@ describe("imageClosed (a texture three must not upload again)", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe("the backdrop's far set", () => {
+  const under = (parent: string, name: string): Object3D => {
+    const g = new Group();
+    g.name = parent;
+    const m = new Mesh(new BoxGeometry(1, 1, 1), new MeshBasicMaterial());
+    m.name = name;
+    g.add(m);
+    return m;
+  };
+
+  it("knows a far-set mesh by its name, with or without the dots the loader strips", () => {
+    expect(isFarSetMesh(under("backdropfar", "farc0"))).toBe(true);
+    expect(isFarSetMesh(under("backdrop.far", "far.c12"))).toBe(true);
+    expect(isFarSetMesh(under("backdropfar", "farglow"))).toBe(false);
+    expect(isFarSetMesh(under("proxyabode", "proxyabodec0"))).toBe(false);
+    expect(isFarSetMesh(under("sect.gate", "farc0"))).toBe(false);
+  });
+});
+
+describe("the backdrop's stand-in trees", () => {
+  // backdrop_trees.glb.gz: the far trees and every area's stand-in trees are meshes of ONE card material.
+  const build = (proxyFirst: boolean) => {
+    const root = new Group();
+    const cards = new MeshBasicMaterial({ name: "trees.cards.backdrop", map: new Texture(), alphaTest: 0.5 });
+    const far = new Mesh(new BoxGeometry(1, 1, 1), cards);
+    const standIn = new Group();
+    standIn.userData = { proxyOf: "steles" };
+    standIn.add(new Mesh(new BoxGeometry(1, 1, 1), cards));
+    if (proxyFirst) root.add(standIn, far);
+    else root.add(far, standIn);
+    const result = prepareScene(root, { ...options(), cards: { alphaToCoverage: false, sunDir: new Vector3(0, 1, 0) } });
+    const mats = { far: [] as MeshBasicMaterial[], standIn: [] as MeshBasicMaterial[] };
+    root.traverse((o) => {
+      const m = o as Mesh;
+      if (m.isMesh) (proxyOf(m) === null ? mats.far : mats.standIn).push(m.material as MeshBasicMaterial);
+    });
+    return { root, result, ...mats };
+  };
+  const cut = (m: MeshBasicMaterial) => (m.userData.sectCardFar as { value: Vector2 }).value.toArray();
+
+  it.each([true, false])("keep their cards when the crown shells cut the far trees' (stand-in first: %s)", (proxyFirst) => {
+    const { root, result, far, standIn } = build(proxyFirst);
+    expect(far).toHaveLength(1);
+    expect(standIn).toHaveLength(1);
+    // Their own material, still a tree card's (same name, same program, switched with the other cards).
+    expect(standIn[0]).not.toBe(far[0]);
+    expect(standIn[0].name).toBe("trees.cards.backdrop");
+    expect(standIn[0].customProgramCacheKey()).toBe(far[0].customProgramCacheKey());
+    expect(result.cardMaterials).toEqual(expect.arrayContaining([far[0], standIn[0]]));
+    // What veg.tsx does once the backdrop's shells are in: only the far trees' cards are cut.
+    const hidden = farCardMeshes([root], new Map());
+    expect(hidden.map((m) => m.material)).toEqual([far[0]]);
+    setCardFarCut(hidden, 150, 230);
+    expect(cut(far[0])).toEqual([150, 230]);
+    expect(cut(standIn[0])).toEqual([0, 0]);
   });
 });

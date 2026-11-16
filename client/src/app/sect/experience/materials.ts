@@ -8,13 +8,13 @@
 import {
   AdditiveBlending,
   BackSide,
+  CustomBlending,
   type BufferAttribute,
   type InterleavedBufferAttribute,
   type Mesh,
   Color,
   DataTexture,
   DoubleSide,
-  ImageBitmapLoader,
   ImageLoader,
   LinearFilter,
   LinearMipmapLinearFilter,
@@ -22,11 +22,13 @@ import {
   Matrix4,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  OneMinusSrcAlphaFactor,
   RedFormat,
   RepeatWrapping,
   RGBAFormat,
   ShaderChunk,
   ShaderMaterial,
+  SrcAlphaFactor,
   SRGBColorSpace,
   Texture,
   UniformsLib,
@@ -35,11 +37,24 @@ import {
   Vector2,
   Vector3,
   Vector4,
+  ZeroFactor,
   type IUniform,
   type Object3D,
 } from "three";
-import { cardAlphaKind, cardAlphaMapGlsl, cardAlphaTestGlsl, cardRimGlsl, cardSpriteBoostGlsl, cardTwigApplyGlsl, cardViewFadeGlsl, isCutoutCard } from "@/lib/sect/card-shading";
-import { DETAIL_NOISE, detailApplyGlsl, detailClass, detailGlsl, detailProgramKey, detailVertexGlsl, type DetailClass } from "@/lib/sect/detail";
+import { WorkerBitmapLoader } from "./bitmap-decode";
+import { cardAlphaKind, cardAlphaMapGlsl, cardAlphaTestGlsl, cardFarCutGlsl, cardRimGlsl, cardSpriteBoostGlsl, cardTwigApplyGlsl, cardViewFadeGlsl, isCutoutCard } from "@/lib/sect/card-shading";
+import {
+  DETAIL_LOOK,
+  DETAIL_NOISE,
+  detailApplyGlsl,
+  detailClass,
+  detailGlsl,
+  detailProgramKey,
+  detailVertexGlsl,
+  weatherApplyGlsl,
+  weatherGlsl,
+  type DetailClass,
+} from "@/lib/sect/detail";
 import { domeGlsl } from "@/lib/sect/formation";
 import {
   AGX_PUNCHY_GLSL,
@@ -52,10 +67,15 @@ import {
   SECT_FOG_ONCE_DEFINE,
   SCREEN_ADD_GLSL,
   SCREEN_CLIP_GLSL,
+  SCREEN_GRADE_GLSL,
+  SCREEN_GRADE_PARS,
   type FogConstants,
 } from "@/lib/sect/glsl";
+import { createLookData } from "@/lib/sect/look-gpu";
 import { heartMirrorGlsl, MIRROR_PART } from "@/lib/sect/heart-mirror";
+import { liveApplyGlsl, liveAtlasOf, liveClassOf, liveParsGlsl, liveSheenGlsl, liveSurfaceNormalGlsl, type LiveClass } from "@/lib/sect/live";
 import { gradeGlsl, SECT_LOOK, treeLiftGlsl, treeShadeGlsl, unitTint, type SectLook } from "@/lib/sect/look";
+import { FRAME_LOOK, starsGlsl, type FrameLook } from "@/lib/sect/looks";
 import { clumpField, groundNoise, tilingNoise } from "@/lib/sect/noise";
 import {
   CARD_RANGE_MARGIN,
@@ -74,6 +94,14 @@ import {
   type PositionSource,
   type RangeArea,
 } from "@/lib/sect/range-look";
+import {
+  STEAM_BRANCH,
+  STEAM_HIDE_STATEMENT,
+  steamChurnStatement,
+  steamClimbStatement,
+  steamVertexGlsl,
+  steamVertexStatements,
+} from "@/lib/sect/steam";
 import type { Vec3 } from "@/lib/sect/types";
 import type { WaterSurface } from "@/lib/sect/water";
 import { fallGlsl, packWetFalls, selectWetFalls, SHEET, WET, wetArrays, wetRockGlsl, type WetFall } from "@/lib/sect/waterfall";
@@ -214,6 +242,23 @@ export function standInExposure(stops: number): number {
 }
 
 /**
+ * Blending for what veils the world from the overlay (cloud puffs, mist): colour as normal
+ * blending draws it, while the frame's alpha is multiplied by what the veil lets through. The
+ * world leaves alpha at 1, so after the overlay it holds how much of the world still shows at
+ * each pixel, and the contact shade (post/ao.ts), which belongs to the surfaces underneath, is
+ * scaled by it instead of being drawn on top of the mist. Nothing else reads the alpha (the
+ * canvas is opaque), and on the Low tier, which has no post pass, it changes nothing.
+ */
+export function veilBlending<M extends Material>(material: M): M {
+  material.blending = CustomBlending;
+  material.blendSrc = SrcAlphaFactor;
+  material.blendDst = OneMinusSrcAlphaFactor;
+  material.blendSrcAlpha = ZeroFactor;
+  material.blendDstAlpha = OneMinusSrcAlphaFactor;
+  return material;
+}
+
+/**
  * Scene depth for soft edges (clouds, mist, beams): the composer's depth texture once it exists.
  * One shared set of uniforms, so every soft material follows the composer without re-wiring.
  */
@@ -262,6 +307,49 @@ export const SECT_ENV = {
   uSectEnvGround: { value: linear(SECT_LOOK.surfaces.ground) },
   uSectEnvMountains: { value: linear(SECT_LOOK.surfaces.mountains) },
 };
+
+/**
+ * The look's run-time numbers (lib/sect/look-gpu.ts): the haze, the baked surfaces' grade and the
+ * frame grade, one array shared by every material that fogs or grades. look-now.ts fills it each
+ * frame the journey moves; with its switches off (today's dusk) every shader keeps the numbers it
+ * was built with.
+ */
+export const SECT_LOOK_GPU = {
+  uSectLook: { value: createLookData() },
+};
+
+/** The tree cards' warm rim (SECT_LOOK.trees.rim x rimStrength), shared so the journey can move it. */
+export const SECT_TREE_RIM = { value: linear(SECT_LOOK.trees.rim).multiplyScalar(SECT_LOOK.trees.rimStrength) };
+
+/** The sky the analytic pond reflection sees near the horizon and overhead (SECT_LOOK.water), shared. */
+export const SECT_WATER_SKY = {
+  uWaterSkyLow: { value: linear(SECT_LOOK.water.skyLow) },
+  uWaterSkyHigh: { value: linear(SECT_LOOK.water.skyHigh) },
+};
+
+/**
+ * The haze colour (linear) the custom effects fade to: the waterfall mist and spray, the light
+ * beams, the furnace mouths, the cranes, birds and butterflies. It is the land's haze (scene.fog's
+ * colour, twilight included), shared so the look moves them all at once (scene.tsx applyLookNow,
+ * setLookHaze). Until the look sets it, each such material starts it at the colour it was given.
+ */
+export const SECT_HAZE_COLOR = { value: new Color(SECT_LOOK.haze.color) };
+
+/** True once the look sets the shared haze colour: an effect made later keeps the look's. */
+let hazeFromLook = false;
+
+/** The look's haze colour (a hex string or a linear Color) into SECT_HAZE_COLOR, each time the look moves. */
+export function setLookHaze(color: string | Color): void {
+  SECT_HAZE_COLOR.value.set(color);
+  hazeFromLook = true;
+}
+
+/** The shared haze uniform (SECT_HAZE_COLOR) for a material's uFogColor, starting at `fogColor` until the look sets it. */
+export function sharedHazeColor(fogColor: string): { value: Color } {
+  // An effect streaming in while the camera rests must not put today's haze back.
+  if (!hazeFromLook) SECT_HAZE_COLOR.value.set(fogColor);
+  return SECT_HAZE_COLOR;
+}
 
 /**
  * After <fog_pars_fragment> (it uses the haze maths when the material is fogged): the sky along a
@@ -394,14 +482,18 @@ const LUMA_GLSL = "vec3( 0.2126, 0.7152, 0.0722 )";
  * files carry no normals; derivatives give each triangle's), the view's reflection, Schlick's
  * Fresnel, then the class's mix of bake and reflection (SECT_LOOK.surfaces). The bake's brightness
  * stands in for occlusion: a surface baked dark (in shade, under eaves) sees less sky and no sun.
+ * In a material lit live (`live`), the normal map's normal takes over from the face's by the live
+ * share (lib/sect/live.ts liveSurfaceNormalGlsl); without it the code is as it always was. Metal
+ * and iron keep the face's: the half-size map is wrong on thin pieces (a crescent, a blade), and
+ * in a mirror that shows as blotches.
  */
-export function surfaceGlsl(kind: SectSurface, s: SectLook["surfaces"] = SECT_LOOK.surfaces): string {
+export function surfaceGlsl(kind: SectSurface, s: SectLook["surfaces"] = SECT_LOOK.surfaces, live = false): string {
   const f = glslFloat;
   const head = /* glsl */ `
   {
     vec3 sN = normalize( cross( dFdx( vSectWorld ), dFdy( vSectWorld ) ) );
     vec3 sV = normalize( vSectWorld - cameraPosition );
-    if ( dot( sN, sV ) > 0.0 ) sN = - sN;
+    if ( dot( sN, sV ) > 0.0 ) sN = - sN;${live && kind !== "metal" && kind !== "iron" ? liveSurfaceNormalGlsl() : ""}
     vec3 sR = reflect( sV, sN );
     float sF5 = pow( 1.0 - clamp( - dot( sV, sN ), 0.0, 1.0 ), 5.0 );
     float sLum = dot( sectTexel, ${LUMA_GLSL} );
@@ -481,6 +573,150 @@ export function surfaceGlsl(kind: SectSurface, s: SectLook["surfaces"] = SECT_LO
   return `${head}${body}\n  }`;
 }
 
+/**
+ * Live light (lib/sect/live.ts, live.tsx): the uniforms every live material shares. One stop is lit
+ * live at a time, so one set. live.tsx fills them from the stop's index.json and LIVE_LOOK, points
+ * tSectLiveShadow at its shadow map, and ramps uSectLiveMix from 0 (the bake, exactly) to 1. The
+ * objects stay the same for the page's life (three keeps a material's uniforms from its last
+ * compile, so a material switched back and forth must keep seeing these same objects).
+ */
+export const SECT_LIVE = {
+  uSectLiveMix: { value: 0 },
+  uSectLiveSunDir: { value: new Vector3(0, 1, 0) },
+  uSectLiveSunE: { value: new Vector3() },
+  uSectLiveKeyDir: { value: new Vector3(0, 1, 0) },
+  uSectLiveKeyE: { value: new Vector3() },
+  uSectLiveAmbient: { value: 1 },
+  uSectLiveAmbientIrr: { value: 0 },
+  uSectLiveVis: { value: new Vector4(0, 1.5, 8, 1) },
+  uSectLiveGraze: { value: new Vector2(0.25, 0.4) },
+  uSectLiveClose: { value: new Vector3(0.5, 1, 0) },
+  uSectLiveDetail: { value: new Vector4(0, 0.4, 2.5, 0.004) },
+  uSectLiveBakeGain: { value: new Vector3(1, 1, 1) },
+  uSectLiveBakePost: { value: new Vector3(1, 1, 1) },
+  uSectLiveCaps: { value: new Vector2(2.5, 0.25) },
+  uSectLiveBounce: { value: new Vector3() },
+  uSectLiveGain: { value: 1 },
+  uSectLiveExposure: { value: 1 },
+  uSectLiveSat: { value: 1 },
+  uSectLiveSpecular: { value: 1 },
+  uSectLiveCentre: { value: new Vector3() },
+  uSectLiveBlend: { value: new Vector2(0, 1) },
+  tSectLiveShadow: { value: null as Texture | null },
+  tSectLiveShadowB: { value: null as Texture | null },
+  uSectLiveShadowOn: { value: 0 },
+  uSectLiveShadowMatrix: { value: new Matrix4() },
+  uSectLiveShadowMap: { value: new Vector4(1, 1, 0, 0) },
+  uSectLiveShadowBias: { value: new Vector4(0, 0, 1, 1) },
+  uSectLiveShadowPen: { value: new Vector2(0, 1) },
+  tSectLiveSunShadow: { value: null as Texture | null },
+  tSectLiveSunShadowB: { value: null as Texture | null },
+  uSectLiveSunShadowOn: { value: 0 },
+  uSectLiveSunShadowMatrix: { value: new Matrix4() },
+  uSectLiveSunShadowMap: { value: new Vector4(1, 1, 0, 0) },
+  uSectLiveSunShadowBias: { value: new Vector4(0, 0, 1, 1) },
+  uSectLiveSunShadowPen: { value: new Vector2(0, 1) },
+  tSectLiveView: { value: null as Texture | null },
+  uSectLivePaint: { value: new Vector4(0.5, 0.8, 0.3, 0.05) },
+  uSectLiveSurface: { value: new Vector3(1, 4, 1) },
+  uSectLiveTiles: { value: new Vector3(0, 0.2, 0.5) },
+  uSectLivePaving: { value: new Vector3(0, 0.025, 0) },
+};
+
+/** One atlas's live maps (null until live.tsx has them on the GPU). */
+export interface LiveAtlasUniforms {
+  tSectLiveAlbedo: IUniform<Texture | null>;
+  tSectLiveAmbient: IUniform<Texture | null>;
+  tSectLiveNormal: IUniform<Texture | null>;
+}
+
+const liveAtlasMaps = new Map<string, LiveAtlasUniforms>();
+
+/** The live map uniforms of an atlas (by its key, e.g. gate_A0): made once, kept for the page's life. */
+export function liveAtlasUniforms(atlas: string): LiveAtlasUniforms {
+  let u = liveAtlasMaps.get(atlas);
+  if (!u) {
+    u = { tSectLiveAlbedo: { value: null }, tSectLiveAmbient: { value: null }, tSectLiveNormal: { value: null } };
+    liveAtlasMaps.set(atlas, u);
+  }
+  return u;
+}
+
+/** A shine class's uniforms. */
+export interface LiveClassUniforms {
+  uSectLiveSpec: IUniform<Vector4>;
+  uSectLiveBump: IUniform<Vector4>;
+  uSectLiveLift: IUniform<number>;
+}
+
+const liveShine = new Map<LiveClass, LiveClassUniforms>();
+
+/**
+ * A shine class's uniforms, set by live.tsx from LIVE_LOOK.classes: (roughness, f0, tint, lacquer),
+ * its bumps (1 / size, slope, 1 / size, slope) and how far toward the lamp its shadow lookups
+ * start (cloth).
+ */
+export function liveClassUniforms(cls: LiveClass): LiveClassUniforms {
+  let u = liveShine.get(cls);
+  if (!u) {
+    u = { uSectLiveSpec: { value: new Vector4(0.6, 0.04, 0, 0) }, uSectLiveBump: { value: new Vector4(1, 0, 1, 0) }, uSectLiveLift: { value: 0 } };
+    liveShine.set(cls, u);
+  }
+  return u;
+}
+
+/** What a material is lit live with: its atlas's maps and its shine class. */
+export interface LiveBinding {
+  atlas: string;
+  cls: LiveClass;
+}
+
+const liveBound = new WeakMap<Material, LiveBinding>();
+
+/**
+ * Lights a material live (a binding) or gives it back to the bake (null). Read when the shader
+ * compiles, like the reflective class: the caller sets needsUpdate when the change should show.
+ */
+export function setMaterialLive(mat: Material, binding: LiveBinding | null): void {
+  if (binding) liveBound.set(mat, binding);
+  else liveBound.delete(mat);
+}
+
+export function materialLive(mat: Material): LiveBinding | null {
+  return liveBound.get(mat) ?? null;
+}
+
+/**
+ * Whether a material can be lit live: an unlit baked atlas material (it has the atlas map whose
+ * UVs the live maps share), opaque and not cut out, not water, and not a glow (its name, or a
+ * colour pushed above 1 for bloom). The atlas must also be in the stop's index (live.tsx).
+ */
+export function isLiveCandidate(mat: Material): boolean {
+  const b = mat as MeshBasicMaterial;
+  if (!b.isMeshBasicMaterial || !b.map || b.userData?.baked !== true) return false;
+  if (b.transparent || b.alphaTest > 0 || b.alphaMap || isCutoutCard(b.userData)) return false;
+  if (/water|pond/i.test(b.name) || liveAtlasOf(b.name) === null) return false;
+  return Math.max(b.color.r, b.color.g, b.color.b) <= 1.001;
+}
+
+/** A material's shine class (live.ts liveClassOf on its detail class and reflective tag). */
+export function liveClassOfMaterial(mat: Material): LiveClass {
+  return liveClassOf(mat.userData?.detail, sectSurfaceOf(mat), mat.userData?.sectSway === true);
+}
+
+const WEATHER_GLSL = weatherGlsl();
+const WEATHER_APPLY = weatherApplyGlsl();
+const WEATHER_KEY = programTag(WEATHER_GLSL + WEATHER_APPLY);
+/** The weathering's switch (1 on), shared by every material that has it. */
+export const SECT_WEATHER = { uSectWeather: { value: 1 } };
+const LIVE_PARS = liveParsGlsl();
+const LIVE_APPLY = liveApplyGlsl();
+/** The same with the roof tiles' roll, for a material of the tiles detail class. */
+const LIVE_APPLY_TILES = liveApplyGlsl(true);
+// For a paving material: the same, with the slabs' relief (their slab coordinates are vSectUv1).
+const LIVE_APPLY_PAVING = liveApplyGlsl(false, true);
+const LIVE_SHEEN = liveSheenGlsl();
+
 export interface PatchOptions {
   /** Apply the AgX Punchy curve to a lit (MeshStandardMaterial) material. */
   lit: boolean;
@@ -490,6 +726,11 @@ export interface PatchOptions {
   water?: WaterUniforms;
   /** Tiling scan detail on a baked rock or ground surface (lib/sect/detail.ts). */
   detail?: DetailPatch;
+  /**
+   * Weathering (lib/sect/detail.ts weatherGlsl) on a baked material with no detail or reflective
+   * class. prepareBakedMaterial sets it on the tiers that have the detail layers.
+   */
+  weather?: boolean;
 }
 
 /**
@@ -513,6 +754,11 @@ export interface DetailUniforms {
   uSectRockFar: IUniform<number>;
   /** The far rock layer's octaves: 2 on high, 1 on mid (detail.ts rockFarOctaves). */
   uSectRockOctaves: IUniform<number>;
+  /**
+   * Stops per unit of the rock photo's middle band (detail.webp B; detail.ts DETAIL_LOOK.rockMid.gain at
+   * first, 0 = off). A uniform, so it can be tuned from the console without a recompile.
+   */
+  uSectRockMid: IUniform<number>;
 }
 
 /**
@@ -530,6 +776,7 @@ export function createDetailUniforms(tex: Texture, o: { time: IUniform<number>; 
     uSectGroundLayers: { value: 1 },
     uSectRockFar: { value: 1 },
     uSectRockOctaves: { value: o.rockOctaves },
+    uSectRockMid: { value: DETAIL_LOOK.rockMid.gain },
   };
 }
 
@@ -755,6 +1002,22 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
   // lawn grades on every tier, and the detail's range layers (rock streaks, far lawns as canopy).
   const foliage = shade;
   const surfaceClass = grade ? detailClass(mat.userData?.detail) : null;
+  // Weathering (lib/sect/detail.ts weatherGlsl): every atlas-baked surface with no detail class of
+  // its own (by the material's tag, so rock and lawns stay out on a tier with no detail layers).
+  // Not a hotspot's copy (some of those move, and the pattern is fixed in the world), not cloth
+  // that sways, not a card, a tree or water; and not a reflective class (metal, glaze, the
+  // mirror), which is read when the shader compiles, like the class itself.
+  const weatherBase =
+    grade &&
+    opts.weather === true &&
+    surfaceClass === null &&
+    !water &&
+    !hl &&
+    wet &&
+    !tree &&
+    !shade &&
+    !!(mat as MeshBasicMaterial).map &&
+    mat.userData?.sectSway !== true;
   const rock = surfaceClass === "rock";
   const ground = surfaceClass === "ground";
   const range = foliage || rock || ground;
@@ -765,13 +1028,21 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
   // The reflective class is read when the shader compiles (and by the cache key), so a material
   // tagged after loading picks it up at its next compile (needsUpdate).
   const surfaceNow = () => (grade && !water ? sectSurfaceOf(mat) : null);
+  const weatherNow = () => weatherBase && surfaceNow() === null;
   // An alpha-tested tree card (sprite, needle or twig): its grade runs after the cut-out test, so
   // the pixels the test throws away are never graded, and its range weight comes from the vertices
   // wherever no area is near (see below). Read at compile time, like the reflective class.
   const cardGradeNow = () => foliage && !detail && (isCutoutCard(mat.userData) || (mat as MeshBasicMaterial).alphaTest > 0);
+  // Lit live (lib/sect/live.ts, set by live.tsx): read at compile time too. Only an unlit baked
+  // material with its atlas map, never water or a card; the rest compile exactly as before.
+  const liveNow = () => (grade && !water && !cardGradeNow() && (mat as MeshBasicMaterial).map ? materialLive(mat) : null);
   mat.onBeforeCompile = (shader) => {
     const surface = surfaceNow();
     const cardGrade = cardGradeNow();
+    const live = liveNow();
+    const weather = weatherNow();
+    // The look's run-time haze and grades (the fog chunk and the grade read it; shared, not copied).
+    Object.assign(shader.uniforms, SECT_LOOK_GPU);
     if (hl) {
       shader.uniforms.uSectHighlight = hl;
       shader.uniforms.uSectHover = { value: hover };
@@ -779,11 +1050,17 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
     if (water) Object.assign(shader.uniforms, water);
     if (detail) Object.assign(shader.uniforms, detail.uniforms);
     if (wet) Object.assign(shader.uniforms, SECT_WET);
+    if (weather) {
+      shader.uniforms.tSectGroundNoise = { value: getGroundNoiseTexture() };
+      shader.uniforms.uSectWeather = SECT_WEATHER.uSectWeather;
+    }
     if (range) Object.assign(shader.uniforms, SECT_AREAS);
-    const env = !!water || !!surface;
+    // A live material mirrors the sky too (its own sheen, or its reflective class's).
+    const env = !!water || !!surface || !!live;
     if (env) Object.assign(shader.uniforms, SECT_ENV);
     if (surface === "mirror") Object.assign(shader.uniforms, SECT_MIRROR);
-    const needWorld = !!water || !!hl || !!detail || wet || !!surface || range;
+    if (live) Object.assign(shader.uniforms, SECT_LIVE, liveAtlasUniforms(live.atlas), liveClassUniforms(live.cls));
+    const needWorld = !!water || !!hl || !!detail || wet || weather || !!surface || range || !!live;
     if (needWorld) {
       // Paving also passes its slab coordinates (uv1) on (detail.ts detailVertexGlsl; empty for rock and ground).
       const dv = detail ? detailVertexGlsl(detail.kind) : { pars: "", main: "" };
@@ -800,9 +1077,9 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
       hl ? "uniform float uSectHighlight;\nuniform vec3 uSectHover;\n" : ""
     }${needWorld ? "varying vec3 vSectWorld;\n" : ""}${cardGrade ? "varying float vSectRm;\n" : ""}${range ? RANGE_GLSL : ""}${foliage ? FOLIAGE_GLSL : ""}${rock ? ROCK_GLSL : ""}${
       detail ? detailGlsl(detail.kind) : ""
-    }${wet ? WET_GLSL : ""}${tree ? TREE_LIFT_GLSL : ""}${shade ? TREE_SHADE_GLSL : ""}${
+    }${weather ? WEATHER_GLSL : ""}${wet ? WET_GLSL : ""}${tree ? TREE_LIFT_GLSL : ""}${shade ? TREE_SHADE_GLSL : ""}${
       surface === "mirror" ? MIRROR_PARS : ""
-    }`;
+    }${live ? LIVE_PARS : ""}`;
     fs = fs.replace("#include <common>", `#include <common>\n${header}`);
     if (env) fs = fs.replace("#include <fog_pars_fragment>", `#include <fog_pars_fragment>\n${ENV_GLSL}${water ? POND_MIRROR_GLSL : ""}`);
     if (lit) {
@@ -823,17 +1100,25 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
         [
           gradeAt,
           // The texel before the grade: the detail's mossy-rock test reads it (the grade tames green).
-          "  vec3 sectTexel = diffuseColor.rgb / max( diffuse, vec3( 1e-4 ) );",
+          // Lit live, the texel is the live colour (faded into the baked one away from the stop)
+          // before anything else reads it (lib/sect/live.ts liveApplyGlsl).
+          `  vec3 sectTexel = diffuseColor.rgb / max( diffuse, vec3( 1e-4 ) );${live ? `\n${detail?.kind === "tiles" ? LIVE_APPLY_TILES : detail?.kind === "paving" ? LIVE_APPLY_PAVING : LIVE_APPLY}` : ""}`,
           // Near pines: their dark needles lifted toward the far cards' level (look.ts treeLiftLinear).
           tree ? "  sectTexel = sectTreeLift( sectTexel );" : "",
           // 1 on the range, 0 at the stops (range-look.ts sectRangeW; rock also 0 under anything
           // built, sectBuilt: stair piers are rock); the detail's range layers read it too.
+          // An area's far stand-in (prepare.ts SECT_STANDIN) does not read the built mask: the mask
+          // fills as each area's set is prepared and is never emptied, so a stand-in's rock lost its
+          // range look (pale, with dark streaks) once its own area had been loaded, and a spire
+          // seen from far turned into a smooth tube. It looks the same whatever has been loaded.
           // A card far from every area (its vertices' margin, interpolated, is past CARD_RANGE_MARGIN,
           // more than the interpolation can lose) is on the range: exactly 1, without the area loop.
           cardGrade
             ? `  float sectRw = 1.0;\n  if ( vSectRm < ${glslFloat(CARD_RANGE_MARGIN)} ) sectRw = sectRangeW( vSectWorld );`
             : range
-              ? `  float sectRw = sectRangeW( vSectWorld )${rock ? " * ( 1.0 - sectBuilt( vSectWorld ) )" : ""};`
+              ? rock
+                ? "#ifdef SECT_STANDIN\n  float sectRw = sectRangeW( vSectWorld );\n#else\n  float sectRw = sectRangeW( vSectWorld ) * ( 1.0 - sectBuilt( vSectWorld ) );\n#endif"
+                : "  float sectRw = sectRangeW( vSectWorld );"
               : "",
           // Foliage, mossy rock and lawns on the range keep more of their green; range rock is paler
           // (range-look.ts foliageGradeStatements, rockGradeStatements, groundGradeStatements).
@@ -853,13 +1138,16 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
           "  diffuseColor.rgb = sectGraded * diffuse;",
           // Fine detail and the layers the atlas cannot hold (they fog with the rest: fog runs later).
           detail ? detailApplyGlsl(detail.kind) : "",
+          // Patchy tone, rain streaks and a fine grain on walls, pillars and marble (a uniform test inside: not on glow).
+          weather ? WEATHER_APPLY : "",
           // Wet rock beside the falls (a uniform test: glow surfaces stay as they are).
           wet ? "  if ( max( diffuse.r, max( diffuse.g, diffuse.b ) ) <= 1.001 ) diffuseColor.rgb = sectWetRock( diffuseColor.rgb, vSectWorld );" : "",
         ].join("\n"),
       );
     }
     if (water) fs = fs.replace("#include <opaque_fragment>", `${WATER_FRAGMENT}\n#include <opaque_fragment>`);
-    if (surface) fs = fs.replace("#include <opaque_fragment>", `${surfaceGlsl(surface)}\n#include <opaque_fragment>`);
+    if (surface) fs = fs.replace("#include <opaque_fragment>", `${surfaceGlsl(surface, SECT_LOOK.surfaces, !!live)}\n#include <opaque_fragment>`);
+    else if (live) fs = fs.replace("#include <opaque_fragment>", `${LIVE_SHEEN}\n#include <opaque_fragment>`);
     if (hl) {
       // Gold edge glow (Fresnel on the flat face normal) plus a faint warm lift: visible on white
       // marble, where an additive brighten was not.
@@ -882,7 +1170,8 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
   mat.customProgramCacheKey = () => {
     const surface = surfaceNow();
     const k = cardGradeNow() ? `${key}|cardgrade` : key;
-    return surface ? `${k}|surface-${surface}` : k;
+    const ks = surface ? `${k}|surface-${surface}` : weatherNow() ? `${k}|weather-${WEATHER_KEY}` : k;
+    return liveNow() ? `${ks}|live-${LIVE_KEY}` : ks;
   };
   mat.needsUpdate = true;
 }
@@ -891,12 +1180,14 @@ const TREE_LIFT_GLSL = treeLiftGlsl(SECT_LOOK.trees.lift);
 const TREE_SHADE_GLSL = treeShadeGlsl(SECT_LOOK.trees.shade);
 const RANGE_GLSL = rangeGlsl();
 const FOLIAGE_GLSL = foliageGlsl();
-const FOLIAGE_GRADE = foliageGradeStatements(SECT_LOOK.grade);
+const FOLIAGE_GRADE = foliageGradeStatements();
 const ROCK_GLSL = rockGlsl();
-const ROCK_GRADE = rockGradeStatements(SECT_LOOK.grade);
-const GROUND_GRADE = groundGradeStatements(SECT_LOOK.grade);
+const ROCK_GRADE = rockGradeStatements();
+const GROUND_GRADE = groundGradeStatements();
 /** A tag of the range GLSL for the program cache key (a changed constant must recompile). */
 const RANGE_KEY = programTag(RANGE_GLSL + FOLIAGE_GLSL + FOLIAGE_GRADE + ROCK_GLSL + ROCK_GRADE + GROUND_GRADE);
+/** A tag of the live GLSL for the program cache key (its constants are baked in from LIVE_LOOK). */
+const LIVE_KEY = programTag(LIVE_PARS + LIVE_APPLY + LIVE_APPLY_TILES + LIVE_APPLY_PAVING + LIVE_SHEEN + liveSurfaceNormalGlsl());
 
 function programTag(src: string): string {
   let h = 0x811c9dc5;
@@ -929,8 +1220,8 @@ export function createWaterUniforms(w: WaterSurface): WaterUniforms {
     uDiscRimOuter: { value: linear(look.mirrorRimOuter) },
     uDiscRune: { value: linear(look.mirrorRune).multiplyScalar(look.mirrorRuneGain) },
     uDiscBronze: { value: linear(look.mirrorBronze) },
-    uWaterSkyLow: { value: linear(look.skyLow) },
-    uWaterSkyHigh: { value: linear(look.skyHigh) },
+    // Shared, so the journey moves every pond's at once (look-now.ts).
+    ...SECT_WATER_SKY,
     tReflect: { value: null },
     uHasReflect: { value: 0 },
     uReflectMatrix: { value: new Matrix4() },
@@ -969,14 +1260,17 @@ export function aimPondMirror(uniforms: readonly WaterUniforms[], face: { center
 export function patchCardMaterial(mat: MeshBasicMaterial, opts: { alphaToCoverage: boolean; sunDir: Vector3; texSize: Vector2 }): void {
   setCardAlphaMode(mat, opts.alphaToCoverage);
   const kind = cardAlphaKind(mat.userData);
-  const rim = linear(SECT_LOOK.trees.rim).multiplyScalar(SECT_LOOK.trees.rimStrength);
+  // The switch distances past which the crown shells draw this card's tree (veg.tsx sets them; 0, 0: always the card).
+  const far = (mat.userData.sectCardFar as { value: Vector2 } | undefined) ?? { value: new Vector2(0, 0) };
+  mat.userData.sectCardFar = far;
   const prev = mat.onBeforeCompile;
   const prevKey = mat.customProgramCacheKey();
   mat.onBeforeCompile = (shader, renderer) => {
     prev.call(mat, shader, renderer);
     shader.uniforms.uSectTexSize = { value: opts.texSize };
     shader.uniforms.uSectSun = { value: opts.sunDir };
-    shader.uniforms.uSectRim = { value: rim };
+    shader.uniforms.uSectRim = SECT_TREE_RIM;
+    shader.uniforms.uSectCardFar = far;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vSectCardWorld;")
       .replace(
@@ -985,13 +1279,13 @@ export function patchCardMaterial(mat: MeshBasicMaterial, opts: { alphaToCoverag
       );
     let fs = shader.fragmentShader.replace(
       "#include <common>",
-      "#include <common>\nuniform vec2 uSectTexSize;\nuniform vec3 uSectSun;\nuniform vec3 uSectRim;\nvarying vec3 vSectCardWorld;",
+      "#include <common>\nuniform vec2 uSectTexSize;\nuniform vec3 uSectSun;\nuniform vec3 uSectRim;\nuniform vec2 uSectCardFar;\nvarying vec3 vSectCardWorld;",
     );
     // Needle and twig cards cut out with their alpha map (its own UV set and size), read once for
     // the cut-out and the twig's detail; sprite cards with the map's alpha.
     fs = kind
       ? fs.replace("#include <alphamap_fragment>", cardAlphaMapGlsl(kind))
-      : fs.replace("#include <map_fragment>", `#include <map_fragment>\n${cardSpriteBoostGlsl()}\n${cardViewFadeGlsl()}`);
+      : fs.replace("#include <map_fragment>", `#include <map_fragment>\n${cardFarCutGlsl()}\n${cardSpriteBoostGlsl()}\n${cardViewFadeGlsl()}`);
     fs = fs
       .replace("#include <alphatest_fragment>", cardAlphaTestGlsl(kind))
       .replace("#include <opaque_fragment>", `${cardRimGlsl()}\n#include <opaque_fragment>`);
@@ -1088,6 +1382,18 @@ export function getClumpTexture(): DataTexture {
   return tex;
 }
 
+/**
+ * Lets the page's own textures go of a canvas that is going (scene.tsx, when the canvas unmounts):
+ * the noise, ground-noise and clump textures, the moon map and the built mask. Each renderer that
+ * puts one on the GPU hangs a dispose listener on it that holds the renderer's whole state, and these
+ * live for the page: every High-Low-High tier change kept two old renderers alive (about 330 MB).
+ * Disposing them drops that canvas's GPU copies and its listeners; the textures keep their data
+ * (none of them closes its image), so the next canvas uploads them again as it would anyway.
+ */
+export function releasePageTextures(): void {
+  for (const t of [noiseTex, groundNoiseTex, clumpTex, MOON_MAP.tMoon.value, SECT_AREAS.tSectBuilt.value]) t?.dispose();
+}
+
 function linear(hex: string): Color {
   return new Color(hex);
 }
@@ -1113,6 +1419,13 @@ export interface SkyOptions {
   fogColor: string;
   sunColor: string;
   look?: SectLook;
+  /** A look's stars and sky sun (lib/sect/looks.ts; the default has neither change). */
+  frame?: FrameLook;
+  /**
+   * Build the stars in whatever their amount now (the journey turns them up at run time through
+   * the uStars uniform). Without it they are built only when the look has some.
+   */
+  stars?: boolean;
 }
 
 /**
@@ -1122,6 +1435,12 @@ export interface SkyOptions {
  */
 export function createSkyMaterial(o: SkyOptions): ShaderMaterial {
   const look = o.look ?? SECT_LOOK;
+  const frame = o.frame ?? FRAME_LOOK;
+  // A look's stars: their GLSL is only in the shader when there are any, so without them the
+  // shader is as it was.
+  const stars = o.stars === true || frame.stars > 0;
+  const starsPars = stars ? `uniform float uStars;\n${starsGlsl("uStars")}` : "";
+  const starsAdd = stars ? "\n  if ( uStars > 0.0 ) col += vec3( 0.86, 0.9, 1.0 ) * sectStars( d ) * exp( - od ) * smoothstep( 0.0, 0.1, d.y );" : "";
   // The reflections' sky (SECT_ENV) is this dome's: the image, the painted gradient, the haze and
   // the sun are the same uniform objects, reset to the look's day colours here (the twilight blends
   // them in place from these).
@@ -1135,6 +1454,8 @@ export function createSkyMaterial(o: SkyOptions): ShaderMaterial {
   env.uSectEnvGradeMix.value = look.sky.gradeMix;
   env.uSectEnvHaze.value.set(o.fogColor);
   env.uSectEnvSunColor.value.set(o.sunColor);
+  // A look at night has no sun in the sky (nor in the reflections, which share the uniform).
+  if (frame.skySun !== 1) env.uSectEnvSunColor.value.multiplyScalar(frame.skySun);
   env.uSectEnvSunDir.value.set(...o.fog.sunDir).normalize();
   return new ShaderMaterial({
     name: "sect.sky",
@@ -1162,6 +1483,8 @@ export function createSkyMaterial(o: SkyOptions): ShaderMaterial {
       uCloudShade: { value: linear(look.skyClouds.shade) },
       uCloudRim: { value: linear(look.skyClouds.rim) },
       uCoverage: { value: look.skyClouds.coverage },
+      uStars: { value: frame.stars },
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 varying vec3 vDir;
@@ -1191,7 +1514,7 @@ uniform vec3 uCloudShade;
 uniform vec3 uCloudRim;
 uniform float uCoverage;
 varying vec3 vDir;
-${fogLibrary(o.fog)}
+${fogLibrary(o.fog)}${starsPars}
 float sectSkyNoise( vec2 p ) {
   return texture2D( tNoise, p ).r * 0.5 + texture2D( tNoise, p * 2.63 + 0.31 ).r * 0.28
     + texture2D( tNoise, p * 6.9 + 0.67 ).r * 0.14 + texture2D( tNoise, p * 15.3 + 0.13 ).r * 0.08;
@@ -1215,7 +1538,7 @@ void main() {
   col = mix( col, grad, uGradeMix * smoothstep( -0.05, 0.0, d.y ) );
   float od = sectHazeDepth( cameraPosition.y, max( d.y, 0.004 ), 40000.0 ) * SECT_SKY_HAZE;
   vec3 haze = sectHazeColor( uFogColor, d );
-  col = mix( col, haze, 1.0 - exp( - od ) );
+  col = mix( col, haze, 1.0 - exp( - od ) );${starsAdd}
   // Two layers of high cloud on planes far overhead, stretched along one axis, lit from the sun
   // side: pink and gold bodies, bright rims where an edge faces the sun, sinking into the haze
   // toward the horizon.
@@ -1242,8 +1565,17 @@ void main() {
     }
   }
   float c = dot( d, SECT_SUN_DIR );
-  col += uSunColor * ( smoothstep( 0.99990, 0.99996, c ) * 24.0 + pow( max( c, 0.0 ), 900.0 ) * 0.8 + pow( max( c, 0.0 ), 12.0 ) * 0.16 );
+  float cs = max( c, 0.0 );
+  // The sun's light in the air: a tight aureole, a wider glow, the broad lobe. Screened onto the sky,
+  // not added: the sky by the sun is already near 1.0, and a sum past it reaches the hue clip, which
+  // keeps the hue of what it scales down (right for a lantern, wrong here: it drew a flat pink
+  // plate with a hard rim round the sun). Screened, the sky whitens smoothly toward the disc.
+  vec3 glow = uSunColor * ( pow( cs, 1800.0 ) * 1.0 + pow( cs, 350.0 ) * 0.34 + pow( cs, 12.0 ) * 0.16 );
+  col = 1.0 - ( 1.0 - min( col, vec3( 1.0 ) ) ) * ( 1.0 - min( glow, vec3( 1.0 ) ) );
+  // The disc: white-hot, soft at the limb, just hot enough to bloom.
+  col += mix( uSunColor, vec3( 1.0 ), 0.88 ) * ( smoothstep( 0.99986, 0.99996, c ) * 4.0 );
   gl_FragColor = vec4( col, 1.0 );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 ${SCREEN_DITHER_GLSL}
 }
@@ -1287,7 +1619,7 @@ function ensureMoonTexture(): void {
   };
   const failed = (e: unknown) => console.warn("[sect] the moon texture failed to load; the moon stays plain", e);
   if (typeof createImageBitmap !== "undefined") {
-    new ImageBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" }).load(MOON_TEXTURE_URL, done, undefined, failed);
+    new WorkerBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" }).load(MOON_TEXTURE_URL, done, undefined, failed);
   } else {
     new ImageLoader().load(MOON_TEXTURE_URL, done, undefined, failed);
   }
@@ -1309,6 +1641,7 @@ export function createMoonMaterial(fog: FogConstants, color: string, fogColor: s
       uColor: { value: linear(color) },
       uFogColor: { value: linear(fogColor) },
       ...MOON_MAP,
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 varying vec2 vUv;
@@ -1359,6 +1692,7 @@ void main() {
   float od = sectHazeDepth( cameraPosition.y, max( rd.y, 0.004 ), 40000.0 ) * SECT_SKY_HAZE;
   col = mix( col, sectHazeColor( uFogColor, rd ), ( 1.0 - exp( - od ) ) * 0.75 );
   gl_FragColor = vec4( col, smoothstep( 1.0, 0.99, r ) * 0.97 );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
@@ -1380,6 +1714,11 @@ const GLOW_SCREEN_BACK = 0.3;
  * Added unencoded onto that screen, the halo still showed 1.3-1.7 times as bright as on High over
  * the bright evening sky (the sRGB curve is flat there), so on the Low tier it adds the step its
  * light makes over a typical sky behind the moon (glsl.ts screenAdd, GLOW_SCREEN_BACK).
+ *
+ * The lights that only add (this halo, the beams, shafts and dome, the fires, embers and motes) do
+ * not take the look's frame grade on the Low tier, as the shaders that cover what is behind them do
+ * (SCREEN_GRADE_GLSL). On High the post pass grades the light together with what it lands on, and
+ * keeps bright glows through its own gain; a shader that adds on top cannot know what is under it.
  */
 export function createGlowMaterial(color: string, strength: number): ShaderMaterial {
   return new ShaderMaterial({
@@ -1435,6 +1774,7 @@ export function createCloudSeaMaterial(fog: FogConstants, top: string, shadow: s
       uShadow: { value: linear(shadow) },
       uFogColor: { value: linear(fogColor) },
       uRim: { value: linear(SECT_LOOK.puffs.rim) },
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 varying vec3 vWorld;
@@ -1490,6 +1830,7 @@ void main() {
   col = mix( col, haze, 1.0 - exp( - od ) );
   col = mix( col, haze, smoothstep( 4500.0, 8400.0, t ) );
   gl_FragColor = vec4( col, 1.0 );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 ${SCREEN_DITHER_GLSL}
 }
@@ -1507,10 +1848,10 @@ export function createWaterfallMaterial(color: string, opacity = 0.85): ShaderMa
     depthWrite: false,
     side: DoubleSide,
     fog: true,
-    uniforms: UniformsUtils.merge([
-      UniformsLib.fog,
-      { uTime: { value: 0 }, uColor: { value: linear(color) }, uOpacity: { value: opacity } },
-    ]),
+    uniforms: {
+      ...UniformsUtils.merge([UniformsLib.fog, { uTime: { value: 0 }, uColor: { value: linear(color) }, uOpacity: { value: opacity } }]),
+      ...SECT_LOOK_GPU,
+    },
     vertexShader: /* glsl */ `
 #include <fog_pars_vertex>
 varying vec3 vWorld;
@@ -1601,8 +1942,10 @@ export function createWaterfallSheetMaterial(
       tStrands: { value: null },
     },
   ]);
-  // Shared objects (merge clones values): the noise texture and the clock of the other waterfalls.
+  // Shared objects (merge clones values): the noise texture, the clock of the other waterfalls and
+  // the look's run-time haze.
   uniforms.tNoise = { value: getNoiseTexture() };
+  uniforms.uSectLook = SECT_LOOK_GPU.uSectLook;
   uniforms.uTime = time;
   const f = glslFloat;
   const material = new ShaderMaterial({
@@ -1846,13 +2189,21 @@ export function createWetRock(falls: readonly WetFall[], o: { max: number; sunDi
 
 /**
  * Volume cloud puffs as camera-facing sprites (one instanced draw). Each instance is an
- * ellipsoid (centre + three semi-axes); the quad is sized to the ellipsoid's silhouette, shaded
- * like a soft lit sphere with billowy noise, hazed like the scene, faded out when the camera
+ * ellipsoid (centre + three semi-axes); the quad is sized to the ellipsoid's silhouette (never
+ * less than a quarter as tall as it is wide: an edge-on bank needs room for its soft rim), shaded
+ * like a soft lit sphere with billowy noise fixed in the world and a wide feathered rim, hazed
+ * like the scene, faded out when the camera
  * gets close (the film flies through the opening bank), and faded where it meets geometry (soft
  * particles, from the composer's depth texture) so no straight cut shows against cliffs.
+ *
+ * Ice-Fire Island's steam (iRise != 0: the puff's rise span in metres, negated on its second copy)
+ * climbs in a loop while uSteam is on (lib/sect/steam.ts): each steam puff is two copies half a loop
+ * apart that share its density. CloudPuffs turns uSteam off with reduced motion: the first copy is
+ * then the still puff and the second is not drawn. Every other puff skips all of it and comes out as
+ * before.
  */
 export function createCloudPuffMaterial(fog: FogConstants, fogColor: string, look: SectLook = SECT_LOOK): ShaderMaterial {
-  return new ShaderMaterial({
+  return veilBlending(new ShaderMaterial({
     name: "sect.cloudpuff",
     transparent: true,
     depthWrite: false,
@@ -1860,6 +2211,7 @@ export function createCloudPuffMaterial(fog: FogConstants, fogColor: string, loo
     uniforms: {
       tNoise: { value: getNoiseTexture() },
       uTime: { value: 0 },
+      uSteam: { value: 1 },
       uLit: { value: linear(look.puffs.lit) },
       uShade: { value: linear(look.puffs.shade) },
       uRim: { value: linear(look.puffs.rim) },
@@ -1867,6 +2219,7 @@ export function createCloudPuffMaterial(fog: FogConstants, fogColor: string, loo
       uOpacity: { value: look.puffs.opacity },
       uSoft: { value: look.puffs.soft },
       ...SOFT_DEPTH,
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec3 iCenter;
@@ -1874,7 +2227,10 @@ attribute vec3 iA0;
 attribute vec3 iA1;
 attribute vec3 iA2;
 attribute float iDensity;
+attribute float iRise;
 uniform vec3 uFogColor;
+uniform float uTime;
+uniform float uSteam;
 varying vec2 vUv;
 varying vec3 vR;
 varying vec3 vU;
@@ -1884,30 +2240,53 @@ varying float vFade;
 varying float vWf;
 varying float vViewZ;
 varying vec2 vSeed;
+varying vec3 vWorld;
 // The haze, the cloud layer and the sun glow along the ray to the puff's centre: the same for every
 // pixel of a sprite, so they are worked out once per vertex here, not per pixel in the fragment.
 varying vec3 vHaze;
 varying float vHazeMix;
 varying float vCloudMix;
 varying float vToward;
+// 1 on a rising steam sprite (its own noise climbs too), else 0.
+varying float vSteam;
 ${fogLibrary(fog)}
+${steamVertexGlsl()}
 void main() {
-  vec3 toC = iCenter - cameraPosition;
+  // The puff as drawn this frame: as packed, but for Ice-Fire Island's steam, whose two copies climb
+  // through its place half a loop apart (lib/sect/steam.ts steamLoop) while uSteam is on.
+  vec3 puffC = iCenter;
+  vec3 puffA0 = iA0;
+  vec3 puffA1 = iA1;
+  vec3 puffA2 = iA2;
+  float puffD = iDensity;
+  vSteam = 0.0;
+  ${STEAM_BRANCH}
+${steamVertexStatements()}
+  }
+  vec3 toC = puffC - cameraPosition;
   float dist = max( length( toC ), 1e-3 );
   vec3 f = toC / dist;
   vec3 up = abs( f.y ) > 0.985 ? vec3( 1.0, 0.0, 0.0 ) : vec3( 0.0, 1.0, 0.0 );
   vec3 r = normalize( cross( f, up ) );
   vec3 u = cross( r, f );
   // Half-extents of the ellipsoid along r, u and the view ray: |M^T e|.
-  float wr = length( vec3( dot( iA0, r ), dot( iA1, r ), dot( iA2, r ) ) );
-  float wu = length( vec3( dot( iA0, u ), dot( iA1, u ), dot( iA2, u ) ) );
-  float wf = length( vec3( dot( iA0, f ), dot( iA1, f ), dot( iA2, f ) ) );
+  float wr = length( vec3( dot( puffA0, r ), dot( puffA1, r ), dot( puffA2, r ) ) );
+  float wu = length( vec3( dot( puffA0, u ), dot( puffA1, u ), dot( puffA2, u ) ) );
+  float wf = length( vec3( dot( puffA0, f ), dot( puffA1, f ), dot( puffA2, f ) ) );
+  // A flat bank seen edge on is a strip a few pixels tall: its soft rim has no room and it reads as
+  // a length of tape across the cliff. Give the sprite at least a share of its width in height and
+  // thin it by what it gained (the same mist over more of the screen), so the strip becomes a low
+  // faint veil. Thinned by half of that, the rings round far pillars still read as bright bands.
+  float wu0 = wu;
+  wu = max( wu, wr * 0.4 );
+  float spread = wu0 / wu;
   // The sprite sits on the puff's near side rather than through its centre (scaled to keep its
   // angular size), so what is inside the puff is veiled rather than poking through the sprite.
   float lift = min( 0.6 * wf, 0.5 * dist );
   float k = ( dist - lift ) / dist;
-  vec3 wp = iCenter - f * lift + ( r * position.x * wr + u * position.y * wu ) * k;
+  vec3 wp = puffC - f * lift + ( r * position.x * wr + u * position.y * wu ) * k;
   vUv = position.xy;
+  vWorld = wp;
   vR = r;
   vU = u;
   vF = f;
@@ -1917,12 +2296,16 @@ void main() {
   vCloudMix = 1.0 - exp( - sectCloudDepth( cameraPosition.y, f.y, dist ) );
   vToward = pow( max( dot( f, SECT_SUN_DIR ), 0.0 ), 5.0 );
   // Optical depth through the middle: Blender's normalised density times the chord length.
-  vDepth = iDensity * wf * 2.0;
+  vDepth = puffD * wf * 2.0 * spread;
   vFade = smoothstep( 0.55 * wf, 1.6 * wf, dist );
+  // A small puff far off is a white disc stuck to its pillar: past 300 m the ones under 36 m across fade out.
+  vFade *= mix( 1.0, smoothstep( 10.0, 36.0, wr ), smoothstep( 300.0, 800.0, dist ) );
   vSeed = fract( iCenter.xz * 0.0137 );
   vec4 mv = viewMatrix * vec4( wp, 1.0 );
   vViewZ = mv.z;
   gl_Position = projectionMatrix * mv;
+  // A steam puff's second copy is not drawn while the steam stands still (lib/sect/steam.ts).
+${STEAM_HIDE_STATEMENT}
   // Faded out (the camera is inside or next to the puff): collapse the quad off screen so it
   // costs no fill rate.
   if ( vFade < 0.003 ) gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 );
@@ -1945,38 +2328,67 @@ varying float vFade;
 varying float vWf;
 varying float vViewZ;
 varying vec2 vSeed;
+varying vec3 vWorld;
 varying vec3 vHaze;
 varying float vHazeMix;
 varying float vCloudMix;
 varying float vToward;
+varying float vSteam;
 ${SOFT_PARS}
 ${fogDefines(fog)}
+${SCREEN_GRADE_PARS}
 void main() {
-  float q = length( vUv );
-  if ( q > 1.0 || vFade < 0.003 ) discard;
-  vec2 nuv = vUv * 0.42 + vSeed * 7.0 + vec2( uTime * 0.0015, 0.0 );
-  float n = texture2D( tNoise, nuv ).r * 0.62 + texture2D( tNoise, nuv * 2.4 + 0.29 ).r * 0.38;
-  // Billowy rim: the edge radius wanders with the noise; the base is flatter and denser.
-  float edge = 1.0 - smoothstep( 0.2 + 0.32 * n, 0.98, q + ( 0.5 - n ) * 0.3 );
-  edge *= smoothstep( -1.0, -0.45, vUv.y + ( n - 0.5 ) * 0.5 );
-  float chord = sqrt( max( 1.0 - q * q, 0.0 ) );
-  float tau = vDepth * chord * ( 0.35 + 0.9 * n ) * 0.28;
-  float alpha = ( 1.0 - exp( - tau ) ) * edge;
+  float q2 = dot( vUv, vUv );
+  if ( q2 > 1.0 || vFade < 0.003 ) discard;
+  // The noise is fixed in the world, not in the sprite: neighbouring puffs read one field, so a
+  // row of them is one bank of mist and no puff shows its own ellipse. Three scales, stretched
+  // along the horizontal (mist lies in bands), drifting slowly downwind.
+  vec2 nw = vec2( vWorld.x * 0.82 + vWorld.z * 0.57, vWorld.y * 1.35 ) + vec2( uTime * 0.7, 0.0 );
+  // Steam: the field rises with the steam's copies, so its texture climbs (lib/sect/steam.ts).
+${steamClimbStatement()}
+  float n1 = texture2D( tNoise, nw / 230.0 + vSeed * 0.07 ).r;
+  float n2 = texture2D( tNoise, nw / 83.0 + 0.29 ).r;
+  float n3 = texture2D( tNoise, nw / 31.0 + 0.61 ).r;
+  // The texture's noise sits near 0.5; stretch it so it can cut all the way through.
+  float n = clamp( ( n1 * 0.5 + n2 * 0.32 + n3 * 0.18 - 0.5 ) * 3.4 + 0.5, 0.0, 1.0 );
+  float fine = clamp( ( n3 - 0.5 ) * 3.0 + 0.5, 0.0, 1.0 );
+  // One more field in the sprite's own frame, a few waves across whatever its size: a small thin
+  // puff seen edge on is narrower than the world field's waves and would keep its lens outline.
+  vec2 nl = vUv * vec2( 1.15, 1.9 ) + vSeed * 9.0 + vec2( uTime * 0.004, 0.0 );
+  // Steam: the field slides down the sprite, so its wisps climb (lib/sect/steam.ts).
+${steamChurnStatement()}
+  float own = clamp( ( texture2D( tNoise, nl * 0.5 ).r * 0.6 + texture2D( tNoise, nl * 1.3 + 0.43 ).r * 0.4 - 0.5 ) * 3.6 + 0.5, 0.0, 1.0 );
+  n = mix( n, own, 0.42 );
+  // The body is densest in the middle of the ellipsoid; the noise eats in from the rim, deeper
+  // where the field is thin, so the outline is torn wisps rather than a lens. The rim is a wide
+  // soft band (it starts below zero): a narrow one drew an outline round every puff.
+  float body = 1.0 - q2;
+  float wisp = body * 1.7 - ( 1.0 - n ) * 0.95 - ( 1.0 - fine ) * 0.16 * ( 1.0 - body );
+  float edge = smoothstep( -0.2, 0.8, wisp );
+  float chord = sqrt( max( body, 0.0 ) );
+  float tau = vDepth * chord * ( 0.55 + 0.7 * n ) * 0.3;
+  float alpha = ( 1.0 - exp( - tau ) ) * edge * edge;
   // Where the sprite meets a cliff or the ground: fade over a share of the puff's depth.
   alpha *= sectSoftFade( vViewZ, uSoft * vWf );
   // Soft sphere lighting: low warm sun from the side, brighter tops, warm cream-mauve shade.
   vec3 nrm = normalize( vR * vUv.x + vU * vUv.y - vF * chord );
   float sun = dot( nrm, SECT_SUN_DIR ) * 0.5 + 0.5;
-  float light = clamp( sun * 0.6 + ( vUv.y * 0.5 + 0.5 ) * 0.45 + ( n - 0.5 ) * 0.5 - 0.08, 0.0, 1.0 );
+  // The same field a few metres toward the sun: where the mist is thicker here than there, this
+  // side of a billow faces the light. A little of it, or a bank near the camera turns blotchy.
+  vec2 sunStep = vec2( SECT_SUN_DIR.x * 0.82 + SECT_SUN_DIR.z * 0.57, SECT_SUN_DIR.y * 1.35 ) * 14.0;
+  float relief = ( n2 * 0.62 + n3 * 0.38 ) - ( texture2D( tNoise, ( nw + sunStep ) / 83.0 + 0.29 ).r * 0.62 + texture2D( tNoise, ( nw + sunStep ) / 31.0 + 0.61 ).r * 0.38 );
+  // Thick parts of the field stand a little proud and catch more light; thin parts sit in shade.
+  float light = clamp( sun * 0.6 + ( vUv.y * 0.5 + 0.5 ) * 0.42 + ( n - 0.5 ) * 0.42 + ( fine - 0.5 ) * 0.12 + relief * 1.8 - 0.1, 0.0, 1.0 );
   vec3 col = mix( uShade, uLit, smoothstep( 0.1, 0.9, light ) );
   col += uRim * vToward * ( 1.0 - edge ) * 0.7;
   col = mix( col, vHaze, vHazeMix );
   col = mix( col, SECT_CLOUD_FOG, vCloudMix );
   gl_FragColor = vec4( col, clamp( alpha * vFade * uOpacity, 0.0, 1.0 ) );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
-  });
+  }));
 }
 
 /**
@@ -1984,7 +2396,7 @@ void main() {
  * iRadius) with drifting noise, faded where they meet the ground.
  */
 export function createMistMaterial(fog: FogConstants, fogColor: string, time: IUniform<number>): ShaderMaterial {
-  return new ShaderMaterial({
+  return veilBlending(new ShaderMaterial({
     name: "sect.mist",
     transparent: true,
     depthWrite: false,
@@ -1993,8 +2405,9 @@ export function createMistMaterial(fog: FogConstants, fogColor: string, time: IU
       tNoise: { value: getNoiseTexture() },
       uTime: time,
       uColor: { value: linear(SECT_LOOK.waterfall.mist) },
-      uFogColor: { value: linear(fogColor) },
+      uFogColor: sharedHazeColor(fogColor),
       ...SOFT_DEPTH,
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec3 iCenter;
@@ -2033,6 +2446,7 @@ varying float vRadius;
 varying vec3 vHaze;
 varying float vHazeMix;
 ${SOFT_PARS}
+${SCREEN_GRADE_PARS}
 void main() {
   float q = length( vUv );
   if ( q > 1.0 ) discard;
@@ -2042,16 +2456,19 @@ void main() {
   vec3 col = uColor;
   col = mix( col, vHaze, vHazeMix );
   gl_FragColor = vec4( col, a );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
-  });
+  }));
 }
 
 /**
  * Light beams (the formation's columns of light): additive camera-facing vertical strips
  * (instanced: iBase, iTop, iRadius, iColor), brightest in the core, fading out at the top and at
- * the ground (soft depth).
+ * the ground (soft depth). From a kilometre off a beam is two pixels wide and reads as a scratch on
+ * the sky, so the strip is never narrower than a small angle, and dimmer for the width it gains: a
+ * far beam is a faint soft column.
  */
 export function createBeamMaterial(fog: FogConstants, fogColor: string, time: IUniform<number>): ShaderMaterial {
   return new ShaderMaterial({
@@ -2063,8 +2480,10 @@ export function createBeamMaterial(fog: FogConstants, fogColor: string, time: IU
     uniforms: {
       uTime: time,
       uOpacity: { value: SECT_LOOK.beams.opacity },
-      uFogColor: { value: linear(fogColor) },
+      uFogColor: sharedHazeColor(fogColor),
       ...SOFT_DEPTH,
+      // The look's haze numbers (its fog library reads them).
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec3 iBase;
@@ -2077,15 +2496,20 @@ varying float vViewZ;
 varying float vRadius;
 varying vec3 vDir;
 varying float vDist;
+varying float vGain;
 void main() {
   vec3 axis = iTop - iBase;
   float len = length( axis );
   vec3 a = axis / max( len, 1e-3 );
   vec3 mid = ( iBase + iTop ) * 0.5;
-  vec3 toCam = normalize( cameraPosition - mid );
+  vec3 toMid = cameraPosition - mid;
+  vec3 toCam = normalize( toMid );
   vec3 side = normalize( cross( a, toCam ) );
   float t = position.y * 0.5 + 0.5;
-  vec3 wp = iBase + axis * t + side * position.x * iRadius * 1.6;
+  float half0 = iRadius * 1.6;
+  float halfW = max( half0, length( toMid ) * 0.014 );
+  vGain = sqrt( half0 / halfW );
+  vec3 wp = iBase + axis * t + side * position.x * halfW;
   vUv = vec2( position.x, t );
   vColor = iColor;
   vRadius = iRadius;
@@ -2106,13 +2530,14 @@ varying float vViewZ;
 varying float vRadius;
 varying vec3 vDir;
 varying float vDist;
+varying float vGain;
 ${SOFT_PARS}
 ${fogLibrary(fog)}
 void main() {
   float core = exp( - vUv.x * vUv.x * 6.0 );
   float along = smoothstep( 0.0, 0.06, vUv.y ) * ( 1.0 - smoothstep( 0.55, 1.0, vUv.y ) );
   float flicker = 0.85 + 0.15 * sin( uTime * 1.7 + vUv.y * 12.0 );
-  float a = core * along * flicker * uOpacity * sectSoftFade( vViewZ, vRadius * 2.0 );
+  float a = core * along * flicker * uOpacity * vGain * sectSoftFade( vViewZ, vRadius * 2.0 );
   float od = sectHazeDepth( cameraPosition.y, vDir.y, vDist );
   a *= exp( - od * 0.8 );
   // Linear light, added unencoded (see createGlowMaterial).
@@ -2146,6 +2571,8 @@ export function createShaftMaterial(fog: FogConstants, time: IUniform<number>, m
       uStreaks: { value: 1 },
       tNoise: { value: getNoiseTexture() },
       ...SOFT_DEPTH,
+      // The look's haze numbers (its fog library reads them).
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec3 iBase;
@@ -2255,6 +2682,9 @@ export function createDomeMaterial(fog: FogConstants, color: string, time: IUnif
       uDetail: { value: 1 },
       uColor: { value: linear(color) },
       ...SOFT_DEPTH,
+      // The look's haze numbers (its fog library reads them). Nothing else writes this dome's
+      // uniforms: its colour stays the look's dome colour as built.
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 varying vec3 vNormalW;
@@ -2320,5 +2750,6 @@ export function prepareBakedMaterial(mat: MeshBasicMaterial, detail?: DetailUnif
   mat.fog = true;
   mat.toneMapped = false;
   if (mat.customProgramCacheKey().startsWith("sect|")) return;
-  patchMaterial(mat, { lit: false, exposure: 1, detail: bakedDetail(mat, detail) });
+  // The weathering goes with the detail layers: on the tiers that have their textures.
+  patchMaterial(mat, { lit: false, exposure: 1, detail: bakedDetail(mat, detail), weather: detail != null });
 }

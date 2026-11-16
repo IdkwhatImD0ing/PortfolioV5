@@ -385,6 +385,7 @@ function shownSet(id: string): { set: LoadedSet; map: Texture; freed: Set<Textur
     textures: [map],
     ready: true,
     drawn: true,
+    far: false,
   } as LoadedSet;
   return { set, map, freed };
 }
@@ -430,9 +431,14 @@ describe("disposeSet (a set freed while the canvas still holds it)", () => {
     const { set, map } = shownSet("forge");
     const disposed = vi.fn();
     map.addEventListener("dispose", disposed);
-    // The streamer's drop: off the screen at once, freed after React's commit.
+    // The streamer's drop: off the screen at once, freed after React's commit. A set shown as far
+    // scenery (lib/sect/far.ts) leaves the screen the same way.
+    set.drawn = false;
+    set.far = true;
     retireSet(set);
     expect(drawable(set)).toBe(false);
+    expect(set.drawn || set.far).toBe(false);
+    expect(set.scenes.every((r) => !r.visible)).toBe(true);
     expect(disposed).not.toHaveBeenCalled();
     disposeSet(ctx, set);
     disposeSet(ctx, set);

@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { boundingRadius, packPuffs, PUFF_STRIDE, sortFarToNear, supportRadius } from "./clouds";
 import { parseClouds, parseMeta } from "./parse";
+import { isSteamPuff } from "./range-look";
 import type { CloudPuff, Vec3 } from "./types";
 
 const puff = (c: Vec3, r: Vec3, density = 0.4): CloudPuff => ({
@@ -52,6 +53,36 @@ describe("cloud puffs", () => {
     );
     expect(packed[12]).toBeCloseTo(0.25);
     expect(packed[PUFF_STRIDE + 12]).toBeCloseTo(0.5);
+  });
+
+  it("packs 14 floats a puff, the last its rise span (0 unless asked)", () => {
+    expect(PUFF_STRIDE).toBe(14);
+    const puffs = [puff([1, 2, 3], [4, 5, 6], 0.7), puff([100, 0, 0], [2, 2, 2], 0.3)];
+    const plain = packPuffs(puffs, [], 0);
+    expect(plain.length).toBe(2 * 14);
+    expect(plain[13]).toBe(0);
+    expect(plain[14 + 13]).toBe(0);
+    // The rise callback sees the puff and writes the 14th float; the rest is laid out as before. A
+    // puff with a span is written twice, right after each other, the second copy's span negated.
+    const packed = packPuffs(puffs, [], 0, undefined, (p) => (p.c[0] < 50 ? 6.5 : 0));
+    expect(packed.length).toBe(3 * 14);
+    expect(Array.from(packed.slice(0, 14))).toEqual([1, 2, 3, 4, 0, 0, 0, 5, 0, 0, 0, 6, Math.fround(0.7), 6.5]);
+    expect(Array.from(packed.slice(14, 28))).toEqual([1, 2, 3, 4, 0, 0, 0, 5, 0, 0, 0, 6, Math.fround(0.7), -6.5]);
+    expect(packed[28]).toBe(100);
+    expect(packed[28 + 12]).toBeCloseTo(0.3);
+    expect(packed[28 + 13]).toBe(0);
+    // A span of 0 (or a bad one) is a still puff, written once with 0.
+    expect(Array.from(packPuffs(puffs, [], 0, undefined, (p) => (p.c[0] < 50 ? Number.NaN : -3)))).toEqual(Array.from(plain));
+  });
+
+  it("keeps a steam puff's two copies next to each other in the far-to-near order", () => {
+    const puffs = [puff([0, 0, -10], [1, 1, 1]), puff([0, 0, -300], [1, 1, 1]), puff([0, 0, -50], [1, 1, 1])];
+    const packed = packPuffs(puffs, [], 0, undefined, (p) => (p.c[2] === -50 ? 4 : 0));
+    const order = sortFarToNear(packed, [0, 0, 0], new Uint32Array(4), new Float32Array(4));
+    // -300 (index 0), the -50 puff's two copies (1 then 2), -10 (3): the others keep their order.
+    expect(Array.from(order)).toEqual([1, 2, 3, 0]);
+    expect(packed[2 * 14 + 13]).toBe(4);
+    expect(packed[3 * 14 + 13]).toBe(-4);
   });
 
   it("sorts far to near", () => {
@@ -131,6 +162,15 @@ describe("installed Ice-Fire steam", () => {
     // The plume starts in the crater and the snout's steam on the top: inside the island's box.
     expect(s.steam[0].c[1]).toBeLessThan(s.top);
     expect(s.steam.filter((p) => p.c[1] < s.top).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("is the steam that rises (range-look.ts isSteamPuff, steam.ts), all 15 puffs of it", () => {
+    const s = load();
+    if (!s) return;
+    const all = parseClouds(JSON.parse(readFileSync(path.join(dir, "clouds.json"), "utf8")));
+    const rising = all.filter((p) => isSteamPuff(p));
+    expect(rising).toHaveLength(15);
+    expect(new Set(rising.map((p) => p.c.join(",")))).toEqual(new Set(s.steam.map((p) => p.c.join(","))));
   });
 
   it("is one unbroken column above the island's top", () => {

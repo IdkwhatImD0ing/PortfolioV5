@@ -14,14 +14,27 @@
  *    materials (materials.py loads them from <project>/assets/web; rblender.py uploads that folder). Colour maps
  *    stay sRGB; displacement and masks are written as 1-channel greyscale (load them as Non-Color).
  * 2. <detail.webp>: the page's tiling detail texture, 1024 x 1024 RGB, near-lossless WebP, seamless.
- *    R = marble_cliff_06 (one 8.14 m tile), G = leafy_grass (2.0 m), B = Moss001 (1.5 m). Each channel is the
- *    high-passed luminance of the whole tile: log2 of linear luminance minus its Gaussian blur (sigma 12 cm in
- *    that tile's metres, wrap-around), mapped to 0.5 + k * hp with k set so the std is 0.12, clamped. Log
- *    luminance because the page multiplies the baked colour by exp2((d - 0.5) * gain): the scan's contrast then
- *    comes back as a ratio, the same in light and shadow. Near-lossless because the three channels are
- *    unrelated: lossy WebP stores colour as YUV 4:2:0, which blurs and mixes them (measured RMS error 14 levels
- *    against a std of 31); near-lossless q40 changes each channel by at most 4 levels (0.5% brightness at the
- *    page's gain) for half the bytes of lossless (1.2 vs 2.35 MB).
+ *    R = mtn_cliff (one 8.14 m tile), G = leafy_grass (2.0 m), B = mtn_cliff again, its middle band. mtn_cliff is
+ *    the rock tile tools/make_rock_tile.py --flatten 8,1 cuts from Poly Haven's mountainside skin (round 60,
+ *    docs/scene/rock-r60.md; it was marble_cliff_06 before).
+ *    R and G are the high-passed luminance of the whole tile: log2 of linear luminance minus its Gaussian blur
+ *    (sigma 12 cm in that tile's metres, wrap-around), mapped to 0.5 + k * hp with k set so the std is 0.12,
+ *    clamped. B is a band of the same log luminance (DETAIL_BAND_M: the blur at 0.12 m minus the blur at 1.0 m),
+ *    mapped the same way. It is the rock photo the bake itself uses, at the bake's own tile, so the page can read
+ *    it where the bake did (client/src/lib/sect/detail.ts ROCK_SCAN) and sharpen the cracks and blocks the bake
+ *    blurred. Log luminance because the page multiplies the baked colour by exp2((d - 0.5) * gain): the scan's
+ *    contrast then comes back as a ratio, the same in light and shadow. Near-lossless because the three channels
+ *    are unrelated: lossy WebP stores colour as YUV 4:2:0, which blurs and mixes them (measured RMS error 14
+ *    levels against a std of 31); near-lossless q40 changes each channel by at most 4 levels (0.5% brightness at
+ *    the page's gain) for half the bytes of lossless (1.2 vs 2.35 MB).
+ *        node prep_textures.mjs <assets dir> <detail.webp> --detail-only     builds only this one
+ *    It prints each channel's k and a hash of its bytes before encoding (same sources and code, same hash), and
+ *    for B the page gain that matches the bake's own share of the photo (detail.ts DETAIL_LOOK.rockMid).
+ *    `--keep-rg <shipped detail.webp>` takes R and G from the shipped file as it decodes, bit for bit (after
+ *    checking they are the bands made here, within 4 levels), and writes the result lossless so they stay so:
+ *    only B changes. Round 58 built B that way (docs/sect/surfaces.md, "The rock's middle band").
+ *    `--keep-g <shipped detail.webp>` does the same for G alone, for a new rock photo: R and B change, the grass
+ *    stays bit for bit (--keep-rg throws there, since R changed). Round 60 built it that way.
  *
  * 3. <assets>/web/twig_card.png: the near pines' needle-card texture (bake_trees.py TWIG_TEX: Blender reads its G
  *    as the cards' cut-out for shadow rays and sprite renders; the tree GLBs embed it as the 'twig' card texture,
@@ -38,6 +51,7 @@
  * Every resize is wrap-aware (the tile is padded with its own opposite edges, resized by an exact integer
  * factor, then cropped), so the outputs stay seamless. Prints sizes and the detail texture's per-channel stats.
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -76,6 +90,11 @@ const JPG_MAX_BYTES = 5e6;                 // rblender.py uploads files under 5 
 const JPGS = [
   ['marble_cliff_06_diff.jpg', 'polyhaven/marble_cliff_06/marble_cliff_06_diff_4k.jpg', 'colour'],   // 8.14 m tile
   ['marble_cliff_06_disp.jpg', 'polyhaven/marble_cliff_06/marble_cliff_06_disp_4k.jpg', 'grey'],
+  // rock_cliff's photo since round 60, 8.14 m tile. tools/make_rock_tile.py --flatten 8,1 writes derived/ and its
+  // own box copies, and the round 60 bake read those. The copies made here differ a little (the diff's mean
+  // brightness by 0.01 %), enough for patch_r59_rock.py to call a file baked from the other copy 'differs'.
+  ['mtn_cliff_diff.jpg', 'derived/mtn_cliff/mtn_cliff_diff_4k.jpg', 'colour'],
+  ['mtn_cliff_disp.jpg', 'derived/mtn_cliff/mtn_cliff_disp_4k.jpg', 'grey'],
   ['rock063_color.jpg', 'ambientcg/Rock063/Rock063_4K-JPG_Color.jpg', 'colour'],                     // 4.0 x 2.0 m
   ['rock063_disp.jpg', 'ambientcg/Rock063/Rock063_4K-JPG_Displacement.jpg', 'grey'],
   ['leafy_grass_diff.jpg', 'polyhaven/leafy_grass/leafy_grass_diff_4k.jpg', 'colour'],               // 2.0 m
@@ -90,11 +109,22 @@ const DETAIL_SIGMA_M = 0.12;               // high-pass blur, metres
 const DETAIL_STD = 0.12;                   // target std of each channel (0..1)
 const LOG_EPS = 0.004;                     // log2(Y + eps): keeps black crevices finite
 const DETAIL_WEBP = { nearLossless: true, quality: 40, effort: 6 };
-// channel order R, G, B; tile sizes must match the client's DETAIL_TILE_M
+// --keep-rg / --keep-g: the channels taken from the shipped file must lie within this of the bands made here (the
+// q40 bound), and the file is written lossless so they stay bit for bit (1.33 MB in round 58, against 1.19 MB before)
+const DETAIL_KEEP_TOL = 4;
+const DETAIL_WEBP_KEPT = { lossless: true, effort: 6 };
+// B: the rock photo's middle band, the blur at [0] minus the blur at [1] (metres; detail.ts ROCK_SCAN.bandM)
+const DETAIL_BAND_M = [0.12, 1.0];
+// The bake's share of the rock photo's log luminance (materials.py _photo_mix with ROCK_SCAN_MIX 0.6 and
+// ROCK_SCAN_HUE 0.55: albedo luminance ~ 0.268 + 0.732 L), so a page gain of BAKE_SCAN_SHARE / k on B adds the
+// band as strongly as the bake's own photo holds it.
+const BAKE_SCAN_SHARE = 0.6 + 0.6 * 0.55 * (1 - 0.6);
+// channel order R, G, B; tile sizes must match the client's DETAIL_TILE_M (rock, ground) and ROCK_SCAN.tileM;
+// band [lo, hi] m: the blur at lo (0 = none) minus the blur at hi
 const DETAIL = [
-  { ch: 'R', src: 'polyhaven/marble_cliff_06/marble_cliff_06_diff_4k.jpg', tileM: 8.14 },
-  { ch: 'G', src: 'polyhaven/leafy_grass/leafy_grass_diff_4k.jpg', tileM: 2.0 },
-  { ch: 'B', src: 'ambientcg/Moss001/Moss001_4K-JPG_Color.jpg', tileM: 1.5 },
+  { ch: 'R', src: 'derived/mtn_cliff/mtn_cliff_diff_4k.jpg', tileM: 8.14, band: [0, DETAIL_SIGMA_M] },
+  { ch: 'G', src: 'polyhaven/leafy_grass/leafy_grass_diff_4k.jpg', tileM: 2.0, band: [0, DETAIL_SIGMA_M] },
+  { ch: 'B', src: 'derived/mtn_cliff/mtn_cliff_diff_4k.jpg', tileM: 8.14, band: DETAIL_BAND_M },
 ];
 
 const PAD_OUT = 16;                        // wrap padding in output pixels (Lanczos3 needs 3 x the shrink factor)
@@ -195,8 +225,12 @@ const LIN = Float64Array.from({ length: 256 }, (_, v) => {
   return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
 });
 
-/** One detail channel (0..255) from a tile: high-passed log luminance with std DETAIL_STD. */
-async function detailChannel(file, tileM) {
+/**
+ * One detail channel (0..255) from a tile: a band of its log luminance with std DETAIL_STD. The band is the
+ * blur at loM minus the blur at hiM (sigmas in the tile's metres); loM 0 takes the luminance itself (a
+ * high-pass, the same arithmetic as ever, so R and G come out byte for byte as before).
+ */
+async function detailBand(file, tileM, loM, hiM) {
   const n = DETAIL_PX;
   const img = await wrapResize(file, n, n);
   const L = new Float32Array(n * n);
@@ -205,19 +239,21 @@ async function detailChannel(file, tileM) {
     const y = 0.2126 * LIN[img.data[p]] + 0.7152 * LIN[img.data[p + 1]] + 0.0722 * LIN[img.data[p + 2]];
     L[i] = Math.log2(y + LOG_EPS);
   }
-  const sigma = DETAIL_SIGMA_M / tileM * n;
+  const sigma = hiM / tileM * n;
+  const sigmaLo = loM / tileM * n;
+  const A = loM > 0 ? blurWrap(L, n, n, sigmaLo) : L;
   const B = blurWrap(L, n, n, sigma);
   let s2 = 0;
-  for (let i = 0; i < n * n; i++) { L[i] -= B[i]; s2 += L[i] * L[i]; }
+  for (let i = 0; i < n * n; i++) { A[i] -= B[i]; s2 += A[i] * A[i]; }
   const k = DETAIL_STD / Math.sqrt(s2 / (n * n));
   const out = new Uint8Array(n * n);
   let clipped = 0;
   for (let i = 0; i < n * n; i++) {
-    const v = Math.round((0.5 + k * L[i]) * 255);
+    const v = Math.round((0.5 + k * A[i]) * 255);
     if (v < 0 || v > 255) clipped++;
     out[i] = Math.max(0, Math.min(255, v));
   }
-  return { px: out, sigma, k, clipped: clipped / (n * n) };
+  return { px: out, sigma: [sigmaLo, sigma], k, clipped: clipped / (n * n) };
 }
 
 function channelStats(data, c, ch, n) {
@@ -227,17 +263,42 @@ function channelStats(data, c, ch, n) {
   return { mean, std: Math.sqrt(Math.max(0, s2 / n - mean * mean)) };
 }
 
-async function makeDetail(assets, outFile) {
+/** detail.webp; with `keep` ({ file: a detail.webp, ch: channel indices }), those channels are kept exactly from
+ * that file and the rest are new (lossless): --keep-rg keeps R and G ([0, 1]), --keep-g only G ([1]). */
+async function makeDetail(assets, outFile, keep = null) {
   const n = DETAIL_PX;
   const rgb = Buffer.alloc(n * n * 3);
   for (let c = 0; c < 3; c++) {
     const d = DETAIL[c];
-    const r = await detailChannel(path.join(assets, d.src), d.tileM);
+    const r = await detailBand(path.join(assets, d.src), d.tileM, d.band[0], d.band[1]);
     for (let i = 0; i < n * n; i++) rgb[i * 3 + c] = r.px[i];
-    console.log(`detail ${d.ch}: ${d.src} (${d.tileM} m tile) sigma ${r.sigma.toFixed(1)} px, k ${r.k.toFixed(3)}, `
-      + `clipped ${(100 * r.clipped).toFixed(2)}%`);
+    const sha = crypto.createHash('sha1').update(r.px).digest('hex').slice(0, 12);
+    console.log(`detail ${d.ch}: ${d.src} (${d.tileM} m tile) band ${d.band[0]}-${d.band[1]} m = `
+      + `${r.sigma[0].toFixed(1)}-${r.sigma[1].toFixed(1)} px, k ${r.k.toFixed(4)}, clipped ${(100 * r.clipped).toFixed(2)}%, `
+      + `bytes sha1 ${sha}`);
+    if (d.band[0] > 0) {
+      console.log(`  the bake holds this band at ${BAKE_SCAN_SHARE.toFixed(3)} of the photo's log luminance: a page gain of `
+        + `${(BAKE_SCAN_SHARE / r.k).toFixed(3)} on ${d.ch} matches it, half of it ${(0.5 * BAKE_SCAN_SHARE / r.k).toFixed(3)} `
+        + '(detail.ts ROCK_SCAN.bandK, DETAIL_LOOK.rockMid.gain)');
+    }
   }
-  const buf = await sharp(rgb, { raw: { width: n, height: n, channels: 3 } }).webp(DETAIL_WEBP).toBuffer();
+  let webp = DETAIL_WEBP;
+  if (keep) {
+    // The kept channels as the shipped file decodes, bit for bit, once they prove to be the same bands (within
+    // the near-lossless error). Lossless then, or the encoder would move them again.
+    const old = await sharp(keep.file).raw().toBuffer({ resolveWithObject: true });
+    const oc = old.info.channels;
+    if (old.info.width !== n || old.info.height !== n || oc < 3) throw new Error(`${keep.file}: not a ${n} px RGB detail texture`);
+    for (const c of keep.ch) {
+      let diff = 0;
+      for (let i = 0; i < n * n; i++) diff = Math.max(diff, Math.abs(old.data[i * oc + c] - rgb[i * 3 + c]));
+      if (diff > DETAIL_KEEP_TOL) throw new Error(`${keep.file}: ${'RGB'[c]} is ${diff} levels from the band made here (sources or code changed)`);
+      for (let i = 0; i < n * n; i++) rgb[i * 3 + c] = old.data[i * oc + c];
+      console.log(`  ${'RGB'[c]} kept from ${keep.file} (at most ${diff} levels from the band made here)`);
+    }
+    webp = DETAIL_WEBP_KEPT;
+  }
+  const buf = await sharp(rgb, { raw: { width: n, height: n, channels: 3 } }).webp(webp).toBuffer();
   writeAtomic(outFile, buf);
   // stats of what the page will decode
   const dec = await sharp(buf).raw().toBuffer({ resolveWithObject: true });
@@ -757,17 +818,25 @@ async function main() {
     return;
   }
   const twigOnly = args.includes('--twig-only');
-  const [assets, detail] = args.filter((a) => !a.startsWith('--'));
-  if (!assets || (!detail && !twigOnly)) {
+  const detailOnly = args.includes('--detail-only');  // 2. only (writes nothing into the assets folder)
+  // with --keep-rg: R and G from this detail.webp, bit for bit; with --keep-g: G only
+  const kr = args.indexOf('--keep-rg'), kg = args.indexOf('--keep-g');
+  const ki = Math.max(kr, kg);
+  const keepFile = ki >= 0 ? args[ki + 1] : null;
+  const [assets, detail] = args.filter((a, i) => !a.startsWith('--') && (ki < 0 || i !== ki + 1));
+  if (!assets || (!detail && !twigOnly) || (twigOnly && detailOnly) || (kr >= 0 && kg >= 0)
+    || (ki >= 0 && (!keepFile || keepFile.startsWith('--')))) {
     console.error('usage: node prep_textures.mjs <assets dir> <detail.webp path>\n'
+      + '       node prep_textures.mjs <assets dir> <detail.webp path> --detail-only [--keep-rg | --keep-g <shipped detail.webp>]\n'
       + '       node prep_textures.mjs <assets dir> --twig-only');
     process.exit(2);
   }
+  const keep = ki >= 0 ? { file: path.resolve(keepFile), ch: kr >= 0 ? [0, 1] : [1] } : null;
   if (!twigOnly) {
-    await makeJpgs(path.resolve(assets));
-    await makeDetail(path.resolve(assets), path.resolve(detail));
+    if (!detailOnly) await makeJpgs(path.resolve(assets));
+    await makeDetail(path.resolve(assets), path.resolve(detail), keep);
   }
-  await makeTwig(path.resolve(assets));
+  if (!detailOnly) await makeTwig(path.resolve(assets));
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });

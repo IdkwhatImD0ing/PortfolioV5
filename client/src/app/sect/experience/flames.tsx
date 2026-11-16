@@ -34,7 +34,7 @@
  * sparks, the light holds as baked and the molten glow stops flickering.
  */
 import { useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   AddEquation,
   Box3,
@@ -93,13 +93,14 @@ import {
   openingQuads,
   type FireSource,
 } from "@/lib/sect/flames";
-import { fogLibrary, glslFloat, type FogConstants } from "@/lib/sect/glsl";
+import { fogLibrary, glslFloat, SCREEN_GRADE_GLSL, type FogConstants } from "@/lib/sect/glsl";
 import type { Quality } from "@/lib/sect/runtime";
 import type { SectMeta } from "@/lib/sect/types";
 import { distanceFade, fxTier } from "@/lib/sect/water";
 import type { LoadedSet } from "./assets";
 import { FORGE_FIRE_GLOW } from "./fx";
-import { getNoiseTexture, SOFT_DEPTH } from "./materials";
+import { getNoiseTexture, SECT_LOOK_GPU, sharedHazeColor, SOFT_DEPTH } from "./materials";
+import { keepShaderProgramsBeforeFree, materialsOf, primePrograms, programsReady } from "./program-prime";
 import type { SectStore } from "./store";
 
 const f = glslFloat;
@@ -128,7 +129,7 @@ float flameSoftFade( float fragViewZ, float len ) {
 `;
 
 /** Per-fire uniforms the draws share (a fire's weight is 0 when it is not drawn). */
-interface SourceUniforms {
+export interface SourceUniforms {
   uOn: { value: Float32Array };
   /** right.xz, normal.xz (openings); unused for beds. */
   uFrame: { value: Vector4[] };
@@ -138,7 +139,8 @@ interface SourceUniforms {
   uBase: { value: Vector4[] };
 }
 
-function sourceUniforms(sources: readonly FireSource[]): SourceUniforms {
+/** The fires' shared uniforms (exported, with the materials below, for the tests). */
+export function sourceUniforms(sources: readonly FireSource[]): SourceUniforms {
   const frame = Array.from({ length: N }, () => new Vector4());
   const dim = Array.from({ length: N }, () => new Vector4());
   const base = Array.from({ length: N }, () => new Vector4());
@@ -166,7 +168,7 @@ vec3 flameAir( vec3 col, vec3 world ) {
 // ---------------------------------------------------------------------------------------------
 // Mouths: a fire box seen through the opening
 
-function mouthMaterial(src: SourceUniforms, fog: FogConstants, fogColor: string, sheets: number): ShaderMaterial {
+export function mouthMaterial(src: SourceUniforms, fog: FogConstants, fogColor: string, sheets: number): ShaderMaterial {
   return new ShaderMaterial({
     name: "sect.fire.mouths",
     transparent: true,
@@ -179,7 +181,9 @@ function mouthMaterial(src: SourceUniforms, fog: FogConstants, fogColor: string,
       tFlameNoise: { value: getNoiseTexture() },
       uTime: { value: 0 },
       uCalm: { value: 0 },
-      uFogColor: { value: new Color(fogColor) },
+      // The land's haze and the look's numbers (materials.ts), so the far furnaces fade as it does.
+      uFogColor: sharedHazeColor(fogColor),
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec2 aLocal;
@@ -277,6 +281,8 @@ void main() {
   rd /= max( dist, 1e-3 );
   col = sectAerial( col, uFogColor, rd, sectHazeDepth( cameraPosition.y, rd.y, dist ) );
   gl_FragColor = vec4( col, vOn );
+  // It covers what is behind it, so on the Low tier's screen it takes the look's frame grade itself.
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
@@ -286,7 +292,7 @@ void main() {
 // ---------------------------------------------------------------------------------------------
 // Flame cards over the beds
 
-function cardMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
+export function cardMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
   return new ShaderMaterial({
     name: "sect.fire.flames",
     transparent: true,
@@ -304,6 +310,8 @@ function cardMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
       tFlameNoise: { value: getNoiseTexture() },
       uTime: { value: 0 },
       uCalm: { value: 0 },
+      // The look's haze numbers: the air in between takes the look's share of the light.
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iA;
@@ -378,7 +386,8 @@ void main() {
   if ( h <= 0.0 ) discard;
   float k = vOn * flameSoftFade( vViewZ, ${f(FLAMES.soft)} );
   vec3 col = sectFlameColor( h ) * k;
-  // Linear light, added unencoded (as fx.tsx's fire): see the note there on the Low tier.
+  // Linear light, added unencoded (as fx.tsx's fire): see the note there on the Low tier. No frame
+  // grade of its own there either (see materials.ts createGlowMaterial).
   gl_FragColor = vec4( flameAir( col, vWorld ), smoothstep( 0.15, 0.85, h ) * vCover * k );
 }
 `,
@@ -388,7 +397,7 @@ void main() {
 // ---------------------------------------------------------------------------------------------
 // Embers, and the blazes' glow
 
-function emberMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
+export function emberMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
   const B = FLAMES.blaze;
   return new ShaderMaterial({
     name: "sect.fire.embers",
@@ -405,6 +414,8 @@ function emberMaterial(src: SourceUniforms, fog: FogConstants): ShaderMaterial {
       uViewH: { value: 1000 },
       uStill: { value: 0 },
       uGlowColor: { value: new Color(FLAMES.blazeGlow) },
+      // The look's haze numbers: the air in between takes the look's share of the light.
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iE;
@@ -539,7 +550,7 @@ void main() {
  * anything far behind are left alone. A quad round the light's sphere, the whole screen when the
  * camera is in or near it. Needs the depth (High, Medium) and a buffer that holds light above 1.
  */
-function lightMaterial(src: SourceUniforms): ShaderMaterial {
+export function lightMaterial(src: SourceUniforms): ShaderMaterial {
   const L = FLAMES.blaze.light;
   return new ShaderMaterial({
     name: "sect.fire.light",
@@ -882,14 +893,25 @@ export function Flames({ set, meta, store, fog, quality, overlay, debug = false 
       sphere: new Sphere(),
       flick: new Float32Array(sources.length),
       control: { enabled: true, show: { light: true, mouths: true, flames: true, embers: true } as Record<string, boolean> },
+      /**
+       * The warm-up below has its programs linked and their first use run: until then the fire is
+       * not drawn (its carvings show, as for a fire out of view), so its first frame waits on nothing.
+       */
+      primed: false,
     };
   }, [fires, fog, meta.fog.color, tier]);
 
+  // What the cleanup below compiles the kept copies with (read when it runs, not when it was made).
+  const keepWith = useRef({ gl, camera, post: quality.post });
+  keepWith.current = { gl, camera, post: quality.post };
   useEffect(() => {
     if (!built) return;
     overlay.add(built.group);
     return () => {
       overlay.remove(built.group);
+      // Its programs stay for the page (the fire goes with its set; coming back links nothing).
+      const k = keepWith.current;
+      keepShaderProgramsBeforeFree(k.gl, [built.group], k.camera, overlay, k.post);
       built.quad.dispose();
       for (const m of built.meshes) {
         m.geometry.dispose();
@@ -923,8 +945,18 @@ export function Flames({ set, meta, store, fog, quality, overlay, debug = false 
       const prev = gl.getRenderTarget();
       try {
         gl.setRenderTarget(target);
-        void gl.compileAsync(built.group, camera, overlay).catch((e) => console.warn("[sect] fire warm-up failed", e));
+        // Its first use run as soon as it is ready too (program-prime.ts), not on the first frame it shows.
+        const mats = materialsOf([built.group]);
+        void gl
+          .compileAsync(built.group, camera, overlay)
+          .then(() => programsReady(gl, mats))
+          .then(() => (cancelled ? 0 : primePrograms(gl, mats)))
+          .catch((e) => console.warn("[sect] fire warm-up failed", e))
+          .finally(() => {
+            if (!cancelled) built.primed = true;
+          });
       } catch (e) {
+        built.primed = true;
         console.warn("[sect] fire warm-up failed", e);
       } finally {
         gl.setRenderTarget(prev);
@@ -967,7 +999,7 @@ export function Flames({ set, meta, store, fog, quality, overlay, debug = false 
   useFrame((state) => {
     if (!built || !fires || !set) return;
     const on = built.src.uOn.value;
-    const live = set.drawn && built.control.enabled;
+    const live = set.drawn && built.control.enabled && built.primed;
     let any = false;
     if (live) {
       built.m.multiplyMatrices(state.camera.projectionMatrix, state.camera.matrixWorldInverse);

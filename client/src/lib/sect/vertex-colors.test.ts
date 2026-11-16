@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MISSING_COLOR, anyMissingColor, fillMissingColors, repairColors } from "./vertex-colors";
+import { MISSING_COLOR, REPAIR_SLICE, anyMissingColor, fillMissingColors, repairColorSteps, repairColors } from "./vertex-colors";
 
 /**
  * The repair as it was before it learnt to skip work (every triangle every pass, a full sort for
@@ -180,6 +180,27 @@ describe("fillMissingColors", () => {
     c.set([0.5, 0.5, 0.6, 0.5, 0.5, 0.6]);
     expect([...repairColors(c, pos, idx)].sort((a, b) => a - b)).toEqual([2, 3, 4, 5, 6, 7]);
     expect(repairColors(new Float32Array(n * 3).fill(0.3), pos, idx).length).toBe(0);
+  });
+});
+
+describe("repairColorSteps", () => {
+  it("yields on a large mesh and fills exactly what repairColors fills", () => {
+    // 300 x 300 vertices, black patches out of reach of one pass: the fallback colour runs too.
+    const { pos, col, idx } = grid(300, 300, (x, y) => (x % 60 > 20 && x % 60 < 50 && y % 70 > 15) || y < 4, 5);
+    const a = col.slice();
+    const b = col.slice();
+    const filledA = repairColors(a, pos, idx, { passes: 2 });
+    const steps = repairColorSteps(b, pos, idx, { passes: 2 });
+    let yields = 0;
+    let r = steps.next();
+    while (!r.done) {
+      yields++;
+      r = steps.next();
+    }
+    expect(yields).toBeGreaterThan((300 * 300) / REPAIR_SLICE);
+    expect([...r.value]).toEqual([...filledA]);
+    expect(Buffer.from(b.buffer).equals(Buffer.from(a.buffer))).toBe(true);
+    expect(filledA.length).toBeGreaterThan(0);
   });
 });
 

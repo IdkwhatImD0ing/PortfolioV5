@@ -1,7 +1,8 @@
 /**
  * Scroll position -> camera frame, with dwell ("hold") zones where the camera stops so an overlay
  * panel can be read. Distances are in abstract scroll units; the page decides how many pixels a
- * unit is. Moving segments are eased so the camera slows into each hold and speeds out of it.
+ * unit is. Moving segments can be eased so the camera slows into each hold and speeds out of it (the
+ * flight's own feel, FLIGHT_SCROLL, has neither long holds nor easing: it snaps instead, snap.ts).
  */
 import { clamp } from "./camera-path";
 import type { Hold } from "./types";
@@ -49,11 +50,18 @@ export interface ScrollMap {
 }
 
 /**
- * The flight's scroll feel, the same as the first test's: one unit per frame on moving segments
- * and 42 units of dwell at every hold. With eleven holds the page simply gets longer (about 36
- * screens), so each leg between two areas scrolls like the gate-to-mirror leg did.
+ * The flight's scroll feel: one unit per frame, the same pace everywhere, and no dead stretch at a
+ * stop. The camera stops at a stop because the visitor's scrolling rested and it glided there
+ * (snap.ts), not because the scroll position sits in a long hold: the 42-unit holds (5 to 7 wheel
+ * clicks where the camera stood still) and the easing into them (45% speed at every stop) made fast
+ * scrolling stick on every scene. A hold keeps one unit (about 18 px on a 1080 px screen), so "inside
+ * a hold zone" still means at the stop and a scroll position a few pixels off still shows exactly the
+ * hold frame; scrolling through at a slow 20 units a second it stands still for 50 ms. No easing: the
+ * film's own camera already slows into six of the eleven hold frames (it passes the gate, the
+ * mirror, the forge, the mission hall, the jade slip and the summit at a quarter to 70% of its speed
+ * in the middle of their legs), so easing on top made those stops drag.
  */
-export const FLIGHT_SCROLL: Required<ScrollMapOptions> = { unitsPerFrame: 1, dwellUnits: 42, ease: 0.55 };
+export const FLIGHT_SCROLL: Required<ScrollMapOptions> = { unitsPerFrame: 1, dwellUnits: 1, ease: 0 };
 
 export function easeInOut(t: number, e: number): number {
   const x = clamp(t, 0, 1);
@@ -161,16 +169,26 @@ function smooth01(t: number): number {
 }
 
 /**
- * How much each hold's panel shows at scroll position u. With `lastToEnd`, the last hold's panel
- * stays up from its dwell to the end of the track (the contact panel at the bottom of the page).
+ * How much each hold's panel shows at scroll position u. The last hold's panel fades out past its
+ * dwell like every other (the owner, 2026-11-15: past the Moon-Gazing Terrace, looking at the moon,
+ * the contact panel goes; it used to stay up to the end of the track). The music does not go by
+ * this: it follows the camera's area (music.ts areaAtFrame), so the summit's song plays on.
  */
-export function holdPresence(map: ScrollMap, u: number, fadeUnits = 14, lastToEnd = false): Presence[] {
-  const last = map.holds.length - 1;
-  return map.holds.map((z, i) => {
-    const after = lastToEnd && i === last ? 0 : u - z.u1;
-    const d = u < z.u0 ? z.u0 - u : u > z.u1 ? Math.max(after, 0) : 0;
+export function holdPresence(map: ScrollMap, u: number, fadeUnits = 14): Presence[] {
+  return map.holds.map((z) => {
+    const d = u < z.u0 ? z.u0 - u : u > z.u1 ? u - z.u1 : 0;
     return { id: z.id, amount: fadeUnits > 0 ? smooth01(1 - d / fadeUnits) : d === 0 ? 1 : 0 };
   });
+}
+
+/**
+ * True once scroll position u is past the last hold's dwell: the stretch where the flight looks at
+ * the moon after the Moon-Gazing Terrace. Nothing names a place there: the contact panel has faded
+ * (holdPresence) and the rails keep their place label off, so the view is the moon alone.
+ */
+export function pastLastHold(map: ScrollMap, u: number): boolean {
+  const last = map.holds[map.holds.length - 1];
+  return last !== undefined && u > last.u1;
 }
 
 /** 1 at the very top of the page, 0 after `fadeUnits` of scrolling. */

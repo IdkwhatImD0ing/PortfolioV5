@@ -16,7 +16,6 @@ import {
   Color,
   EquirectangularReflectionMapping,
   Group,
-  ImageBitmapLoader,
   ImageLoader,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
@@ -46,6 +45,7 @@ import { FORMATION_DOME, formationShafts, formationTier, isFormationLinkBeam, ty
 import { applyLook, lookFogConstants, SECT_LOOK } from "@/lib/sect/look";
 import { fetchUrl, parseCameraData, parseClouds, parseFlyerPath, parseManifest, parseMeta, resolveAsset } from "@/lib/sect/parse";
 import { combinedProgress, isGzip, meshoptWorkerCount, type Tier } from "@/lib/sect/runtime";
+import type { DetailState } from "@/lib/sect/settle";
 import type { CameraData, ChunkInfo, CloudPuff, FlyerPath, SectManifest, SectMeta, Vec3, Waterfall } from "@/lib/sect/types";
 import { discFromBox, discFromTriangles, dominantFlatLevel, flatLevelBounds, groundedFalls, mistSpots, quadFromCorners, type WaterSurface } from "@/lib/sect/water";
 import { fxAssetUrl, SHEET, sheetFallAttribute, WET, wetFalls } from "@/lib/sect/waterfall";
@@ -68,7 +68,9 @@ import {
   type WaterUniforms,
   type WetRock,
 } from "./materials";
+import { WorkerBitmapLoader, workerDecodePlugin } from "./bitmap-decode";
 import { IDLE_ON, planIdleSliced, type IdlePlan } from "./idle";
+import { lookMeta } from "./look-switch";
 import { REFLECT } from "./reflect/plan";
 import {
   disposeObjects,
@@ -80,6 +82,7 @@ import {
   type HotspotEntry,
   type PrepareResult,
   type SliceOptions,
+  nextTask,
   yieldToBrowser,
 } from "./prepare";
 
@@ -165,7 +168,8 @@ export async function loadSectData(base: string, wantFlyer: boolean, signal?: Ab
     base,
     manifest,
     camera: parseCameraData(cameraRaw),
-    meta: applyLook(parseMeta(metaRaw)),
+    // lookMeta: a ?look= (development only) also sets the sun's and the moon's colour and the vignette.
+    meta: lookMeta(applyLook(parseMeta(metaRaw))),
     flyerPath: flyerRaw ? parseFlyerPath(flyerRaw) : null,
     clouds: cloudsRaw ? parseClouds(cloudsRaw) : [],
   };
@@ -224,6 +228,12 @@ export interface WorldContext {
    * null when the manifest has none or on the low tier (no detail patch at all).
    */
   detail: DetailUniforms | null;
+  /**
+   * Main-thread time one slice of a set's preparation may take now (ms), asked at every slice: the
+   * page sets it from what the visitor sees (more behind the loading screen or the ink:
+   * lib/sect/gpu-queue.ts PREPARE_SLICE). PREPARE_SLICE_MS when absent.
+   */
+  sliceMs?: () => number;
 }
 
 /** A group of GLBs prepared together: the global set, or one chunk. */
@@ -249,6 +259,13 @@ export interface LoadedSet {
   ready: boolean;
   /** Set by the render loop: drawn this frame. */
   drawn: boolean;
+  /**
+   * Set by the render loop: shown as far scenery this frame (lib/sect/far.ts). Loaded and ready,
+   * outside its need range, drawn in full because the page holds it (Quality.farFull). Never true
+   * with `drawn`. Its scenes are visible while either is; everything else that follows `drawn`
+   * (grass, fires, decoration, idle motion, picking, reflections' own passes) ignores it.
+   */
+  far: boolean;
   /** What idles while the chunk is drawn (idle.ts); absent for the global set. */
   idle?: IdlePlan;
   /**
@@ -265,6 +282,9 @@ let gltfLoader: GLTFLoader | null = null;
 function getLoader(): GLTFLoader {
   if (!gltfLoader) {
     gltfLoader = new GLTFLoader();
+    // The files' images are decoded in a worker (bitmap-decode.ts): on the main thread each 4096 px
+    // map cost 10-14 ms there once decoded, mid-flight.
+    gltfLoader.register(workerDecodePlugin as unknown as Parameters<GLTFLoader["register"]>[0]);
     // Decode the compressed geometry in workers: on the main thread each chunk's buffers blocked it
     // for 8-29 ms at a time, mid-flight. The decoder starts its workers from a blob: URL and runs
     // WebAssembly in them; the site sends no Content-Security-Policy (next.config.ts sets no
@@ -281,9 +301,12 @@ function getLoader(): GLTFLoader {
     } catch (e) {
       console.warn("[sect] meshopt workers unavailable; decoding on the main thread", e);
     }
+    // Each buffer goes to the decoder in a task of its own: the decoder copies it before sending it,
+    // and a file's buffers all asked at once made one main-thread task of 5-8 ms of copies.
     gltfLoader.setMeshoptDecoder({
       ...MeshoptDecoder,
-      decodeGltfBufferAsync: (count, size, source, mode, filter) => checked.then(() => MeshoptDecoder.decodeGltfBufferAsync(count, size, source, mode, filter)),
+      decodeGltfBufferAsync: (count, size, source, mode, filter) =>
+        checked.then(nextTask).then(() => MeshoptDecoder.decodeGltfBufferAsync(count, size, source, mode, filter)),
     });
   }
   return gltfLoader;
@@ -314,14 +337,17 @@ function checkMeshoptWorkers(stop: () => void): Promise<void> {
   });
 }
 
-/** Bytes of a URL with progress (Content-Length), cancellable. */
-async function fetchBytes(url: string, signal: AbortSignal | undefined, onBytes: (loaded: number, total: number) => void): Promise<Uint8Array> {
+/** Byte progress of one download: bytes so far, the whole (Content-Length; 0 unknown), and `done` once it has read to the end. */
+export type BytesProgress = (loaded: number, total: number, done?: boolean) => void;
+
+/** Bytes of a URL with progress (Content-Length), cancellable. The last call says `done`. */
+async function fetchBytes(url: string, signal: AbortSignal | undefined, onBytes: BytesProgress): Promise<Uint8Array> {
   const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
   const total = Number(res.headers.get("content-length") ?? 0) || 0;
   if (!res.body) {
     const b = new Uint8Array(await res.arrayBuffer());
-    onBytes(b.length, b.length);
+    onBytes(b.length, b.length, true);
     return b;
   }
   const reader = res.body.getReader();
@@ -334,6 +360,7 @@ async function fetchBytes(url: string, signal: AbortSignal | undefined, onBytes:
     loaded += value.length;
     onBytes(loaded, total);
   }
+  onBytes(loaded, total, true);
   const out = new Uint8Array(loaded);
   let o = 0;
   for (const p of parts) {
@@ -469,7 +496,7 @@ async function inflate(bytes: Uint8Array): Promise<ArrayBuffer> {
 async function loadGlb(
   url: string,
   signal: AbortSignal | undefined,
-  onBytes: (l: number, t: number) => void,
+  onBytes: BytesProgress,
   calm?: () => Promise<void>,
 ): Promise<{ gltf: GLTF; bytes: number }> {
   const bytes = await fetchBytes(url, signal, onBytes);
@@ -815,15 +842,17 @@ export interface ContextOptions {
 
 /** Detail textures waiting for startDetail (createWorldContext with deferDetail). */
 const pendingDetail = new WeakMap<WorldContext, () => void>();
-/** Whether each context's detail texture is on its way or still fading in (detailSettling). */
-const detailBusy = new WeakMap<WorldContext, () => boolean>();
+/** Where each context's detail texture is (detailState). */
+const detailStates = new WeakMap<WorldContext, () => DetailState>();
 
 /**
- * The detail texture has started downloading and has not arrived and faded in yet (false once it
- * has, when it failed, before startDetail, and without one): fast travel's ink waits for it.
+ * Where the detail texture is: still downloading, being decoded, or fading in ("none" before
+ * startDetail, once it is in, when it failed, and without one). Fast travel's ink waits for all of
+ * that; the loading screen's wait for its decoding (lib/sect/settle.ts detailHolds).
  */
-export function detailSettling(ctx: WorldContext): boolean {
-  return !pendingDetail.has(ctx) && (detailBusy.get(ctx)?.() ?? false);
+export function detailState(ctx: WorldContext): DetailState {
+  if (pendingDetail.has(ctx)) return "none";
+  return detailStates.get(ctx)?.() ?? "none";
 }
 
 /** Starts a deferred detail texture download; nothing when it started already or there is none. */
@@ -873,7 +902,7 @@ export function createWorldContext(data: SectData, sky: Texture | null, opts: Co
     detail: detail?.uniforms ?? null,
   };
   setOverlayTier(ctx.overlay, tier);
-  if (detail) detailBusy.set(ctx, detail.busy);
+  if (detail) detailStates.set(ctx, detail.state);
   if (detail && opts.deferDetail) pendingDetail.set(ctx, detail.start);
   else detail?.start();
   return ctx;
@@ -921,9 +950,13 @@ export function retuneWorld(ctx: WorldContext, tier: Tier): void {
 function loadDetailTexture(
   url: string,
   shared: { time: IUniform<number>; sunDir: Vector3; rockOctaves: number },
-): { uniforms: DetailUniforms; start: () => void; busy: () => boolean } {
-  /** Downloading, or fading in (detailSettling). */
+): { uniforms: DetailUniforms; start: () => void; state: () => DetailState } {
+  /** Downloading, decoding or fading in (detailState). */
   let busy = false;
+  /** The file's bytes are here (or it failed): what is left is decoding and the fade. */
+  let fetched = false;
+  /** Decoded and set: what is left is the fade. */
+  let decoded = false;
   const tex = new Texture();
   tex.name = "sect.detail";
   tex.wrapS = tex.wrapT = RepeatWrapping;
@@ -931,6 +964,8 @@ function loadDetailTexture(
   tex.anisotropy = 8;
   const uniforms = createDetailUniforms(tex, shared);
   const done = (image: ImageBitmap | HTMLImageElement) => {
+    fetched = true;
+    decoded = true;
     if (tex.userData.disposed) {
       if (typeof ImageBitmap !== "undefined" && image instanceof ImageBitmap) image.close();
       return;
@@ -948,21 +983,33 @@ function loadDetailTexture(
     fade();
   };
   const failed = (e: unknown) => {
+    fetched = true;
     busy = false;
     console.warn("[sect] the detail texture failed to load; rock and ground stay plain", e);
   };
   const start = () => {
     if (tex.userData.disposed) return;
     busy = true;
+    // Never flipped on upload, on either path: the rock's middle band (detail.ts sectRockDetail) is
+    // read at the bake's own coordinates, top row first, and a flipped copy would not line up.
+    tex.flipY = false;
     if (typeof createImageBitmap !== "undefined") {
-      // An ImageBitmap is not flipped on upload; a tiling texture does not care which way up it is.
-      tex.flipY = false;
-      new ImageBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" }).load(url, done, undefined, failed);
+      const loader = new WorkerBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" });
+      loader.onFetched = () => {
+        fetched = true;
+      };
+      loader.load(url, done, undefined, failed);
     } else {
+      // No telling when its bytes are in: arriving until it has loaded.
       new ImageLoader().load(url, done, undefined, failed);
     }
   };
-  return { uniforms, start, busy: () => busy && !tex.userData.disposed };
+  const state = (): DetailState => {
+    if (!busy || tex.userData.disposed) return "none";
+    if (!fetched) return "arriving";
+    return decoded ? "fading" : "decoding";
+  };
+  return { uniforms, start, state };
 }
 
 /** How long the detail texture takes to fade in once it has arrived. */
@@ -992,7 +1039,7 @@ function loadStrandTexture(sheet: ShaderMaterial, url: string): void {
   const failed = (e: unknown) => console.warn("[sect] the waterfall strand texture failed to load; the falls keep plain streaks", e);
   if (typeof createImageBitmap !== "undefined") {
     tex.flipY = false;
-    new ImageBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" }).load(url, done, undefined, failed);
+    new WorkerBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" }).load(url, done, undefined, failed);
   } else {
     new ImageLoader().load(url, done, undefined, failed);
   }
@@ -1111,7 +1158,7 @@ export function globalFiles(manifest: SectManifest, lowTextures: boolean): strin
 export interface SetLoadOptions {
   signal?: AbortSignal;
   /** Byte progress of each URL (shared tracker for the opening download). */
-  onBytes?: (url: string) => (loaded: number, total: number) => void;
+  onBytes?: (url: string) => BytesProgress;
   onFileDone?: (url: string) => void;
   /**
    * Resolves when the main-thread part of the load (parsing, preparing) may run. A prefetch the
@@ -1155,7 +1202,7 @@ export async function prepareSetScenes(
         if (!known) ctx.hotspotMap.set(h.id, { ...h, chunk: id === "global" ? null : id, uniform: { value: 0 } });
         else if (known.size.every((s) => s <= 0)) Object.assign(known, { center: h.center, size: h.size });
       }
-      prepared.push(await prepareSceneSliced(root, prepareOpts(ctx), { ...opts.slice, signal }));
+      prepared.push(await prepareSceneSliced(root, prepareOpts(ctx), { budgetMs: ctx.sliceMs, ...opts.slice, signal }));
     }
     // Nothing after this waits: a load cancelled by now never comes back as a set.
     signal?.throwIfAborted();
@@ -1236,7 +1283,7 @@ export async function loadSet(
   const pond = data.manifest.baked
     ? addPondReflection(hotspotMeshes, ctx.hotspotMap, ctx.exposure, ctx.detail, new Set<Material>(cardMaterials))
     : null;
-  const idle = id === "global" ? undefined : await planIdleSliced(id, main, hotspotMeshes, ctx.hotspotMap, { signal: opts.signal });
+  const idle = id === "global" ? undefined : await planIdleSliced(id, main, hotspotMeshes, ctx.hotspotMap, { signal: opts.signal, budgetMs: ctx.sliceMs });
   await yieldToBrowser();
   if (opts.signal?.aborted) {
     idle?.reset();
@@ -1265,6 +1312,7 @@ export async function loadSet(
     textures: collectTextures(scenes),
     ready: false,
     drawn: false,
+    far: false,
   };
 }
 
@@ -1330,6 +1378,7 @@ export function retireSet(set: LoadedSet): void {
   set.dropped = true;
   set.ready = false;
   set.drawn = false;
+  set.far = false;
   for (const r of set.scenes) r.visible = false;
 }
 

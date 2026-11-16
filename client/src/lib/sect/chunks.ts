@@ -70,6 +70,20 @@
  *   size plus the spare slots.
  * Handing over, looking back and retaining apply as above.
  *
+ * Filling (strong desktops, `fill`, only with `around` and while the residency budget is on): every
+ * area loads in the background, one at a time, until all are held or the budget is full. Retaining
+ * keeps what is loaded, as above. On top of it:
+ * - a load under way that the usual plan does not keep (a fill load, or a window load the camera
+ *   has moved away from) is kept too, nearest first, while everything kept fits the budget (counted
+ *   with its estimate), instead of being cancelled;
+ * - `fill` names the one area to load next, once the window is in and drawn-ready: no jump, nothing
+ *   needed missing or unready, no prefetch (the spare slot goes first), nothing loading, and (with
+ *   `ready`) every resident chunk ready, so the next one starts only once the last is on the GPU.
+ *   The areas past the window in the direction of travel come first, nearest first in flight order,
+ *   then the ones before it. Only the first of them is asked: it is named when everything kept and
+ *   it fit the budget, else none (never a farther area in place of a nearer one).
+ * During a jump `fill` is null. Without `fill` every plan is what it was before.
+ *
  * Pure: plain inputs, no timers, no three.js.
  */
 
@@ -153,6 +167,13 @@ export interface PlanWindow {
   retainTris: number;
   retainTexBytes: number;
   /**
+   * Filling: one more area at a time loads in the background (ChunkPlan.fill) until every area is
+   * held or the residency budget is full, and loads under way the usual plan does not keep stay
+   * while they fit it. Acts only with `around` and while retainTris and retainTexBytes are both set.
+   * Off by default (everything but a strong desktop).
+   */
+  fill: boolean;
+  /**
    * The window around the camera's area: how many areas before (`behind`) and after (`ahead`) the
    * one the camera is at (windowCentreAt), in flight order, are needed (clamped at the ends). Null: the nearest areas
    * by frames, within maxResident and triBudget. With it, maxResident, triBudget, minResident and
@@ -184,6 +205,7 @@ export const DEFAULT_WINDOW: PlanWindow = {
   lookBack: 0,
   retainTris: 0,
   retainTexBytes: 0,
+  fill: false,
   around: null,
 };
 
@@ -244,6 +266,11 @@ export interface ChunkPlan {
   draw: string[];
   /** Loading chunks no window wants any more (cancel them). */
   cancel: string[];
+  /**
+   * One area to load in the background (PlanWindow.fill), or null: the next one past the window,
+   * ahead first, once the window is in and ready and nothing loads, when it fits the residency budget.
+   */
+  fill: string | null;
 }
 
 /** Frames between `frame` and the range [a, b] (0 inside it). */
@@ -389,6 +416,8 @@ export function planChunks(input: PlanInput): ChunkPlan {
   let need: string[];
   let cap: number;
   let ahead: () => ChunkSpan[];
+  /** The window around the camera's area, first and last index in flight order (`around` only). */
+  let areaSpan: readonly [number, number] | null = null;
 
   if (w.around) {
     // The area the camera is in (or a jump lands in) and its neighbours in flight order.
@@ -409,6 +438,7 @@ export function planChunks(input: PlanInput): ChunkPlan {
       return out;
     };
     const span = windowAt(at);
+    areaSpan = span;
     const areas = chunks.filter((_, i) => inside(i, span));
     cap = areas.length + w.spare;
     if (target !== null) {
@@ -555,6 +585,44 @@ export function planChunks(input: PlanInput): ChunkPlan {
     }
   }
 
+  // Filling (strong desktops, PlanWindow.fill): loads under way that the plan above would cancel
+  // stay, nearest first, while everything kept fits the residency budget (counted with their
+  // estimates, as retaining counts what is still to load), so a background load is not thrown away.
+  // Then, once the window is in and on the GPU and nothing loads, the next area past it is named,
+  // ahead first, when it fits too. Only the nearest is asked, so the budget gives up the farthest.
+  let fill: string | null = null;
+  if (areaSpan !== null && w.fill && w.retainTris > 0 && w.retainTexBytes > 0) {
+    const cost = (id: string): ChunkCost => loaded?.get(id) ?? { tris: tris(id), texBytes: byId.get(id)?.texBytes ?? 0 };
+    let usedTris = 0;
+    let usedTex = 0;
+    for (const id of prefetch === null ? keepSet : [...keepSet, prefetch]) {
+      const k = cost(id);
+      usedTris += k.tris;
+      usedTex += k.texBytes;
+    }
+    const fits = (k: ChunkCost) => usedTris + k.tris <= w.retainTris && usedTex + k.texBytes <= w.retainTexBytes;
+    const dist = (c: ChunkSpan) => (target === null ? gap(c, frame) : Math.min(gap(c, frame), gap(c, target)));
+    const going = chunks
+      .filter((c) => loading.has(c.id) && !keepSet.has(c.id))
+      .sort((a, b) => dist(a) - dist(b) || (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    for (const c of going) {
+      const k = cost(c.id);
+      if (!fits(k)) break;
+      usedTris += k.tris;
+      usedTex += k.texBytes;
+      keepSet.add(c.id);
+    }
+    // One area at a time: the last one must be on the GPU (ready) before the next starts.
+    const settled = target === null && !missing && prefetch === null && loading.size === 0 && (ready === undefined || [...resident].every((id) => ready.has(id)));
+    if (settled) {
+      const [lo, hi] = areaSpan;
+      const after = chunks.slice(hi + 1);
+      const before = chunks.slice(0, lo).reverse();
+      const next = (dir > 0 ? [...after, ...before] : [...before, ...after]).find((c) => !resident.has(c.id) && !loading.has(c.id));
+      if (next && fits(cost(next.id))) fill = next.id;
+    }
+  }
+
   // Handing over: while something needed is not ready to draw, the areas nearest the camera that
   // are ready and drawn at this frame stay (past the cap and the budget) unless kept already. Only
   // loaded chunks (a failed one is "ready" too: nothing to wait for).
@@ -580,5 +648,5 @@ export function planChunks(input: PlanInput): ChunkPlan {
     return c !== undefined && gapToRange(frame, c.need) <= w.drawMargin;
   });
 
-  return { need, load, prefetch, keep, retain, handover, drop, draw, cancel };
+  return { need, load, prefetch, keep, retain, handover, drop, draw, cancel, fill };
 }

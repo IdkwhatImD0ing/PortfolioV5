@@ -472,8 +472,20 @@ def _build_tier(coll, root, rim):
 # Sword-local frame: origin at the guard, blade down -Z, width along X, front (the arriving camera) -Y.
 
 HS_PARTS = ("sword_blade", "sword_glow", "sword_guard", "sword_grip", "sword_pommel", "sword_tassel")
-HS_MATERIALS = dict(sword_blade=["iron"], sword_glow=["molten"], sword_guard=["iron"],
-                    sword_grip=["iron", "cloth_black"], sword_pommel=["iron"], sword_tassel=["props_rope"])
+# Round 56 (docs/scene/form-r56.md, part D): the bake strips Metallic, so the iron baked as one dark slab (broad faces
+# 0.188 luminance, side facets 0.180) with a thin light outline. Each broad face now has three tones (HS_SIDE_EDGE on
+# the side facet bands: the iron's edge mix lifts them about a third of the way to its edge colour; the middle band 0;
+# the rims 1) and the blade, guard and pommel take props_iron_heavy, the iron with a lighter worn-edge colour
+# (HS_EDGE_COL; its name keeps the 'props_iron' prefix, or bake_web drops it from the metal surface class and the web
+# loses its sky reflection). The silhouette is unchanged: same geometry, same seed.
+HS_EDGE_COL = "#a0a0a6"        # props_iron_heavy's worn edges (iron's: #8a8a8e)
+HS_SIDE_EDGE = 0.45            # 'edge' on the side facet bands (the rims are 1, the middle band 0)
+HS_SIDE_EDGE_R55 = 0.0         # until round 55
+HS_MATERIALS = dict(sword_blade=["props_iron_heavy"], sword_glow=["molten"], sword_guard=["props_iron_heavy"],
+                    sword_grip=["iron", "cloth_black"], sword_pommel=["props_iron_heavy"], sword_tassel=["props_rope"])
+HS_MATERIALS_R55 = dict(sword_blade=["iron"], sword_glow=["molten"], sword_guard=["iron"],
+                        sword_grip=["iron", "cloth_black"], sword_pommel=["iron"], sword_tassel=["props_rope"])
+M.variant("props_iron_heavy", "iron", edge_col=HS_EDGE_COL)
 HS_SMOOTH = dict(sword_blade=35.0, sword_glow=30.0, sword_guard=30.0, sword_grip=40.0, sword_pommel=40.0,
                  sword_tassel=60.0)          # degrees: edges sharper than this stay hard (marked lines always)
 HS_OLD_BOX = dict(                           # the stone jian's local boxes (min, max): every new part stays inside
@@ -741,6 +753,9 @@ HS_EDGE_COLS = frozenset(list(range(0, _A)) + [_A + 3] + list(range(_A + 4, 2 * 
 HS_FLAT_COLS = frozenset((_A, _A + 1, _A + 2, 2 * _A + 4, 2 * _A + 5, 2 * _A + 6))   # the facet bands
 HS_HARD_COLS = (_A, _A + 1, _A + 2, _A + 3, 2 * _A + 4, 2 * _A + 5, 2 * _A + 6, 2 * _A + 7)   # facet lines
 HS_MID_COLS = ((_A + 1, _A + 2), (2 * _A + 6, 2 * _A + 5))   # (right, left) middle band points: back, front
+HS_SIDE_COLS = frozenset((_A, _A + 2, 2 * _A + 4, 2 * _A + 6))   # round 56: the side facet bands' face columns (the
+                                                                 # facet bands but the middle ones, columns _A + 1 and
+                                                                 # 2 _A + 5)
 
 
 def _hs_dims(z):
@@ -791,8 +806,11 @@ def _hs_section(a, b, d=None):
     return pts
 
 
-def _hs_blade(g, rng):
-    """The blade; returns (zs, mids): the body rings' z and the middle bands' surface |y| (back, front) per ring."""
+def _hs_blade(g, rng, side_edge=None):
+    """The blade; returns (zs, mids): the body rings' z and the middle bands' surface |y| (back, front) per ring.
+    ``side_edge``: 'edge' on the side facet bands, body and dome rows alike (default HS_SIDE_EDGE; HS_SIDE_EDGE_R55
+    builds the round-55 blade)."""
+    side = HS_SIDE_EDGE if side_edge is None else float(side_edge)
     n = HS_RINGS
     step = (HS_SHOULDER - HS_TOP) / n
     zs, mids, rings = [], [], []
@@ -827,7 +845,7 @@ def _hs_blade(g, rng):
     rings.append([(0.0, 0.0, HS_TIP)])
 
     def edge(r, c):
-        return 1.0 if c in HS_EDGE_COLS else 0.0
+        return 1.0 if c in HS_EDGE_COLS else (side if c in HS_SIDE_COLS else 0.0)
 
     def smooth(r, c):
         return r >= n or c not in HS_FLAT_COLS      # facets flat on the body, the dome and the rounds smooth
@@ -963,12 +981,15 @@ def _hs_tassel(g):
         g.tube("tail", list(tail), [0.085, 0.075, 0.07], 6, star=(1.5, 0.8))
 
 
-def heavy_sword_geo():
-    """{part: _SGeo} of the Heavy Iron Sword in the sword's local frame (deterministic: seeded by HS_SEED)."""
+def heavy_sword_geo(era="r56"):
+    """{part: _SGeo} of the Heavy Iron Sword in the sword's local frame (deterministic: seeded by HS_SEED). ``era``
+    'r55': the blade's side facet bands unflagged, as built until round 55 (the geometry is the same in both)."""
     import random
+    if era not in ("r55", "r56"):
+        raise ValueError("era must be 'r55' or 'r56' (got %r)" % (era,))
     rng = random.Random(HS_SEED)
     geos = {p: _SGeo() for p in HS_PARTS}
-    zs, mids = _hs_blade(geos["sword_blade"], rng)
+    zs, mids = _hs_blade(geos["sword_blade"], rng, HS_SIDE_EDGE_R55 if era == "r55" else HS_SIDE_EDGE)
     _hs_seams(geos["sword_glow"], zs, mids, rng)
     _hs_guard(geos["sword_guard"])
     _hs_grip(geos["sword_grip"])
@@ -1004,21 +1025,26 @@ def _hs_mesh(g, name, materials, smooth_deg):
     return me
 
 
-def heavy_sword_meshes(log=None):
+def heavy_sword_materials(era="r56"):
+    return HS_MATERIALS_R55 if era == "r55" else HS_MATERIALS
+
+
+def heavy_sword_meshes(log=None, era="r56"):
     """{part: new Mesh 'arena.<part>'} (tagged 'sect_heavy_sword'). A mesh already holding that name is renamed
-    '<name>.old' first, for the caller to free once nothing uses it."""
+    '<name>.old' first, for the caller to free once nothing uses it. ``era`` 'r55': as built until round 55."""
     out = {}
-    for part, g in heavy_sword_geo().items():
+    mats = heavy_sword_materials(era)
+    for part, g in heavy_sword_geo(era).items():
         nm = K + "." + part
         old = bpy.data.meshes.get(nm)
         if old is not None:
             old.name = nm + ".old"
-        me = _hs_mesh(g, nm, HS_MATERIALS[part], HS_SMOOTH[part])
+        me = _hs_mesh(g, nm, mats[part], HS_SMOOTH[part])
         me["sect_heavy_sword"] = part
         me["heavy_sword_tris"] = g.tris()
         out[part] = me
         if log:
-            log(part, "mesh", me.name, "tris", g.tris(), "parts", len(g.parts), "materials", HS_MATERIALS[part])
+            log(part, "mesh", me.name, "tris", g.tris(), "parts", len(g.parts), "materials", mats[part])
     return out
 
 

@@ -81,7 +81,7 @@ Spec names (all present) plus extras marked *.
 | `marble_paving` | Marble slabs 1.2 x 0.8 m (running bond in local X/Y) with grout grooves, per-slab tone. Floors, plazas, terraces (top faces). |
 | `stone_grey` | Grey granite-like stone with specks. Stone lanterns, plinths, steles. |
 | `stone_dark` | Dark polished stone. Steles, bixi turtles, inkstones. |
-| `rock_cliff` | Grey-tan sandstone: uneven sediment layers along local Z, sparse vertical joints with dark seep (steep faces only, so flat pillar tops stay clean), water-stain streaks, lichen, moss on up-facing ledges. Tuned for 10 to 100 m pillars and cliffs. Also look.py's preview plinth. Photo layer: marble_cliff_06 (variants: `nature_rock_small` at half tile, `world_rock_under` Rock063). |
+| `rock_cliff` | Grey-tan sandstone: uneven sediment layers along local Z, sparse vertical joints with dark seep (steep faces only, so flat pillar tops stay clean), water-stain streaks, lichen, moss on up-facing ledges. Tuned for 10 to 100 m pillars and cliffs. Also look.py's preview plinth. Photo layer: `mtn_cliff`, a seamless tile cut from Poly Haven's mountainside model (round 60; marble_cliff_06 before) (variants: `nature_rock_small` at half tile, `world_rock_under` Rock063). |
 | `moss` | Velvety moss. |
 | `grass` | Grass ground with dry patches. Photo layer: leafy_grass + sparse_grass tufts. |
 | `soil` | Soil with pebbles. |
@@ -188,7 +188,7 @@ texture adds the fine detail.
 
 | Material | Scan (tile) | Projection |
 |---|---|---|
-| `rock_cliff` | marble_cliff_06 diff + disp (8.14 m) | world triplanar |
+| `rock_cliff` | mtn_cliff diff + disp (8.14 m; marble_cliff_06 before round 60) | world triplanar |
 | `nature_rock_small` | same, tile x `ROCK_SMALL_SCAN_SCALE` (0.5) | world triplanar |
 | `world_rock_under` | Rock063 colour + disp (4 x 2 m) | world triplanar |
 | `grass` | leafy_grass, with sparse_grass tufts where its mask is set (2 m) | top-down |

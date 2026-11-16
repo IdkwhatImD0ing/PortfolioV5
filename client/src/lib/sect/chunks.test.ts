@@ -369,13 +369,14 @@ describe("planChunks looking back", () => {
   });
 });
 
+const MB = 1_000_000;
+// Texture memory each shipped area takes on the GPU (RGBA8 with mips, measured from the GLBs), in MB.
+const TEX: Record<string, number> = {
+  gate: 228, mirror: 156, forge: 157, arena: 158, mission: 152, library: 225,
+  steles: 150, scroll: 141, formation: 115, abode: 183, summit: 152,
+};
+
 describe("planChunks retaining passed areas", () => {
-  const MB = 1_000_000;
-  // Texture memory each shipped area takes on the GPU (RGBA8 with mips, measured from the GLBs).
-  const TEX: Record<string, number> = {
-    gate: 228, mirror: 156, forge: 157, arena: 158, mission: 152, library: 225,
-    steles: 150, scroll: 141, formation: 115, abode: 183, summit: 152,
-  };
   const loadedOf = (...ids: string[]) =>
     new Map<string, ChunkCost>(ids.map((id) => [id, { tris: FLIGHT.find((c) => c.id === id)!.tris!, texBytes: TEX[id] * MB }]));
   const desktop = { triBudget: 1_807_288, minResident: 2, spare: 1, lookBack: 1 };
@@ -757,6 +758,146 @@ describe("planChunks with the window around the camera's area", () => {
       const counts = fetchCounts(window, holds);
       expect(Math.max(...counts.values())).toBe(1);
       expect(counts.size).toBe(FLIGHT.length);
+    }
+  });
+});
+
+describe("planChunks filling in the background", () => {
+  const HOLDS = [93, 217, 352, 516, 619, 772, 974, 1103, 1208, 1380, 1647];
+  // The shipped flight with its stops, each area's texture memory as its estimate before it loads.
+  const STOPS: ChunkSpan[] = FLIGHT.map((c, i) => ({ ...c, hold: HOLDS[i], texBytes: TEX[c.id] * MB }));
+  const GB3 = 3 * 2 ** 30;
+  // A strong desktop (streaming.ts STREAM_BUDGETS.everything): two each side, a spare slot, and filling
+  // bounded by texture memory alone.
+  const filling: Partial<PlanWindow> = { around: { behind: 2, ahead: 2 }, spare: 1, fill: true, retainTris: Infinity, retainTexBytes: GB3 };
+  const ids = (from: number, to: number) => STOPS.slice(from, to + 1).map((c) => c.id);
+  const costOf = (held: Iterable<string>) =>
+    new Map<string, ChunkCost>([...held].map((id) => [id, { tris: STOPS.find((c) => c.id === id)!.tris!, texBytes: TEX[id] * MB }]));
+  /** A plan with everything resident loaded and ready, unless `over` says otherwise. */
+  const plan = (frame: number, resident: Set<string>, over: Partial<Parameters<typeof planChunks>[0]> = {}) =>
+    planChunks({ chunks: STOPS, frame, direction: 1, resident, loading: none, ready: resident, loaded: costOf(resident), window: filling, ...over });
+  /** Lets the plan fill area after area (each one loaded and ready before the next plan), in the order it names them. */
+  const fillOrder = (frame: number, resident: Set<string>, direction = 1) => {
+    const held = new Set(resident);
+    const out: string[] = [];
+    for (let i = 0; i < STOPS.length; i++) {
+      const p = plan(frame, held, { direction });
+      expect(p.drop).toEqual([]);
+      if (p.fill === null) break;
+      out.push(p.fill);
+      held.add(p.fill);
+    }
+    return out;
+  };
+
+  it("fills the areas past the window ahead first, nearest first, then the ones behind it; mirrored travelling backward", () => {
+    // At the gate with its window and the spare slot (the arena): the rest of the flight, in order.
+    expect(fillOrder(93, set(...ids(0, 3)))).toEqual(ids(4, 10));
+    // At the library with its window (arena to scroll) and the spare slot ahead (formation).
+    expect(fillOrder(772, set(...ids(3, 8)))).toEqual(["abode", "summit", "forge", "mirror", "gate"]);
+    // Travelling backward the spare slot is the forge, and the areas before the window come first.
+    expect(fillOrder(772, set(...ids(2, 7)), -1)).toEqual(["mirror", "gate", "formation", "abode", "summit"]);
+  });
+
+  it("one area at a time: nothing while anything loads, or while a resident area is not on the GPU yet", () => {
+    const six = set(...ids(3, 8));
+    expect(plan(772, six).fill).toBe("abode");
+    // The abode loading: nothing more is named, and it is not cancelled.
+    const loading = plan(772, six, { loading: set("abode") });
+    expect(loading.fill).toBeNull();
+    expect(loading.cancel).toEqual([]);
+    // Loaded but still uploading: nothing more either.
+    const seven = set(...six, "abode");
+    expect(plan(772, seven, { ready: six }).fill).toBeNull();
+    // On the GPU: the next one.
+    expect(plan(772, seven).fill).toBe("summit");
+    // Without a ready list, loaded is enough.
+    expect(plan(772, seven, { ready: undefined }).fill).toBe("summit");
+  });
+
+  it("the spare slot goes first, and nothing fills before the window is in", () => {
+    const five = set(...ids(3, 7));
+    const p = plan(772, five);
+    expect(p.prefetch).toBe("formation");
+    expect(p.fill).toBeNull();
+    expect(plan(772, five, { loading: set("formation") }).fill).toBeNull();
+    expect(plan(772, set(...five, "formation")).fill).toBe("abode");
+    // The scroll (in the window) still to load: no fill.
+    const four = plan(772, set(...ids(3, 6)));
+    expect(four.load).toEqual(["scroll"]);
+    expect(four.fill).toBeNull();
+  });
+
+  it("once every area is held, nothing is dropped, loaded or named anywhere along the flight, either way", () => {
+    const all = set(...ids(0, 10));
+    for (const direction of [1, -1]) {
+      for (let f = 1; f <= 1729; f += 7) {
+        const p = plan(f, all, { direction });
+        expect(p.drop).toEqual([]);
+        expect(p.load).toEqual([]);
+        expect(p.cancel).toEqual([]);
+        expect(p.fill).toBeNull();
+        expect(p.keep).toEqual(ids(0, 10));
+      }
+    }
+  });
+
+  it("stops at the residency budget, and never takes a farther area in place of a nearer one", () => {
+    // The library's window and spare slot hold 941 MB; the abode (183 MB) is next, the summit (152 MB) after it.
+    const six = set(...ids(3, 8));
+    const at = (mb: number) => plan(772, six, { window: { ...filling, retainTexBytes: mb * MB } }).fill;
+    expect(at(1124)).toBe("abode");
+    expect(at(1123)).toBeNull();
+    // The summit alone would fit 1,100 MB, but the abode is nearer and does not.
+    expect(at(1100)).toBeNull();
+  });
+
+  it("keeps a load under way that the usual plan would cancel while it fits the budget; without filling it is cancelled", () => {
+    // A background load of the gate still under way when the camera has reached the library.
+    const six = set(...ids(3, 8));
+    const on = plan(772, six, { loading: set("gate") });
+    expect(on.cancel).toEqual([]);
+    expect(on.fill).toBeNull();
+    expect(plan(772, six, { loading: set("gate"), window: { ...filling, fill: false } }).cancel).toEqual(["gate"]);
+    // Past the budget (941 MB held, the gate's 228 MB more) it is cancelled too.
+    expect(plan(772, six, { loading: set("gate"), window: { ...filling, retainTexBytes: 1100 * MB } }).cancel).toEqual(["gate"]);
+  });
+
+  it("names nothing during a jump, and plans the jump as it would without filling", () => {
+    const six = set(...ids(3, 8));
+    const jump = plan(772, six, { target: 1647 });
+    expect(jump.fill).toBeNull();
+    expect(jump).toEqual(plan(772, six, { target: 1647, window: { ...filling, fill: false } }));
+    expect(plan(772, six).fill).toBe("abode");
+  });
+
+  it("plans exactly as before with filling off, and where it cannot act (no residency budget, or no window around the area)", () => {
+    const residents = [none, set(...ids(3, 8)), set(...ids(0, 10)), set("gate", "summit")];
+    const loadings = [none, set("library"), set("gate")];
+    const windows: Partial<PlanWindow>[] = [
+      { around: { behind: 2, ahead: 2 }, spare: 1 },
+      { around: { behind: 2, ahead: 2 }, spare: 1, retainTris: Infinity, retainTexBytes: GB3 },
+      { around: { behind: 1, ahead: 1 }, spare: 1 },
+      { triBudget: 1_807_288, minResident: 2, spare: 1, lookBack: 1 },
+    ];
+    for (const window of windows) {
+      const acts = window.around !== undefined && (window.retainTris ?? 0) > 0;
+      for (const resident of residents) {
+        for (const loads of loadings) {
+          const loading = new Set([...loads].filter((id) => !resident.has(id)));
+          for (const direction of [1, -1]) {
+            for (const target of [null, 1103]) {
+              for (let frame = 1; frame <= 1729; frame += 37) {
+                const input = { chunks: STOPS, frame, direction, resident, loading, target, ready: resident, loaded: costOf(resident) };
+                const absent = planChunks({ ...input, window });
+                expect(absent.fill).toBeNull();
+                expect(planChunks({ ...input, window: { ...window, fill: false } })).toEqual(absent);
+                if (!acts) expect(planChunks({ ...input, window: { ...window, fill: true } })).toEqual(absent);
+              }
+            }
+          }
+        }
+      }
     }
   });
 });

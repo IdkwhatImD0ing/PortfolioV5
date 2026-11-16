@@ -45,10 +45,11 @@ import { acceleratedRaycast, MeshBVH } from "three-mesh-bvh";
 import { isBakedMote } from "@/lib/sect/life";
 import { hotspotSurface, hotspotTint } from "@/lib/sect/look";
 import type { HotspotInfo } from "@/lib/sect/types";
-import { anyMissingColor, repairColors } from "@/lib/sect/vertex-colors";
+import { anyMissingColor, REPAIR_SLICE, repairColorSteps } from "@/lib/sect/vertex-colors";
 import {
   bakedDetail,
   commitBuilt,
+  isTreeCardMaterial,
   markBuiltSliced,
   patchCardMaterial,
   patchMaterial,
@@ -112,6 +113,15 @@ function hotspotOf(o: Object3D): { id: string; label: string } | null {
     cur = cur.parent;
   }
   return null;
+}
+
+/**
+ * A mesh of the backdrop's far set: node far.c<n> under backdrop.far. The loader strips the dots from names
+ * ("farc0" under "backdropfar"), so both spellings count.
+ */
+export function isFarSetMesh(o: Object3D): boolean {
+  if (!/^far\.?c\d+$/i.test(o.name)) return false;
+  return o.parent === null || /^backdrop\.?far$/i.test(o.parent.name) || o.parent.name === "";
 }
 
 /** The area a backdrop node stands in for (extras.proxyOf on it or an ancestor), or null. */
@@ -388,9 +398,11 @@ function normalisedScale(a: BufferAttribute | InterleavedBufferAttribute): numbe
  * Vertex-colour (baked.vc) meshes: fills the vertices the bake left pure black (see
  * lib/sect/vertex-colors.ts). Once per geometry. A mesh with no black vertex (most of them) is told
  * from its raw array, before any copy; the positions are copied only if the fallback needs them,
- * and only the filled vertices are written back.
+ * and only the filled vertices are written back. A generator: it yields every few thousand
+ * vertices (REPAIR_SLICE), so a large mesh is spread over a sliced prepare's tasks (one backdrop
+ * piece took 30-60 ms in one go).
  */
-function repairVertexColors(mesh: Mesh): void {
+function* repairVertexColors(mesh: Mesh): Generator<void, void, void> {
   const g = mesh.geometry;
   const col = g.getAttribute("color") as BufferAttribute | InterleavedBufferAttribute | undefined;
   const pos = g.getAttribute("position");
@@ -400,12 +412,20 @@ function repairVertexColors(mesh: Mesh): void {
   if (Array.isArray(mesh.material) || !/^baked\.vc/i.test(mat.name) || col.itemSize < 3) return;
   const n = col.count;
   const raw = rawLayout(col);
-  if (!anyMissingColor(raw.array, n, raw.stride, raw.offset, normalisedScale(col))) return;
+  const scale = normalisedScale(col);
+  // The same test over runs of vertices (it stops at the first black one).
+  let missing = false;
+  for (let v0 = 0; v0 < n && !missing; v0 += REPAIR_SLICE) {
+    missing = anyMissingColor(raw.array, Math.min(REPAIR_SLICE, n - v0), raw.stride, raw.offset + v0 * raw.stride, scale);
+    yield;
+  }
+  if (!missing) return;
   const colors = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
     colors[i * 3] = col.getX(i);
     colors[i * 3 + 1] = col.getY(i);
     colors[i * 3 + 2] = col.getZ(i);
+    if (i % REPAIR_SLICE === REPAIR_SLICE - 1) yield;
   }
   const positions = () => {
     const p = new Float32Array(pos.count * 3);
@@ -416,9 +436,13 @@ function repairVertexColors(mesh: Mesh): void {
     }
     return p;
   };
-  const filled = repairColors(colors, positions, g.index ? g.index.array : null);
+  const filled = yield* repairColorSteps(colors, positions, g.index ? g.index.array : null);
   if (filled.length === 0) return;
-  for (const v of filled) col.setXYZ(v, colors[v * 3], colors[v * 3 + 1], colors[v * 3 + 2]);
+  for (let k = 0; k < filled.length; k++) {
+    const v = filled[k];
+    col.setXYZ(v, colors[v * 3], colors[v * 3 + 1], colors[v * 3 + 2]);
+    if (k % REPAIR_SLICE === REPAIR_SLICE - 1) yield;
+  }
   if ((col as InterleavedBufferAttribute).isInterleavedBufferAttribute) (col as InterleavedBufferAttribute).data.needsUpdate = true;
   else (col as BufferAttribute).needsUpdate = true;
 }
@@ -506,16 +530,35 @@ export const PREPARE_SLICE_MS = 5;
 
 export interface SliceOptions {
   signal?: AbortSignal;
-  /** Time per slice (ms); PREPARE_SLICE_MS by default. */
-  budgetMs?: number;
+  /**
+   * Time per slice (ms); PREPARE_SLICE_MS by default. A function is asked at the start of every slice
+   * (the page's pace: more behind the loading screen, lib/sect/gpu-queue.ts PREPARE_SLICE).
+   */
+  budgetMs?: number | (() => number);
   /** Waits between two slices (default: yieldToBrowser). */
   pause?: () => Promise<void>;
   /** The clock (default performance.now). */
   now?: () => number;
 }
 
+/** A slice's time budget as a function asked at each slice (SliceOptions.budgetMs; PREPARE_SLICE_MS when absent or not a number). */
+export function sliceBudget(b: SliceOptions["budgetMs"]): () => number {
+  const ok = (x: number) => (Number.isFinite(x) && x >= 0 ? x : PREPARE_SLICE_MS);
+  if (typeof b === "function") {
+    return () => {
+      try {
+        return ok(b());
+      } catch {
+        return PREPARE_SLICE_MS;
+      }
+    };
+  }
+  const v = ok(b ?? PREPARE_SLICE_MS);
+  return () => v;
+}
+
 /** Resolves in a task of its own: a message to this window (no 4 ms clamp, unlike a chain of timeouts). */
-function nextTask(): Promise<void> {
+export function nextTask(): Promise<void> {
   if (typeof MessageChannel === "undefined") return new Promise((r) => setTimeout(r, 0));
   return new Promise((resolve) => {
     const ch = new MessageChannel();
@@ -549,12 +592,13 @@ export function yieldToBrowser(): Promise<void> {
  */
 export async function prepareSceneSliced(root: Object3D, opts: PrepareOptions, slice: SliceOptions = {}): Promise<PrepareResult> {
   const now = slice.now ?? (() => performance.now());
-  const budget = slice.budgetMs ?? PREPARE_SLICE_MS;
+  const budgetOf = sliceBudget(slice.budgetMs);
   const pause = slice.pause ?? yieldToBrowser;
   slice.signal?.throwIfAborted();
   const steps = prepareSteps(root, opts);
   try {
     let t0 = now();
+    let budget = budgetOf();
     for (;;) {
       const r = steps.next();
       if (r.done) return r.value;
@@ -562,6 +606,7 @@ export async function prepareSceneSliced(root: Object3D, opts: PrepareOptions, s
       await pause();
       slice.signal?.throwIfAborted();
       t0 = now();
+      budget = budgetOf();
     }
   } catch (e) {
     // Ends the generator where it stopped (it holds the copies; nothing else does).
@@ -676,6 +721,9 @@ function* prepareSteps(root: Object3D, opts: PrepareOptions): Generator<void, Pr
   };
 
   const mergeable: Mesh[] = [];
+  let farRock: Material | null = null;
+  let standInRock: Material | null = null;
+  const standInCards = new Map<Material, Material>();
 
   for (const mesh of meshes) {
     yield;
@@ -683,7 +731,7 @@ function* prepareSteps(root: Object3D, opts: PrepareOptions): Generator<void, Pr
       mesh.material = mesh.material.map(prepMaterial);
       continue;
     }
-    repairVertexColors(mesh);
+    yield* repairVertexColors(mesh);
     let mat = mesh.material as Material;
 
     if (/^water\./i.test(mat.name) && opts.waterSheetMaterial) {
@@ -701,6 +749,43 @@ function* prepareSteps(root: Object3D, opts: PrepareOptions): Generator<void, Pr
       continue;
     }
 
+    // The backdrop's far set (nodes far.c<n>: peaks and ridges only ever seen from far) is one vertex-coloured
+    // material with no detail class, so its spires drew as smooth clay tubes. They are rock: a copy of the
+    // material tagged as rock gets the same world-space rock detail and far strata the areas' cliffs get (its
+    // green gate leaves canopy and moss alone). The areas' stand-ins (proxy.<area>) hold buildings too and keep
+    // the plain material.
+    if (mat.name === "baked.vc" && !mat.userData?.detail && isFarSetMesh(mesh)) {
+      if (!farRock) {
+        farRock = mat.clone();
+        farRock.name = "baked.vc.far.rock";
+        farRock.userData = { ...mat.userData, detail: "rock" };
+        farRock.defines = { ...(mat.defines ?? {}), SECT_FAR_SET: "" };
+      }
+      mat = farRock;
+    } else if (mat.name === "baked.vc" && !mat.userData?.detail && proxyOf(mesh) !== null) {
+      // An area's stand-in: the same layers on its rock faces only (detail.ts SECT_STANDIN picks them by colour).
+      if (!standInRock) {
+        standInRock = mat.clone();
+        standInRock.name = "baked.vc.standin.rock";
+        standInRock.userData = { ...mat.userData, detail: "rock" };
+        standInRock.defines = { ...(mat.defines ?? {}), SECT_FAR_SET: "", SECT_STANDIN: "" };
+      }
+      mat = standInRock;
+    } else if (isTreeCardMaterial(mat) && proxyOf(mesh) !== null) {
+      // An area's stand-in trees. In the file they share one card material with the backdrop's own far trees.
+      // The crown shells cut the far trees' cards past a distance through a uniform on that material
+      // (veg-mesh.ts setCardFarCut), and stand-ins have no shells: on a copy with its own uniform they keep
+      // their cards. Sharing it left the far spires bare on High.
+      let copy = standInCards.get(mat);
+      if (!copy) {
+        copy = mat.clone();
+        const own = { ...mat.userData };
+        delete own.sectCardFar;
+        copy.userData = own;
+        standInCards.set(mat, copy);
+      }
+      mat = copy;
+    }
     mat = prepMaterial(mat);
 
     // The tag sits on the node, or (for a primitive of a multi-material node, e.g. a hotspot's

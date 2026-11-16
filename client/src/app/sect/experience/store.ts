@@ -3,6 +3,7 @@
  * object rather than React state (React re-renders only when something visible changes).
  */
 import { createFreeLook, isTurning, startRecenter, type FreeLookState } from "@/lib/sect/free-look";
+import { gpuView, type GpuView } from "@/lib/sect/gpu-queue";
 import { nearestStop, uToFrame, type ScrollMap } from "@/lib/sect/scroll-map";
 import type { CameraData } from "@/lib/sect/types";
 
@@ -18,6 +19,13 @@ export interface Flight {
   toFrame: number;
   /** Called once the camera is there (not when the flight is cancelled). */
   onArrive?: () => void;
+  /**
+   * A flight on the glide's curve (lib/sect/snap.ts glideAt): the camera's speed when it began
+   * (units per second), which it carries on. A snap glide has it, and so has a key's step begun
+   * while the camera moved (planCarry). Without it the flight eases in and out from rest (keys
+   * pressed at rest, links).
+   */
+  v0?: number;
 }
 
 /**
@@ -37,6 +45,21 @@ export interface CanvasReport {
   reflection: boolean;
   /** The hold focus is still coming in at the stop. */
   focus: boolean;
+  /**
+   * Live light is still coming in at the stop (live.tsx, live.ts liveComing): a late piece, which
+   * holds the ink only a little past settled (LIVE_LOOK.handover.inkWaitMs).
+   */
+  live: boolean;
+  /**
+   * Of `live`, the part where it waits only for files still downloading (live.ts liveArriving): the
+   * loading screen's wait lets go of it then.
+   */
+  liveArriving: boolean;
+  /**
+   * The GPU has work queued or under way (gpu-queue.ts: an upload, or a shader program still
+   * linking). The loading screen holds "Enter" back for it at the first stop.
+   */
+  gpu: boolean;
 }
 
 export interface SectStore {
@@ -46,6 +69,13 @@ export interface SectStore {
   targetU: number;
   /** Scroll position the camera actually shows (damped, or eased during a flight). */
   u: number;
+  /**
+   * How fast `u` moves (units per second, signed), set by the camera rig every frame: a snap glide
+   * starts at it, and the visitor taking over from a glide carries it on (lib/sect/snap.ts).
+   */
+  speed: number;
+  /** Snap glides started so far (the development readout, window.__sectScroll, counts them). */
+  glides: number;
   /** Blender frame the camera is on. */
   frame: number;
   /** ?frame=N: show this frame until the visitor scrolls (wheel, touch, keys). */
@@ -64,6 +94,11 @@ export interface SectStore {
    * it lands on (grass, the hold focus, the mirror's reflection, a phone's turn) is there at once.
    */
   inked: boolean;
+  /**
+   * The loading screen covers the scene (until "Enter"): nothing of it shows, so the GPU queue may
+   * run flat out (sceneView).
+   */
+  veiled: boolean;
   /** The canvas's report on its last rendered frame (CanvasReport). */
   report: CanvasReport;
   /**
@@ -104,6 +139,8 @@ export function createStore(map: ScrollMap, camera: CameraData, u: number, frame
     camera,
     targetU: u,
     u,
+    speed: 0,
+    glides: 0,
     frame: frameOverride ?? camera.startFrame,
     frameOverride,
     flight: null,
@@ -112,7 +149,8 @@ export function createStore(map: ScrollMap, camera: CameraData, u: number, frame
     paused: false,
     modal: false,
     inked: false,
-    report: { frames: 0, geometries: 0, textures: 0, programs: 0, grass: false, reflection: false, focus: false },
+    veiled: true,
+    report: { frames: 0, geometries: 0, textures: 0, programs: 0, grass: false, reflection: false, focus: false, live: false, liveArriving: false, gpu: false },
     uncull: false,
     hovered: null,
     focused: null,
@@ -175,6 +213,15 @@ export function isMoving(store: Pick<SectStore, "flight" | "targetU" | "u" | "re
  */
 export function cameraStill(store: Pick<SectStore, "flight" | "targetU" | "u" | "reducedMotion" | "map" | "look">): boolean {
   return !isMoving(store) && !isTurning(store.look);
+}
+
+/**
+ * What the visitor can see of the scene, for the GPU queue's pace (lib/sect/gpu-queue.ts gpuView):
+ * covered by the loading screen or fast travel's ink, the camera moving or the view turning, or at
+ * rest.
+ */
+export function sceneView(store: Pick<SectStore, "veiled" | "inked" | "flight" | "targetU" | "u" | "reducedMotion" | "map" | "look">): GpuView {
+  return gpuView({ veiled: store.veiled || store.inked, moving: !cameraStill(store) });
 }
 
 /**

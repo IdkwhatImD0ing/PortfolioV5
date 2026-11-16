@@ -1216,11 +1216,35 @@ def _holy_fire(coll, root, x, y):
     return holy_fire(coll, root, x, y)
 
 
-def _props(coll, root):
-    # stone lanterns lining the axis, in front of and behind the mission wall
-    for y in (-40.0, -20.0):
+# Stone lanterns on the axis, a pair on the way in and a pair behind the mission wall. Round 55: the front pair stood
+# at y -40, between the Big Dipper's star drums, and broke the Dipper's line. It now stands on the arrival landing,
+# marking the way in: clear of the Dipper, and below the hold's frame (at y -42.8, just south of the drums, the frame's
+# bottom edge cut the west lantern's foot) (docs/scene/placement-r55.md).
+LANTERN_X = 5.2
+LANTERN_YS = (-48.0, -20.0)
+LANTERN_YS_R54 = (-40.0, -20.0)
+
+
+def stone_lantern_places(ys=LANTERN_YS):
+    """[(name, (x, y))] of the axis' stone lanterns in build order (west, then east, per pair), which also numbers
+    their names."""
+    out = []
+    for y in ys:
         for sx in (-1, 1):
-            P.lantern_stone(coll, 2.6, name=U.name(K, "stone_lantern"), parent=root, location=(sx * 5.2, y, 0))
+            out.append((K + ".stone_lantern" + ("" if not out else ".%03d" % len(out)), (sx * LANTERN_X, y)))
+    return out
+
+
+def lantern_moves():
+    """Round 55's moved lanterns: {name: ((x, y) now, (x, y) until round 54)} (sect/patch_r55_placement.py)."""
+    was = dict(stone_lantern_places(LANTERN_YS_R54))
+    return {nm: (xy, was[nm]) for nm, xy in stone_lantern_places() if xy != was[nm]}
+
+
+def _props(coll, root):
+    # stone lanterns on the axis (LANTERN_YS), with explicit names so each keeps its own
+    for nm, (x, y) in stone_lantern_places():
+        P.lantern_stone(coll, 2.6, name=U.unique_name(nm), parent=root, location=(x, y, 0))
     # bronze censer between the wall and the hall stairs
     P.incense_burner(coll, 1.8, name=U.name(K, "censer"), parent=root, location=(0, -5.0, 0))
     # (round 34: the holy-fire altars 圣火坛 left for the formation's front paifang, formation.ALTARS)

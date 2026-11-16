@@ -38,6 +38,12 @@ const DEG = Math.PI / 180;
 export interface StopFraming {
   yaw: number;
   pitch: number;
+  /**
+   * Metres the camera steps to its own right at the hold (negative: left), off the baked path,
+   * coming and going with the turn. For a stop built on a centre line that the path passes a
+   * few metres beside: a symmetric place seen from off its axis looks lopsided.
+   */
+  side?: number;
   back?: number;
   portraitBack?: number;
   reach?: number | readonly [number, number];
@@ -45,6 +51,13 @@ export interface StopFraming {
 
 /** Most a stop's framing may turn the view, either way (degrees). */
 export const FRAMING_MAX_DEG = 8;
+
+/**
+ * Most a stop's framing may step the camera sideways off the path (metres). The bake's visibility
+ * is checked from the path and all round every hold; a few metres beside a hold shows nothing
+ * those views do not.
+ */
+export const FRAMING_MAX_SIDE = 4;
 
 /**
  * Most a stop's framing may pull the camera back along the path (frames). The camera's pace along the
@@ -69,8 +82,14 @@ export const FRAMING_REACH_FRAMES = 48;
 
 /**
  * The stops that need framing, by hold id, chosen on the hold frames at 16:9 (1600 x 900, the panel
- * up; framing.test.ts checks the numbers). Stops not listed keep the film's framing: the gate, the
- * forge, the arena, the library, the stele forest, the abode and the summit are balanced as they are.
+ * up; framing.test.ts checks the numbers). Stops not listed keep the film's framing: the forge, the
+ * arena, the library, the stele forest, the abode and the summit.
+ * - gate: the plaza is built mirror-symmetric on its centre line (the paifang, three pairs of
+ *   lanterns, the lions, the two blades, four pairs of banners), but the path passes the hold 3 m
+ *   right of that line, looking a degree left. From there the right-hand lanterns hid behind a
+ *   pillar while the left-hand ones showed in the open bays: three lanterns on one side, one on
+ *   the other, and the far gate off centre in the middle bay. The camera steps 3 m left onto the
+ *   line and turns the degree back: the gate square on, each pair either side of the walk.
  * - mirror: the camera stood 19 m above the near edge of the Still Pond and saw only its far side,
  *   cut by the left edge and the bottom, the pavilion cut by the left edge and the Heart-Mirror 290 px
  *   in from it. A turn alone cannot fit the pond and the mirror in from there, so the camera stands
@@ -80,7 +99,8 @@ export const FRAMING_REACH_FRAMES = 48;
  *   over 80 frames, not 48 (clear of the gate at 93 and the forge at 352, neither framed): standing
  *   back speeds the camera along the path on the way out, where the film turns fastest, and over 48
  *   frames the view would peak at 1.3 degrees a frame there; over 80 it peaks at 1.1, as the old 8
- *   degree turn did. The camera's pace stays between 0.76 and 1.24 of the film's.
+ *   degree turn did. It comes in over 72, so it starts (frame 145) just after the gate's own framing
+ *   has ended (141). The camera's pace stays between 0.73 and 1.24 of the film's.
  * - mission: the hall and its board of seven posts sat on the left, the first post touching the edge
  *   and the roof cut by the top, an empty courtyard on the right. Left and a little up: hall and
  *   board in the middle, the bell pavilion beside them.
@@ -108,15 +128,25 @@ export const FRAMING_REACH_FRAMES = 48;
  *   the pavilion side by side across the phone (opening.ts PORTRAIT_TURN_DEG tilts them between the
  *   labels and the panel), the slips about 82 px tall on a 390 x 844 phone (89 from 21 frames back).
  *   Catching up the 24 frames makes the way out turn up to 1.35 degrees a frame on portrait screens.
+ *   The same step was tried at two more stops built on a centre line and taken back out. At the
+ *   stele forest (2.5 m off its aisle) a centred subject flips the panel to the other side of the
+ *   screen, where it covers half of a symmetric view. At the formation (4 m off, looking 4.5
+ *   degrees across) the turn back comes on top of the hand-over from the jade slip and takes the
+ *   view past the 1.18 degrees a frame that stop is held to.
  * - formation: the plaza sat on the bottom edge, its front stations and gate cut off, under the next
  *   stop's mountain. Down: the whole array, armillary, flags and gate in, the mountain behind. It comes
  *   in over the 105 frames from the jade slip (see scroll), and goes over the default 48.
+ * - summit: at the hold the pavilion's finial just touched the moon's lower edge, so the moon looked
+ *   balanced on the spike. Eight frames back the camera stands lower and a little to the left: the
+ *   moon hangs clear, up and to the right of the roof, with sky between them.
  */
 export const STOP_FRAMING: Readonly<Record<string, StopFraming>> = {
-  mirror: { yaw: 4, pitch: -3, back: 13, reach: 80 },
+  gate: { yaw: -1, pitch: 0, side: -3 },
+  mirror: { yaw: 4, pitch: -3, back: 13, reach: [72, 80] },
   mission: { yaw: 8, pitch: 2 },
   scroll: { yaw: 8, pitch: -2.5, back: 12, portraitBack: 24, reach: [76, 105] },
   formation: { yaw: 0, pitch: -8, reach: [105, FRAMING_REACH_FRAMES] },
+  summit: { yaw: 0, pitch: 0, back: 8 },
 };
 
 /**
@@ -195,6 +225,22 @@ export function framingAt(
     pitch += lim(t.pitch) * w;
   }
   return { yaw, pitch };
+}
+
+/**
+ * Metres the camera stands to its own right of the path at path frame `frame` (negative: left):
+ * each listed hold's `side` (held to FRAMING_MAX_SIDE) times its weight, so it eases in and out
+ * with the turn and is zero away from the framed stops.
+ */
+export function framingSide(
+  holds: readonly { id: string; frame: number }[],
+  frame: number,
+  table: Readonly<Record<string, StopFraming>> = STOP_FRAMING,
+  reach: number = FRAMING_REACH_FRAMES,
+): number {
+  let side = 0;
+  for (const { t, w } of framedHolds(holds, frame, table, reach)) side += Math.max(-FRAMING_MAX_SIDE, Math.min(FRAMING_MAX_SIDE, t.side ?? 0)) * w;
+  return side;
 }
 
 /**

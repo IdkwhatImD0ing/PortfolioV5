@@ -31,7 +31,6 @@ import {
   ClampToEdgeWrapping,
   Color,
   Frustum,
-  ImageBitmapLoader,
   ImageLoader,
   InstancedBufferAttribute,
   InstancedBufferGeometry,
@@ -52,7 +51,8 @@ import {
   Vector3,
   Vector4,
 } from "three";
-import { fogLibrary, glslFloat, type FogConstants } from "@/lib/sect/glsl";
+import { WorkerBitmapLoader } from "./bitmap-decode";
+import { fogLibrary, glslFloat, SCREEN_GRADE_GLSL, type FogConstants } from "@/lib/sect/glsl";
 import { SECT_LOOK } from "@/lib/sect/look";
 import type { Quality } from "@/lib/sect/runtime";
 import type { SectMeta } from "@/lib/sect/types";
@@ -68,7 +68,7 @@ import {
   type FallFoot,
 } from "@/lib/sect/water";
 import type { LoadedSet } from "./assets";
-import { enableFogEncodeOnce, getNoiseTexture, SOFT_DEPTH } from "./materials";
+import { enableFogEncodeOnce, getNoiseTexture, SECT_LOOK_GPU, sharedHazeColor, SOFT_DEPTH, veilBlending } from "./materials";
 import type { SectStore } from "./store";
 
 const f = glslFloat;
@@ -142,7 +142,8 @@ uniform vec4 uShape[ ${SLOTS} ];
 // ---------------------------------------------------------------------------------------------
 // Foam skirt
 
-function skirtMaterial(time: IUniform<number>, feet: number, sunDir: readonly [number, number, number]): ShaderMaterial {
+/** The foam skirt (exported, with the spray and mist, for the tests). */
+export function skirtMaterial(time: IUniform<number>, feet: number, sunDir: readonly [number, number, number]): ShaderMaterial {
   const S = WATERFALL_FX.skirt;
   const uniforms: Record<string, IUniform> = UniformsUtils.merge([
     UniformsLib.fog,
@@ -154,11 +155,13 @@ function skirtMaterial(time: IUniform<number>, feet: number, sunDir: readonly [n
       uHasFoam: { value: 0 },
     },
   ]);
-  // Shared objects (merge clones values): the clock, the textures and the per-foot weights.
+  // Shared objects (merge clones values): the clock, the textures and the per-foot weights, and the
+  // look's numbers (the fog chunk's haze and, on the Low tier, its frame grade read them).
   uniforms.uTime = time;
   uniforms.tNoise = { value: getNoiseTexture() };
   uniforms.tFoam = { value: null };
   uniforms.uFootW = { value: new Float32Array(Math.max(feet, 1)) };
+  uniforms.uSectLook = SECT_LOOK_GPU.uSectLook;
   const material = new ShaderMaterial({
     name: "sect.waterfall.skirt",
     transparent: true,
@@ -262,7 +265,7 @@ void main() {
 // ---------------------------------------------------------------------------------------------
 // Spray
 
-function sprayMaterial(fog: FogConstants, fogColor: string, sunColor: string, time: IUniform<number>): ShaderMaterial {
+export function sprayMaterial(fog: FogConstants, fogColor: string, sunColor: string, time: IUniform<number>): ShaderMaterial {
   const S = WATERFALL_FX.spray;
   return new ShaderMaterial({
     name: "sect.waterfall.spray",
@@ -275,7 +278,9 @@ function sprayMaterial(fog: FogConstants, fogColor: string, sunColor: string, ti
       uViewH: { value: 1080 },
       uColor: { value: new Color(WFX_COLORS.spray) },
       uSun: { value: new Color(sunColor) },
-      uFogColor: { value: new Color(fogColor) },
+      // The land's haze and the look's numbers (materials.ts), as the mist round it.
+      uFogColor: sharedHazeColor(fogColor),
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iSeed;
@@ -343,6 +348,7 @@ void main() {
   float toward = pow( max( dot( vDir, SECT_SUN_DIR ), 0.0 ), 6.0 );
   vec3 col = uColor * ( 0.82 + 0.2 * ( 1.0 - q ) ) + uSun * toward * ( 0.5 + 1.8 * step( 0.8, vGlint ) );
   gl_FragColor = vec4( wfxFog( col, uFogColor, vDir, vDist ), a );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
@@ -352,8 +358,8 @@ void main() {
 // ---------------------------------------------------------------------------------------------
 // Mist puffs
 
-function puffMaterial(fog: FogConstants, fogColor: string, time: IUniform<number>): ShaderMaterial {
-  return new ShaderMaterial({
+export function puffMaterial(fog: FogConstants, fogColor: string, time: IUniform<number>): ShaderMaterial {
+  return veilBlending(new ShaderMaterial({
     name: "sect.waterfall.mist",
     transparent: true,
     depthWrite: false,
@@ -369,7 +375,9 @@ function puffMaterial(fog: FogConstants, fogColor: string, time: IUniform<number
       uLit: { value: new Color(WFX_COLORS.mistLit) },
       uShade: { value: new Color(WFX_COLORS.mistShade) },
       uRim: { value: new Color(WFX_COLORS.mistRim) },
-      uFogColor: { value: new Color(fogColor) },
+      // The land's haze and the look's numbers (materials.ts), as the spray.
+      uFogColor: sharedHazeColor(fogColor),
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iSeed;
@@ -463,10 +471,11 @@ void main() {
   vec3 col = mix( uShade, uLit, light );
   col += uRim * pow( max( dot( vDir, SECT_SUN_DIR ), 0.0 ), 4.0 ) * ( 1.0 - dens ) * 0.8;
   gl_FragColor = vec4( wfxFog( col, uFogColor, vDir, vDist ), a );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
-  });
+  }));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -509,7 +518,7 @@ function loadFxImage(url: string, tex: Texture, isLive: () => boolean, onReady: 
   };
   const failed = () => console.warn(`[sect] ${url} did not load; the waterfall foot keeps its stand-in`);
   if (typeof createImageBitmap !== "undefined") {
-    new ImageBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" }).load(url, done, undefined, failed);
+    new WorkerBitmapLoader().setOptions({ premultiplyAlpha: "none", colorSpaceConversion: "none" }).load(url, done, undefined, failed);
   } else {
     new ImageLoader().load(url, done, undefined, failed);
   }

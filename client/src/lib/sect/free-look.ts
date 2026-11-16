@@ -50,6 +50,16 @@ export const FREE_LOOK = {
   recenterSecondsPerRadian: 0.33,
   /** Turned further than this from the path's heading, the view looks back (radians). */
   lookBackYaw: 90 * DEG,
+  /**
+   * Turning levels the view. Where the path looks up (the summit looks 12 degrees up at the moon,
+   * the library 6 up at the pagoda), a view turned to the side or behind keeps that tilt and shows
+   * little but sky. So as the view turns from levelFrom to levelTo away from the path's heading, a
+   * path pitch above levelPitch comes down to it: behind the summit lies the whole sect. A path
+   * that already looks level or down is left alone, and a finger (which cannot tilt) gets it too.
+   */
+  levelPitch: -4 * DEG,
+  levelFrom: 30 * DEG,
+  levelTo: 110 * DEG,
 } as const;
 
 export interface LookOffset {
@@ -164,6 +174,19 @@ export function lookLimits(q: Quat): LookLimits {
     maxPitch: Math.max(0, Math.min(FREE_LOOK.maxPitch, FREE_LOOK.maxViewPitch - p)),
     minPitch: Math.min(0, Math.max(-FREE_LOOK.maxPitch, -FREE_LOOK.maxViewPitch - p)),
   };
+}
+
+/**
+ * The tilt (radians, never positive) that turning by `yaw` adds to a path camera looking `pitch`
+ * above the horizon: none while the view faces the path's way or the path already looks down to
+ * levelPitch, the whole way down to levelPitch once it has turned levelTo.
+ */
+export function turnLevel(pitch: number, yaw: number): number {
+  const up = pitch - FREE_LOOK.levelPitch;
+  if (!(up > 0)) return 0;
+  const a = Math.abs(wrapYaw(yaw));
+  const t = clamp((a - FREE_LOOK.levelFrom) / (FREE_LOOK.levelTo - FREE_LOOK.levelFrom), 0, 1);
+  return t > 0 ? -up * t * t * (3 - 2 * t) : 0;
 }
 
 /** True while the view is turned away from the path (by more than a hair). */

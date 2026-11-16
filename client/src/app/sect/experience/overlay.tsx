@@ -106,12 +106,18 @@ export const SectionRail = memo(function SectionRail({
   stops,
   active,
   atHold,
+  labelHidden = false,
   onJump,
 }: {
   stops: RailStop[];
   active: string | null;
   /** The camera holds at a place (its panel names it): the active label hides unless hovered. */
   atHold: boolean;
+  /**
+   * Past the last place, looking at the moon (scroll-map.ts pastLastHold): the active label stays
+   * off, as while the camera holds, so nothing sits over that view. Hover and focus still show it.
+   */
+  labelHidden?: boolean;
   onJump: (id: string) => void;
 }) {
   // Only the diamonds (and a label while it shows) take the pointer: the hidden labels are up to
@@ -125,7 +131,7 @@ export const SectionRail = memo(function SectionRail({
       <ol className="sect-rail-thread flex flex-col items-end gap-[0.3rem]">
         {stops.map((s, i) => {
           const on = s.id === active;
-          const shown = on && !atHold;
+          const shown = on && !atHold && !labelHidden;
           return (
             <li key={s.id}>
               <button

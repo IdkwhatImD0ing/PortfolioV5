@@ -220,6 +220,8 @@ function stepName(a: Quality, b: Quality, dpr: number): string {
   if (a.maxFps !== b.maxFps) return "fps";
   if (Boolean(a.noCards) !== Boolean(b.noCards)) return "no cards";
   if (Boolean(a.standIns) !== Boolean(b.standIns)) return "stand-ins";
+  if (Boolean(a.liveLight) !== Boolean(b.liveLight)) return "live";
+  if (Boolean(a.vegShells) !== Boolean(b.vegShells)) return "shells";
   if (a.msaa !== b.msaa) return "msaa";
   if (a.bloom !== b.bloom) return "bloom";
   const lo = Math.min(effectiveDpr(a, dpr), effectiveDpr(b, dpr));
@@ -239,8 +241,48 @@ describe("quality ladder", () => {
   });
 
   it("mid has bloom but no MSAA at 1x; low has no postprocessing and 2048 px textures", () => {
-    expect(tierQuality("mid")).toEqual({ maxDpr: 1, msaa: 0, bloom: true, post: true, lowTextures: false, maxFps: 0 });
-    expect(tierQuality("low")).toEqual({ maxDpr: 1, msaa: 0, bloom: false, post: false, lowTextures: true, maxFps: 0 });
+    expect(tierQuality("mid")).toEqual({ maxDpr: 1, msaa: 0, bloom: true, post: true, lowTextures: false, maxFps: 0, vegShells: false, liveLight: false });
+    expect(tierQuality("low")).toEqual({ maxDpr: 1, msaa: 0, bloom: false, post: false, lowTextures: true, maxFps: 0, vegShells: false, liveLight: false });
+  });
+
+  it("lights the stops live on High only; the ladder turns it off right after resolution, a picked tier keeps it", () => {
+    expect(tierQuality("high", 1).liveLight).toBe(true);
+    expect(tierQuality("high", 2).liveLight).toBe(true);
+    expect(tierQuality("mid", 1).liveLight).toBe(false);
+    expect(tierQuality("mid", 2, { coarse: true, appleGpu: true }).liveLight).toBe(false);
+    expect(tierQuality("low", 3, { coarse: true }).liveLight).toBe(false);
+    // The two resolution steps keep it; the next step turns it off and changes nothing else.
+    let q: Quality = tierQuality("high", 2);
+    for (let i = 0; i < 2; i++) {
+      q = degradeQuality(q, 2)!;
+      expect(q.liveLight).toBe(true);
+    }
+    expect(degradeQuality(q, 2)).toEqual({ ...q, liveLight: false });
+    // A tier the visitor picked keeps it to the bottom.
+    let kept: Quality | null = tierQuality("high", 2);
+    for (let i = 0; i < 10 && kept; i++) {
+      expect(kept.liveLight).toBe(true);
+      kept = degradeQuality(kept, 2, { keepLook: true });
+    }
+  });
+
+  it("draws far trees as crown shells on High only; the ladder turns them off right after live light, a picked tier keeps them", () => {
+    expect(tierQuality("high", 1).vegShells).toBe(true);
+    expect(tierQuality("high", 2).vegShells).toBe(true);
+    expect(tierQuality("mid", 1).vegShells).toBe(false);
+    expect(tierQuality("mid", 2, { coarse: true, appleGpu: true }).vegShells).toBe(false);
+    expect(tierQuality("low", 3, { coarse: true }).vegShells).toBe(false);
+    // On a 1x screen there is no resolution to give: live light goes first, the shells second.
+    const top = tierQuality("high", 1);
+    const noLive = degradeQuality(top, 1)!;
+    expect(noLive).toEqual({ ...top, liveLight: false });
+    expect(degradeQuality(noLive, 1)).toEqual({ ...noLive, vegShells: false });
+    // A tier the visitor picked keeps them to the bottom.
+    let kept: Quality | null = tierQuality("high", 2);
+    for (let i = 0; i < 10 && kept; i++) {
+      expect(kept.vegShells).toBe(true);
+      kept = degradeQuality(kept, 2, { keepLook: true });
+    }
   });
 
   it("touch screens render sharper, and the mid tier there takes the 2048 px textures", () => {
@@ -269,16 +311,16 @@ describe("quality ladder", () => {
     });
   });
 
-  it("steps down resolution, MSAA, bloom, the render scale, the other areas, the tree cards, the render rate, then stops", () => {
+  it("steps down resolution, live light, the crown shells, MSAA, bloom, the render scale, the other areas, the tree cards, the render rate, then stops", () => {
     let q = tierQuality("high", 2);
     const steps: string[] = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 14; i++) {
       const n = degradeQuality(q, 2);
       if (!n) break;
       steps.push(stepName(q, n, 2));
       q = n;
     }
-    expect(steps).toEqual(["dpr", "dpr", "msaa", "bloom", "scale", "stand-ins", "no cards", "fps"]);
+    expect(steps).toEqual(["dpr", "dpr", "live", "shells", "msaa", "bloom", "scale", "stand-ins", "no cards", "fps"]);
     expect(q.post).toBe(true);
     expect(degradeQuality(q, 2)).toBeNull();
   });
@@ -304,19 +346,29 @@ describe("quality ladder", () => {
     expect(capIsMoot(0, 33.3)).toBe(false);
   });
 
-  it("climbs back in the reverse order: the cap, tree cards, other areas, 1x, bloom, MSAA, then resolution", () => {
+  it("climbs back in the reverse order: the cap, tree cards, other areas, 1x, bloom, MSAA, the shells, live light, then resolution", () => {
     const top = tierQuality("high", 2);
-    const bottom: Quality = { ...top, msaa: 0, bloom: false, maxDpr: RENDER_SCALE_MIN, maxFps: CAPPED_FPS, standIns: true, noCards: true };
+    const bottom: Quality = {
+      ...top,
+      msaa: 0,
+      bloom: false,
+      maxDpr: RENDER_SCALE_MIN,
+      maxFps: CAPPED_FPS,
+      standIns: true,
+      noCards: true,
+      vegShells: false,
+      liveLight: false,
+    };
     let q = bottom;
     const seen: string[] = [];
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 14; i++) {
       const n = upgradeQuality(q, top, 2);
       if (!n) break;
       seen.push(stepName(q, n, 2));
       q = n;
     }
-    expect(seen).toEqual(["fps", "no cards", "stand-ins", "scale", "bloom", "msaa", "dpr", "dpr"]);
-    expect(q).toMatchObject({ msaa: top.msaa, bloom: true, maxFps: 0, standIns: false, noCards: false, maxDpr: 1.5 });
+    expect(seen).toEqual(["fps", "no cards", "stand-ins", "scale", "bloom", "msaa", "shells", "live", "dpr", "dpr"]);
+    expect(q).toMatchObject({ msaa: top.msaa, bloom: true, maxFps: 0, standIns: false, noCards: false, vegShells: true, liveLight: true, maxDpr: 1.5 });
     // Each climb undoes one step down: the climb is the way down, reversed.
     let d: Quality | null = top;
     const down: string[] = [];
@@ -395,14 +447,14 @@ describe("quality ladder", () => {
       expect(dprs.every((d, i) => i === 0 || d < dprs[i - 1])).toBe(true);
     }
     // Desktop High at 2x: 1.5 -> 1.25 -> 1 -> the render scale, then nothing (the auto ladder
-    // would have gone to MSAA before the render scale).
+    // would have turned live light off next, then the shells and MSAA, before the render scale).
     let q = tierQuality("high", 2);
     q = degradeQuality(q, 2, { keepLook: true })!;
     q = degradeQuality(q, 2, { keepLook: true })!;
     expect(q.maxDpr).toBe(1);
-    expect(degradeQuality(q, 2)).toMatchObject({ msaa: 0 });
+    expect(degradeQuality(q, 2)).toEqual({ ...q, liveLight: false });
     q = degradeQuality(q, 2, { keepLook: true })!;
-    expect(q).toMatchObject({ maxDpr: RENDER_SCALE_MIN, msaa: 2, bloom: true, maxFps: 0 });
+    expect(q).toMatchObject({ maxDpr: RENDER_SCALE_MIN, msaa: 2, bloom: true, maxFps: 0, liveLight: true, vegShells: true });
     expect(degradeQuality(q, 2, { keepLook: true })).toBeNull();
     // Desktop Medium (1x, no MSAA) has only the render scale.
     expect(degradeQuality(tierQuality("mid", 1), 1, { keepLook: true })).toMatchObject({ maxDpr: RENDER_SCALE_MIN, bloom: true });

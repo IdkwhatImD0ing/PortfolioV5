@@ -9,8 +9,8 @@
  * per flight; the quality tier only changes how many instances are drawn (packed in rank order).
  *
  * Fog: birds and butterflies take the scene's aerial perspective (sectAerial, like the baked
- * surfaces); the additive motes are dimmed by what the air in between absorbs (the haze's own
- * colour is already behind them).
+ * surfaces, toward the land's haze colour: materials.ts SECT_HAZE_COLOR); the additive motes are
+ * dimmed by what the air in between absorbs (the haze's own colour is already behind them).
  */
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo } from "react";
@@ -28,7 +28,7 @@ import {
   ShaderMaterial,
   Sphere,
 } from "three";
-import { fogLibrary, glslFloat, type FogConstants } from "@/lib/sect/glsl";
+import { fogLibrary, glslFloat, SCREEN_GRADE_GLSL, type FogConstants } from "@/lib/sect/glsl";
 import {
   buildLifeTables,
   firstLiveGroup,
@@ -42,6 +42,7 @@ import {
 import { SECT_LOOK } from "@/lib/sect/look";
 import type { Quality } from "@/lib/sect/runtime";
 import type { SectMeta } from "@/lib/sect/types";
+import { SECT_LOOK_GPU, sharedHazeColor } from "./materials";
 import type { SectStore } from "./store";
 
 const f = glslFloat;
@@ -68,7 +69,8 @@ const CULL = "gl_Position = vec4( 2.0, 2.0, 2.0, 1.0 ); return;";
 // ---------------------------------------------------------------------------------------------
 // Birds
 
-function birdMaterial(fog: FogConstants, fogColor: string): ShaderMaterial {
+/** The birds (exported, with the motes and butterflies, for the tests). */
+export function birdMaterial(fog: FogConstants, fogColor: string): ShaderMaterial {
   const B = LIFE.birds;
   return new ShaderMaterial({
     name: "sect.life.birds",
@@ -82,7 +84,9 @@ function birdMaterial(fog: FogConstants, fogColor: string): ShaderMaterial {
       uViewH: { value: 1000 },
       uColor: { value: new Color(B.color) },
       uColorLine: { value: new Color(B.colorLine) },
-      uFogColor: { value: new Color(fogColor) },
+      // The land's haze and the look's numbers (materials.ts), so far flocks fade as the land does.
+      uFogColor: sharedHazeColor(fogColor),
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iRoute;
@@ -173,6 +177,7 @@ void main() {
   col = sectAerial( col, uFogColor, vDir, sectHazeDepth( cameraPosition.y, vDir.y, vDist ) );
   col = mix( col, SECT_CLOUD_FOG, 1.0 - exp( - sectCloudDepth( cameraPosition.y, vDir.y, vDist ) ) );
   gl_FragColor = vec4( col, a );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,
@@ -182,7 +187,7 @@ void main() {
 // ---------------------------------------------------------------------------------------------
 // Motes
 
-function moteMaterial(fog: FogConstants): ShaderMaterial {
+export function moteMaterial(fog: FogConstants): ShaderMaterial {
   const M = LIFE.motes;
   return new ShaderMaterial({
     name: "sect.life.motes",
@@ -194,6 +199,9 @@ function moteMaterial(fog: FogConstants): ShaderMaterial {
       uTime: { value: 0 },
       uFrame: { value: 0 },
       uViewH: { value: 1000 },
+      // The look's haze numbers: the air in between takes the look's share of the light. No frame
+      // grade of its own on the Low tier (see materials.ts createGlowMaterial).
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iHome;
@@ -269,7 +277,7 @@ void main() {
 // ---------------------------------------------------------------------------------------------
 // Butterflies
 
-function butterflyMaterial(fog: FogConstants, fogColor: string): ShaderMaterial {
+export function butterflyMaterial(fog: FogConstants, fogColor: string): ShaderMaterial {
   const Bf = LIFE.butterflies;
   return new ShaderMaterial({
     name: "sect.life.butterflies",
@@ -281,7 +289,9 @@ function butterflyMaterial(fog: FogConstants, fogColor: string): ShaderMaterial 
       uTime: { value: 0 },
       uFrame: { value: 0 },
       uViewH: { value: 1000 },
-      uFogColor: { value: new Color(fogColor) },
+      // The land's haze and the look's numbers (materials.ts), as the birds.
+      uFogColor: sharedHazeColor(fogColor),
+      ...SECT_LOOK_GPU,
     },
     vertexShader: /* glsl */ `
 attribute vec4 iCenter;
@@ -349,6 +359,7 @@ void main() {
   vec3 col = mix( vColor * ( 0.95 + 0.2 * ( 1.0 - min( fore, hind ) ) ), vec3( 0.03, 0.025, 0.02 ), body * ( 1.0 - wing * 0.6 ) );
   col = sectAerial( col, uFogColor, vDir, sectHazeDepth( cameraPosition.y, vDir.y, vDist ) );
   gl_FragColor = vec4( col, a );
+${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>
 }
 `,

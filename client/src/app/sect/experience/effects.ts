@@ -22,8 +22,10 @@ import {
   BlendFunction,
   BloomEffect,
   Effect,
+  EffectAttribute,
   EffectComposer,
   EffectPass,
+  FXAAEffect,
   Pass,
   RenderPass,
   VignetteEffect,
@@ -42,8 +44,13 @@ import {
 } from "three";
 import { DITHER_GLSL, type FogConstants } from "@/lib/sect/glsl";
 import { SECT_LOOK } from "@/lib/sect/look";
+import { LUX, LUX_OFF, type LuxDebug, type LuxFeatures } from "@/lib/sect/lux";
 import { ATMOS, type AtmosFeatures, type PipelineShape } from "@/lib/sect/post";
+import { ContactShadeEffect } from "./post/ao";
 import { CloudShadowEffect, glowPrefilter, HoldFocusEffect } from "./post/atmos";
+import { FinishEffect } from "./post/finish";
+import { FrameGradeEffect } from "./post/grade";
+import { SunShaftsEffect } from "./post/shafts";
 
 const HUE_CLIP_FRAGMENT = /* glsl */ `
 void mainImage( const in vec4 inputColor, const in vec2 uv, out vec4 outputColor ) {
@@ -53,6 +60,23 @@ void mainImage( const in vec4 inputColor, const in vec2 uv, out vec4 outputColor
   outputColor = vec4( mix( kept, vec3( 1.0 ), smoothstep( 1.8, 9.0, m ) * 0.55 ), inputColor.a );
 }
 `;
+
+/**
+ * FXAA that runs before every other effect of its pass. The effect pass sorts its effects by
+ * attribute before merging them: convolution first, then the ones that read depth, then the rest.
+ * The library's FXAA has no attribute, so the cloud shade (a depth effect) was sorted in front of
+ * it and FXAA then drew every edge pixel from the unshaded frame. As a convolution effect it is
+ * first. Only one such effect may be in a pass: the finish gives up the attribute for that reason.
+ */
+export class EdgeSmoothEffect extends FXAAEffect {
+  constructor() {
+    super();
+    this.setAttributes(EffectAttribute.CONVOLUTION);
+    // A little less sub-pixel blending than the library's 0.75: the lit window lattices are a pixel
+    // or two wide and smeared into blobs.
+    this.subpixelQuality = 0.5;
+  }
+}
 
 export class HueClipEffect extends Effect {
   constructor() {
@@ -173,6 +197,8 @@ export const BLOOM = { luminanceThreshold: 1, luminanceSmoothing: 0.2, intensity
  */
 export class SectBloomEffect extends BloomEffect {
   private off = false;
+  /** The strength it runs with (BLOOM's, or the journey's: look-now.ts). */
+  private base: number = BLOOM.intensity;
 
   get suspended(): boolean {
     return this.off;
@@ -181,7 +207,13 @@ export class SectBloomEffect extends BloomEffect {
   set suspended(off: boolean) {
     if (off === this.off) return;
     this.off = off;
-    this.intensity = off ? 0 : BLOOM.intensity;
+    this.intensity = off ? 0 : this.base;
+  }
+
+  /** Takes the look's strength (while it runs). */
+  setBase(intensity: number): void {
+    this.base = intensity;
+    if (!this.off) this.intensity = intensity;
   }
 
   override update(renderer: WebGLRenderer, inputBuffer: WebGLRenderTarget, deltaTime?: number): void {
@@ -200,6 +232,22 @@ export interface PipelineOptions {
   dither?: number;
   /** Atmosphere passes (post/atmos.ts) and the haze they read; none when left out. */
   atmos?: { fog: FogConstants; features: AtmosFeatures };
+  /** The lux passes to build (lib/sect/lux.ts luxBuilt); none when left out. `debug` is ?lux=. */
+  lux?: { features: LuxFeatures; debug?: LuxDebug };
+  /**
+   * Build the grade of the whole frame (post/grade.ts): with a look or the journey, whose numbers
+   * it reads as uniforms. Left out (today's dusk), there is no such term.
+   */
+  grade?: boolean;
+}
+
+/** What the look sets in the post pass at run time (look-now.ts LookNow's tables). */
+export interface PipelineLook {
+  lux: typeof LUX;
+  bloom: number;
+  cloudShadow: number;
+  sunHaze: { color: string; strength: number };
+  vignette: number;
 }
 
 export interface Pipeline {
@@ -210,6 +258,16 @@ export interface Pipeline {
   /** Soft background while resting at a stop (High), or null. */
   holdFocus: HoldFocusEffect | null;
   bloom: SectBloomEffect | null;
+  /** Contact shade from the depth buffer (High), or null. */
+  ao: ContactShadeEffect | null;
+  /** The low sun's light in the haze, cut by what stands in its way (High), or null. */
+  shafts: SunShaftsEffect | null;
+  /** The print: toe, sharpening, grain (High and Medium), or null. */
+  finish: FinishEffect | null;
+  /** Takes the look's run-time numbers (the journey's, as the camera moves): no compile. */
+  setLook(look: PipelineLook): void;
+  /** Which of the built lux passes run now (lib/sect/lux.ts luxLive); the others rest, no recompile. */
+  setLux(live: LuxFeatures): void;
   /**
    * Takes the built chain to `live` without a shader compile (planPipeline): MSAA changes in
    * place (the composer reallocates its two buffers), and passes not in `live` are switched off.
@@ -232,18 +290,44 @@ export function createPipeline(
   composer.addPass(new OverlayPass(overlay, camera, onDepth));
   const sunHaze = new SunHazeEffect(o.sunDir, o.sunHaze.color, o.sunHaze.strength);
   const effects: Effect[] = [];
-  // Hold focus first (it mixes in a blur of the frame as drawn), then cloud shade (it darkens the
+  // Contact shade first: it belongs to the surfaces, under everything the air and the lens add.
+  const lux = o.lux?.features ?? LUX_OFF;
+  const ao = lux.ao ? new ContactShadeEffect(camera) : null;
+  if (ao) {
+    ao.debug = o.lux?.debug === "ao";
+    effects.push(ao);
+  }
+  // A chain built without MSAA (Medium) had no anti-aliasing at all: FXAA smooths its edges. It
+  // rebuilds each edge pixel from the frame as drawn, dropping whatever ran before it, so it must
+  // run first (EdgeSmoothEffect sees to that whatever its place in this list).
+  const fxaa = lux.finish && o.msaa === 0 ? new EdgeSmoothEffect() : null;
+  if (fxaa) effects.unshift(fxaa);
+  // Hold focus next (it mixes in a blur of the frame as drawn), then cloud shade (it darkens the
   // surfaces, not the glow bloom adds over them).
   const holdFocus = o.atmos?.features.holdFocus ? new HoldFocusEffect() : null;
   if (holdFocus) effects.push(holdFocus);
   const cloudShadow = o.atmos?.features.cloudShadows ? new CloudShadowEffect(camera, o.atmos.fog) : null;
   if (cloudShadow) effects.push(cloudShadow);
+  // The sun's shafts after the surfaces' shade and before bloom: light in the air, under the lens.
+  const shafts = lux.shafts && o.atmos ? new SunShaftsEffect(scene, camera, o.atmos.fog) : null;
+  if (shafts) {
+    shafts.debug = o.lux?.debug === "shafts";
+    effects.push(shafts);
+  }
+  // A look's grade of the frame as drawn, before the bloom adds its halos (a lantern's halo keeps
+  // its colour under a night grade) and the sun's haze and the lens.
+  if (o.grade) effects.push(new FrameGradeEffect());
   const bloom = o.bloom ? new SectBloomEffect({ mipmapBlur: true, radius: ATMOS.bloom.radius, ...BLOOM }) : null;
   if (bloom) {
     glowPrefilter(bloom);
     effects.push(bloom);
   }
-  effects.push(sunHaze, new VignetteEffect({ offset: 0.3, darkness: Math.min(0.9, o.vignette * 2.3) }), new HueClipEffect());
+  const vignette = new VignetteEffect({ offset: 0.3, darkness: Math.min(0.9, o.vignette * 2.3) });
+  effects.push(sunHaze, vignette);
+  // The finish (toe, sharpening on the tier with MSAA, grain) before the hue clip takes the glows.
+  const finish = lux.finish ? new FinishEffect({ sharpen: o.msaa > 0 }) : null;
+  if (finish) effects.push(finish);
+  effects.push(new HueClipEffect());
   const dither = o.dither ?? SECT_LOOK.dither;
   if (dither > 0) effects.push(new DitherEffect(dither));
   composer.addPass(new EffectPass(camera, ...effects));
@@ -253,6 +337,25 @@ export function createPipeline(
     cloudShadow,
     holdFocus,
     bloom,
+    ao,
+    shafts,
+    finish,
+    setLook(look) {
+      ao?.setLook(look.lux.ao);
+      shafts?.setLook(look.lux.shafts);
+      finish?.setLook(look.lux.finish);
+      bloom?.setBase(look.bloom);
+      cloudShadow?.setLook(look.cloudShadow);
+      const u = sunHaze.uniforms;
+      (u.get("uColor")!.value as Color).set(look.sunHaze.color);
+      u.get("uStrength")!.value = look.sunHaze.strength;
+      vignette.darkness = Math.min(0.9, look.vignette * 2.3);
+    },
+    setLux(live) {
+      if (ao) ao.suspended = !live.ao;
+      if (shafts) shafts.suspended = !live.shafts;
+      if (finish) finish.suspended = !live.finish;
+    },
     setLive(live) {
       // The MSAA 0 step still recompiles the tree card programs (their alpha-to-coverage switch,
       // assets.ts setCardCoverageOf sets needsUpdate on the card materials). Left as it is: it is

@@ -7,12 +7,14 @@ import { areaSummary } from "./content";
 import {
   FRAMING_MAX_BACK,
   FRAMING_MAX_DEG,
+  FRAMING_MAX_SIDE,
   FRAMING_REACH_FRAMES,
   PORTRAIT_STOP_FRAMING,
   STOP_FRAMING,
   framingAt,
   framingFrame,
   framingReach,
+  framingSide,
   framingTable,
   framingWeight,
   type StopFraming,
@@ -29,6 +31,12 @@ const DEG = Math.PI / 180;
 function projectFwd(q: readonly number[]): Vec3 {
   const [x, y, z, w] = q;
   return [-2 * (x * z + w * y), -2 * (y * z - w * x), -(1 - 2 * (x * x + y * y))];
+}
+
+/** A camera orientation's right direction (local +X). */
+function rightOf(q: readonly number[]): Vec3 {
+  const [x, y, z, w] = q;
+  return [1 - 2 * (y * y + z * z), 2 * (x * y + z * w), 2 * (x * z - y * w)];
 }
 
 /** A stop's framing reach before and after its hold (frames), 0 for a stop that is not framed. */
@@ -258,6 +266,27 @@ describe("framingFrame", () => {
   });
 });
 
+describe("framingSide", () => {
+  it("steps the camera aside by the stop's own amount at its hold, eased like the turn, and nowhere else", () => {
+    const gate = STOP_FRAMING.gate.side ?? 0;
+    expect(gate).not.toBe(0);
+    expect(framingSide(HOLDS, 93)).toBeCloseTo(gate, 9);
+    expect(framingSide(HOLDS, 93 - FRAMING_REACH_FRAMES / 2)).toBeCloseTo(gate / 2, 9);
+    expect(framingSide(HOLDS, 93 + FRAMING_REACH_FRAMES / 2)).toBeCloseTo(gate / 2, 9);
+    expect(framingSide(HOLDS, 93 + FRAMING_REACH_FRAMES)).toBe(0);
+    expect(framingSide(HOLDS, POSTER.startFrame)).toBe(0);
+    // Stops without a step, and the flight between stops.
+    for (const h of HOLDS) if (STOP_FRAMING[h.id]?.side === undefined) expect(framingSide(HOLDS, h.frame), h.id).toBe(0);
+    expect(framingSide(HOLDS, 450)).toBe(0);
+  });
+
+  it("keeps every step small", () => {
+    for (const [id, t] of Object.entries(STOP_FRAMING)) expect(Math.abs(t.side ?? 0), id).toBeLessThanOrEqual(FRAMING_MAX_SIDE);
+    expect(framingSide([{ id: "x", frame: 10 }], 10, { x: { yaw: 0, pitch: 0, side: 50 } })).toBe(FRAMING_MAX_SIDE);
+    expect(framingSide([{ id: "x", frame: 10 }], 10, { x: { yaw: 0, pitch: 0, side: -50 } })).toBe(-FRAMING_MAX_SIDE);
+  });
+});
+
 describe("the stops' framing on the baked path", () => {
   const camera = JSON.parse(readFileSync(path.resolve(__dirname, "../../../public/sect/full/camera.json"), "utf8")) as {
     frames: CameraFrame[];
@@ -275,7 +304,12 @@ describe("the stops' framing on the baked path", () => {
    */
   function viewAt(f: number, framed: boolean, table: Table = STOP_FRAMING): CameraFrame {
     const s = sampleCamera(camera.frames, framed ? framingFrame(camera.holds, f, table) : f);
-    return { f, p: s.p, fovY: s.fovY, q: framed ? composeLook(s.q, framingAt(camera.holds, f, table)) : s.q };
+    if (!framed) return { f, p: s.p, fovY: s.fovY, q: s.q };
+    // The step to the side is along the path camera's own right axis, before the turn (scene.tsx).
+    const side = framingSide(camera.holds, f, table);
+    const r = rightOf(s.q);
+    const p: Vec3 = [s.p[0] + r[0] * side, s.p[1] + r[1] * side, s.p[2] + r[2] * side];
+    return { f, p, fovY: s.fovY, q: composeLook(s.q, framingAt(camera.holds, f, table)) };
   }
   function view(holdId: string, framed: boolean, table?: Table): CameraFrame {
     return viewAt(camera.holds.find((x) => x.id === holdId)!.frame, framed, table);
@@ -298,6 +332,22 @@ describe("the stops' framing on the baked path", () => {
       max: [Math.max(...corners.map((q) => q[0])), Math.max(...corners.map((q) => q[1]))],
     };
   }
+
+  it("stands the camera on the gate plaza's centre line, square to the gate", () => {
+    // The plaza is mirror-symmetric about the line through its anchor along the way in. The film
+    // passes the hold 3 m right of it, looking a degree left: the right-hand lanterns hid behind a
+    // pillar. Framed, the camera is on the line and the anchor is in the middle of the picture.
+    const anchor = meta.areas.find((a) => a.id === "gate")!.anchor;
+    const film = view("gate", false);
+    const framed = view("gate", true);
+    expect(Math.abs(film.p[0] - anchor[0])).toBeGreaterThan(2.5);
+    expect(Math.abs(framed.p[0] - anchor[0])).toBeLessThan(0.25);
+    expect(Math.abs(pointAt(anchor, "gate", false)[0])).toBeGreaterThan(0.04);
+    expect(Math.abs(pointAt(anchor, "gate", true)[0])).toBeLessThan(0.02);
+    // The step leaves the camera's height and its place along the way in as they were.
+    expect(framed.p[1]).toBeCloseTo(film.p[1], 1);
+    expect(Math.abs(framed.p[2] - film.p[2])).toBeLessThan(0.2);
+  });
 
   it("uses the camera's holds", () => {
     expect(camera.holds.map((h) => ({ id: h.id, frame: h.frame }))).toEqual(HOLDS);

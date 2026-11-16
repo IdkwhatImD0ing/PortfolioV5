@@ -9,20 +9,27 @@
  */
 import { BlendFunction, Effect, EffectAttribute, KawaseBlurPass, KernelSize, type BloomEffect } from "postprocessing";
 import {
+  BufferAttribute,
+  BufferGeometry,
   HalfFloatType,
   Matrix4,
+  Mesh,
+  OrthographicCamera,
   Uniform,
   Vector2,
   Vector3,
   Vector4,
   WebGLRenderTarget,
   type Camera,
+  type Material,
   type Texture,
   type TextureDataType,
   type WebGLRenderer,
 } from "three";
 import { fogLibrary, glslFloat, type FogConstants } from "@/lib/sect/glsl";
 import { ATMOS } from "@/lib/sect/post";
+import { SECT_LOOK_GPU } from "../materials";
+import { primePrograms, programsReady } from "../program-prime";
 
 const CLOUD_SHADOW_FRAGMENT = (fog: FogConstants) => /* glsl */ `
 uniform mat4 uProjInv;
@@ -113,9 +120,20 @@ export class CloudShadowEffect extends Effect {
         ["uDrift", new Uniform(new Vector2())],
         ["uStrength", new Uniform(ATMOS.cloudShadow.strength)],
         ["uKeep", new Uniform(new Vector4(0, -1e5, 0, 1e-3))],
+        // The look's run-time haze (shared data, materials.ts SECT_LOOK_GPU).
+        ["uSectLook", new Uniform(SECT_LOOK_GPU.uSectLook.value)],
       ]),
     });
     this.camera = camera;
+  }
+
+  /** The strength it runs with when not suspended (ATMOS.cloudShadow's, or the journey's). */
+  base: number = ATMOS.cloudShadow.strength;
+
+  /** Takes the look's strength (while it runs). */
+  setLook(strength: number): void {
+    this.base = strength;
+    if (!this.suspended) this.strength = strength;
   }
 
   get strength(): number {
@@ -136,7 +154,7 @@ export class CloudShadowEffect extends Effect {
 
   set suspended(off: boolean) {
     if (off) this.strength = 0;
-    else if (this.suspended) this.strength = ATMOS.cloudShadow.strength;
+    else if (this.suspended) this.strength = this.base;
   }
 
   /** Keeps shade off the stop's subject: its point and radius (metres; 0 = none). */
@@ -231,6 +249,49 @@ export class HoldFocusEffect extends Effect {
   /** Distance to the subject (metres). */
   set focus(v: number) {
     this.uniforms.get("uFocus")!.value = v;
+  }
+
+  /**
+   * Gets the blur's programs ready off the frame, before the first hold draws them: compiled for a
+   * half-float buffer, as the blur draws into one (three keys a program by that), then their first
+   * use run (program-prime.ts). Left to the first stop the camera holds at after "Enter", the blur's
+   * program linked in that frame and held it up to half a second (a blocking shader wait). Resolves
+   * once done; a failure is only said (the first hold then links them, as before).
+   */
+  async prime(renderer: WebGLRenderer): Promise<void> {
+    // The pass's last step copies with a material its types leave out.
+    const copy = (this.blur as unknown as { copyMaterial?: Material }).copyMaterial;
+    const mats: Material[] = copy ? [this.blur.blurMaterial, copy] : [this.blur.blurMaterial];
+    // The pass's own fullscreen triangle: positions and UVs, no normals (three keys a program by
+    // which attributes the geometry has: with normals it built a program the blur never used).
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+    geo.setAttribute("uv", new BufferAttribute(new Float32Array([0, 0, 2, 0, 0, 2]), 2));
+    const holder = new Mesh(geo);
+    holder.frustumCulled = false;
+    const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const target = new WebGLRenderTarget(1, 1, { type: HalfFloatType, depthBuffer: false });
+    const prev = renderer.getRenderTarget();
+    try {
+      const pending: Promise<unknown>[] = [];
+      try {
+        renderer.setRenderTarget(target);
+        for (const m of mats) {
+          holder.material = m;
+          pending.push(renderer.compileAsync(holder, camera));
+        }
+      } finally {
+        renderer.setRenderTarget(prev);
+        target.dispose();
+      }
+      await Promise.all(pending);
+      await programsReady(renderer, mats);
+      await primePrograms(renderer, mats);
+    } catch (e) {
+      console.warn("[sect] hold focus warm-up failed", e);
+    } finally {
+      geo.dispose();
+    }
   }
 
   override update(renderer: WebGLRenderer, inputBuffer: WebGLRenderTarget): void {

@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { fovForAspect } from "./camera-path";
 import { STOP_FRAMING } from "./framing";
-import { downloadFraction, flickStop, openingMegabytes, PORTRAIT_TURN_DEG, portraitTurn, POSTER, posterBox, posterMatches, type DownloadGroup } from "./opening";
+import { downloadFraction, openingMegabytes, PORTRAIT_TURN_DEG, portraitTurn, POSTER, posterBox, posterMatches, type DownloadGroup } from "./opening";
 import { buildScrollMap, FLIGHT_SCROLL } from "./scroll-map";
 
 const DEG = Math.PI / 180;
@@ -186,42 +186,5 @@ describe("portraitTurn", () => {
     const map = buildScrollMap(camera.startFrame, camera.frameEnd, camera.holds, FLIGHT_SCROLL);
     expect(camera.startFrame).toBe(POSTER.startFrame);
     expect(map.holds.some((h) => 0 >= h.u0 && 0 <= h.u1)).toBe(false);
-  });
-});
-
-describe("flickStop", () => {
-  const camera = JSON.parse(readFileSync(path.resolve(__dirname, "../../../public/sect/full/camera.json"), "utf8")) as {
-    startFrame: number;
-    frameEnd: number;
-    holds: { id: string; label: string; frame: number }[];
-  };
-  const map = buildScrollMap(camera.startFrame, camera.frameEnd, camera.holds, FLIGHT_SCROLL);
-  const mirror = map.holds.find((h) => h.id === "mirror")!;
-  const forge = map.holds.find((h) => h.id === "forge")!;
-
-  it("glides on to the next stop ahead within reach", () => {
-    expect(flickStop(map, forge.u0 - 30, 60, 1)).toBe(forge.uMid);
-    expect(flickStop(map, mirror.u1 + 20, 60, -1)).toBe(mirror.uMid);
-    // Direction unknown: the nearest.
-    expect(flickStop(map, mirror.u1 + 20, 60)).toBe(mirror.uMid);
-    expect(flickStop(map, 5, 60)).toBe(0);
-  });
-
-  it("glides back only to a stop it overshot by a little", () => {
-    // Just past the mirror's dwell going on (21 units from its middle), the forge far ahead.
-    expect(forge.uMid - (mirror.u1 + 2)).toBeGreaterThan(75);
-    expect(flickStop(map, mirror.u1 + 2, 75, 1)).toBe(mirror.uMid);
-    expect(flickStop(map, mirror.u1 + 10, 75, 1)).toBeNull();
-    // Far past the stop behind, nothing ahead within reach: stay.
-    const gap = (mirror.u1 + forge.u0) / 2;
-    expect(flickStop(map, gap, 20, 1)).toBeNull();
-    expect(flickStop(map, gap, 20, -1)).toBeNull();
-  });
-
-  it("stays inside a hold, at the start, or too far from any stop", () => {
-    expect(flickStop(map, mirror.uMid + 5, 60, 1)).toBeNull();
-    expect(flickStop(map, 0.5, 60, -1)).toBeNull();
-    const gap = (mirror.u1 + forge.u0) / 2;
-    expect(flickStop(map, gap, 10)).toBeNull();
   });
 });

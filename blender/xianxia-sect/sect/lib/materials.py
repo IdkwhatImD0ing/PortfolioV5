@@ -48,6 +48,9 @@ SCAN_DIR = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file_
 ROCK_SCANS = dict(   # _rock(scan=...): world triplanar; relief = bump distance (m) of the whole 0-1 height range
     marble_cliff_06=dict(diff="marble_cliff_06_diff.jpg", disp="marble_cliff_06_disp.jpg", tile=(8.14, 8.14),
                          relief=0.3),
+    # rock_cliff's photo since round 60 (docs/scene/rock-r60.md): a seamless tile that tools/make_rock_tile.py
+    # --flatten 8,1 cuts from Poly Haven's mountainside skin, at marble's tile (3.67 times its real size)
+    mtn_cliff=dict(diff="mtn_cliff_diff.jpg", disp="mtn_cliff_disp.jpg", tile=(8.14, 8.14), relief=0.3),
     rock063=dict(diff="rock063_color.jpg", disp="rock063_disp.jpg", tile=(4.0, 2.0), relief=0.15),
 )
 ROCK_SCAN_MIX = 0.6          # share of the scan's colour in the rock albedo
@@ -137,6 +140,88 @@ ROCK_LIP_MOSS = dict(         # moss creeping over the lip: the top of the rock 
     colours=((0.35, "#4b5a2e"), (0.68, "#5f7236")),   # nature_soil_moss's green stops (on the same tone noise)
 )
 
+# ---- rock structure, round 59 (docs/scene/rock-r59.md): _rock_r59 builds the rock instead of _rock's old graph. The
+# drawn sources go: the Z-stretched Voronoi joints painted as dark lines, the 33 m water stains, the object-space
+# sediment layers and their bed lines, the pits and the mottle and fine bumps. In their place: world beds a few metres
+# thick (hard ones stand out as ledges) and one set of near-vertical master joints, all relief through ONE Bump node
+# whose height is continuous everywhere (a step in height bakes as a one-texel hairline). Beds 1.8-5.6 m thick and
+# joint grooves 1.2 m across are about the smallest features the bake holds at 3-4 texels a metre; anything finer is
+# the photo's job (ROCK_SCANS, unchanged). sect/lib/rock_struct.py is the same maths in numpy, tested offline by
+# tools/test_rock_struct.py, which also checks that its defaults equal these. sect/patch_r59_rock.py KEY=value
+# overrides any of them for a patch run; ROCK_BED, ROCK_JOINT and ROCK_CAVITY keep the keys an override leaves out.
+ROCK_STRUCT = False           # True: _rock builds the round 59 graph (_rock_r59: world beds, master joints, one
+#                             Bump). Off: the look reviews of 2026-11-12 found it worse than the earlier graph as
+#                             built (painted bands) and no better once toned down (docs/scene/rock-r59.md). False
+#                             builds the earlier graph exactly
+ROCK_STRUCT_TAG = 59          # mat["rock_struct"] on a material _rock_r59 built (how the patch tells old from new)
+ROCK_BED = dict(              # world beds (rock_struct.bed_world, protrusion, bed_profile)
+    m=2.75,                   # m: mean bed thickness at strata 2.5 (rock_cliff); a variant's strata scales it
+    uneven=0.42,              # thickness spread from ROCK_BED_HARM: beds 1.8 to 5.6 m thick, never folding back
+    warp=(50.0, 2.0),         # m: the beds wander +-2 m over about 50 m (Noise 2D on world x, y)
+    dip=(0.03, -0.02),        # m per m along world x and y: a dip of about 2 deg across the range
+    hard=0.20,                # share of hard beds: they stand out as ledges and are paler (0.30 until the first
+    #                           look review: even courses, a block wall at the forge)
+    hard_out=(0.25, 0.25),    # m: a hard bed stands out 0.25 + 0.25 x its random value (0.25 to 0.5 m)
+    soft_out=0.10,            # m: a soft bed sits +-0.1 m
+    edge=0.6,                 # m: the height eases into the next bed's over this much of a bed's top (the shelf top or
+    edge_max=0.35,            #   the overhang's roof), at most this share of a thin bed
+    under=0.25,               # m: the soft bed under an overhang is cut back this far ...
+    under_w=0.6,              # ... over this band (m) right under the overhang
+    shelf=(0.2, 0.3),         # m: a step of this much (from the first to the second value) between two beds counts as a
+    #                           shelf or an overhang
+    lip=0.15,                 # m: the dry pale band under a shelf's edge
+    overhang_w=0.8,           # m: the dark damp recess under an overhang
+    tone=0.05,                # +- tone per bed (on the dark / mid / light ramp, 0-1) ...
+    ease=0.2,                 # ... eased into the next bed's over the top fifth of a bed: never a step
+    hard_pale=0.08,           # share of ROCK_HARD_COLOUR in a hard bed's colour (paler, warmer sandstone; 0.2 lifted
+    #                           whole beds, which read as painted bands. The close stills stayed 6-8 % brighter at
+    #                           0.08 too: that comes from the old graph's dark cracks and stains being gone)
+    steep=(0.62, 0.42),       # |normal z| from which the beds fade in to where they are whole: on a slope a level
+    #                           bed draws wide winding ribbons, a contour map (the mirror's slab)
+    gap=(18.0, 0.38, 0.62, 0.15),   # the beds come and go along a face: a 3D noise of this size (m), smoothstepped
+    #                           between the 2nd and 3rd value, takes their strength down to the 4th. A ledge at one
+    #                           strength from wall to wall reads as a ruled line
+)
+ROCK_BED_HARM = ((0.45, 1.37, 0.0), (0.22, 2.71, 1.3))   # the beds' unevenness: two harmonics of the bed coordinate
+#                             (amplitude, frequency per bed, phase); their slope keeps the bed coordinate rising
+ROCK_JOINT = dict(            # one set of master joints (rock_struct.joint_scale, joint_groove)
+    master_m=12.0,            # m: Voronoi cell, the joints' spacing, at strata 2.5; scales with strata / 2.5
+    master_w=0.6,             # m: groove half width, 1.2 m across (3-4 texels at 3 texels a metre); scales likewise,
+    #                           with no fixed minimum, so a boulder's joints stay a boulder's size
+    master_d=0.35,            # m: groove depth through the Bump; scales likewise
+    wiggle=(20.0, 1.5),       # m: a joint wanders +-1.5 m over about 20 m of height (near-vertical, not ruled)
+    tone=0.03,                # +- tone per joint block
+    steep=(0.8, 0.5),         # |normal z| from which the joints fade in to where they are whole: none on flat tops,
+    #                           where a 2D Voronoi reads as crazy paving
+    flat=0.5,                 # joints on rock that carries its own beds (ROCK_FLAT_PROPS) at this share
+    gap=(24.0, 0.36, 0.60, 0.10),   # the joints come and go likewise (size m, smoothstep from, to, floor): a groove
+    #                           of one width down a whole cliff reads as a marker stroke
+)
+ROCK_CAVITY = dict(joint=0.12, overhang=0.12)   # albedo darkening at a joint's centre and in an overhang's recess
+#                             (0.30 each until the first look review: with the Bump's own shade the recesses went
+#                             to a quarter of the rock's brightness, painted stripes)
+ROCK_SHELF_PALE = 0.6         # a shelf's dry lip: this share of the colour 8 % lighter and 10 % less saturated
+ROCK_HARD_COLOUR = "#a79c8a"  # what hard beds lean toward (paler, warmer)
+ROCK_ZONE_TONE = 0.3          # tone from the 25 m colour zones (the old sediment layers carried most of the tone)
+ROCK_MOTTLE_TONE = 0.1        # tone from the 3 m mottle, colour only (its old bump is one of the drawn sources)
+ROCK_STRUCT_BUMP = 0.45       # strength of the one structure Bump (Distance 1: its heights are metres). 0.8 until the
+#                             first look review: under the 7 degree sun an overhang's roof and a joint's wall went
+#                             near black
+ROCK_STRUCT_VARIANTS = dict(  # per material tag: multipliers of the beds and of the joints (times _rock's `joints`)
+    world_rock_under=dict(bed=0.5, joint=0.6),    # the range's underside: it faces down, where beds read as rings
+    world_pier_stone=dict(bed=0.5, joint=0.4),    # the links' piers and footings: built stone, a hint of beds
+    nature_rock_small=dict(bed=0.0, joint=0.8),   # 1-5 m boulders: no beds (a boulder is a piece of one bed)
+    forge_tomb_rock=dict(bed=0.0, joint=0.6),     # the sword tomb's outcrop: its slabs are its layers
+    forge_cairn_rock=dict(bed=0.0, joint=0.0),    # the cairn: "no banding across a stone" (forge.py)
+    flute_qingshi=dict(bed=0.0, joint=0.5),       # the flute's flat slate stone
+)
+ROCK_GEO_ATTR = "geo_w"       # POINT attribute the round's rock relief writes (0-1, 0 where absent): the material's beds
+ROCK_GEO_FADE = (0.0, 0.25)   # and joints fade out from the first value to the second, so a relieved rock never shows
+#                               two bed sets
+ROCK_FLAT_PROPS = ("nature_top_radius", "rock_flat")   # OBJECT props: above 0, the object's mesh carries its own beds
+#                               (peak_pillar and rock_pillar set nature_top_radius; bake_web sets rock_flat on the
+#                               floating rocks' bake pieces, bake_web.ROCK_FLAT_RE), so the world beds stay off there
+
 # ---- ground life (_ground_life): the lawns (grass) and the soil-moss caps (nature_soil_moss) at 0.5-40 m and at their
 # rims, so a cap reads as living ground, not a painted lid: dry and lush patches with damp hollows, 0.6 m grass clumps,
 # flower drifts, and a dry-grass, humus and moss band where the ground rolls over a rim. Like the rock life it works in
@@ -198,7 +283,7 @@ NAMES = []       # kept in registration order; the same list object is updated b
 _CACHE = {}
 # import-time copies of the dict constants that a KEY=value override may name only in part (see _conf)
 _DEFAULTS = {k: dict(globals()[k]) for k in ("ROCK_LIP_MOSS", "GROUND_MACRO", "GROUND_CLUMP", "GROUND_FLOWERS",
-                                             "GROUND_RIM")}
+                                             "GROUND_RIM", "ROCK_BED", "ROCK_JOINT", "ROCK_CAVITY")}
 
 
 def _conf(name):
@@ -832,13 +917,20 @@ def _rock_scan(g, col, scan, scale=1.0):
     return col, (g.sep(outs[1])[0] if disp is not None else None)
 
 
-def _rock_life(g, col, moss_amt=1.0):
+def _rock_life(g, col, moss_amt=1.0, beds=None):
     """_rock's life layer (ROCK_* constants) over colour ``col``, in world space: damp undersides, dark streaks
     dripping from every ledge line (z = n * ROCK_LAYER, warped), ochre and grey-green lichen on the dry rock, then
     moss with a noisy edge on up-facing rock, in clumps along the ledge lines and over the lip under a grass rim
     (ROCK_LIP_MOSS), all times ``moss_amt``, _rock's parameter. The material's tag picks its ROCK_LIFE_VARIANTS
     multipliers. -> dict(col, moss, wet, moss_h): colour, moss and wetness masks (0-1) and the moss photo's luminance
-    for the bump chain (None without it)."""
+    for the bump chain (None without it).
+    ``beds`` (round 59, _rock_r59; None builds exactly the nodes above): sockets f, i (position in the bed and its
+    index), s_hi (this bed's step out past the one above, m), overhang (the recess mask, already times the beds'
+    strength) and s (1 where the world beds show, 0 on rock with its own beds, on the vertex-colour mesh and where the
+    relief's geo_w fades them out). Where s is 1 the
+    streaks hang from the beds' tops instead of the 11 m lines, strongest under shelf lips and overhangs, and the
+    recess under an overhang is damp. The moss cushions stay on the 11 m lines: they sit on the real 11 m ledges of
+    the range's kept cones (world.py _strata), which the world beds do not follow."""
     p = dict(moss=1.0, streak=1.0, lichen=1.0, damp=1.0, scale=1.0, ledge=1.0, lip=1.0)
     p.update(ROCK_LIFE_VARIANTS.get(g.mat.get(TAG), {}))
     k = float(ROCK_LIFE_SCALE) * float(p["scale"])
@@ -860,6 +952,10 @@ def _rock_life(g, col, moss_amt=1.0):
     ph = g.math('FRACT', zl)
     layer = g.math('SUBTRACT', zl, ph)
     line = g.math('ROUND', zl)
+    ph_s, layer_s = ph, layer                 # what the streaks hang from (the beds' with ``beds``)
+    if beds is not None:
+        ph_s = g.mixf(ph, beds["f"], beds["s"])
+        layer_s = g.mixf(layer, beds["i"], beds["s"])
 
     # damp: overhang undersides, plus recesses when the (ray-traced) AO node is on
     damp = g.smooth(up, -0.1, -0.6)
@@ -870,6 +966,8 @@ def _rock_life(g, col, moss_amt=1.0):
                     only_local=False)
         recess = g.smooth(ao.outputs["AO"], 0.85, 0.4)
         damp = g.math('MAXIMUM', damp, recess)
+    if beds is not None:                      # the recess under an overhanging bed is damp
+        damp = g.math('MAXIMUM', damp, g.mul(beds["overhang"], 0.8))
 
     # streaks: vertical noise columns, each running a different share of the layer down from the lip above
     # and gathered into wet courses (vertical bands of cliff, xy-only noise) where some run the whole height
@@ -878,9 +976,16 @@ def _rock_life(g, col, moss_amt=1.0):
     curtain = g.smooth(g.noise(g.mapping(shifted((4.4, 8.8, 2.2)), scale=(0.18, 0.18, 0.015)), 1.0, detail=2.0,
                                distortion=0.1), 0.48, 0.6)                   # broad 3-6 m stains the bake keeps
     core = g.math('MAXIMUM', core, g.mul(curtain, 0.85))
-    span = g.maprange(g.noise(g.comb(g.mul(px, 0.45 * k), g.mul(py, 0.45 * k), g.mul(layer, 2.3)), 1.0, detail=1.0),
+    span = g.maprange(g.noise(g.comb(g.mul(px, 0.45 * k), g.mul(py, 0.45 * k), g.mul(layer_s, 2.3)), 1.0, detail=1.0),
                       0.35, 0.65, ROCK_STREAK_LEN[0], ROCK_STREAK_LEN[1])
-    drip = g.smooth(ph, g.math('SUBTRACT', 1.0, span), 1.0)
+    drip = g.smooth(ph_s, g.math('SUBTRACT', 1.0, span), 1.0)
+    if beds is not None:
+        # from a bed's top, strongest under a shelf lip or an overhang (a quarter elsewhere). The gate is one value
+        # per bed, but a drip is 0 at a bed's base, so it never steps at a boundary; the full-height curtains below
+        # are not gated
+        sh0, sh1 = (float(x) for x in _conf("ROCK_BED")["shelf"])
+        step = g.math('MAXIMUM', g.smooth(beds["s_hi"], sh0, sh1), g.smooth(beds["s_hi"], -sh0, -sh1))
+        drip = g.mul(drip, g.mixf(1.0, g.math('MULTIPLY_ADD', step, 0.75, 0.25), beds["s"]))
     course = g.noise(xy, 0.04 * k, detail=2.0)
     drip = g.math('MAXIMUM', drip, g.mul(g.smooth(g.noise(xy, 0.35 * k, detail=1.0), 0.58, 0.64),
                                          g.smooth(course, 0.5, 0.62)))          # full-height curtains
@@ -1373,8 +1478,9 @@ def g_lerp(a, b, t):
 
 # ============================================================ builders: stone
 
-def _marble(g, base="#e8e4da", vein="#b9b2a4", warm="#efe6d2", rough=(0.28, 0.45), veins=0.6, grime=0.0):
-    v = g.coord("object")
+def _marble_base(g, v, base, vein, warm, veins):
+    """Marble's colour at object coordinates ``v``: base with warm blots, two scales of veins, fine specks and a small
+    per-object tint. Returns (colour, blot) (blot also drives the roughness). Shared by _marble and wall_marble."""
     w = g.noise(v, 0.6, detail=8.0, roughness=0.62, distortion=1.6)
     vein_m = g.smooth(g.math('ABSOLUTE', g.math('SUBTRACT', w, 0.5)), 0.025, 0.0)
     vein2 = g.noise(v, 2.4, detail=8.0, roughness=0.6, distortion=1.2)
@@ -1385,12 +1491,96 @@ def _marble(g, base="#e8e4da", vein="#b9b2a4", warm="#efe6d2", rough=(0.28, 0.45
     speck = g.noise(v, 60.0, detail=1.0)
     col = g.mix(col, g.hsv(col, 0.5, 1.0, 0.94), g.smooth(speck, 0.55, 0.7))
     col = g.tint_per_object(col, hue=0.006, sat=0.1, val=0.04)
+    return col, blot
+
+
+def _marble(g, base="#e8e4da", vein="#b9b2a4", warm="#efe6d2", rough=(0.28, 0.45), veins=0.6, grime=0.0):
+    v = g.coord("object")
+    col, blot = _marble_base(g, v, base, vein, warm, veins)
     if grime:
         up = g.sep(g.geometry("Normal"))[2]
         gm = g.mul(g.smooth(g.noise(v, 0.9, detail=5.0, distortion=0.3), 0.45, 0.75), grime)
         col = g.mix(col, "#a39a88", g.mul(gm, g.maprange(up, -1, 1, 1.0, 0.4)))
     r = g.maprange(blot, 0.2, 0.8, rough[0], rough[1])
     nrm = _fine_bump(g, v, 35.0, 0.03, 0.003)
+    g.viewport(base, rough[0])
+    g.output(g.principled(base_color=col, roughness=r, subsurface_weight=0.08,
+                          subsurface_radius=(1.0, 0.85, 0.7), subsurface_scale=0.02,
+                          specular_ior_level=0.5, normal=nrm))
+
+
+WALL_GRIME = "#a39a88"         # _marble's grime colour
+
+
+def wall_marble(g, mode="B", base="#e8e4da", vein="#b9b2a4", warm="#efe6d2", rough=(0.28, 0.45), veins=0.28,
+                grime=0.3, grime_v=0.5, streak=0.18, streak_pitch=1.3, joint=0.25, pitch=2.2, course=0.3):
+    """Round 56 (docs/scene/form-r56.md, part C): the link stairways' side walls, registered by sect/world.py as
+    'world_wall_marble'. marble_white's base, veins and tint (_marble_base, veins 0.28) plus features 10 cm or wider,
+    so a 3-20 texel-per-metre bake keeps them; the wall stays clearly white marble (a kept sect, not a ruin).
+
+    mode 'B' reads the wall coordinates world.wall_coords writes per vertex (arch_gen = along / run, 0 inner or 1
+    outer, 0 foot or 1 top; arch_dims = run length, thickness, height):
+    - grime: toward WALL_GRIME by up to ``grime`` (30 %) at the foot, gone by ``grime_v`` (half) of the wall's height,
+      its upper edge broken by noise of about 1 m;
+    - rain streaks: columns about 1 / ``streak_pitch`` m apart hanging from under the top, each 0.5-1.9 m long,
+      ``streak`` (18 %) darker at the top, fading down;
+    - panel joints: every run length / round(run length / ``pitch``) m (2.0-2.4 m on the long runs), a 10 cm soft
+      band with a 3 cm core, ``joint`` (25 %) darker, plus one course line ``course`` (0.3) m under the top; every
+      panel a touch lighter or darker (+-3 %).
+    Grime, streaks and the course line stay on the wall faces (not on the coping's top). A face without the
+    attributes (run length 0) shows plain marble_white.
+    mode 'A' (the fallback, no attributes): _marble's grime 0.5 and vertical streaks from world-space noise stretched
+    14x in z (mapping scale 1.3, 1.3, 0.07), on the wall faces; no joints."""
+    v = g.coord("object")
+    col, blot = _marble_base(g, v, base, vein, warm, veins)
+    nzn = g.math('ABSOLUTE', g.sep(g.geometry("Normal"))[2])
+    vert = g.math('SUBTRACT', 1.0, g.smooth(nzn, 0.35, 0.6))      # 1 on the wall faces, 0 on the coping's top
+    nrm = _fine_bump(g, v, 35.0, 0.03, 0.003)
+    if mode == "A":
+        up = g.sep(g.geometry("Normal"))[2]
+        gm = g.mul(g.smooth(g.noise(v, 0.9, detail=5.0, distortion=0.3), 0.45, 0.75), 0.5)
+        col = g.mix(col, WALL_GRIME, g.mul(gm, g.maprange(up, -1, 1, 1.0, 0.4)))
+        ws = g.noise(g.coord("world", scale=(streak_pitch, streak_pitch, 0.07)), 1.0, detail=2.0)
+        sm = g.mul(g.smooth(ws, 0.55, 0.7), vert)
+        col = g.mix(col, g.hsv(col, 0.5, 1.0, 1.0 - streak), sm)
+    elif mode == "B":
+        gx, gy, gz = g.sep(g.attr("arch_gen", out="Vector"))
+        run, _thick, height = g.sep(g.attr("arch_dims", out="Vector"))
+        valid = g.math('GREATER_THAN', run, 0.5)
+        along = g.mul(gx, run)                                     # m along the run
+        over = g.mul(gz, height)                                   # m over the foot
+        under = g.mul(g.math('SUBTRACT', 1.0, gz), height)         # m under the top
+        side = g.mul(gy, 3.7)                                      # inner and outer faces get their own noise
+        live = g.mul(vert, valid)
+        # grime rising from the foot
+        n1 = g.noise(g.comb(along, over, side), 1.0, detail=3.0, roughness=0.55)
+        reach = g.add(gz, g.mul(g.math('SUBTRACT', n1, 0.5), 0.35))
+        gm = g.mul(g.math('SUBTRACT', 1.0, g.smooth(reach, 0.0, grime_v)), g.maprange(n1, 0.25, 0.75, 0.6, 1.25))
+        col = g.mix(col, WALL_GRIME, g.mul(g.mul(gm, grime), live))
+        # rain streaks from under the coping
+        ns = g.noise(g.comb(g.mul(along, streak_pitch), g.mul(under, 0.08), side), 1.0, detail=2.0, roughness=0.5)
+        length = g.maprange(g.noise(g.comb(g.mul(along, 0.6), 7.3, side), 1.0, detail=1.0), 0.3, 0.7, 0.5, 1.9)
+        fade = g.math('SUBTRACT', 1.0, g.smooth(under, 0.0, length))
+        sm = g.mul(g.mul(g.smooth(ns, 0.5, 0.66), fade), live)
+        col = g.mix(col, g.hsv(col, 0.5, 1.0, 1.0 - streak), sm)
+        # panels: joints along the run, one course line under the top, a slight tone per panel
+        count = g.math('MAXIMUM', g.math('ROUND', g.math('DIVIDE', run, pitch)), 1.0)
+        step = g.math('DIVIDE', run, count)
+        fr = g.math('FRACT', g.math('DIVIDE', along, step))
+        dj = g.mul(g.math('MINIMUM', fr, g.math('SUBTRACT', 1.0, fr)), step)     # m to the nearest joint
+        jm = g.math('SUBTRACT', 1.0, g.smooth(dj, 0.015, 0.05))
+        dc = g.math('ABSOLUTE', g.math('SUBTRACT', under, course))
+        cm = g.mul(g.math('SUBTRACT', 1.0, g.smooth(dc, 0.015, 0.05)), vert)
+        lines = g.mul(g.math('MAXIMUM', jm, cm), valid)
+        pid = g.add(g.math('FLOOR', g.math('DIVIDE', along, step)), g.mul(gy, 17.0))
+        pr = g.node("ShaderNodeTexWhiteNoise", {"W": pid}, noise_dimensions='1D').outputs["Value"]
+        col = g.hsv(col, 0.5, 1.0, g.add(1.0, g.mul(g.mul(g.math('SUBTRACT', pr, 0.5), 0.06), valid)))
+        col = g.mix(col, g.hsv(col, 0.5, 1.0, 1.0 - joint), lines)
+        nrm = g.bump(lines, 0.25, 0.004, normal=nrm, invert=True)
+    else:
+        raise ValueError("wall_marble: mode must be 'A' or 'B' (got %r)" % (mode,))
+    g.mat["wall_mode"] = mode
+    r = g.maprange(blot, 0.2, 0.8, rough[0], rough[1])
     g.viewport(base, rough[0])
     g.output(g.principled(base_color=col, roughness=r, subsurface_weight=0.08,
                           subsurface_radius=(1.0, 0.85, 0.7), subsurface_scale=0.02,
@@ -1445,6 +1635,208 @@ def _stone(g, c1="#8a8a84", c2="#6e6c66", speck="#3c3a37", rough=(0.62, 0.85), b
     g.output(g.principled(base_color=col, roughness=r, normal=nrm))
 
 
+def _rock_beds(g, B, strata):
+    """_rock_r59's world beds in nodes, as rock_struct.bed_world, protrusion and bed_profile (B: ROCK_BED). Bed
+    surfaces of constant t = u + uneven x the ROCK_BED_HARM harmonics of u, u = (world z + warp + dip) / bed_m, so t
+    rises with height and every bed is 1.8-5.6 m thick. Each bed's own random values come from a White Noise on its
+    index (beds line up across objects); a bed's height eases into the next bed's over its top, so the relief has no
+    step. -> dict of sockets: i, f (index, position in the bed 0-1), thk (m), h (relief, m), s_hi (this bed's step
+    out past the one above, m), ledge and overhang masks (0 at both ends of a bed), tone and hard (eased, 0-1)."""
+    bed_m = float(B["m"]) * float(strata) / 2.5
+    px, py, pz = g.sep(g.coord("world"))
+    n = g.noise(g.comb(px, py), 1.0 / float(B["warp"][0]), detail=2.0, dims='2D')
+    zw = g.math('MULTIPLY_ADD', g.math('SUBTRACT', n, 0.5), 2.0 * float(B["warp"][1]), pz)
+    zw = g.math('MULTIPLY_ADD', px, float(B["dip"][0]), zw)
+    zw = g.math('MULTIPLY_ADD', py, float(B["dip"][1]), zw)
+    u = g.math('DIVIDE', zw, bed_m)
+    t, d = u, 1.0
+    for amp, fr, ph in ROCK_BED_HARM:
+        arg = g.math('MULTIPLY_ADD', u, float(fr), float(ph))
+        t = g.math('MULTIPLY_ADD', g.math('SINE', arg), float(B["uneven"]) * amp, t)
+        d = g.math('MULTIPLY_ADD', g.math('COSINE', arg), float(B["uneven"]) * amp * fr, d)
+    thk = g.math('DIVIDE', bed_m, d)
+    i = g.math('FLOOR', t)
+    f = g.math('SUBTRACT', t, i)
+
+    def rand(k):           # this bed's (k = 0) or the bed above's (k = 1) three random values
+        wn = g.node("ShaderNodeTexWhiteNoise", {"W": g.add(i, 0.37 + k)}, noise_dimensions='1D')
+        return g.sep(wn.outputs["Color"])
+
+    def prot(cr, cg):      # (hard 0/1, how far the bed stands out in m)
+        hard = g.math('LESS_THAN', cr, float(B["hard"]))
+        p_hard = g.math('MULTIPLY_ADD', cg, float(B["hard_out"][1]), float(B["hard_out"][0]))
+        p_soft = g.math('MULTIPLY_ADD', cg, 2.0 * float(B["soft_out"]), -float(B["soft_out"]))
+        return hard, g.mixf(p_soft, p_hard, hard)
+
+    r0, g0, b0 = rand(0.0)
+    r1, g1, b1 = rand(1.0)
+    hard0, P0 = prot(r0, g0)
+    hard1, P1 = prot(r1, g1)
+    e = g.math('MINIMUM', g.math('DIVIDE', float(B["edge"]), thk), float(B["edge_max"]))
+    top = g.math('SUBTRACT', 1.0, e)
+    ramp = g.smooth(f, top, 1.0)
+    not_ramp = g.math('SUBTRACT', 1.0, ramp)
+    s_hi = g.math('SUBTRACT', P0, P1)
+    sh0, sh1 = (float(x) for x in B["shelf"])
+    ov = g.smooth(s_hi, -sh0, -sh1)          # the bed above overhangs this one
+    sh = g.smooth(s_hi, sh0, sh1)            # this bed is a shelf under the one above
+
+    def below(width):      # smoothstep over the `width` m under the ramp
+        return g.smooth(f, g.math('SUBTRACT', top, g.math('DIVIDE', float(width), thk)), top)
+
+    cut = g.mul(g.mul(ov, below(B["under_w"])), not_ramp)
+    h = g.math('MULTIPLY_ADD', g.math('SUBTRACT', P1, P0), ramp, P0)
+    h = g.math('MULTIPLY_ADD', cut, -float(B["under"]), h)
+    ledge = g.mul(g.mul(sh, below(B["lip"])),
+                  g.math('SUBTRACT', 1.0, g.smooth(f, g.math('MULTIPLY_ADD', e, -0.25, 1.0), 1.0)))
+    overhang = g.mul(g.mul(ov, below(B["overhang_w"])), not_ramp)
+    ease = g.smooth(f, 1.0 - float(B["ease"]), 1.0)
+    return dict(i=i, f=f, thk=thk, h=h, s_hi=s_hi, ledge=ledge, overhang=overhang, tone=g.mixf(b0, b1, ease),
+                hard=g.mixf(hard0, hard1, ease))
+
+
+def _rock_joints(g, J, strata):
+    """_rock_r59's master joints in nodes, as rock_struct.joint_scale, wiggle and joint_groove (J: ROCK_JOINT): a 2D
+    Voronoi on world (x, y), each moved a little with height, so its edges are near-vertical joints on a wall. ->
+    dict(groove: 1 on a joint's centre line, 0 from its half width on; depth: m; block: one random value per block
+    between the joints, 0-1)."""
+    sj = float(strata) / 2.5
+    cell, width, depth = float(J["master_m"]) * sj, float(J["master_w"]) * sj, float(J["master_d"]) * sj
+    px, py, pz = g.sep(g.coord("world"))
+    wr, wg, _wb = g.sep(g.noise(None, 1.0 / float(J["wiggle"][0]), detail=2.0, dims='1D', w=pz, color=True))
+    qx = g.math('MULTIPLY_ADD', g.math('SUBTRACT', wr, 0.5), 2.0 * float(J["wiggle"][1]), px)
+    qy = g.math('MULTIPLY_ADD', g.math('SUBTRACT', wg, 0.5), 2.0 * float(J["wiggle"][1]), py)
+    q = g.comb(qx, qy)
+    edge_m = g.mul(g.voronoi(q, 1.0 / cell, feature='DISTANCE_TO_EDGE', dims='2D'), cell)
+    groove = g.math('SUBTRACT', 1.0, g.smooth(edge_m, 0.0, width))
+    block = g.sep(g.voronoi(q, 1.0 / cell, out="Color", dims='2D'))[0]
+    return dict(groove=groove, depth=depth, block=block)
+
+
+def _rock_r59(g, light, mid, dark, warm, cool, moss, strata, moss_amt, joints, scan, scan_scale):
+    """Round 59 rock (ROCK_STRUCT; docs/scene/rock-r59.md): _rock's tonal zones, photo, lichen, rock life and per-
+    object tint, with the drawn sources gone and real structure in their place: world beds (_rock_beds; hard beds
+    stand out as ledges, pale dry lips on shelves, dark recesses under overhangs, each bed a little lighter or darker,
+    eased) and one set of near-vertical master joints (_rock_joints; a darker groove, a tone per block). All the relief
+    goes through ONE Bump node with a height that is continuous everywhere. Off per material tag through
+    ROCK_STRUCT_VARIANTS; the beds off on objects whose mesh carries its own (ROCK_FLAT_PROPS), both faded out where the
+    round's relief wrote geo_w (ROCK_GEO_ATTR) and on the vertex-colour bake mesh ('w_vc'). ``stain`` is not used here.
+    Marks the material with mat["rock_struct"] = ROCK_STRUCT_TAG."""
+    if isinstance(scan_scale, str):   # so patch KEY=value overrides reach it
+        scan_scale = globals()[scan_scale]
+    var = dict(bed=1.0, joint=1.0)
+    var.update(ROCK_STRUCT_VARIANTS.get(g.mat.get(TAG), {}))
+    bed_amt = float(var["bed"])
+    joint_amt = float(var["joint"]) * float(joints)
+    B, J, CV = _conf("ROCK_BED"), _conf("ROCK_JOINT"), _conf("ROCK_CAVITY")
+    v = g.coord("object")
+    up = g.sep(g.geometry("Normal"))[2]
+    steep = g.smooth(g.math('ABSOLUTE', up), float(J["steep"][0]), float(J["steep"][1]))
+    # where the structure may show: not on the vertex-colour bake mesh (a colour per 4-6 m vertex would alias it),
+    # fading out where the relief wrote geo_w; the beds also not on objects that carry their own (flat = 1)
+    keep = g.mul(g.math('SUBTRACT', 1.0, g.attr(GROUND_POINT_BAKE)),
+                 g.smooth(g.attr(ROCK_GEO_ATTR), float(ROCK_GEO_FADE[1]), float(ROCK_GEO_FADE[0])))
+    flat = None
+    for p in ROCK_FLAT_PROPS:
+        fp = g.math('GREATER_THAN', g.attr(p, kind='OBJECT'), 1e-4)
+        flat = fp if flat is None else g.math('MAXIMUM', flat, fp)
+    own = g.math('SUBTRACT', 1.0, flat)       # 1: the world beds belong on this object
+    h = None
+    beds = bed_on = None
+    if bed_amt > 0.0:
+        beds = _rock_beds(g, B, strata)
+        # only on steep faces, and coming and going along the face (ROCK_BED steep, gap)
+        b_steep = g.smooth(g.math('ABSOLUTE', up), float(B["steep"][0]), float(B["steep"][1]))
+        gs, g0, g1, gf = (float(x) for x in B["gap"])
+        b_gap = g.math('MULTIPLY_ADD', g.smooth(g.noise(g.coord("world"), 1.0 / gs, detail=2.0), g0, g1),
+                       1.0 - gf, gf)
+        bed_on = g.mul(g.mul(g.mul(g.mul(own, keep), bed_amt), b_steep), b_gap)
+        h = g.mul(beds["h"], bed_on)
+    jn = joint_on = None
+    if joint_amt > 0.0:
+        jn = _rock_joints(g, J, strata)
+        js, j0, j1, jf = (float(x) for x in J["gap"])
+        j_gap = g.math('MULTIPLY_ADD', g.smooth(g.noise(g.coord("world"), 1.0 / js, detail=2.0), j0, j1),
+                       1.0 - jf, jf)
+        joint_on = g.mul(g.mul(g.mul(g.math('MULTIPLY_ADD', flat, float(J["flat"]) - 1.0, 1.0), keep), joint_amt),
+                         j_gap)
+        hj = g.mul(g.mul(g.mul(jn["groove"], steep), joint_on), -jn["depth"])
+        h = hj if h is None else g.add(h, hj)
+
+    zone = g.noise(v, 0.04, detail=3.0, roughness=0.5)
+    zone2 = g.noise(v, 0.09, detail=3.0, roughness=0.5)
+    mottle = g.noise(v, 0.35, detail=6.0, roughness=0.62)
+    tone = g.math('MULTIPLY_ADD', g.math('SUBTRACT', zone, 0.5), float(ROCK_ZONE_TONE), 0.5)
+    tone = g.math('MULTIPLY_ADD', g.math('SUBTRACT', mottle, 0.5), float(ROCK_MOTTLE_TONE), tone)
+    if beds is not None:
+        tone = g.add(tone, g.mul(g.mul(g.math('SUBTRACT', beds["tone"], 0.5), bed_on), 2.0 * float(B["tone"])))
+    if jn is not None:
+        # the block tone on steep faces only, like the grooves: on a flat top the 2D cells read as crazy paving
+        tone = g.add(tone, g.mul(g.mul(g.mul(g.math('SUBTRACT', jn["block"], 0.5), joint_on), steep),
+                                 2.0 * float(J["tone"])))
+    col = g.ramp(tone, [(0.22, dark), (0.5, mid), (0.8, light)])
+    col = g.mix(col, warm, g.mul(g.smooth(zone2, 0.5, 0.72), 0.65))
+    col = g.mix(col, cool, g.mul(g.smooth(zone2, 0.42, 0.25), 0.5))
+    if beds is not None:
+        col = g.mix(col, ROCK_HARD_COLOUR, g.mul(g.mul(beds["hard"], bed_on), float(B["hard_pale"])))
+    cav = None
+    if jn is not None:
+        cav = g.math('MULTIPLY_ADD', g.mul(g.mul(jn["groove"], steep), joint_on), -float(CV["joint"]), 1.0)
+    if beds is not None:
+        c2 = g.math('MULTIPLY_ADD', g.mul(beds["overhang"], bed_on), -float(CV["overhang"]), 1.0)
+        cav = c2 if cav is None else g.mul(cav, c2)
+    if cav is not None:
+        col = g.vmath('SCALE', col, scale=cav)
+    if beds is not None:
+        col = g.mix(col, g.hsv(col, 0.5, 0.9, 1.08), g.mul(g.mul(beds["ledge"], bed_on), float(ROCK_SHELF_PALE)))
+    fine = g.noise(v, 7.0, detail=6.0, roughness=0.65)
+    col = g.mix(col, g.hsv(col, 0.5, 1.0, 0.82), g.mul(g.smooth(fine, 0.55, 0.78), 0.55))
+    scan_h = None
+    if scan is not None:
+        col, scan_h = _rock_scan(g, col, scan, scan_scale)
+    lich = g.smooth(g.noise(v, 1.8, detail=5.0, distortion=0.5), 0.66, 0.72)
+    col = g.mix(col, "#b0ad98", g.mul(lich, 0.3))
+    life = None
+    if ROCK_LIFE:
+        lb = None
+        if beds is not None:
+            # s: the streaks follow the world beds only where the beds themselves show (keep: not on the
+            # vertex-colour mesh, faded out where the relief wrote geo_w), else a relieved rock would show the world
+            # beds again as streak tops
+            lb = dict(f=beds["f"], i=beds["i"], s_hi=beds["s_hi"], overhang=g.mul(beds["overhang"], bed_on),
+                      s=g.mul(own, keep))
+        life = _rock_life(g, col, moss_amt, beds=lb)
+        col, mossm = life["col"], life["moss"]
+    else:
+        mossm = g.mul(g.smooth(up, 0.35, 0.8), g.smooth(g.noise(v, 0.5, detail=6.0, distortion=0.5), 0.36, 0.56))
+        mossm = g.mul(mossm, moss_amt)
+        mcol = g.ramp(fine, [(0.25, "#34502a"), (0.6, moss), (0.9, "#7a8a48")])
+        col = g.mix(col, mcol, mossm)
+    col = g.tint_per_object(col, hue=0.008, sat=0.08, val=0.08)
+    r = g.mixf(g.maprange(fine, 0.2, 0.8, 0.74, 0.92), 0.96, mossm)
+    soft = 1.0
+    if life is not None:
+        r = g.mixf(r, 0.5, g.mul(life["wet"], 0.6))
+        soft = g.math('MULTIPLY_ADD', mossm, -float(ROCK_MOSS_SOFTEN), 1.0)
+
+    def st(s):   # bump strength, lowered under moss
+        return s if life is None else g.mul(soft, s)
+
+    nrm = None
+    if h is not None:   # the one structure Bump: heights in metres
+        nrm = g.bump(h, st(float(ROCK_STRUCT_BUMP)), 1.0)
+    if scan_h is not None:
+        nrm = g.bump(scan_h, st(ROCK_SCAN_BUMP), ROCK_SCANS[scan]["relief"] * scan_scale, nrm)
+    if life is not None:
+        if ROCK_MOSS_BUMP:
+            nrm = g.bump(mossm, ROCK_MOSS_BUMP, 0.05, nrm)
+        if ROCK_MOSS_PHOTO_BUMP and life["moss_h"] is not None:
+            nrm = g.bump(g.mul(life["moss_h"], mossm), ROCK_MOSS_PHOTO_BUMP, 0.015, nrm)
+    g.viewport(mid, 0.85)
+    g.mat["rock_struct"] = int(ROCK_STRUCT_TAG)
+    g.output(g.principled(base_color=col, roughness=r, normal=nrm))
+
+
 def _rock(g, light="#938d83", mid="#76726b", dark="#54514c", warm="#968e83", cool="#7a7d7c",
           moss="#4b6b3a", strata=2.5, moss_amt=1.0, stain=0.6, joints=1.0, scan=None, scan_scale=1.0):
     """Cliff / pillar sandstone (Zhangjiajie-like), meter-scaled on the object's axes:
@@ -1454,7 +1846,12 @@ def _rock(g, light="#938d83", mid="#76726b", dark="#54514c", warm="#968e83", coo
     the lichen, moss and per-object tint, and whose height joins the bump chain. ``scan_scale``
     may name a module constant (e.g. "ROCK_SMALL_SCAN_SCALE"), read at build time. With ROCK_LIFE
     the moss, damp streaks and extra lichen come from _rock_life (world space, ROCK_* constants;
-    ``moss`` is then unused, ``moss_amt`` still scales the moss)."""
+    ``moss`` is then unused, ``moss_amt`` still scales the moss). With ROCK_STRUCT (round 59) _rock_r59
+    builds the rock instead; ROCK_STRUCT False builds the graph below exactly as before."""
+    if ROCK_STRUCT:
+        return _rock_r59(g, light, mid, dark, warm, cool, moss, strata, moss_amt, joints, scan, scan_scale)
+    if "rock_struct" in g.mat:        # a rollback: the material is the old graph again
+        del g.mat["rock_struct"]
     if isinstance(scan_scale, str):   # so patch_nature_look.py KEY=value overrides reach it
         scan_scale = globals()[scan_scale]
     v = g.coord("object")
@@ -1961,7 +2358,7 @@ def _register_defaults():
     R("stone_grey", _stone)
     R("stone_dark", _stone, c1="#4a4844", c2="#3a3835", speck="#1e1d1c", rough=(0.45, 0.65), bump=0.12,
       light="#5e5a54", light_amt=0.4)
-    R("rock_cliff", _rock, scan="marble_cliff_06")
+    R("rock_cliff", _rock, scan="mtn_cliff")
     # ground & plants
     R("moss", _organic, colours=[(0.2, "#2f4a24"), (0.55, "#4b6b3a"), (0.9, "#76884a")], rough=(0.85, 0.98),
       sheen=0.6, scale=2.0, bump=0.4)

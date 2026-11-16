@@ -1,0 +1,117 @@
+{
+ "version": 1,
+ "families": [
+  "bamboo.culm.v0",
+  "bamboo.culm.v1",
+  "bamboo.culm.v2",
+  "bamboo.culm.v3",
+  "bamboo.culm.v4",
+  "bamboo.culm.v5",
+  "blossom.peach.v0",
+  "blossom.peach.v1",
+  "blossom.peach.v2",
+  "blossom.peach.v3",
+  "pine.ancient.v1",
+  "pine.ancient.v2",
+  "pine.broadleaf.v0",
+  "pine.broadleaf.v1",
+  "pine.broadleaf.v2",
+  "pine.broadleaf.v3",
+  "pine.broadleaf.v4",
+  "pine.broadleaf.v5",
+  "pine.broadleaf.v6",
+  "pine.broadleaf.v7",
+  "pine.huangshan.v0",
+  "pine.huangshan.v1",
+  "pine.huangshan.v2",
+  "pine.huangshan.v3",
+  "pine.huangshan.v4",
+  "pine.huangshan.v5",
+  "pine.masson.v0",
+  "pine.masson.v1",
+  "pine.masson.v2",
+  "pine.masson.v3",
+  "shrub.azalea.v0",
+  "shrub.azalea.v1",
+  "shrub.azalea.v3",
+  "shrub.green.v0",
+  "shrub.green.v0.low",
+  "shrub.green.v1",
+  "shrub.green.v1.low",
+  "shrub.green.v2",
+  "shrub.green.v2.low",
+  "shrub.green.v3",
+  "shrub.green.v3.low",
+  "shrub.green.v4",
+  "shrub.scrub.v0",
+  "shrub.scrub.v0.low",
+  "shrub.scrub.v1",
+  "shrub.scrub.v1.low",
+  "shrub.scrub.v2",
+  "shrub.scrub.v2.low",
+  "shrub.scrub.v3",
+  "shrub.scrub.v3.low"
+ ],
+ "chunks": {
+  "abode": {
+   "file": "abode.veg",
+   "count": 6511,
+   "cards": 5486
+  },
+  "arena": {
+   "file": "arena.veg",
+   "count": 2729,
+   "cards": 1804
+  },
+  "backdrop": {
+   "file": "backdrop.veg",
+   "count": 8915,
+   "cards": 8915
+  },
+  "forge": {
+   "file": "forge.veg",
+   "count": 4655,
+   "cards": 4205
+  },
+  "formation": {
+   "file": "formation.veg",
+   "count": 3008,
+   "cards": 2235
+  },
+  "gate": {
+   "file": "gate.veg",
+   "count": 5013,
+   "cards": 4597
+  },
+  "library": {
+   "file": "library.veg",
+   "count": 5715,
+   "cards": 4856
+  },
+  "mirror": {
+   "file": "mirror.veg",
+   "count": 3621,
+   "cards": 3257
+  },
+  "mission": {
+   "file": "mission.veg",
+   "count": 3771,
+   "cards": 3397
+  },
+  "scroll": {
+   "file": "scroll.veg",
+   "count": 4565,
+   "cards": 4040
+  },
+  "steles": {
+   "file": "steles.veg",
+   "count": 3265,
+   "cards": 2634
+  },
+  "summit": {
+   "file": "summit.veg",
+   "count": 4064,
+   "cards": 3489
+  }
+ }
+}

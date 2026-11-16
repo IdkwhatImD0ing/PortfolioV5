@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ChunkSpan, PlanWindow } from "./chunks";
-import { chunkDone, destinationChunks, SETTLE, SettleWatch, type SettleSnapshot } from "./settle";
+import { LIVE_LOOK } from "./live";
+import { chunkArriving, chunkDone, destinationChunks, detailHolds, SETTLE, SETTLE_GATE, SettleWatch, type SettleSnapshot } from "./settle";
 
 // A stop at frame 100 whose view reaches three areas (need ranges are wide: an area is seen from far).
 const CHUNKS: ChunkSpan[] = [
@@ -108,6 +111,35 @@ describe("chunkDone", () => {
   });
 });
 
+describe("detailHolds", () => {
+  it("holds fast travel's ink until the detail texture has faded in", () => {
+    expect(detailHolds("arriving", false)).toBe(true);
+    expect(detailHolds("decoding", false)).toBe(true);
+    expect(detailHolds("fading", false)).toBe(true);
+    expect(detailHolds("none", false)).toBe(false);
+  });
+
+  it("holds the loading screen's wait for its download (a piece still arriving) and its decoding, not for its fade", () => {
+    expect(detailHolds("arriving", true)).toBe(true);
+    expect(detailHolds("decoding", true)).toBe(true);
+    expect(detailHolds("fading", true)).toBe(false);
+    expect(detailHolds("none", true)).toBe(false);
+  });
+});
+
+describe("chunkArriving", () => {
+  it("is a chunk whose bytes are still on the way: not loaded, or a file still downloading", () => {
+    // Not started, or downloading.
+    expect(chunkArriving({ done: false, resident: false, fetched: false })).toBe(true);
+    expect(chunkArriving({ done: false, resident: false })).toBe(true);
+    // Every file here, being parsed and prepared: work on what has arrived.
+    expect(chunkArriving({ done: false, resident: false, fetched: true })).toBe(false);
+    // Prepared and uploading, or drawn (or given up on).
+    expect(chunkArriving({ done: false, resident: true, fetched: false })).toBe(false);
+    expect(chunkArriving({ done: true, resident: false, fetched: false })).toBe(false);
+  });
+});
+
 describe("SettleWatch", () => {
   const snap = (over: Partial<SettleSnapshot>): SettleSnapshot => ({
     now: 0,
@@ -176,9 +208,193 @@ describe("SettleWatch", () => {
     expect(d.progress).toBeLessThan(1);
   });
 
+  it("counts a shorter still for the loading screen's wait for the first stop (SETTLE_GATE)", () => {
+    expect(SETTLE_GATE.stableMs).toBeLessThan(SETTLE.stableMs);
+    expect(SETTLE_GATE.stableFrames).toBe(SETTLE.stableFrames);
+    const gate = new SettleWatch(SETTLE_GATE);
+    const ink = new SettleWatch();
+    gate.push(snap({}));
+    ink.push(snap({}));
+    const at = snap({ now: SETTLE_GATE.stableMs, frames: SETTLE_GATE.stableFrames });
+    expect(gate.push(at).settled).toBe(true);
+    expect(ink.push(at).settled).toBe(false);
+    // An upload still starts it again.
+    const g2 = new SettleWatch(SETTLE_GATE);
+    g2.push(snap({}));
+    expect(g2.push(snap({ now: SETTLE_GATE.stableMs, frames: SETTLE_GATE.stableFrames, gpu: "10:6:30" })).settled).toBe(false);
+  });
+
   it("settles a destination with nothing to load once the frames hold still", () => {
     const w = new SettleWatch();
     expect(w.push(snap({})).settled).toBe(false);
     expect(w.push(snap({ now: SETTLE.stableMs, frames: SETTLE.stableFrames })).settled).toBe(true);
+  });
+
+  describe("late pieces (live light coming in at the place)", () => {
+    const WAIT = LIVE_LOOK.handover.inkWaitMs;
+    const live = { late: ["live"], lateMs: WAIT };
+    /** When the watch with no late piece first settles. */
+    const T = SETTLE.stableMs;
+    const F = SETTLE.stableFrames;
+
+    it("hold nothing back while the rest comes in, and are not named until it has", () => {
+      const w = new SettleWatch();
+      expect(w.push(snap({ chunks: [{ id: "gate", done: 0.5, weight: 10 }], ...live })).waiting).toEqual(["gate"]);
+      // Everything in: the still count runs as before (and the page's one unculled frame still sees ["still"]).
+      expect(w.push(snap({ now: 10, frames: 1, ...live })).waiting).toEqual(["still"]);
+    });
+
+    it("hold the ink past settled until they are done", () => {
+      const w = new SettleWatch();
+      w.push(snap({ ...live }));
+      const s = w.push(snap({ now: T, frames: F, ...live }));
+      expect(s.settled).toBe(false);
+      expect(s.waiting).toEqual(["live"]);
+      expect(s.progress).toBeLessThan(1);
+      expect(w.push(snap({ now: T + 300, frames: F + 10, ...live })).settled).toBe(false);
+      // Lit: settled at once (the frames have held still all along).
+      expect(w.push(snap({ now: T + 320, frames: F + 11, late: [], lateMs: WAIT })).settled).toBe(true);
+    });
+
+    it("wait for the frames to hold still again after their own uploads", () => {
+      const w = new SettleWatch();
+      w.push(snap({ ...live }));
+      w.push(snap({ now: T, frames: F, ...live }));
+      // Its maps reach the GPU: the counts change, then it is lit.
+      const up = w.push(snap({ now: T + 200, frames: F + 5, gpu: "10:11:31", late: [], lateMs: WAIT }));
+      expect(up.settled).toBe(false);
+      expect(up.waiting).toEqual(["still"]);
+      expect(w.push(snap({ now: T + 200 + SETTLE.stableMs, frames: F + 5 + SETTLE.stableFrames, gpu: "10:11:31", late: [], lateMs: WAIT })).settled).toBe(true);
+    });
+
+    it("never hold it longer than lateMs past when it would have cleared", () => {
+      const w = new SettleWatch();
+      w.push(snap({ ...live }));
+      w.push(snap({ now: T, frames: F, ...live }));
+      expect(w.push(snap({ now: T + WAIT - 1, frames: F + 100, gpu: "10:12:31", ...live })).settled).toBe(false);
+      // Still busy, and the counts still changing: let go all the same.
+      const s = w.push(snap({ now: T + WAIT, frames: F + 101, gpu: "10:13:31", ...live }));
+      expect(s.settled).toBe(true);
+      expect(s.progress).toBe(1);
+    });
+
+    it("hold nothing without a wait, and nothing once done", () => {
+      const a = new SettleWatch();
+      a.push(snap({ late: ["live"] }));
+      expect(a.push(snap({ now: T, frames: F, late: ["live"] })).settled).toBe(true);
+      const b = new SettleWatch();
+      b.push(snap({ late: [], lateMs: WAIT }));
+      expect(b.push(snap({ now: T, frames: F, late: [], lateMs: WAIT })).settled).toBe(true);
+    });
+  });
+
+  describe("pieces whose bytes are still on the way (the loading screen's wait, SETTLE_GATE)", () => {
+    const A = SETTLE_GATE.arrivingMs;
+    const G = SETTLE_GATE.stableMs;
+    const F = SETTLE_GATE.stableFrames;
+    const mirror = { id: "mirror", done: 0.3, weight: 10 };
+
+    it("hold it for arrivingMs from when it first saw them, then no longer", () => {
+      expect(A).toBeGreaterThan(0);
+      expect(A).toBeLessThan(1000);
+      const w = new SettleWatch(SETTLE_GATE);
+      let s = w.push(snap({ now: 1000, chunks: [mirror], arriving: ["mirror"] }));
+      expect(s.waiting).toEqual(["mirror"]);
+      expect(s.away).toEqual([]);
+      s = w.push(snap({ now: 1000 + A - 1, frames: 10, chunks: [mirror], arriving: ["mirror"] }));
+      expect(s.waiting).toEqual(["mirror"]);
+      const before = s.progress;
+      // Let go: the still count starts from here, and the area still counts toward the progress.
+      s = w.push(snap({ now: 1000 + A, frames: 11, chunks: [mirror], arriving: ["mirror"] }));
+      expect(s.waiting).toEqual(["still"]);
+      expect(s.away).toEqual(["mirror"]);
+      expect(s.settled).toBe(false);
+      expect(s.progress).toBeGreaterThanOrEqual(before);
+      expect(s.progress).toBeLessThan(1);
+      s = w.push(snap({ now: 1000 + A + G, frames: 11 + F, chunks: [mirror], arriving: ["mirror"] }));
+      expect(s.settled).toBe(true);
+    });
+
+    it("hold it again once their files are here, while the work on them goes on", () => {
+      const w = new SettleWatch(SETTLE_GATE);
+      w.push(snap({ now: 0, chunks: [mirror], arriving: ["mirror"] }));
+      expect(w.push(snap({ now: A, frames: 5, chunks: [mirror], arriving: ["mirror"] })).waiting).toEqual(["still"]);
+      // Its files are all here before the wait settles: parsing, preparing and uploading it is local work.
+      const here = { ...mirror, done: 0.8 };
+      expect(w.push(snap({ now: A + 50, frames: 7, chunks: [here] })).waiting).toEqual(["mirror"]);
+      expect(w.push(snap({ now: A + 2000, frames: 100, chunks: [{ ...here, done: 0.9 }] })).settled).toBe(false);
+      w.push(snap({ now: A + 2100, frames: 110, chunks: [{ ...here, done: 1 }] }));
+      expect(w.push(snap({ now: A + 2100 + G, frames: 110 + F, chunks: [{ ...here, done: 1 }] })).settled).toBe(true);
+    });
+
+    it("give each piece its own arrivingMs, from when it was first seen arriving", () => {
+      const w = new SettleWatch(SETTLE_GATE);
+      const forge = { id: "forge", done: 0, weight: 10 };
+      w.push(snap({ now: 0, chunks: [mirror], arriving: ["mirror"] }));
+      // The forge joins later (its load was not planned yet).
+      const s = w.push(snap({ now: A, frames: 5, chunks: [mirror, forge], arriving: ["mirror", "forge"] }));
+      expect(s.waiting).toEqual(["forge"]);
+      expect(s.away).toEqual(["mirror"]);
+      expect(w.push(snap({ now: 2 * A, frames: 9, chunks: [mirror, forge], arriving: ["mirror", "forge"] })).waiting).toEqual(["still"]);
+    });
+
+    it("let go of a busy piece and a late one the same way (the detail texture, live light's maps)", () => {
+      const late = { late: ["live"], lateMs: 6000 };
+      const w = new SettleWatch(SETTLE_GATE);
+      w.push(snap({ now: 0, busy: ["detail"], arriving: ["detail", "live"], ...late }));
+      let s = w.push(snap({ now: A, frames: 4, busy: ["detail"], arriving: ["detail", "live"], ...late }));
+      expect(s.waiting).toEqual(["still"]);
+      expect(s.away).toEqual(["detail", "live"]);
+      // Settled although live light is still coming: its maps arrive after Enter.
+      s = w.push(snap({ now: A + G, frames: 4 + F, busy: ["detail"], arriving: ["detail", "live"], ...late }));
+      expect(s.settled).toBe(true);
+      // With its maps here (decoding, uploading, linking) live light is a late piece again.
+      const b = new SettleWatch(SETTLE_GATE);
+      b.push(snap({ now: 0, arriving: ["live"], ...late }));
+      b.push(snap({ now: A, frames: 4, ...late }));
+      const t = b.push(snap({ now: A + G, frames: 4 + F, ...late }));
+      expect(t.settled).toBe(false);
+      expect(t.waiting).toEqual(["live"]);
+    });
+
+    it("never let fast travel's ink go while a download is under way (SETTLE)", () => {
+      expect(SETTLE.arrivingMs).toBe(Infinity);
+      const w = new SettleWatch(SETTLE);
+      w.push(snap({ now: 0, chunks: [mirror], busy: ["detail"], arriving: ["mirror", "detail"] }));
+      const s = w.push(snap({ now: 60000, frames: 5000, chunks: [mirror], busy: ["detail"], arriving: ["mirror", "detail"] }));
+      expect(s.waiting).toEqual(["mirror", "detail"]);
+      expect(s.away).toEqual([]);
+    });
+  });
+});
+
+describe("the page's settled wait reads live light (sect-experience.tsx, live.tsx)", () => {
+  const dir = path.resolve(__dirname, "../../app/sect/experience");
+  const page = readFileSync(path.join(dir, "sect-experience.tsx"), "utf8");
+  const live = readFileSync(path.join(dir, "live.tsx"), "utf8");
+
+  it("passes the canvas's live report as a late piece, capped by LIVE_LOOK.handover.inkWaitMs (the loading screen's wait by its own cap)", () => {
+    const settle = page.slice(page.indexOf("const settleAt = "), page.indexOf("const arriveAt = "));
+    expect(settle).toContain('late: r.live ? ["live"] : []');
+    expect(settle).toContain("lateMs: gate ? gate.lateMs : LIVE_LOOK.handover.inkWaitMs");
+    expect(settle).toContain("settleAt(store.targetU, ac.signal, { lateMs: ENTER_SETTLE_MS })");
+    // The first stop's wait (`gate`) counts the shorter still.
+    expect(settle).toContain("new SettleWatch(gate ? SETTLE_GATE : SETTLE)");
+  });
+
+  it("names what is still downloading: the areas, the detail texture and live light's maps", () => {
+    const settle = page.slice(page.indexOf("const settleAt = "), page.indexOf("const arriveAt = "));
+    expect(settle).toContain("const arriving = [...place.arriving]");
+    expect(settle).toContain("if (detailHolds(detail, !!gate)) busy.push(\"detail\")");
+    expect(settle).toContain('if (detail === "arriving") arriving.push("detail")');
+    expect(settle).toContain('if (r.liveArriving) arriving.push("live")');
+    expect(settle).toMatch(/lateMs: gate \? gate\.lateMs : LIVE_LOOK\.handover\.inkWaitMs,\s+arriving,/);
+    expect(live).toContain("store.report.liveArriving = liveArriving(");
+    expect(live.split("store.report.liveArriving = false").length - 1).toBeGreaterThanOrEqual(2);
+  });
+
+  it("has live light report it each frame, and clear it when off or gone", () => {
+    expect(live).toContain("store.report.live = liveComing(");
+    expect(live.split("store.report.live = false").length - 1).toBeGreaterThanOrEqual(2);
   });
 });

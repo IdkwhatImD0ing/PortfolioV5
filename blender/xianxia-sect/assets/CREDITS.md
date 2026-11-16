@@ -5,6 +5,7 @@ The downloaded files in this folder are git-ignored (see `.gitignore`); this lis
 ## CC0 (no credit required)
 
 - Poly Haven (https://polyhaven.com): rock_face_01, rock_face_02, mountainside, boulder_01, fern_02, moss_01 (models); marble_cliff_06, sparse_grass, leafy_grass, grass_ground (textures).
+- The rock tile mtn_cliff (`derived/mtn_cliff*/`, `web/mtn_cliff*.jpg`) is derived from Poly Haven's mountainside model textures (CC0) by tools/make_rock_tile.py, from the crop (2432,1648)-(3136,2352) of its 4k colour and GL normal maps.
 - Poly Haven "Pine Tree 01" (https://polyhaven.com/a/pine_tree_01) by Rob Tuytel (photography) and Rico Cilliers (modeling), CC0: its 2K twig colour and alpha maps (`polyhaven/pine_tree_01/textures/`) are composed into `web/twig_card.png` (tools/prep_textures.mjs), the needle-card texture shipped in the site's `*_trees.glb.gz` files. Credit is optional; suggested line: "Pine twig texture: Pine Tree 01 by Rob Tuytel and Rico Cilliers, Poly Haven (CC0)."
 - ambientCG (https://ambientcg.com): Rock063, Moss001, Foliage008.
 - ffish.asia / floraZia.com on Sketchfab: black pine twig, Japanese red pine, sakura branch, Indian lotus, Chinese silver grass.

@@ -5,9 +5,10 @@
  * window (desktops as soon as nothing else loads, phones while the camera rests), cancels loads
  * nobody wants any more, keeps the area on screen until the next one can be drawn, retries failed
  * loads a few times and hands dropped chunks back for disposal once React has taken them out of the
- * scene. It measures what each loaded chunk holds (triangles, texture memory: status()). For fast
- * travel's settled wait it says what a camera resting at a stop will draw and how far that has come
- * (settleAt).
+ * scene. It measures what each loaded chunk holds (triangles, texture memory: status()). On a strong
+ * desktop (STREAM_BUDGETS.everything) it also loads every other area in the background once the page
+ * opens it (fillOpen), one at a time, and keeps them. For fast travel's settled wait it says what a
+ * camera resting at a stop will draw and how far that has come (settleAt).
  *
  * Not React: the page calls update() on a timer and on jumps, and re-renders on onChange.
  */
@@ -30,7 +31,7 @@ import {
   windowCentreAt,
 } from "@/lib/sect/chunks";
 import type { DeviceInfo, Tier } from "@/lib/sect/runtime";
-import { chunkDone, destinationChunks, SETTLE, type SettleSnapshot } from "@/lib/sect/settle";
+import { chunkArriving, chunkDone, destinationChunks, SETTLE, type SettleSnapshot } from "@/lib/sect/settle";
 import type { ChunkInfo } from "@/lib/sect/types";
 import { chunkFiles, disposeSet, loadSet, retireSet, type LoadedSet, type SetLoadOptions, type WorldContext } from "./assets";
 
@@ -42,6 +43,21 @@ import { chunkFiles, disposeSet, loadSet, retireSet, type LoadedSet, type SetLoa
  * on a 40 Mbps line, sharing the line with the forge further back.
  */
 const MAX_PARALLEL = 2;
+/**
+ * Loads at once during the loading screen's wait for the first stop (settleAt with `around`
+ * Infinity), the area the plan prefetches once the others are in among them (it is drawn in the
+ * first view too, far back). One after another, the prefetch started only once the others were
+ * drawn, and its parsing, preparing and uploads alone held "Enter" about half a second, or,
+ * finishing after it, went up and linked their programs in the first seconds of the flight.
+ *
+ * Their downloads still go one at a time, nearest first, as everywhere (MAX_PARALLEL): the next
+ * starts once the last one's files are in, while that one is parsed and prepared, so on localhost
+ * they overlap as before. The wait no longer waits for a download (lib/sect/settle.ts SETTLE_GATE),
+ * and on a real line four side by side made the nearest neighbour (the mirror's peak beside the
+ * stair) and the first stop's own area, when the opening view went on without it, arrive last with
+ * the rest.
+ */
+const GATE_PARALLEL = 4;
 /** Tries a chunk gets (the first load and its retries) before the backdrop's proxy stands in for good. */
 const MAX_TRIES = 3;
 /**
@@ -110,12 +126,26 @@ export type PrefetchMode = "moving" | "rest" | "off";
  * `lookBack`: while the visitor looks back at rest (free look turned past 90 degrees), one more area
  * behind the view may load past the cap (lib/sect/chunks.ts PlanWindow.lookBack). 0 everywhere now:
  * the window already holds the areas behind.
+ *
+ * `fillTexBytes` (`everything`: a High desktop with 16 GB and the line for it, streamBudget):
+ * once the visitor is in, every other area loads in the background too, one at a time, ahead first,
+ * and stays (lib/sect/chunks.ts PlanWindow.fill), while all of it fits this much texture memory. 0:
+ * off. Measured at the gate on High (production build, 1600x900, RTX 5080): the full window holds 4
+ * areas, 867 MB of textures and 7.6 M triangles; all eleven hold 2,241 MB and 19.2 M, and the frame
+ * is unchanged (550 draw calls, 8.9 M triangles drawn, 3.0 ms of GPU time), because an area is drawn
+ * only while the frame is inside its need range, and the seven more are outside theirs there. So
+ * holding everything costs memory, not frame time. 3 GB holds all eleven with room; it is a guard
+ * should the scene grow.
  */
+const FULL = { around: { behind: 2, ahead: 2 }, spare: 1, lookBack: 0, prefetch: "moving", fillTexBytes: 0 } as const;
+/** Texture memory every area may fill in the background (STREAM_BUDGETS.everything): 3 GB. */
+const FILL_TEX_BYTES = 3 * 2 ** 30;
 export const STREAM_BUDGETS = {
-  full: { around: { behind: 2, ahead: 2 }, spare: 1, lookBack: 0, prefetch: "moving" },
-  narrow: { around: { behind: 1, ahead: 1 }, spare: 1, lookBack: 0, prefetch: "moving" },
-  low: { around: { behind: 1, ahead: 1 }, spare: 1, lookBack: 0, prefetch: "rest" },
-  lean: { around: { behind: 0, ahead: 0 }, spare: 1, lookBack: 0, prefetch: "rest" },
+  everything: { ...FULL, fillTexBytes: FILL_TEX_BYTES },
+  full: FULL,
+  narrow: { around: { behind: 1, ahead: 1 }, spare: 1, lookBack: 0, prefetch: "moving", fillTexBytes: 0 },
+  low: { around: { behind: 1, ahead: 1 }, spare: 1, lookBack: 0, prefetch: "rest", fillTexBytes: 0 },
+  lean: { around: { behind: 0, ahead: 0 }, spare: 1, lookBack: 0, prefetch: "rest", fillTexBytes: 0 },
 } as const satisfies Record<string, StreamBudget>;
 
 export interface StreamBudget {
@@ -127,12 +157,25 @@ export interface StreamBudget {
   prefetch: PrefetchMode;
   /** Areas behind allowed past the cap while looking back (lib/sect/chunks.ts PlanWindow.lookBack). */
   lookBack: number;
+  /**
+   * Texture memory (bytes) every area may take while the rest load in the background and stay
+   * (lib/sect/chunks.ts PlanWindow.fill). 0: off.
+   */
+  fillTexBytes: number;
+}
+
+/** The same budget without background filling (the page's one strike: a step down the quality ladder). */
+export function withoutFill(budget: StreamBudget): StreamBudget {
+  return budget.fillTexBytes === 0 ? budget : { ...budget, fillTexBytes: 0 };
 }
 
 /** What the browser tells about the machine's memory (lib/sect/runtime.ts DeviceInfo). */
 export type MemoryHints = Pick<DeviceInfo, "deviceMemory" | "hardwareConcurrency">;
 
-/** navigator.deviceMemory is in GB and capped at 8 (Chrome, Edge): 8 means 8 GB or more. */
+/**
+ * navigator.deviceMemory is in GB, rounded down to a power of two. Chrome and Edge capped it at 8
+ * for years (8 meant 8 GB or more); current ones go higher (Chrome 157 reported 32).
+ */
 const ROOMY_MEMORY_GB = 8;
 /** Without deviceMemory (Firefox, Safari), logical cores stand in for it (see roomyMemory). */
 const ROOMY_CORES = 8;
@@ -151,6 +194,25 @@ export function roomyMemory(memory: MemoryHints): boolean {
   return (memory.hardwareConcurrency ?? 0) >= ROOMY_CORES;
 }
 
+/** Memory for holding every area at once (STREAM_BUDGETS.everything): 16 GB. */
+const FILL_MEMORY_GB = 16;
+/** Without deviceMemory, the logical cores that stand in for 16 GB (see fillMemory). */
+const FILL_CORES = 10;
+
+/**
+ * True when a High desktop has the memory to hold every area at once (STREAM_BUDGETS.everything,
+ * about 2.2 GB of textures against 0.9 to 1.2 GB for the window): 16 GB or more.
+ * - deviceMemory known: at least 16. A machine with 8 GB shares it with the system and the browser,
+ *   and an integrated GPU (or an Apple one) takes its textures from the same 8 GB. A browser that
+ *   still caps the figure at 8 does not fill.
+ * - deviceMemory unknown (Firefox, Safari): at least 10 logical cores. The 8-core laptops that sell
+ *   with 8 GB (and Apple's 8-core chips) stay out; machines with 10 or more rarely have under 16 GB.
+ */
+export function fillMemory(memory: MemoryHints): boolean {
+  if (memory.deviceMemory !== undefined) return memory.deviceMemory >= FILL_MEMORY_GB;
+  return (memory.hardwareConcurrency ?? 0) >= FILL_CORES;
+}
+
 function navigatorMemory(): MemoryHints {
   if (typeof navigator === "undefined") return {};
   const nav = navigator as Navigator & { deviceMemory?: number };
@@ -163,15 +225,50 @@ function navigatorSaveData(): boolean {
   return (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData === true;
 }
 
+/** What the browser tells about the visitor's line (navigator.connection: Chrome, Edge, Android browsers). */
+export interface ConnectionHints {
+  /** "slow-2g", "2g", "3g" or "4g" (the fastest it names). */
+  effectiveType?: string;
+}
+
+/** Lines that never fill in the background: the browser calls them 3G or slower. */
+const SLOW_TYPES: readonly string[] = ["slow-2g", "2g", "3g"];
+
+/**
+ * The line is too slow to download every area in the background (only when the browser says so).
+ * Only the browser's class of line counts, not its bandwidth figure (navigator.connection.downlink):
+ * Chrome leaves traffic to localhost out of that figure and starts a new profile near 1.3-1.5 Mbps
+ * until it has seen a fast download, and the budget is chosen when the world is made, before the
+ * page's own downloads could raise it. A cut at 5 Mbps turned filling off on a fast desktop line
+ * (measured in Chrome, which called the same line "4g").
+ */
+export function slowLine(connection: ConnectionHints): boolean {
+  return connection.effectiveType !== undefined && SLOW_TYPES.includes(connection.effectiveType);
+}
+
+function navigatorConnection(): ConnectionHints {
+  if (typeof navigator === "undefined") return {};
+  const c = (navigator as Navigator & { connection?: ConnectionHints }).connection;
+  return c ? { effectiveType: c.effectiveType } : {};
+}
+
 /**
  * The budget for a device (STREAM_BUDGETS): High desktops keep two areas each side, and so do
  * Medium ones with the memory for it (roomyMemory), else one each side; every touch screen (phones,
  * and tablets the tier ranks mid: they share the phone's memory limits, and iOS drops a tab at about
  * 1.5 GB) and the low tier keep one each side with the 2048 px textures, and the area alone on High
- * (its 4096 px textures). With the data saver on, nothing is fetched ahead (the next area loads when
- * it is needed). `memory` and `saveData` default to what the browser reports.
+ * (its 4096 px textures). A High desktop with 16 GB (fillMemory) on a line that is not slow
+ * (slowLine) also loads every other area in the background (`everything`). With the data saver on,
+ * nothing is fetched ahead and nothing fills (the next area loads when it is needed). `memory`,
+ * `saveData` and `connection` default to what the browser reports.
  */
-export function streamBudget(tier: Tier, coarsePointer: boolean, memory: MemoryHints = navigatorMemory(), saveData = navigatorSaveData()): StreamBudget {
+export function streamBudget(
+  tier: Tier,
+  coarsePointer: boolean,
+  memory: MemoryHints = navigatorMemory(),
+  saveData = navigatorSaveData(),
+  connection: ConnectionHints = navigatorConnection(),
+): StreamBudget {
   const base = coarsePointer
     ? tier === "high"
       ? STREAM_BUDGETS.lean
@@ -181,7 +278,9 @@ export function streamBudget(tier: Tier, coarsePointer: boolean, memory: MemoryH
       : tier === "high" || roomyMemory(memory)
         ? STREAM_BUDGETS.full
         : STREAM_BUDGETS.narrow;
-  return saveData ? { ...base, prefetch: "off" } : base;
+  if (saveData) return { ...base, prefetch: "off" };
+  if (!coarsePointer && tier === "high" && fillMemory(memory) && !slowLine(connection)) return STREAM_BUDGETS.everything;
+  return base;
 }
 
 /**
@@ -235,8 +334,11 @@ export function textureBytes(textures: readonly Texture[], shared: ReadonlySet<T
 }
 
 export interface StreamStatus {
-  resident: { id: string; ready: boolean; drawn: boolean; tris: number; bytes: number; texBytes: number; retained: boolean; handover: boolean }[];
+  /** `drawn` and `far`: what the render loop shows of it this frame (LoadedSet.drawn, LoadedSet.far). */
+  resident: { id: string; ready: boolean; drawn: boolean; far: boolean; tris: number; bytes: number; texBytes: number; retained: boolean; handover: boolean }[];
   loading: string[];
+  /** Of `loading`, the background loads (lib/sect/chunks.ts ChunkPlan.fill). */
+  filling: string[];
   /** Chunks not loaded now because they failed (waiting for a retry, or given up). */
   failed: string[];
   /** The global set's triangles (setGlobalTris). */
@@ -249,6 +351,12 @@ export interface DestinationStatus {
   chunks: SettleSnapshot["chunks"];
   /** Chunks drawn there now that go once those are in. */
   leaving: string[];
+  /**
+   * Of `chunks` (the expected one aside: it holds nothing anyway), those whose bytes are still on
+   * the way: not loaded yet, or a file of theirs still downloading (lib/sect/settle.ts
+   * chunkArriving). The loading screen's wait lets go of them.
+   */
+  arriving: string[];
 }
 
 /** Someone waiting for a chunk (whenReady): released when it is ready, or when nobody wants it any more. */
@@ -303,7 +411,14 @@ export class ChunkStreamer {
    * up), until `until`: meanwhile only the loads it waits for start (SETTLE.around of the stop), so
    * the window's further areas do not share the line with them. They start once it lets go.
    */
-  private settling: { frame: number; until: number } | null = null;
+  private settling: { frame: number; until: number; around: number } | null = null;
+  /**
+   * Background loads may start (a budget with fillTexBytes): the page opens this once the visitor
+   * is in, so the loading screen's wait for the first stop never shares the line with them.
+   */
+  fillOpen = false;
+  /** Loads under way that were started as background loads (ChunkPlan.fill). */
+  private readonly fillLoads = new Set<string>();
 
   constructor(ctx: WorldContext, onChange: () => void, budget: StreamBudget = ctx.lowTextures ? STREAM_BUDGETS.low : STREAM_BUDGETS.full) {
     this.ctx = ctx;
@@ -330,7 +445,16 @@ export class ChunkStreamer {
 
   private applyBudget(): void {
     const b = this.budget;
-    Object.assign(this.window, { around: b.around, spare: b.spare, lookBack: b.lookBack });
+    // Filling keeps what it loads through the residency budget: texture memory alone bounds it.
+    const fill = b.fillTexBytes > 0;
+    Object.assign(this.window, {
+      around: b.around,
+      spare: b.spare,
+      lookBack: b.lookBack,
+      fill,
+      retainTris: fill ? Infinity : 0,
+      retainTexBytes: b.fillTexBytes,
+    });
   }
 
   /**
@@ -391,10 +515,12 @@ export class ChunkStreamer {
    * area the plan will fetch next once these are in is listed too, `expected` (for the progress
    * shown: it may not come after all). While it is called, update() starts only the loads it waits
    * for (SETTLE_FOCUS_MS): the window's further areas would otherwise share the line with them and
-   * make the wait about a third longer.
+   * make the wait about a third longer. `around`: how many areas each side of the stop's own it
+   * covers (the loading screen's wait for the first stop: every area its view draws, Infinity; then
+   * the loads start side by side, the prefetch among them: GATE_PARALLEL).
    */
-  settleAt(frame: number): DestinationStatus {
-    this.settling = { frame, until: performance.now() + SETTLE_FOCUS_MS };
+  settleAt(frame: number, around: number = SETTLE.around): DestinationStatus {
+    this.settling = { frame, until: performance.now() + SETTLE_FOCUS_MS, around };
     const failed = this.failedIds();
     const ready = new Set<string>(failed);
     for (const [id, s] of this.sets) if (s.ready) ready.add(id);
@@ -402,7 +528,7 @@ export class ChunkStreamer {
     const loading = new Set(this.loading.keys());
     const base = { chunks: this.spans, frame, direction: this.travel?.direction ?? 1, loaded: this.costs, window: this.window };
     const ahead = this.budget.prefetch !== "off";
-    const now = destinationChunks({ ...base, resident, loading, ready }, ahead, SETTLE.around);
+    const now = destinationChunks({ ...base, resident, loading, ready }, ahead, around);
     // As if those were all in: what the plan wants then (the prefetch it starts once they are).
     const assumed = new Set(now.want);
     const next = destinationChunks(
@@ -413,22 +539,26 @@ export class ChunkStreamer {
         ready: new Set([...ready, ...assumed]),
       },
       ahead,
-      SETTLE.around,
+      around,
     );
+    const stateOf = (id: string) => ({
+      done: ready.has(id),
+      resident: this.sets.has(id),
+      received: [...(this.received.get(id)?.values() ?? [])].reduce((a, b) => a + b, 0),
+      total: this.downloadBytes(id),
+      fetched: this.loading.has(id) && this.fetched.has(id),
+    });
     const status = (id: string, expected: boolean) => ({
       id,
-      done: chunkDone({
-        done: ready.has(id),
-        resident: this.sets.has(id),
-        received: [...(this.received.get(id)?.values() ?? [])].reduce((a, b) => a + b, 0),
-        total: this.downloadBytes(id),
-      }),
+      done: chunkDone(stateOf(id)),
       weight: this.downloadBytes(id),
       ...(expected ? { expected } : {}),
     });
+    const chunks = [...now.want.map((id) => status(id, false)), ...next.want.filter((id) => !assumed.has(id)).map((id) => status(id, true))];
     return {
-      chunks: [...now.want.map((id) => status(id, false)), ...next.want.filter((id) => !assumed.has(id)).map((id) => status(id, true))],
+      chunks,
       leaving: now.leaving,
+      arriving: now.want.filter((id) => chunkArriving(stateOf(id))),
     };
   }
 
@@ -460,6 +590,7 @@ export class ChunkStreamer {
         id: s.id,
         ready: s.ready,
         drawn: s.drawn,
+        far: s.far,
         tris: s.tris,
         bytes: s.bytes,
         texBytes: this.costs.get(s.id)?.texBytes ?? 0,
@@ -467,6 +598,7 @@ export class ChunkStreamer {
         handover: this.plan?.handover.includes(s.id) === true,
       })),
       loading: [...this.loading.keys()],
+      filling: [...this.fillLoads].filter((id) => this.loading.has(id)),
       failed: this.failedIds(),
       globalTris: this.globalTris,
     };
@@ -514,7 +646,7 @@ export class ChunkStreamer {
     // Ready to draw, or failed (nothing to wait for): the plan hands over until the needed are.
     const ready = new Set<string>(failed);
     for (const [id, s] of this.sets) if (s.ready) ready.add(id);
-    const plan = planChunks({
+    const input = {
       chunks: this.spans,
       frame,
       direction: this.travel.direction,
@@ -526,7 +658,8 @@ export class ChunkStreamer {
       loaded: this.costs,
       ready,
       window: this.window,
-    });
+    };
+    const plan = planChunks(input);
     this.plan = plan;
 
     let changed = false;
@@ -534,9 +667,7 @@ export class ChunkStreamer {
       // A far jump is waiting for this one (a newer plan may not look there yet): let it finish
       // rather than start it again from zero; the next plan drops it if nobody wants it.
       if (this.waiters.has(id)) continue;
-      this.loading.get(id)?.abort();
-      this.loading.delete(id);
-      this.received.delete(id);
+      this.abortLoad(id);
     }
     for (const id of plan.drop) {
       const set = this.sets.get(id);
@@ -551,18 +682,53 @@ export class ChunkStreamer {
     }
     // While fast travel waits at a stop, only what it waits for starts (the stop's own area and its
     // neighbours, a prefetch among them when the window is the area alone); the rest once it is done.
-    const focus = this.settling !== null && performance.now() < this.settling.until ? this.settling.frame : null;
+    const settling = this.settling !== null && performance.now() < this.settling.until ? this.settling : null;
+    const focus = settling?.frame ?? null;
     const order = new Map(this.spans.map((s, i) => [s.id, i]));
     const centre = focus === null ? -1 : windowCentreAt(this.spans, focus);
-    const waitedFor = (id: string) => focus === null || Math.abs((order.get(id) ?? Infinity) - centre) <= SETTLE.around;
-    // One download at a time, nearest first (MAX_PARALLEL).
+    const waitedFor = (id: string) => settling === null || Math.abs((order.get(id) ?? Infinity) - centre) <= settling.around;
+    // One download at a time, nearest first (MAX_PARALLEL loads). Behind the loading screen, waiting
+    // for the first stop, more loads side by side (GATE_PARALLEL), their downloads still one at a time.
+    const gate = settling !== null && settling.around === Infinity;
     const downloading = () => [...this.loading.keys()].some((id) => !this.fetched.has(id));
+    // A needed area never queues behind a background download. While the plan has areas to load,
+    // a background load still downloading stops when the plan does not need it and nobody waits for
+    // it (it is picked again later). So does a load that only filling keeps: a window load the camera
+    // has moved away from, which the plan without filling would have cancelled by now.
+    if (plan.load.length > 0) {
+      const needed = new Set(plan.need);
+      let usualCancel: Set<string> | null = null;
+      for (const id of [...this.loading.keys()]) {
+        if (this.fetched.has(id) || needed.has(id) || this.waiters.has(id)) continue;
+        if (!this.fillLoads.has(id)) {
+          if (this.window.fill !== true) continue;
+          usualCancel ??= new Set(planChunks({ ...input, window: { ...this.window, fill: false } }).cancel);
+          if (!usualCancel.has(id)) continue;
+        }
+        this.abortLoad(id);
+      }
+    }
     for (const id of plan.load) {
-      if (this.loading.size >= MAX_PARALLEL || downloading()) break;
+      if (this.loading.size >= (gate ? GATE_PARALLEL : MAX_PARALLEL) || downloading()) break;
       if (waitedFor(id)) this.start(id, opts);
     }
     const mode = this.budget.prefetch;
+    // And the area the plan prefetches once those are in, beside them (planned as if they were in:
+    // it takes the spare slot it would take then, so the plans that follow keep it, and the wait then
+    // covers it as a load under way), its download after theirs.
+    if (gate && plan.prefetch === null && (mode === "moving" || (mode === "rest" && idle)) && this.loading.size < GATE_PARALLEL && !downloading()) {
+      const inAll = new Set([...input.resident, ...plan.need]);
+      const later = planChunks({ ...input, resident: inAll, ready: new Set([...ready, ...plan.need]), loading: new Set([...input.loading].filter((id) => !inAll.has(id))) });
+      if (later.prefetch && waitedFor(later.prefetch)) this.start(later.prefetch);
+    }
     if (plan.prefetch && waitedFor(plan.prefetch) && this.loading.size === 0 && (mode === "moving" || (mode === "rest" && idle))) this.start(plan.prefetch);
+    // Then the next area in the background (filling), once the page lets it (after Enter), never
+    // while fast travel's wait watches a stop, and only with nothing else loading. Its main-thread
+    // part waits for a rest, as a prefetch's does (calmFor).
+    if (this.fillOpen && plan.fill && settling === null && this.loading.size === 0 && (mode === "moving" || (mode === "rest" && idle))) {
+      this.start(plan.fill);
+      if (this.loading.has(plan.fill)) this.fillLoads.add(plan.fill);
+    }
     this.openGates();
     if (changed) this.onChange();
     return plan;
@@ -594,6 +760,14 @@ export class ChunkStreamer {
     }
   }
 
+  /** Stops the load of `id` under way (cancelled, or a background load making way for a needed one). */
+  private abortLoad(id: string): void {
+    this.loading.get(id)?.abort();
+    this.loading.delete(id);
+    this.received.delete(id);
+    this.fillLoads.delete(id);
+  }
+
   private start(id: string, opts?: Pick<SetLoadOptions, "onBytes" | "onFileDone">): void {
     const chunk = this.chunks.find((c) => c.id === id);
     if (!chunk || this.loading.has(id) || this.sets.has(id)) return;
@@ -603,8 +777,14 @@ export class ChunkStreamer {
     this.received.set(id, got);
     this.fetched.delete(id);
     const files = chunkFiles(chunk, this.ctx.lowTextures);
-    // Files whose bytes are all in (or whose size the server does not say: no telling, so in).
+    // Files whose bytes are all in: the download said it is done (it reads to the end, so a size the
+    // server does not say, or a body it decompresses, cannot make it look done early), or the file is
+    // over (loaded, or failed: a decorative one the set goes on without).
     const arrived = new Set<string>();
+    const arrive = (url: string) => {
+      arrived.add(url);
+      if (arrived.size >= files.length && this.loading.get(id) === ac) this.fetched.add(id);
+    };
     loadSet(this.ctx, id, [chunk.need[0], chunk.need[1]], files, {
       signal: ac.signal,
       calm: () => this.calm(id),
@@ -613,12 +793,15 @@ export class ChunkStreamer {
       // tracker when it has one.
       onBytes: (url) => {
         const outer = opts?.onBytes?.(url);
-        return (loaded, total) => {
+        return (loaded, total, done) => {
           got.set(url, loaded);
-          if (total <= 0 || loaded >= total) arrived.add(url);
-          if (arrived.size >= files.length && this.loading.get(id) === ac) this.fetched.add(id);
-          outer?.(loaded, total);
+          if (done) arrive(url);
+          outer?.(loaded, total, done);
         };
+      },
+      onFileDone: (url) => {
+        arrive(url);
+        opts?.onFileDone?.(url);
       },
     })
       .then((set) => {
@@ -628,6 +811,7 @@ export class ChunkStreamer {
           return;
         }
         this.loading.delete(id);
+        this.fillLoads.delete(id);
         this.failures.delete(id);
         this.sets.set(id, set);
         // Measured now, before the upload closes the images (prepare.ts keeps their sizes anyway).
@@ -637,7 +821,10 @@ export class ChunkStreamer {
       })
       .catch((e) => {
         if (this.received.get(id) === got) this.received.delete(id);
-        if (this.loading.get(id) === ac) this.loading.delete(id);
+        if (this.loading.get(id) === ac) {
+          this.loading.delete(id);
+          this.fillLoads.delete(id);
+        }
         if (ac.signal.aborted) return;
         const count = (this.failures.get(id)?.count ?? 0) + 1;
         this.failures.set(id, { count, at: performance.now() });
@@ -718,6 +905,7 @@ export class ChunkStreamer {
     if (typeof window !== "undefined" && typeof window.removeEventListener === "function") window.removeEventListener("online", this.onOnline);
     for (const ac of this.loading.values()) ac.abort();
     this.loading.clear();
+    this.fillLoads.clear();
     this.received.clear();
     this.fetched.clear();
     this.openGates();

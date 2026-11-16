@@ -4,6 +4,7 @@
  * the quality ladder the page steps down when frames run long (and back up when they have room
  * again). Pure functions with plain inputs, so they are unit-testable.
  */
+import { LIVE_LOOK } from "./live";
 
 /** Exponential damping toward target; frame-rate independent. dt is clamped to 0.1 s. */
 export function damp(current: number, target: number, lambda: number, dt: number): number {
@@ -29,6 +30,81 @@ export interface SectParams {
   set: string;
   /** ?open=<hotspot id> opens that item's reader once the page is ready, or null. */
   open: string | null;
+  /**
+   * ?look=<id> shows the scene in one of the looks (lib/sect/looks.ts). Development only: a
+   * production build never has it. Absent (not null) when there is none.
+   */
+  look?: LookId;
+  /**
+   * The look by time of day in Pacific time (lib/sect/day-look.ts). Development only: ?look=auto
+   * follows the clock at page load, ?time=HH:MM (24 hour, Pacific) shows that time today and
+   * ?date=YYYY-MM-DD another day. Absent when none is given, and when ?look=<id> forces a look.
+   */
+  day?: DayOptions;
+  /**
+   * ?look=journey (true) forces the journey (lib/sect/journey.ts: the day along the flight) and
+   * ?look=dusk (false) today's dusk with no journey. Development only. Absent when neither is given.
+   */
+  journey?: boolean;
+}
+
+/** ?look=journey: true; ?look=dusk: false; anything else: null. */
+export function parseJourneyParam(v: string | null): boolean | null {
+  const s = (v ?? "").trim().toLowerCase();
+  return s === "journey" ? true : s === "dusk" ? false : null;
+}
+
+/** The looks ?look= can pick (lib/sect/looks.ts LOOKS says what each one changes). */
+export const LOOK_IDS = ["gold", "moon", "ink", "day"] as const;
+
+export type LookId = (typeof LOOK_IDS)[number];
+
+/** ?look=<id>: one of LOOK_IDS (case and spaces ignored), else null. */
+export function parseLookParam(v: string | null): LookId | null {
+  const s = (v ?? "").trim().toLowerCase();
+  return (LOOK_IDS as readonly string[]).includes(s) ? (s as LookId) : null;
+}
+
+/** A calendar date (month 1 to 12). */
+export interface CivilDate {
+  year: number;
+  month: number;
+  day: number;
+}
+
+/** What the time-of-day look shows instead of the clock (each absent: the clock's own). */
+export interface DayOptions {
+  /** Minutes since midnight, Pacific time. */
+  time?: number;
+  /** The day (its sunrise and sunset). */
+  date?: CivilDate;
+}
+
+/** ?time=HH:MM, 24 hour (00:00 to 23:59), as minutes since midnight; else null. */
+export function parseTimeParam(v: string | null): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec((v ?? "").trim());
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  return h < 24 && min < 60 ? h * 60 + min : null;
+}
+
+/** ?date=YYYY-MM-DD, a date that exists; else null. */
+export function parseDateParam(v: string | null): CivilDate | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec((v ?? "").trim());
+  if (!m) return null;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(year, month - 1, day));
+  return t.getUTCFullYear() === year && t.getUTCMonth() === month - 1 && t.getUTCDate() === day ? { year, month, day } : null;
+}
+
+/** ?look=auto, ?time= and ?date= as DayOptions, or null when none of them is there. */
+function parseDayParams(q: URLSearchParams): DayOptions | null {
+  const auto = (q.get("look") ?? "").trim().toLowerCase() === "auto";
+  const time = parseTimeParam(q.get("time"));
+  const date = parseDateParam(q.get("date"));
+  if (!auto && time === null && date === null) return null;
+  return { ...(time !== null ? { time } : {}), ...(date ? { date } : {}) };
 }
 
 /**
@@ -74,14 +150,18 @@ function openParam(v: string | null): string | null {
 }
 
 /**
- * The page's URL options. `dev` allows ?set= (a production build ignores it, so the test sets are
- * neither loaded nor reachable there).
+ * The page's URL options. `dev` allows ?set=, ?look=, ?time= and ?date= (a production build ignores
+ * them, so the test sets and the looks are neither loaded nor reachable there).
  */
 export function parseSectParams(search: string, dev = process.env.NODE_ENV !== "production"): SectParams {
   const q = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const raw = q.get("frame");
   const n = raw !== null && raw.trim() !== "" ? Number(raw) : NaN;
   const t = q.get("tier");
+  const look = dev ? parseLookParam(q.get("look")) : null;
+  // A forced look wins over the clock.
+  const day = dev && !look ? parseDayParams(q) : null;
+  const journey = dev && !look && !day ? parseJourneyParam(q.get("look")) : null;
   return {
     frame: Number.isFinite(n) ? n : null,
     debug: flag(q.get("debug")),
@@ -90,6 +170,9 @@ export function parseSectParams(search: string, dev = process.env.NODE_ENV !== "
     tier: t !== null && TIERS.includes(t) ? (t as Tier) : null,
     set: dev ? assetSet(q.get("set")) : "full",
     open: openParam(q.get("open")),
+    ...(look ? { look } : {}),
+    ...(day ? { day } : {}),
+    ...(journey !== null ? { journey } : {}),
   };
 }
 
@@ -178,6 +261,27 @@ export interface Quality {
   standIns?: boolean;
   /** Tree cards (alpha-tested sprites and needle cards) are not drawn. A ladder step, as standIns. */
   noCards?: boolean;
+  /**
+   * Far trees are drawn as lit crown shells (lib/sect/veg.ts) in place of the baked cards: High
+   * only (absent: false). A ladder step for a tier the page picked, right after live light: off,
+   * the far trees show the baked cards, as on Medium. ?veg=0 / ?veg=1 overrides it (veg.ts
+   * vegShellsOn).
+   */
+  vegShells?: boolean;
+  /**
+   * A stop's atlas surfaces are lit live in the shader (lib/sect/live.ts) instead of read from the
+   * bake: High only (LIVE_LOOK.on; absent: false). A ladder step for a tier the page picked, the
+   * first after resolution: it costs the most, and off it shows the bake, Medium's own look.
+   * ?live=0 / ?live=1 overrides it (live.ts liveOn).
+   */
+  liveLight?: boolean;
+  /**
+   * Loaded areas outside their need range are drawn in full in place of their stand-ins (lib/sect/far.ts,
+   * scene.tsx World): High only, and only where the page holds every area (TierOptions.holdsAll;
+   * absent: false). The ladder's first step down, before resolution and for a tier the visitor picked
+   * too; it does not climb back (upgradeQuality).
+   */
+  farFull?: boolean;
 }
 
 export interface TierOptions {
@@ -185,6 +289,11 @@ export interface TierOptions {
   coarse?: boolean;
   /** Safari on a Mac (isAppleGpu): Medium starts at up to 1.5x there too. */
   appleGpu?: boolean;
+  /**
+   * The page holds every area (streaming.ts STREAM_BUDGETS.everything, before the ladder's strike;
+   * ?far= overrides it, far.ts farFullOn): High then draws far areas in full (Quality.farFull).
+   */
+  holdsAll?: boolean;
 }
 
 /**
@@ -192,17 +301,18 @@ export interface TierOptions {
  * edge stairs (the ladder steps back to 1x when frames run long). The mid tier there also takes the
  * 2048 px textures: about 180 MB of 4K atlases per area is too much for a tablet's shared memory.
  * Safari on a Mac lands on Medium (it names every GPU "Apple GPU"), and at 1x a Retina screen would
- * show a quarter of its pixels with no MSAA, so Medium starts at 1.5x there as well.
+ * show a quarter of its pixels with no MSAA, so Medium starts at 1.5x there as well. High draws the
+ * far areas in full where the page holds them all (`holdsAll`, Quality.farFull); Medium and Low never do.
  */
 export function tierQuality(tier: Tier, devicePixelRatio = 1, opts: TierOptions = {}): Quality {
   const coarse = opts.coarse === true;
-  if (tier === "low") return { maxDpr: coarse ? 1.5 : 1, msaa: 0, bloom: false, post: false, lowTextures: true, maxFps: 0 };
-  if (tier === "mid") return { maxDpr: coarse || opts.appleGpu ? 1.5 : 1, msaa: 0, bloom: true, post: true, lowTextures: coarse, maxFps: 0 };
+  if (tier === "low") return { maxDpr: coarse ? 1.5 : 1, msaa: 0, bloom: false, post: false, lowTextures: true, maxFps: 0, vegShells: false, liveLight: LIVE_LOOK.on.low };
+  if (tier === "mid") return { maxDpr: coarse || opts.appleGpu ? 1.5 : 1, msaa: 0, bloom: true, post: true, lowTextures: coarse, maxFps: 0, vegShells: false, liveLight: LIVE_LOOK.on.mid };
   // Above 1x the extra pixels already smooth edges, so 2 samples do: 4x MSAA at 1.25x (a 1440p
   // screen at 125 % scaling) cost up to about 1 ms of GPU a frame, a third of a 360 Hz frame.
   // Never 0 here: tree cards need a multisampled buffer for alpha to coverage (setCardCoverage).
   const dpr = Math.min(Math.max(devicePixelRatio || 1, 1), 1.5);
-  return { maxDpr: 1.5, msaa: dpr >= 1.25 ? 2 : 4, bloom: true, post: true, lowTextures: false, maxFps: 0 };
+  return { maxDpr: 1.5, msaa: dpr >= 1.25 ? 2 : 4, bloom: true, post: true, lowTextures: false, maxFps: 0, vegShells: true, liveLight: LIVE_LOOK.on.high, farFull: opts.holdsAll === true };
 }
 
 /**
@@ -235,8 +345,9 @@ export function capIsMoot(maxFps: number, cadenceMs: number | null): boolean {
 
 export interface DegradeOptions {
   /**
-   * The visitor picked the tier: only resolution steps down (to the render scale), never MSAA,
-   * bloom or the render rate, so what they chose still looks like it.
+   * The visitor picked the tier: only the far areas' full draw (farFull) and resolution step down
+   * (to the render scale), never live light, the crown shells, MSAA, bloom or the render rate, so
+   * what they chose still looks like it.
    */
   keepLook?: boolean;
   /** The screen's frame interval (FrameLadder.cadenceMs): no render-rate cap where it is moot. */
@@ -244,16 +355,24 @@ export interface DegradeOptions {
 }
 
 /**
- * One step down the quality ladder: resolution first (to 1x), then MSAA, then bloom, then the
- * render scale (RENDER_SCALE_MIN), then the other areas as their stand-ins (standIns), then the
- * tree cards off (noCards), then the render rate (30 fps while moving). Returns null at the bottom.
- * A tier the visitor picked (`keepLook`) only loses resolution. Textures never change at runtime
- * (that would need a reload).
+ * One step down the quality ladder: the far areas back to their stand-ins first (farFull), then
+ * resolution (to 1x), then live light off (liveLight), then the crown shells off (vegShells), then
+ * MSAA, then bloom, then the render scale (RENDER_SCALE_MIN), then the other areas as their
+ * stand-ins (standIns), then the tree cards off (noCards), then the render rate (30 fps while
+ * moving). Returns null at the bottom. The far areas go first: drawn in full they cost the most
+ * (at the gate 550 to 1,077 draw calls, 8.9 M to 22 M triangles), and without them the page draws
+ * what it drew before they came. Live light and the shells go before MSAA: live light costs the
+ * most after them, and without both, High draws what Medium draws (the bake, the baked cards)
+ * before it gets worse than Medium. A tier the visitor picked (`keepLook`) only loses the far areas'
+ * full draw and resolution. Textures never change at runtime (that would need a reload).
  */
 export function degradeQuality(q: Quality, devicePixelRatio: number, opts: DegradeOptions = {}): Quality | null {
+  if (q.farFull) return { ...q, farFull: false };
   const d = effectiveDpr(q, devicePixelRatio);
   if (d > 1) return { ...q, maxDpr: Math.max(1, d - 0.25) };
   if (!opts.keepLook) {
+    if (q.liveLight) return { ...q, liveLight: false };
+    if (q.vegShells) return { ...q, vegShells: false };
     if (q.msaa > 0) return { ...q, msaa: q.msaa > 2 ? 2 : 0 };
     if (q.bloom) return { ...q, bloom: false };
   }
@@ -268,8 +387,13 @@ export function degradeQuality(q: Quality, devicePixelRatio: number, opts: Degra
 /**
  * One step back up toward the tier's own quality (`top`) once frames have room again, in the
  * reverse order of the steps down: the render-rate cap off, the tree cards back, the other areas
- * back, the render scale back to 1x, bloom, MSAA (to 2 samples, then the tier's own), and last the
- * resolution above 1x, 0.25 at a time. Null when there is nothing to climb.
+ * back, the render scale back to 1x, bloom, MSAA (to 2 samples, then the tier's own), the crown
+ * shells, live light, and last the resolution above 1x, 0.25 at a time. A feature comes back only
+ * when `top` has it. Null when there is nothing to climb.
+ *
+ * The far areas' full draw (farFull) never comes back, whatever `top` says: each far area would
+ * swap from its stand-in to its full meshes again (a long frame each, and the step down after that
+ * swaps them all back), so a page view gets one try.
  */
 export function upgradeQuality(q: Quality, top: Quality, devicePixelRatio: number): Quality | null {
   if (q.maxFps > 0 && q.maxFps !== top.maxFps) return { ...q, maxFps: top.maxFps };
@@ -280,15 +404,18 @@ export function upgradeQuality(q: Quality, top: Quality, devicePixelRatio: numbe
   if (d < 1 && t >= 1) return { ...q, maxDpr: 1 };
   if (!q.bloom && top.bloom) return { ...q, bloom: true };
   if (q.msaa < top.msaa) return { ...q, msaa: q.msaa === 0 ? Math.min(2, top.msaa) : top.msaa };
+  if (!q.vegShells && top.vegShells) return { ...q, vegShells: true };
+  if (!q.liveLight && top.liveLight) return { ...q, liveLight: true };
   if (d >= t - 1e-6) return null;
   return { ...q, maxDpr: Math.min(t, d + 0.25) };
 }
 
 /**
  * The cost the ladder assumes for a climb that adds work rather than pixels (tree cards, the other
- * areas, bloom, MSAA): the frame must be predicted to fit with this much more. The margin is the
- * ladder's hysteresis there (a step comes back only with clear room, not at the edge where it was
- * dropped); a climb that still drops frames is undone and blocked for a while (FrameLadder).
+ * areas, bloom, MSAA, the crown shells, live light): the frame must be predicted to fit with this
+ * much more. The margin is the ladder's hysteresis there (a step comes back only with clear room,
+ * not at the edge where it was dropped); a climb that still drops frames is undone and blocked for
+ * a while (FrameLadder).
  */
 export const FEATURE_CLIMB_COST = 1.3;
 
@@ -313,6 +440,25 @@ export function climbCost(q: Quality, top: Quality, devicePixelRatio: number): n
 export function climbRebuildsPipeline(q: Quality, top: Quality, devicePixelRatio: number): boolean {
   const up = upgradeQuality(q, top, devicePixelRatio);
   return up !== null && (up.msaa !== q.msaa || up.bloom !== q.bloom);
+}
+
+/**
+ * How many times the ladder may turn live light off before it stops climbing it back for the visit
+ * (ladderCeiling). Live light only costs once the camera rests at a stop with live maps and they
+ * have loaded. Between stops nothing is lit live, so frames have room and the ladder climbs it back;
+ * the next stop is usually more than LADDER.probeMs away, so the watch on that climb ends clean.
+ * There the maps load, upload and fade in, frames run long, and live light goes off again as an
+ * ordinary step with no backoff. Unchecked, that repeats at every stop, each time a full live start
+ * and a visible pop. So it gets one more try, then stays off.
+ */
+export const LIVE_LIGHT_TRIES = 2;
+
+/**
+ * The quality the ladder climbs back to: the tier's own (`top`), less live light once the ladder has
+ * turned it off LIVE_LIGHT_TRIES times (`liveOffs`). Otherwise `top` itself, the same object.
+ */
+export function ladderCeiling(top: Quality, liveOffs: number): Quality {
+  return liveOffs >= LIVE_LIGHT_TRIES && top.liveLight ? { ...top, liveLight: false } : top;
 }
 
 /** The ladder's frame budget for a tier the page picked (20 ms = under 50 fps). */

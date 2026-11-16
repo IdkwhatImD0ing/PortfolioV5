@@ -27,6 +27,7 @@ import {
   startRecenter,
   takeClick,
   turnByKeys,
+  turnLevel,
   wrapYaw,
   type PathAnchor,
 } from "./free-look";
@@ -434,6 +435,51 @@ describe("composeLook", () => {
   it("stays a unit quaternion", () => {
     const q = composeLook(path, { yaw: 0.7, pitch: -0.9 });
     expect(Math.hypot(...q)).toBeCloseTo(1, 9);
+  });
+});
+
+describe("turning levels a view the path tilts up", () => {
+  const summit = 11.8 * DEG;
+
+  it("leaves the view alone while it faces the path's way", () => {
+    expect(turnLevel(summit, 0)).toBe(0);
+    expect(turnLevel(summit, 20 * DEG)).toBe(0);
+    expect(turnLevel(summit, -FREE_LOOK.levelFrom)).toBe(0);
+  });
+
+  it("brings an upward path down to the level pitch once the view has turned far enough", () => {
+    // The summit looks 11.8 degrees up at the moon; behind it lies the whole sect, below.
+    for (const yaw of [FREE_LOOK.levelTo, 180 * DEG, -150 * DEG]) {
+      expect(summit + turnLevel(summit, yaw)).toBeCloseTo(FREE_LOOK.levelPitch, 9);
+    }
+  });
+
+  it("eases in between, the same to the left and to the right, never tilting up", () => {
+    let last = 0;
+    for (let d = 0; d <= 180; d += 5) {
+      const v = turnLevel(summit, d * DEG);
+      expect(v).toBeLessThanOrEqual(last + 1e-12);
+      expect(v).toBeLessThanOrEqual(0);
+      expect(turnLevel(summit, -d * DEG)).toBeCloseTo(v, 12);
+      last = v;
+    }
+    // Halfway through the turn it is halfway down.
+    const mid = (FREE_LOOK.levelFrom + FREE_LOOK.levelTo) / 2;
+    expect(turnLevel(summit, mid)).toBeCloseTo(-(summit - FREE_LOOK.levelPitch) / 2, 9);
+  });
+
+  it("does nothing to a path that already looks level or down", () => {
+    expect(turnLevel(FREE_LOOK.levelPitch, 180 * DEG)).toBe(0);
+    expect(turnLevel(-30 * DEG, 180 * DEG)).toBe(0);
+  });
+
+  it("is a tilt composeLook takes: the view turned right round from an upward path looks down", () => {
+    const q = axisAngle(1, 0, 0, summit);
+    expect(pathPitch(q)).toBeCloseTo(summit, 9);
+    const back = composeLook(q, { yaw: Math.PI, pitch: turnLevel(pathPitch(q), Math.PI) });
+    expect(pathPitch(back)).toBeCloseTo(FREE_LOOK.levelPitch, 6);
+    // Without it the view behind keeps the path's upward tilt.
+    expect(pathPitch(composeLook(q, { yaw: Math.PI, pitch: 0 }))).toBeCloseTo(summit, 6);
   });
 });
 
