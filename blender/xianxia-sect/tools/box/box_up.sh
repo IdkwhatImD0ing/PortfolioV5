@@ -23,7 +23,8 @@ R="root@$H"
 O="-o BatchMode=yes -o LogLevel=ERROR -o StrictHostKeyChecking=accept-new"
 cd "$W" || exit 1
 printf '{"host": "%s", "port": %s}\n' "$H" "$P" > tools/remote.json
-scp -P "$P" $O "$HERE/box_setup.sh" "$R:/root/box_setup.sh" || exit 2
+# CRs stripped: a checkout with core.autocrlf has CRLF here, and bash on the box stops at "set -e\r" (round 61)
+sed 's/\r$//' "$HERE/box_setup.sh" | ssh -p "$P" $O "$R" 'cat > /root/box_setup.sh' || exit 2
 ssh -p "$P" $O "$R" "nohup bash /root/box_setup.sh > /root/setup.log 2>&1 < /dev/null &
 mkdir -p '$B/out/web/full/site' '/C:/Windows/Fonts'" || exit 3
 scp -P "$P" $O C:/Windows/Fonts/georgiab.ttf C:/Windows/Fonts/msyh.ttc C:/Windows/Fonts/palab.ttf C:/Windows/Fonts/simkai.ttf "$R:/C:/Windows/Fonts/" || exit 4

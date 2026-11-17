@@ -13,7 +13,7 @@
  *
  * Pure data, maths and GLSL strings (no three.js), so it is testable.
  */
-import { glslFloat, glslVec3, hexToLinear } from "./glsl";
+import { glslFloat, glslVec3, hexToLinear, WARM, warmKeepGlsl } from "./glsl";
 import { unitTint } from "./look";
 import { RANGE_HAZE_HOLDS } from "./range-look";
 import { LOOK_IDS, parseLookParam, type LookId } from "./runtime";
@@ -63,6 +63,20 @@ export interface FrameGrade {
   glowFrom: number;
   glowTo: number;
   glowGain: number;
+  /**
+   * Warm light keeps its colour (0 = off, 1 = all of it): where the frame's own colour is amber,
+   * orange or red (warmWeight), that share of the pixel skips the grade, as a glow does. The
+   * night's blue balance and split tone would otherwise turn a lantern's light on stone pink or
+   * beige, and its exposure would leave it dimmer than the moonlit stone round it. Grey, blue and
+   * green pixels (moonlit stone, the sky, grass) are graded as before.
+   */
+  warmKeep: number;
+  /**
+   * The kept warm light's blue times this (1 = as it is), on salmon, orange and amber only
+   * (warmKept: pink and lacquer red keep theirs). Lantern light on pale stone that the cool key
+   * lights too comes out salmon; with less blue it reads amber.
+   */
+  warmBlue: number;
 }
 
 /** What only a look uses. Every default here is "off", which is what the page does without a look. */
@@ -74,6 +88,13 @@ export interface FrameLook {
   skySun: number;
   /** The cloud sea's shaded hollows (scene.tsx Atmosphere). */
   cloudSeaShade: string;
+  /**
+   * How much the abode and the summit, baked under their own night light in round 61, show it (1),
+   * or are pulled back toward the sunset bake the other chunks hold (0): night-bake.ts. 0 by day
+   * and at sunset, 1 under the moon look; the journey switches it over a short stretch (journey.ts
+   * EDGE) between the scroll and the formation.
+   */
+  nightBake: number;
 }
 
 /** The levers a look may set that live only here. Written by a look (look-switch.ts), read where they are used. */
@@ -97,10 +118,13 @@ export const FRAME_LOOK: FrameLook = {
     glowFrom: 1,
     glowTo: 1.4,
     glowGain: 1,
+    warmKeep: 0,
+    warmBlue: 1,
   },
   stars: 0,
   skySun: 1,
   cloudSeaShade: "#8f93ad",
+  nightBake: 0,
 };
 
 /** A lever's value: a number, a colour or a fixed-length vector. */
@@ -297,13 +321,20 @@ export const LOOKS: Readonly<Record<LookId, Look>> = {
         "puffs.lit": "#a9bde6",
         "puffs.shade": "#34466e",
         "puffs.rim": "#d6e4ff",
-        "grade.exposure": 0.95,
-        "grade.contrast": 1.12,
+        // Since the night re-bake (2026-11-17, docs/scene/night-r61.md) the abode and summit hold
+        // their own lantern light, so the surfaces keep its colour, and its dim edges and the summit's
+        // shaded rock are lifted: was exposure 0.95, contrast 1.12, highlight tint #cbe0ff, saturation
+        // 0.72, and today's green tame (0.45) and shoulder (0.74). The shoulder keeps a lantern's
+        // brightest pool (the abode's moon gate) under the frame grade's glow line (0.85).
+        "grade.exposure": 1.2,
+        "grade.contrast": 0.85,
         "grade.shadowTint": "#5a80c0",
-        "grade.highlightTint": "#cbe0ff",
+        "grade.highlightTint": "#ffffff",
         "grade.split": 0.45,
         "grade.splitShadow": 0.7,
-        "grade.saturation": 0.72,
+        "grade.saturation": 1.0,
+        "grade.greenTame": 0.1,
+        "grade.shoulder": 0.45,
         "cloudSeaColor": "#5c6f9c",
         "cloudFogColor": "#3c4d78",
         "water.skyLow": "#2e3f68",
@@ -329,9 +360,13 @@ export const LOOKS: Readonly<Record<LookId, Look>> = {
           coverage: 0.4,
         }),
       },
-      live: { sunGain: 1.25, keyGain: 1.1, ambientGain: 0.9, saturation: 0.85 },
-      lux: { "shafts.color": "#9fb8ff", "shafts.gain": 1.2, "shafts.dim": 1.0, "finish.grain": 2.2, "ao.tint": [1.0, 0.98, 0.9] },
-      atmos: { "bloom.intensity": 2, "cloudShadow.strength": 0.1 },
+      // The two night stops carry their own baked light now: the live light adds it as the bake did
+      // (was 1.25, 1.1, 0.9, 0.85, tuned to turn a sunset bake into night).
+      live: { sunGain: 1, keyGain: 1, ambientGain: 1, saturation: 1 },
+      // No sun shafts or cloud shade at night: both march along the scene's sunset sun, and the
+      // summit's light comes from the moon's side (were shafts 1.2, dim 1.0, cloud shade 0.1).
+      lux: { "shafts.color": "#9fb8ff", "shafts.gain": 0, "shafts.dim": 0, "shafts.shade": 0, "finish.grain": 2.2, "ao.tint": [1.0, 0.98, 0.9] },
+      atmos: { "bloom.intensity": 2, "cloudShadow.strength": 0 },
       range: hazeHolds(1.1),
       frame: {
         "grade.amount": 1,
@@ -351,9 +386,15 @@ export const LOOKS: Readonly<Record<LookId, Look>> = {
         "grade.glowFrom": 0.85,
         "grade.glowTo": 1.2,
         "grade.glowGain": 2.6,
+        // Lantern light keeps its amber against the blue (looks.ts warmWeight): the grade above would
+        // turn it pink or beige and darken it under the moonlit stone.
+        "grade.warmKeep": 1,
+        "grade.warmBlue": 0.5,
         stars: 1,
         skySun: 0,
         cloudSeaShade: "#1f2a4c",
+        // The abode and the summit show the night light they were baked under (night-bake.ts).
+        nightBake: 1,
       },
       meta: { "sun.color": "#b9cdf5", "moon.color": "#f3f6ff", vignette: 0.34 },
     },
@@ -661,6 +702,30 @@ export function redWeight(c: Vec3): number {
   return smoothstep(0.45, 0.7, (c[0] - Math.max(c[1], c[2])) / r);
 }
 
+/** The hue as glsl.ts WARM measures it: (g - b) / (r - b), 0 at red, 1 at yellow. */
+function warmHue(c: Vec3): number {
+  return (c[1] - c[2]) / Math.max(c[0] - c[2], 1e-4);
+}
+
+/**
+ * How much a colour reads as warm light (0 grey, blue, green or yellow-green; 1 amber, orange,
+ * red): red leads blue by enough, and the hue is on the red side of yellow (glsl.ts WARM). Grass,
+ * bamboo and the bake's ochre-stained grey rock stay out.
+ */
+export function warmWeight(c: Vec3): number {
+  const lead = (c[0] - c[2]) / Math.max(c[0], 1e-4);
+  return smoothstep(WARM.lead[0], WARM.lead[1], lead) * (1 - smoothstep(WARM.hue[0], WARM.hue[1], warmHue(c)));
+}
+
+/**
+ * The colour warm light keeps (FrameGrade.warmKeep): the frame's own, with the blue of salmon,
+ * orange and amber times `blue` (warmBlue); pink and lacquer red keep their blue. Mirrors glsl.ts
+ * warmKeepGlsl.
+ */
+export function warmKept(c: Vec3, blue: number): Vec3 {
+  return [c[0], c[1], c[2] * (1 + (blue - 1) * smoothstep(WARM.blueHue[0], WARM.blueHue[1], warmHue(c)))];
+}
+
 /** TypeScript mirror of the frame grade (linear in, linear out). */
 export function frameGradeLinear(c0: Vec3, g: FrameGrade): Vec3 {
   const x0 = c0.map((v) => Math.max(v, 0)) as Vec3;
@@ -682,6 +747,10 @@ export function frameGradeLinear(c0: Vec3, g: FrameGrade): Vec3 {
   const sat = g.saturation + (g.redSaturation - g.saturation) * redWeight(c);
   const lc = luma(c);
   c = c.map((x) => Math.max(lc + (x - lc) * sat, 0)) as Vec3;
+  // Warm light keeps its own colour and brightness, amber's blue cut by warmBlue.
+  const wk = warmWeight(x0) * g.warmKeep;
+  const kept = warmKept(x0, g.warmBlue);
+  c = c.map((x, i) => x + (kept[i] - x) * wk) as Vec3;
   const graded = c.map((x, i) => x0[i] + (x - x0[i]) * g.amount) as Vec3;
   // The glows' gain fades with the amount, so a grade fading in does not jump the glows.
   const gain = 1 + (g.glowGain - 1) * Math.min(g.amount, 1);
@@ -696,6 +765,7 @@ float sectFrameCurve( float v, float p, float k ) {
   float x = clamp( v, 0.0, 1.0 );
   return x < p ? p * pow( x / p, k ) : 1.0 - ( 1.0 - p ) * pow( ( 1.0 - x ) / ( 1.0 - p ), k );
 }
+${warmKeepGlsl("sectFrameWarm")}
 vec3 sectFrameGrade( vec3 c0 ) {
   const vec3 luma = vec3( 0.2126, 0.7152, 0.0722 );
   vec3 x0 = max( c0, 0.0 );
@@ -718,6 +788,9 @@ vec3 sectFrameGrade( vec3 c0 ) {
   float sat = mix( ${f(g.saturation)}, ${f(g.redSaturation)}, red );
   float lc = dot( c, luma );
   c = max( vec3( lc ) + ( c - vec3( lc ) ) * sat, 0.0 );
+  // Warm light keeps its own colour and brightness, amber's blue cut by warmBlue.
+  vec4 wk = sectFrameWarm( x0, ${f(g.warmKeep)}, ${f(g.warmBlue)} );
+  c = mix( c, wk.rgb, wk.a );
   vec3 graded = mix( x0, c, ${f(g.amount)} );
   return mix( graded, x0 * ${f(1 + (g.glowGain - 1) * Math.min(g.amount, 1))}, glow );
 }

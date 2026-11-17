@@ -13,9 +13,11 @@ from the yaw assembly is expected to use (see MOON_AZ_LOCAL_DEG and moon_hint())
 """
 
 import math
+import re
 
 import bmesh
 import bpy
+import numpy as np
 from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
@@ -44,6 +46,8 @@ INNER_R = 14.0            # top round tier under the pavilion
 INNER_H = 1.2             # height above the middle tier
 PAV_RADIUS = 7.0          # pavilion column circle
 PAV_COL_H = 6.8
+TOP_STAIR_W = 6.0         # the top tier's front stair (the walk up to the pavilion)
+TOP_RAIL_R = INNER_R - 0.4   # the top tier's balustrade circle
 ARCH_Y = -32.0            # crescent arch plane
 ARCH_R = 13.5             # outer radius of the crescent (27 m wide, 20 m tall)
 ARCH_T = 4.0              # thickness at the crown
@@ -442,6 +446,182 @@ def condor_rocks(bird):
 
 
 # --------------------------------------------------------------------------------------
+# round 61: lit lanterns in the hold's frame
+# --------------------------------------------------------------------------------------
+# The night bake (bake_web.py --light night) lets lanterns light what is round them, but at the hold (frame 1647) only
+# the qin lamp in the pavilion's open bay was lit. Now a ring of round hanging lanterns hangs at the pavilion's column
+# heads, one just outside each column, from the first solid an upward ray meets there (the bracket band or the eave;
+# the cord's top touches it), and a pair of stone lanterns stands on the top tier behind the pavilion, the stair head's
+# spot mirrored to the back (the condor crag hides the stair head itself from the hold as the page frames it, frame
+# 1639), outside the axis's walk width and inside the tier's rail. sect/patch_r61_lanterns.py puts the same objects into
+# an existing scene and checks them.
+RING_LANTERN = dict(style="round", size=0.8, cord=0.3)   # the abode tea pavilion's (abode.py): the same prototype
+RING_LANTERN_R = 0.31        # m per unit of size: props._build_round_lantern's body radius
+RING_GAP = 0.12              # m between the column's shaft and the lantern's body
+RING_RAY_FROM = 2.0          # m over the pavilion floor where the upward ray starts (over the benches)
+RING_RAY_FAR = 12.0          # m it may travel
+RING_NAMES = tuple("%s.hang_lantern.%d" % (KEY, k) for k in range(8))   # by column, counter-clockwise from -112.5 deg
+STAIR_LANTERN_H = 2.4        # m, as the pair at the middle tier's stair: the same prototype
+STAIR_LANTERN_XY = (4.4, 11.8)    # local (x, y) of the east one; the west one mirrors it (the top tier, z 2.2). Behind
+#                                   the pavilion: at (+-4.4, -11.8), the stair head, summit.condor_crag hid both at 1639
+STAIR_LANTERN_NAMES = ("%s.stair_lantern.w" % KEY, "%s.stair_lantern.e" % KEY)
+LANTERN_NAMES = RING_NAMES + STAIR_LANTERN_NAMES
+HANG_GAP = 0.001             # m: the cord's top this far under the solid it hangs from
+STAND_GAP = 0.001            # m: a stone lantern's base this far over the tier
+PLACE_DP = 3                 # placements are rounded to the mm, so a fresh build and the patch agree
+
+
+def column_radius():
+    """arch.pavilion's column radius for the summit pavilion (0.32 m at PAV_COL_H 6.8)."""
+    return min(0.32, max(0.15, 0.04 * PAV_COL_H + 0.06))
+
+
+def ring_radius():
+    """Local radius of the hanging ring round the pavilion's centre: the column circle, the column's radius, the
+    lantern's body radius and RING_GAP (7.688 m)."""
+    return PAV_RADIUS + column_radius() + RING_LANTERN_R * RING_LANTERN["size"] + RING_GAP
+
+
+def subtree(ob):
+    """Names of ``ob`` and every object under it."""
+    return {ob.name} | {c.name for c in ob.children_recursive}
+
+
+def owner_tris(dg, root, owners=None):
+    """{owner: (n, 3, 3) triangles in ``root``'s frame (float64)} of the evaluated geometry of the objects named in
+    ``owners`` (all when None); an instance counts as its instancer's."""
+    Rinv = np.array(root.matrix_world.inverted(), float)
+    out = {}
+    for inst in dg.object_instances:
+        o = inst.object
+        if o.type != 'MESH':
+            continue
+        own = inst.parent.original.name if inst.is_instance and inst.parent else o.original.name
+        if owners is not None and own not in owners:
+            continue
+        me = o.data
+        try:
+            me.calc_loop_triangles()
+        except Exception:  # noqa: BLE001  (an evaluated mesh may be read-only; it has its triangles then)
+            pass
+        nv, nt = len(me.vertices), len(me.loop_triangles)
+        if not nt:
+            continue
+        co = np.empty(nv * 3)
+        me.vertices.foreach_get("co", co)
+        tv = np.empty(nt * 3, np.int64)
+        me.loop_triangles.foreach_get("vertices", tv)
+        W = Rinv @ np.array(inst.matrix_world, float)
+        T = co.reshape(nv, 3)[tv.reshape(nt, 3)] @ W[:3, :3].T + W[:3, 3]
+        out.setdefault(own, []).append(T)
+    return {k: np.concatenate(v) for k, v in out.items()}
+
+
+def tri_bvh(T):
+    """BVH of an (n, 3, 3) triangle array."""
+    return BVHTree.FromPolygons([Vector(p) for p in T.reshape(-1, 3)], [(3 * i, 3 * i + 1, 3 * i + 2)
+                                                                        for i in range(len(T))], all_triangles=True)
+
+
+def lantern_places(root, pav, tier, log=None):
+    """Where the round-61 lanterns go, in ``root``'s frame: [dict(name, kind 'ring' | 'stair', location, hung_on /
+    stands_on, info)]. The ring: one per column of ``pav`` (columns found by name, checked at PAV_RADIUS on the
+    -112.5 + 45 k degree corners arch.pavilion uses), ring_radius() out from the pavilion's centre through the column,
+    the suspension point the first solid of the pavilion an upward ray from RING_RAY_FROM over its floor meets. The
+    pair: STAIR_LANTERN_XY mirrored, on the first surface of ``tier`` a downward ray meets. Raises RuntimeError on
+    anything unexpected. Reads the evaluated scene: call after the pavilion, its blinds and the tiers are built."""
+    say = log or (lambda *a: print("SUMMIT lanterns", *a, flush=True))
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    pav_set, tier_set = subtree(pav), subtree(tier)
+    got = owner_tris(dg, root, pav_set | tier_set)
+    pav_own = [k for k in got if k in pav_set]
+    tier_own = [k for k in got if k in tier_set]
+    if not pav_own or not tier_own:
+        raise RuntimeError("lanterns: no evaluated geometry under %s (%d) or %s (%d)" % (
+            pav.name, len(pav_own), tier.name, len(tier_own)))
+    Tp = np.concatenate([got[k] for k in pav_own])
+    tp_owner = np.concatenate([[k] * len(got[k]) for k in pav_own])
+    Tt = np.concatenate([got[k] for k in tier_own])
+    tt_owner = np.concatenate([[k] * len(got[k]) for k in tier_own])
+    bp, bt = tri_bvh(Tp), tri_bvh(Tt)
+    Rinv = root.matrix_world.inverted()
+    pm = Rinv @ pav.matrix_world
+    centre = pm.translation
+    floor = centre.z + float(pav.get("arch_floor_z", 0.7))
+    col_rx = re.compile(r"^%s\.col(\.\d{3})?$" % re.escape(pav.name))
+    cols = [c for c in pav.children if col_rx.match(c.name)]
+    if len(cols) != 8:
+        raise RuntimeError("lanterns: %d columns under %s, want 8 (%s)" % (len(cols), pav.name,
+                                                                         sorted(c.name for c in cols)))
+    rows = []
+    for c in cols:
+        p = (Rinv @ c.matrix_world).translation - centre
+        a = math.degrees(math.atan2(p.y, p.x))
+        k = int(round((a + 112.5) / 45.0)) % 8
+        off = (a + 112.5 - 45.0 * k + 180.0) % 360.0 - 180.0
+        r = math.hypot(p.x, p.y)
+        if abs(off) > 0.05 or abs(r - PAV_RADIUS) > 0.01:
+            raise RuntimeError("lanterns: column %s at r %.3f m, %.3f deg: not on the -112.5 + 45 k corners at r %.1f"
+                               % (c.name, r, a, PAV_RADIUS))
+        rows.append((k, c, p))
+    if sorted(k for k, _c, _p in rows) != list(range(8)):
+        raise RuntimeError("lanterns: two columns on one corner: %s" % sorted((k, c.name) for k, c, _p in rows))
+    rows.sort(key=lambda x: x[0])
+    rr = ring_radius()
+    out = []
+    for k, c, p in rows:
+        u = Vector((p.x, p.y, 0.0)).normalized()
+        q = centre + u * rr
+        o = Vector((q.x, q.y, floor + RING_RAY_FROM))
+        hit, _n, fi, d = bp.ray_cast(o, Vector((0.0, 0.0, 1.0)), RING_RAY_FAR)
+        if hit is None:
+            raise RuntimeError("lanterns: nothing over %s within %.0f m of (%.2f, %.2f, %.2f)" % (
+                RING_NAMES[k], RING_RAY_FAR, o.x, o.y, o.z))
+        own = str(tp_owner[fi])
+        if col_rx.match(own) or ".gualuo" in own or ".seat" in own or own.startswith("summit.blinds") \
+                or own.startswith("summit.qin"):
+            raise RuntimeError("lanterns: %s would hang from %s at z %.3f, not a bracket or an eave" % (
+                RING_NAMES[k], own, hit.z))
+        loc = (round(q.x, PLACE_DP), round(q.y, PLACE_DP), round(hit.z - HANG_GAP, PLACE_DP))
+        out.append(dict(name=RING_NAMES[k], kind="ring", location=loc, hung_on=own,
+                        info="column %s at %.1f deg, hangs from %s %.3f m over the floor" % (
+                            c.name, math.degrees(math.atan2(u.y, u.x)), own, hit.z - floor)))
+    for sx, nm in ((-1.0, STAIR_LANTERN_NAMES[0]), (1.0, STAIR_LANTERN_NAMES[1])):
+        x, y = sx * STAIR_LANTERN_XY[0], STAIR_LANTERN_XY[1]
+        top = max(float(Tt[:, :, 2].max()), 0.0) + 3.0
+        hit, _n, fi, d = bt.ray_cast(Vector((x, y, top)), Vector((0.0, 0.0, -1.0)), top + 5.0)
+        if hit is None:
+            raise RuntimeError("lanterns: no %s under (%.2f, %.2f) for %s" % (tier.name, x, y, nm))
+        loc = (round(x, PLACE_DP), round(y, PLACE_DP), round(hit.z + STAND_GAP, PLACE_DP))
+        out.append(dict(name=nm, kind="stair", location=loc, stands_on=str(tt_owner[fi]),
+                        info="on %s at z %.3f (%.2f m from the tier's centre)" % (tt_owner[fi], hit.z,
+                                                                                 math.hypot(x, y))))
+    for pl in out:
+        say("%s %s at (%.3f, %.3f, %.3f): %s" % (pl["kind"], pl["name"], *pl["location"], pl["info"]))
+    say("ring radius %.3f m (column circle %.1f + column %.2f + lantern %.3f + gap %.2f); floor z %.3f" % (
+        rr, PAV_RADIUS, column_radius(), RING_LANTERN_R * RING_LANTERN["size"], RING_GAP, floor))
+    return out
+
+
+def place_lanterns(collection, root, places):
+    """The lanterns of lantern_places() as collection instances under ``root``: the ring with the abode's round
+    hanging lantern (RING_LANTERN), the pair with the stone lantern of the middle tier's stair (STAIR_LANTERN_H).
+    Returns the objects; raises RuntimeError when a name is taken."""
+    made = []
+    for pl in places:
+        if pl["kind"] == "ring":
+            ob = P.lantern_hanging(collection, RING_LANTERN["style"], RING_LANTERN["size"], cord=RING_LANTERN["cord"],
+                                   name=pl["name"], parent=root, location=pl["location"])
+        else:
+            ob = P.lantern_stone(collection, STAIR_LANTERN_H, name=pl["name"], parent=root, location=pl["location"])
+        if ob.name != pl["name"]:
+            raise RuntimeError("lanterns: %s came out as %s (the name is taken)" % (pl["name"], ob.name))
+        made.append(ob)
+    return made
+
+
+# --------------------------------------------------------------------------------------
 # build
 # --------------------------------------------------------------------------------------
 
@@ -469,11 +649,11 @@ def build(collection):
     A.stairs(U.name(KEY, "tier_mid_stairs"), collection, 8.0, MID_H, ramp=True, balustrade=False,
              parent=root, location=(0, -MID_R * cs + 0.05, 0))
     z1 = MID_H
-    A.platform(U.name(KEY, "tier_top"), collection, 2 * INNER_R, sides=48, height=INNER_H, parent=root,
-               location=(0, 0, z1))
-    A.stairs(U.name(KEY, "tier_top_stairs"), collection, 6.0, INNER_H, ramp=True, balustrade=False,
+    tier_top = A.platform(U.name(KEY, "tier_top"), collection, 2 * INNER_R, sides=48, height=INNER_H, parent=root,
+                          location=(0, 0, z1))
+    A.stairs(U.name(KEY, "tier_top_stairs"), collection, TOP_STAIR_W, INNER_H, ramp=True, balustrade=False,
              parent=root, location=(0, -INNER_R * cs + 0.05, z1))
-    for r, z, half in ((MID_R - 0.45, MID_H, 4.6), (INNER_R - 0.4, z1 + INNER_H, 3.6)):
+    for r, z, half in ((MID_R - 0.45, MID_H, 4.6), (TOP_RAIL_R, z1 + INNER_H, 3.6)):
         g = math.asin(half / r)
         A.balustrade(U.name(KEY, "tier_bal"), collection,
                      _rim_points(r, z, front + g, front + 2 * math.pi - g, step_deg=6.0),
@@ -533,6 +713,9 @@ def build(collection):
                         location=(sx * 15.6, ARCH_Y - 1.2, 0))
         P.lantern_stone(collection, 2.4, name=U.name(KEY, "lantern"), parent=root,
                         location=(sx * 6.4, -MID_R - 2.4, 0))
+    # 7b. (round 61) lit lanterns in the hold's frame: a ring of round hanging lanterns at the pavilion's column heads
+    #     and a pair of stone lanterns on the top tier behind the pavilion (lantern_places; sect/patch_r61_lanterns.py)
+    place_lanterns(collection, root, lantern_places(root, pav, tier_top))
 
     # 8. two cranes flying toward the moon (silhouette cue for the last frames): placed on
     #    the final camera's line of sight, beside the moon disc, heading toward it

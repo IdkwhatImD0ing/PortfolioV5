@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { fogDefines, fogLibrary, hexToLinear, lookFrameGradeGlsl, LOOK_UNIFORM_GLSL, SCREEN_GRADE_GLSL, SCREEN_GRADE_PARS, type FogConstants } from "./glsl";
 import { gradeGlsl, lookFogConstants, SECT_LOOK, unitTint } from "./look";
 import { createLookData, gradeLookDefines, LOOK_SLOT, LOOK_VEC4S, packFog, packFrame, packGrade } from "./look-gpu";
-import { FRAME_LOOK, frameCurve, frameGradeLinear, LOOKS, redWeight, withLevers, type FrameGrade } from "./looks";
+import { FRAME_LOOK, frameCurve, frameGradeLinear, LOOKS, redWeight, warmKept, warmWeight, withLevers, type FrameGrade } from "./looks";
 import type { SectMeta, Vec3 } from "./types";
 
 const META = {
@@ -44,6 +44,10 @@ function gradeFromPacked(c0: Vec3, d: Float32Array, base: number): Vec3 {
   const sat = bal[3] + (sp[2] - bal[3]) * redWeight(c);
   const lc = luma(c);
   c = c.map((x) => Math.max(lc + (x - lc) * sat, 0)) as Vec3;
+  // Warm light: gw.z the share it keeps, gw.w its blue.
+  const kept = warmKept(x0, gw[3]);
+  const wk = warmWeight(x0) * gw[2];
+  c = c.map((x, i) => x + (kept[i] - x) * wk) as Vec3;
   const k = Math.min(amount, 1);
   const graded = c.map((x, i) => x0[i] + (x - x0[i]) * k) as Vec3;
   return graded.map((x, i) => x + (x0[i] * (1 + (sp[3] - 1) * k) - x) * glow) as Vec3;
@@ -90,6 +94,9 @@ describe("look on the GPU: the shared array", () => {
       [0.6, 0.4, 0.3],
       [0.5, 0.05, 0.04],
       [2.4, 1.6, 0.6],
+      // Lantern light on stone: amber, and salmon where the cool key lights it too.
+      [0.6, 0.33, 0.12],
+      [0.3, 0.16, 0.12],
     ];
     for (const id of ["gold", "moon", "ink", "day"] as const) {
       const g: FrameGrade = withLevers(FRAME_LOOK, LOOKS[id].patch.frame).grade;
@@ -120,6 +127,19 @@ describe("look on the GPU: the shared array", () => {
     }
     // And the shader does what the helper does.
     expect(lookFrameGradeGlsl("x", "u", 0)).toContain("return mix( graded, x0 * mix( 1.0, sp.w, k ), glow );");
+  });
+
+  it("packs the warm light's keep and blue beside the glow's numbers", () => {
+    const moon: FrameGrade = withLevers(FRAME_LOOK, LOOKS.moon.patch.frame).grade;
+    const d = createLookData();
+    packFrame(d, moon);
+    const gw = slot(d, LOOK_SLOT.frame + 6);
+    expect(gw[2]).toBeCloseTo(moon.warmKeep, 6);
+    expect(gw[3]).toBeCloseTo(moon.warmBlue, 6);
+    // Off by default: today's dusk and the other looks keep nothing.
+    packFrame(d, FRAME_LOOK.grade);
+    expect(slot(d, LOOK_SLOT.frame + 6)[2]).toBe(0);
+    expect(lookFrameGradeGlsl("x", "u", 0)).toContain("vec4 wk = xWarm( x0, gw.z, gw.w );");
   });
 
   it("takes a slot of its own for the post pass", () => {

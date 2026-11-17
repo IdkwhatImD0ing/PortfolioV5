@@ -286,6 +286,15 @@ stop's live disc is at most 90 m across its radius, so two never meet.
   the ink waits for it, at most 2.5 s.
 - **Per-stop numbers.** `LIVE_LOOK.stops.<id>` can override the gains, exposure and saturation
   for one stop.
+- **Two stops carry their own light (2026-11-17).** The abode and the summit were baked at night
+  ([`../scene/night-r61.md`](../scene/night-r61.md)), and their `index.json` says so: `light.sun` is
+  the key they were baked under (the abode's afterglow from azimuth 252, 28 degrees up, strength 2.5;
+  the summit's moon from azimuth 45, 22 degrees up, strength 4), and `light.key.strength` is 0. The
+  page needs nothing new: it adds whatever lamps the index names, with their shadow maps aimed that
+  way. The other nine stops keep the scene's sunset sun from `meta.json` and its key lamp.
+  `night-light.test.ts` checks both. The moon look's live gains are now 1, 1, 1, 1 (the bake's own
+  sum), so the live area meets the baked texels at its edge with no ring ([`lux.md`](lux.md), "The
+  night re-bake").
 
 ## Lighting a stop without freezing the page
 

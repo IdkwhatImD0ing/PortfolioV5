@@ -6,7 +6,7 @@
   "abode_A0": {
    "size": 4096,
    "albedo": "abode_A0_albedo.webp",
-   "ambientMax": 0.6338,
+   "ambientMax": 1.0528,
    "ambient": "abode_A0_ambient.webp",
    "normal": "abode_A0_normal.webp",
    "sizes": {
@@ -18,7 +18,7 @@
   "abode_A1": {
    "size": 2048,
    "albedo": "abode_A1_albedo.webp",
-   "ambientMax": 0.0581,
+   "ambientMax": 0.0541,
    "ambient": "abode_A1_ambient.webp",
    "normal": "abode_A1_normal.webp",
    "sizes": {
@@ -31,17 +31,17 @@
  "light": {
   "sun": {
    "dir": [
-    -0.94397,
-    0.12187,
-    0.30671
+    -0.83973,
+    0.46947,
+    0.27285
    ],
    "color": [
-    1.0,
-    0.52,
-    0.23
+    0.72,
+    0.82,
+    1.0
    ],
-   "strength": 8.0,
-   "angleDeg": 1.2
+   "strength": 2.5,
+   "angleDeg": 40.0
   },
   "key": {
    "dir": [
@@ -54,7 +54,7 @@
     0.72,
     0.5
    ],
-   "strength": 2.4,
+   "strength": 0.0,
    "angleDeg": 6.0
   },
   "worldStrength": 1.0
@@ -71,5 +71,5 @@
  "ambientBounce": true,
  "ambientAlpha": "visibility",
  "normalAlpha": "soft",
- "bytes": 7596176
+ "bytes": 7774818
 }

@@ -25,7 +25,7 @@ import { ATMOS } from "@/lib/sect/post";
 import { RANGE_LOOK, type RangeLook } from "@/lib/sect/range-look";
 import type { Hold, SectMeta } from "@/lib/sect/types";
 import { LOOK_MODE, LOOK_READOUT, pristine } from "./look-switch";
-import { SECT_LOOK_GPU, SECT_TREE_RIM, SECT_WATER_SKY } from "./materials";
+import { SECT_LOOK_GPU, SECT_PULL, SECT_TREE_RIM, SECT_WATER_SKY } from "./materials";
 
 /** The scene meta's levers a look sets. */
 export interface LookMeta {
@@ -152,8 +152,8 @@ export function lookNow(): LookNow | null {
 /**
  * The shared uniforms from the look: the haze and the surfaces' grade (their switches on with the
  * journey only, so without it every shader keeps the numbers it was built with), the frame grade
- * (every tier: the post pass on High and Mid, the end of each shader on Low), the tree cards' rim
- * and the ponds' sky. The effects' shared haze colour (materials.ts SECT_HAZE_COLOR) is not set
+ * (every tier: the post pass on High and Mid, the end of each shader on Low), the night-baked
+ * stops' pull, the tree cards' rim and the ponds' sky. The effects' shared haze colour (materials.ts SECT_HAZE_COLOR) is not set
  * here: scene.tsx applyLookNow sets it to the land's haze with the twilight, right after this.
  */
 export function pushLookGpu(now: LookNow, meta: SectMeta): void {
@@ -169,6 +169,8 @@ export function pushLookGpu(now: LookNow, meta: SectMeta): void {
     packGrade(d, null);
   }
   packFrame(d, now.frame.grade);
+  // The night-baked stops' pull toward the sunset bake (lib/sect/night-bake.ts): none at night.
+  SECT_PULL.uSectPullAmount.value = Math.min(Math.max(1 - now.frame.nightBake, 0), 1);
   SECT_TREE_RIM.value.set(now.sect.trees.rim).multiplyScalar(now.sect.trees.rimStrength);
   SECT_WATER_SKY.uWaterSkyLow.value.set(now.sect.water.skyLow);
   SECT_WATER_SKY.uWaterSkyHigh.value.set(now.sect.water.skyHigh);

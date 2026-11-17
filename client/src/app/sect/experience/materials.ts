@@ -76,6 +76,7 @@ import { heartMirrorGlsl, MIRROR_PART } from "@/lib/sect/heart-mirror";
 import { liveApplyGlsl, liveAtlasOf, liveClassOf, liveParsGlsl, liveSheenGlsl, liveSurfaceNormalGlsl, type LiveClass } from "@/lib/sect/live";
 import { gradeGlsl, SECT_LOOK, treeLiftGlsl, treeShadeGlsl, unitTint, type SectLook } from "@/lib/sect/look";
 import { FRAME_LOOK, starsGlsl, type FrameLook } from "@/lib/sect/looks";
+import { SUNSET_PULL, SUNSET_PULL_APPLY, sunsetPullChunk, sunsetPullData, sunsetPullGlsl, type PullChunk } from "@/lib/sect/night-bake";
 import { clumpField, groundNoise, tilingNoise } from "@/lib/sect/noise";
 import {
   CARD_RANGE_MARGIN,
@@ -317,6 +318,24 @@ export const SECT_ENV = {
 export const SECT_LOOK_GPU = {
   uSectLook: { value: createLookData() },
 };
+
+/**
+ * How far the two night-baked stops are pulled toward the sunset bake (lib/sect/night-bake.ts): 1
+ * minus the look's nightBake, set with the look (look-now.ts pushLookGpu). Shared by their materials.
+ */
+export const SECT_PULL = { uSectPullAmount: { value: 1 } };
+
+/** Each night-baked chunk's fitted terms (night-bake.ts SUNSET_PULL), shared by its materials. */
+const PULL_DATA = new Map<PullChunk, { uSectPull: { value: Float32Array } }>();
+
+function pullUniforms(chunk: PullChunk): { uSectPull: { value: Float32Array } } {
+  let u = PULL_DATA.get(chunk);
+  if (!u) {
+    u = { uSectPull: { value: sunsetPullData(SUNSET_PULL[chunk]) } };
+    PULL_DATA.set(chunk, u);
+  }
+  return u;
+}
 
 /** The tree cards' warm rim (SECT_LOOK.trees.rim x rimStrength), shared so the journey can move it. */
 export const SECT_TREE_RIM = { value: linear(SECT_LOOK.trees.rim).multiplyScalar(SECT_LOOK.trees.rimStrength) };
@@ -1036,7 +1055,12 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
   // Lit live (lib/sect/live.ts, set by live.tsx): read at compile time too. Only an unlit baked
   // material with its atlas map, never water or a card; the rest compile exactly as before.
   const liveNow = () => (grade && !water && !cardGradeNow() && (mat as MeshBasicMaterial).map ? materialLive(mat) : null);
+  // The abode's and the summit's atlas surfaces, baked under their own night light: pulled toward
+  // the sunset bake while the sky is day or sunset (lib/sect/night-bake.ts). By the material's name,
+  // read at compile time like the rest.
+  const pullNow = () => (grade && !water ? sunsetPullChunk(mat.name) : null);
   mat.onBeforeCompile = (shader) => {
+    const pull = pullNow();
     const surface = surfaceNow();
     const cardGrade = cardGradeNow();
     const live = liveNow();
@@ -1060,7 +1084,8 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
     if (env) Object.assign(shader.uniforms, SECT_ENV);
     if (surface === "mirror") Object.assign(shader.uniforms, SECT_MIRROR);
     if (live) Object.assign(shader.uniforms, SECT_LIVE, liveAtlasUniforms(live.atlas), liveClassUniforms(live.cls));
-    const needWorld = !!water || !!hl || !!detail || wet || weather || !!surface || range || !!live;
+    if (pull) Object.assign(shader.uniforms, SECT_PULL, pullUniforms(pull));
+    const needWorld = !!water || !!hl || !!detail || wet || weather || !!surface || range || !!live || !!pull;
     if (needWorld) {
       // Paving also passes its slab coordinates (uv1) on (detail.ts detailVertexGlsl; empty for rock and ground).
       const dv = detail ? detailVertexGlsl(detail.kind) : { pars: "", main: "" };
@@ -1079,7 +1104,7 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
       detail ? detailGlsl(detail.kind) : ""
     }${weather ? WEATHER_GLSL : ""}${wet ? WET_GLSL : ""}${tree ? TREE_LIFT_GLSL : ""}${shade ? TREE_SHADE_GLSL : ""}${
       surface === "mirror" ? MIRROR_PARS : ""
-    }${live ? LIVE_PARS : ""}`;
+    }${live ? LIVE_PARS : ""}${pull ? PULL_GLSL : ""}`;
     fs = fs.replace("#include <common>", `#include <common>\n${header}`);
     if (env) fs = fs.replace("#include <fog_pars_fragment>", `#include <fog_pars_fragment>\n${ENV_GLSL}${water ? POND_MIRROR_GLSL : ""}`);
     if (lit) {
@@ -1103,6 +1128,8 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
           // Lit live, the texel is the live colour (faded into the baked one away from the stop)
           // before anything else reads it (lib/sect/live.ts liveApplyGlsl).
           `  vec3 sectTexel = diffuseColor.rgb / max( diffuse, vec3( 1e-4 ) );${live ? `\n${detail?.kind === "tiles" ? LIVE_APPLY_TILES : detail?.kind === "paving" ? LIVE_APPLY_PAVING : LIVE_APPLY}` : ""}`,
+          // A night-baked stop seen by day: its texel pulled toward the sunset bake (night-bake.ts).
+          pull ? SUNSET_PULL_APPLY : "",
           // Near pines: their dark needles lifted toward the far cards' level (look.ts treeLiftLinear).
           tree ? "  sectTexel = sectTreeLift( sectTexel );" : "",
           // 1 on the range, 0 at the stops (range-look.ts sectRangeW; rock also 0 under anything
@@ -1171,12 +1198,14 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
     const surface = surfaceNow();
     const k = cardGradeNow() ? `${key}|cardgrade` : key;
     const ks = surface ? `${k}|surface-${surface}` : weatherNow() ? `${k}|weather-${WEATHER_KEY}` : k;
-    return liveNow() ? `${ks}|live-${LIVE_KEY}` : ks;
+    const kl = liveNow() ? `${ks}|live-${LIVE_KEY}` : ks;
+    return pullNow() ? `${kl}|pull-${PULL_KEY}` : kl;
   };
   mat.needsUpdate = true;
 }
 
 const TREE_LIFT_GLSL = treeLiftGlsl(SECT_LOOK.trees.lift);
+const PULL_GLSL = sunsetPullGlsl();
 const TREE_SHADE_GLSL = treeShadeGlsl(SECT_LOOK.trees.shade);
 const RANGE_GLSL = rangeGlsl();
 const FOLIAGE_GLSL = foliageGlsl();
@@ -1186,6 +1215,8 @@ const ROCK_GRADE = rockGradeStatements();
 const GROUND_GRADE = groundGradeStatements();
 /** A tag of the range GLSL for the program cache key (a changed constant must recompile). */
 const RANGE_KEY = programTag(RANGE_GLSL + FOLIAGE_GLSL + FOLIAGE_GRADE + ROCK_GLSL + ROCK_GRADE + GROUND_GRADE);
+/** A tag of the night-baked stops' pull for the program cache key. */
+const PULL_KEY = programTag(PULL_GLSL + SUNSET_PULL_APPLY);
 /** A tag of the live GLSL for the program cache key (its constants are baked in from LIVE_LOOK). */
 const LIVE_KEY = programTag(LIVE_PARS + LIVE_APPLY + LIVE_APPLY_TILES + LIVE_APPLY_PAVING + LIVE_SHEEN + liveSurfaceNormalGlsl());
 

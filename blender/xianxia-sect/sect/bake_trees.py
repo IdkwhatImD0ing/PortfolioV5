@@ -124,6 +124,11 @@ under that folder (raw/, bake/trees/, cache/ or --cache-dir) instead of out/web/
 carry NEEDLE_TAG / TWIG_TAG (needle pines), SHRUB_TAG (leafy bushes), BROADLEAF_TAG (leafy broadleaf), BLOSSOM_TAG
 ('.mid' peaches) and LIGHT_TAG (shade variant), sprite
 names TWIG_TAG (twig-card pines) and LIGHT_TAG (shade variant), so a change there re-bakes only what it affects.
+Night (round 61, bake_web.night_scene): --light night / twilight re-aims the scene's sun lamp (the ray casts and the
+rig read it), swaps the sky (the rig copies the world) and turns the rig's fill off. The caches are keyed without the
+light, so a night light needs its own --cache-dir and, outside a test run, --only <its chunk> (night_guard):
+
+    ... sect_chase.blend --python bake_trees.py -- build --only summit --light night --cache-dir bakecache/trees_night
 """
 import argparse
 import collections
@@ -347,6 +352,11 @@ class Rig:
         L = BW.BAKE_LIGHT
         fd = bpy.data.lights.new("trees.fill", "SUN")
         fd.energy, fd.angle, fd.color = L["fill_energy"], math.radians(L["fill_angle_deg"]), L["fill_color"]
+        if L.get("night"):                  # (round 61) a night light: the warm key is off, as bake_lighting's
+            fd.energy = 0.0
+        log("rig: sun %s from (%.4f, %.4f, %.4f), energy %.3g, angle %.3g deg; fill energy %.3g%s" % (
+            sun_src.name, self.sdir.x, self.sdir.y, self.sdir.z, self.sun_energy,
+            math.degrees(self.sun.data.angle), fd.energy, " (night)" if L.get("night") else ""))
         self.fill = bpy.data.objects.new("trees.fill", fd)
         sc.collection.objects.link(self.fill)
         gm = bpy.data.meshes.new("trees.ground")
@@ -450,9 +460,13 @@ def cmd_trees(a):
             if hasattr(a, k):
                 setattr(fa, k, getattr(a, k))
         apply_out(fa)
+        night_guard(fa, ["build"])
         sc = bpy.context.scene
+        BW.night_scene(sc)      # bake_web's main ran it already: this finds its marker nodes and only re-aims the sun
         full_build(fa, sc, full_plan(fa, sc))
         return
+    if BW.BAKE_LIGHT.get("night"):
+        raise SystemExit("bake_trees: the first test's tree path (--profile proto) has no night light; use --profile full")
     sc = bpy.context.scene
     t0 = time.time()
     T = {}
@@ -1053,6 +1067,7 @@ def export_trees(path, objects):
 FULL_RAW = os.path.join(EW.FULL, "raw")
 FULL_OUT = os.path.join(EW.FULL, "bake", "trees")
 FULL_CACHE = os.path.join(BW.CACHE_DIR, "trees_full")     # box only (bakecache/ is outside out/)
+DAY_CACHE = FULL_CACHE      # (round 61) the day light's caches: a night light never reads or writes them (night_guard)
 VIEWS = ("front", "side", "top")
 KEEP_MATS = {"bamboo": ("M.nature_bamboo_leaf",)}         # opaque leaf blades: kept on the near meshes
 FULL_RATIO = {"bamboo": 1.0}                              # kind -> near-mesh decimation (collapse shreds leaf blades)
@@ -3414,7 +3429,9 @@ def full_args(argv):
                     help="test runs: write under this folder (relative to the project, e.g. out/r17/new): raw/, "
                          "bake/trees/ and cache/ instead of out/web/full/raw, out/web/full/bake/trees and "
                          "bakecache/trees_full (inputs still come from out/web/full)")
-    ap.add_argument("--cache-dir", default="", help="with --out: the bake cache (default <out>/cache)")
+    ap.add_argument("--cache-dir", default="",
+                    help="with --out: the bake cache (default <out>/cache); without --out: the caches of a real build "
+                         "(never bakecache/trees_full; a night light needs one, night_guard)")
     ap.add_argument("--only-recs", action="store_true",
                     help="build with --only: cast, bake and render sprites for those chunks' records only (test runs: "
                          "needs --out)")
@@ -3435,6 +3452,21 @@ def apply_out(a):
     global FULL_RAW, FULL_OUT, FULL_CACHE
     if getattr(a, "only_recs", False) and not getattr(a, "out", ""):
         raise SystemExit("--only-recs builds a partial set (a backdrop with some areas' proxies only): use it with --out")
+    if not getattr(a, "out", "") and getattr(a, "cache_dir", ""):
+        # (round 61) --cache-dir alone: the outputs go where they always go, the caches to this folder (a night light's
+        # own, night_guard). Never the day cache, never inside out/web
+        cache = os.path.normpath(a.cache_dir if os.path.isabs(a.cache_dir) else os.path.join(ROOT, a.cache_dir))
+        for q in (DAY_CACHE, EW.OUT_WEB):
+            q = os.path.normpath(q)
+            try:
+                inside = os.path.commonpath([cache, q]) == q
+            except ValueError:              # another drive
+                inside = False
+            if inside:
+                raise SystemExit("--cache-dir must not be %s or inside it: %s" % (q, cache))
+        FULL_CACHE = cache
+        log("cache:", FULL_CACHE, "(--cache-dir; outputs in", FULL_RAW, "and", FULL_OUT + ")")
+        return
     if not getattr(a, "out", ""):
         return
     base = os.path.normpath(a.out if os.path.isabs(a.out) else os.path.join(ROOT, a.out))
@@ -3450,12 +3482,39 @@ def apply_out(a):
     log("test run: outputs under", base, "cache", FULL_CACHE)
 
 
+def night_guard(a, cmds):
+    """(round 61) A night light (bake_web.BAKE_LIGHT night=1: --light night, twilight, ...) lights the trees with its
+    own sun and sky, but the sun visibility (sunvis.npz), mesh-bake and sprite caches are keyed without the light, and
+    instances.json is one file for every chunk. So a night light needs --cache-dir (its own caches, never the day's),
+    writes only the chunks it is for (--only, never the backdrop) unless it is a test run (--out), and never runs
+    'instances'. Call after apply_out and bake_web.set_bake_light."""
+    if not BW.BAKE_LIGHT.get("night"):
+        return
+    if "instances" in cmds:
+        raise SystemExit("bake_trees: 'instances' writes out/web/full/veg/instances.json for every chunk with one sun: "
+                         "run it with the day light")
+    if not getattr(a, "cache_dir", ""):
+        raise SystemExit("bake_trees: a night light needs --cache-dir <its own folder, e.g. bakecache/trees_night>: the "
+                         "sun visibility, mesh and sprite caches are keyed without the light, and the day's would be "
+                         "reused")
+    if os.path.normpath(FULL_CACHE) == os.path.normpath(DAY_CACHE):
+        raise SystemExit("bake_trees: a night light must not use the day cache %s" % DAY_CACHE)
+    only = [x for x in (getattr(a, "only", "") or "").split(",") if x]
+    if not getattr(a, "out", "") and "build" in cmds and (not only or "backdrop" in only):
+        raise SystemExit("bake_trees: a night light writes only the chunks it is for: give --only <chunk> (not the "
+                         "backdrop, which every stop shares), e.g. --only summit")
+    log("night light: caches in", FULL_CACHE, "; writes", ",".join(only) if only else
+        ("every chunk of a test run under " + a.out if getattr(a, "out", "") else "no chunk (no build)"))
+
+
 def main():
     a = full_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else [])
     apply_out(a)
     BW.set_bake_light(getattr(a, "light", ""))
+    night_guard(a, a.commands.split(","))
     EW.use_profile("full")
     sc = bpy.context.scene
+    BW.night_scene(sc)          # (round 61) a day light returns at once; before the plan, the ray casts and the rig
     t0 = time.time()
     P = None
     for cmd in a.commands.split(","):

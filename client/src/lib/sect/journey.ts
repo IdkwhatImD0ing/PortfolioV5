@@ -211,8 +211,9 @@ export const RUNTIME_LEVERS: Readonly<Record<LookTarget, readonly string[]>> = {
   atmos: ["bloom.intensity", "cloudShadow.strength"],
   // Read each frame by hazeScaleAt.
   range: HAZE_HOLDS,
-  // The frame grade (uSectLook on every tier), the stars and the sky's sun (the dome's uniforms).
-  frame: [...Object.keys(FRAME_LOOK.grade).map((k) => `grade.${k}`), "stars", "skySun", "cloudSeaShade"],
+  // The frame grade (uSectLook on every tier), the stars and the sky's sun (the dome's uniforms), and
+  // how much the two night-baked stops show their own light (materials.ts SECT_PULL, night-bake.ts).
+  frame: [...Object.keys(FRAME_LOOK.grade).map((k) => `grade.${k}`), "stars", "skySun", "cloudSeaShade", "nightBake"],
   meta: ["sun.color", "moon.color", "vignette"],
 };
 
@@ -258,6 +259,21 @@ const GATES: readonly { target: LookTarget; gate: string; group: string }[] = [{
  */
 const LEAN_LOW: Readonly<Record<string, number>> = { "frame:stars": 3 };
 
+/**
+ * Levers that switch over a short stretch (an edge): the share of the higher value is smoothstep
+ * (from, to) of the looks' weighted share. The night-baked stops start to show their own light when
+ * the moon's share passes 15%, and show it fully from 28%: their pull toward the sunset bake holds
+ * up to the scroll (no moon) and is gone by the formation (30% moon), which keeps the look it was
+ * tuned with. Between the two it fades over about 35 frames, 1156 to 1191 (night-bake.ts).
+ */
+const EDGE: Readonly<Record<string, readonly [number, number]>> = { "frame:nightBake": [0.15, 0.28] };
+
+/** The higher value's share of a number lever: the weighted share, leaned (LEAN_LOW) or switched (EDGE). */
+function shapedShare(share: number, lean: number | undefined, edge: readonly [number, number] | undefined): number {
+  if (edge) return smoothstep(edge[0], edge[1], share);
+  return Math.pow(share, lean ?? 1);
+}
+
 export type JourneyBases = Readonly<Record<LookTarget, object>>;
 
 /**
@@ -265,7 +281,18 @@ export type JourneyBases = Readonly<Record<LookTarget, object>>;
  * takes the base's value). `paths`: each key split at its dots, for journeyApply.
  */
 export interface JourneyTable {
-  targets: Record<LookTarget, { keys: string[]; paths: string[][]; cols: Column[]; gate: number; group: boolean[]; lean: (number | undefined)[] }>;
+  targets: Record<
+    LookTarget,
+    {
+      keys: string[];
+      paths: string[][];
+      cols: Column[];
+      gate: number;
+      group: boolean[];
+      lean: (number | undefined)[];
+      edge: (readonly [number, number] | undefined)[];
+    }
+  >;
 }
 
 function column(values: LeverValue[]): Column {
@@ -300,24 +327,25 @@ export function journeyTable(bases: JourneyBases, levers: Readonly<Record<LookTa
       gate,
       group: keys.map((k) => !!g && k !== g.gate && k.startsWith(g.group)),
       lean: keys.map((k) => LEAN_LOW[`${t}:${k}`]),
+      edge: keys.map((k) => EDGE[`${t}:${k}`]),
     };
   }
   return { targets };
 }
 
 /** One column blended by the looks' weights `w` (JOURNEY_LOOKS order). */
-function blendColumn(c: Column, w: readonly number[], lean?: number): LeverValue {
+function blendColumn(c: Column, w: readonly number[], lean?: number, edge?: readonly [number, number]): LeverValue {
   // A single look: its own value, exactly.
   const only = w.findIndex((x) => x >= 1);
   if (only >= 0) return c.kind === "color" ? c.hex[only] : c.kind === "vector" ? [...c.v[only]] : c.v[only];
   if (c.kind === "number") {
-    if (lean !== undefined) {
+    if (lean !== undefined || edge !== undefined) {
       const lo = Math.min(...c.v);
       const hi = Math.max(...c.v);
       if (!(hi > lo)) return lo;
       let share = 0;
       for (let i = 0; i < w.length; i++) share += w[i] * ((c.v[i] - lo) / (hi - lo));
-      return lo + (hi - lo) * Math.pow(share, lean);
+      return lo + (hi - lo) * shapedShare(share, lean, edge);
     }
     let s = 0;
     for (let i = 0; i < w.length; i++) s += w[i] * c.v[i];
@@ -352,7 +380,7 @@ export function journeyLevers(table: JourneyTable, target: LookTarget, weights: 
     if (sum > 0) wg = open.map((x) => x / sum);
   }
   const out: Record<string, LeverValue> = {};
-  for (let i = 0; i < t.keys.length; i++) out[t.keys[i]] = blendColumn(t.cols[i], t.group[i] ? wg : w, t.lean[i]);
+  for (let i = 0; i < t.keys.length; i++) out[t.keys[i]] = blendColumn(t.cols[i], t.group[i] ? wg : w, t.lean[i], t.edge[i]);
   return out;
 }
 
@@ -386,7 +414,7 @@ const APPLY_RGB: Vec3 = [0, 0, 0];
  * One column blended by the weights, as blendColumn does it (the same sums in the same order), but
  * with nothing made but a colour's hex: a list goes into `current` when it is a list of that length.
  */
-function blendInto(c: Column, w: readonly number[], lean: number | undefined, current: unknown): LeverValue {
+function blendInto(c: Column, w: readonly number[], lean: number | undefined, edge: readonly [number, number] | undefined, current: unknown): LeverValue {
   let only = -1;
   for (let i = 0; i < w.length; i++) {
     if (w[i] >= 1) {
@@ -413,13 +441,13 @@ function blendInto(c: Column, w: readonly number[], lean: number | undefined, cu
   }
   if (only >= 0) return c.kind === "color" ? c.hex[only] : c.v[only];
   if (c.kind === "number") {
-    if (lean !== undefined) {
+    if (lean !== undefined || edge !== undefined) {
       const lo = Math.min(...c.v);
       const hi = Math.max(...c.v);
       if (!(hi > lo)) return lo;
       let share = 0;
       for (let i = 0; i < w.length; i++) share += w[i] * ((c.v[i] - lo) / (hi - lo));
-      return lo + (hi - lo) * Math.pow(share, lean);
+      return lo + (hi - lo) * shapedShare(share, lean, edge);
     }
     let s = 0;
     for (let i = 0; i < w.length; i++) s += w[i] * c.v[i];
@@ -464,7 +492,7 @@ export function journeyApply(table: JourneyTable, weights: JourneyWeights, into:
       let node = root as Record<string, unknown>;
       for (let i = 0; i < path.length - 1; i++) node = node[path[i]] as Record<string, unknown>;
       const last = path[path.length - 1];
-      node[last] = blendInto(t.cols[k], t.group[k] ? wg : w, t.lean[k], node[last]);
+      node[last] = blendInto(t.cols[k], t.group[k] ? wg : w, t.lean[k], t.edge[k], node[last]);
     }
   }
 }
