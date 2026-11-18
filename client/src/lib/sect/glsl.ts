@@ -330,6 +330,34 @@ uniform vec4 uSectLook[ ${LOOK_VEC4S} ];
 #endif`;
 
 /**
+ * The frame grade's warm light (looks.ts warmWeight and warmKept, FrameGrade.warmKeep and
+ * warmBlue). Red's lead over blue as a share of red: none below `lead[0]`, all from `lead[1]`. The
+ * hue as (g - b) / (r - b): 0 at red, 1 at yellow, above 1 for green, below 0 for pink; all up to
+ * `hue[0]`, none from `hue[1]`. Amber (1, 0.55, 0.2) leads by 0.8 at hue 0.44, so it counts in
+ * full. Measured on the abode at 60% moon: its ochre stains on grey rock lead by 0.35 to 0.45 and
+ * stay out; its lantern-lit stair wall, deck and gate lead by 0.75 to 0.9 at hue 0.17 to 0.44;
+ * bamboo and grass sit at hue 0.8 to 2.3, the lawn round a lantern at 0.4 to 0.9. The blue cut
+ * (warmBlue) applies from hue `blueHue[0]` (none) to `blueHue[1]` (all): pink blossoms (hue
+ * about -0.1) and lacquer red (about 0) keep their blue, salmon and amber light lose it.
+ */
+export const WARM = { lead: [0.5, 0.7], hue: [0.65, 0.95], blueHue: [0, 0.15] } as const;
+
+/**
+ * GLSL: `vec4 <name>( vec3 linear, float keep, float blue )`, looks.ts warmKept: the colour warm
+ * light keeps (its blue cut by `blue`) in rgb, and its share (the warm weight times `keep`) in a.
+ */
+export function warmKeepGlsl(name: string): string {
+  const f = glslFloat;
+  return /* glsl */ `
+vec4 ${name}( vec3 c, float keep, float blue ) {
+  float lead = ( c.r - c.b ) / max( c.r, 1e-4 );
+  float hue = ( c.g - c.b ) / max( c.r - c.b, 1e-4 );
+  float w = smoothstep( ${f(WARM.lead[0])}, ${f(WARM.lead[1])}, lead ) * ( 1.0 - smoothstep( ${f(WARM.hue[0])}, ${f(WARM.hue[1])}, hue ) );
+  return vec4( c.rg, c.b * mix( 1.0, blue, smoothstep( ${f(WARM.blueHue[0])}, ${f(WARM.blueHue[1])}, hue ) ), w * keep );
+}`;
+}
+
+/**
  * GLSL: `vec3 <name>( vec3 linear )`, the grade of the whole frame (looks.ts frameGradeLinear), its
  * numbers in vec4s `base` to `base + 6` of the uniform array `array` (look-gpu.ts packFrame). At
  * amount 0 it returns its input untouched.
@@ -341,6 +369,7 @@ float ${name}Curve( float v, float p, float k ) {
   float x = clamp( v, 0.0, 1.0 );
   return x < p ? p * pow( x / p, k ) : 1.0 - ( 1.0 - p ) * pow( ( 1.0 - x ) / ( 1.0 - p ), k );
 }
+${warmKeepGlsl(`${name}Warm`)}
 vec3 ${name}( vec3 c0 ) {
   vec4 a = ${u(0)};
   if ( a.x <= 0.0 ) return c0;
@@ -368,6 +397,9 @@ vec3 ${name}( vec3 c0 ) {
   float sat = mix( bal.w, sp.z, red );
   float lc = dot( c, luma );
   c = max( vec3( lc ) + ( c - vec3( lc ) ) * sat, 0.0 );
+  // Warm light keeps its own colour and brightness (gw.z: warmKeep), amber's blue cut (gw.w: warmBlue).
+  vec4 wk = ${name}Warm( x0, gw.z, gw.w );
+  c = mix( c, wk.rgb, wk.a );
   float k = min( a.x, 1.0 );
   vec3 graded = mix( x0, c, k );
   // The glows' gain fades with the amount too, so a grade fading in (the journey leaving today's

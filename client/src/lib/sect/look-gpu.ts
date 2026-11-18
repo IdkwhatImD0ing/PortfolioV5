@@ -83,7 +83,7 @@ export function packFrame(out: Float32Array, g: FrameGrade, slot: number = LOOK_
   put(out, slot + 3, ht[0], ht[1], ht[2], g.highlightAmount);
   put(out, slot + 4, lift[0], lift[1], lift[2], g.lift);
   put(out, slot + 5, g.splitPivot, Math.max(g.splitWidth, 1e-3), g.redSaturation, g.glowGain);
-  put(out, slot + 6, g.glowFrom, Math.max(g.glowTo, g.glowFrom + 1e-3), 0, 0);
+  put(out, slot + 6, g.glowFrom, Math.max(g.glowTo, g.glowFrom + 1e-3), g.warmKeep, g.warmBlue);
 }
 
 /** The surfaces' grade numbers behind their switch (look.ts gradeGlsl uses them). */

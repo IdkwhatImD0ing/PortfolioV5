@@ -35,6 +35,7 @@ listed under "Kept beside the code".
 - [`scene/trees-r58.md`](scene/trees-r58.md): Why were near broadleaf trees smooth blobs, how do they keep their leaves now, and how did the tree build run (time, cost, the box's two faults)?
 - [`scene/rock-r59.md`](scene/rock-r59.md): What did round 59 try for the rock (more bake texels, a rebuilt material, real ledges), why are only the extra texels kept, and what should the next rock round start with?
 - [`scene/rock-r60.md`](scene/rock-r60.md): Which photo could replace the rock's dried-mud marble, how is a seamless cliff tile cut from the mountainside model, how were the stills judged blind, how did the run and the bake go, and why did rock tuning stop there?
+- [`scene/night-r61.md`](scene/night-r61.md): Why were the abode and the summit baked again at night, what changed in the bake scripts, the two lights, the summit's new lanterns, how it ran and what it cost, how to run it again, and its limits?
 - [`sect/veg-shells.md`](sect/veg-shells.md): How are far trees drawn (crowns built in code and lit live), where does their data come from, and when does a tree use its baked card? And how do far crowns get their trunks?
 - [`sect/far-rock.md`](sect/far-rock.md): Why did far spires look like smooth tubes, and how do the far peaks and the areas' stand-ins get a rock surface now?
 - [`sect/surfaces.md`](sect/surfaces.md): Why do plazas, walls, lawns and cliffs look worn now, which numbers set it, and what is left for a Blender round?

@@ -35,6 +35,7 @@ import { fogConstantsFromMeta, fogDefines, glslFloat, SCREEN_GRADE_PARS } from "
 import { heartMirrorGlsl } from "@/lib/sect/heart-mirror";
 import { LIVE_CLASSES, liveApplyGlsl, liveAtlasOf, liveSheenGlsl, liveSurfaceNormalGlsl } from "@/lib/sect/live";
 import { SECT_LOOK } from "@/lib/sect/look";
+import { SUNSET_PULL, SUNSET_PULL_APPLY, sunsetPullData } from "@/lib/sect/night-bake";
 import { parseMeta } from "@/lib/sect/parse";
 import {
   STEAM_BRANCH,
@@ -90,6 +91,7 @@ import {
   SECT_ENV,
   SECT_LIVE,
   SECT_MIRROR,
+  SECT_PULL,
   SECT_WEATHER,
   SECT_WET,
   sectSurfaceOf,
@@ -276,10 +278,51 @@ describe("screen dither (low tier)", () => {
   });
 });
 
+describe("the night-baked stops' pull toward the sunset bake (night-bake.ts)", () => {
+  const baked = (name: string) => {
+    const mat = new MeshBasicMaterial({ map: new Texture() });
+    mat.name = name;
+    mat.userData = { baked: true };
+    prepareBakedMaterial(mat);
+    return mat;
+  };
+
+  it("pulls the abode's and the summit's atlas texels, before the grade, by the shared amount and the chunk's own terms", () => {
+    for (const [name, chunk] of [
+      ["baked.abode_A0", "abode"],
+      ["baked.summit_A2.detail.rock", "summit"],
+    ] as const) {
+      const mat = baked(name);
+      const shader = compile(mat);
+      const fs = shader.fragmentShader;
+      const at = fs.indexOf(SUNSET_PULL_APPLY);
+      expect(at, name).toBeGreaterThan(fs.indexOf("vec3 sectTexel = "));
+      expect(at, name).toBeLessThan(fs.indexOf("vec3 sectGraded = "));
+      expect(fs).toContain("vec3 sectSunsetPull( vec3 c, vec3 wp )");
+      expect(shader.vertexShader).toContain("vSectWorld = ");
+      // One amount for every pulled material (the look sets it), one set of terms per chunk.
+      expect(shader.uniforms.uSectPullAmount).toBe(SECT_PULL.uSectPullAmount);
+      const terms = (shader.uniforms.uSectPull as { value: Float32Array }).value;
+      expect([...terms]).toEqual([...sunsetPullData(SUNSET_PULL[chunk])]);
+      expect(compile(baked(name)).uniforms.uSectPull).toBe(shader.uniforms.uSectPull);
+      expect(mat.customProgramCacheKey()).toMatch(/\|pull-[0-9a-z]+$/);
+    }
+  });
+
+  it("leaves every other chunk, the glows and the vertex-coloured pieces as they were", () => {
+    for (const name of ["baked.gate_A0", "baked.formation_A1", "baked.abode_A0.glow.lantern", "baked.vc"]) {
+      const mat = baked(name);
+      expect(compile(mat).fragmentShader, name).not.toContain("sectSunsetPull");
+      expect(mat.customProgramCacheKey(), name).not.toContain("pull");
+    }
+  });
+});
+
 describe("wet rock on baked surfaces", () => {
   const baked = () => {
     const mat = new MeshBasicMaterial({ map: new Texture() });
-    mat.name = "baked.abode_A0";
+    // A chunk baked at sunset (the abode's and the summit's also take the pull: night-bake.ts).
+    mat.name = "baked.gate_A0";
     mat.userData = { baked: true };
     prepareBakedMaterial(mat);
     return mat;
@@ -622,8 +665,8 @@ describe("weathering on baked surfaces with no detail class", () => {
   });
 
   it("changes the program key by its own tag and nothing else", () => {
-    const wall = baked("baked.abode_A0").customProgramCacheKey();
-    const flag = baked("baked.abode_A0", { sectSway: true }).customProgramCacheKey();
+    const wall = baked("baked.gate_A0").customProgramCacheKey();
+    const flag = baked("baked.gate_A0", { sectSway: true }).customProgramCacheKey();
     expect(wall).toMatch(/\|wet\|weather-[0-9a-z]+$/);
     expect(wall).not.toBe(flag);
     expect(wall.replace(/\|weather-[0-9a-z]+/, "")).toBe(flag);

@@ -282,8 +282,9 @@ every lever a look sets is in exactly one of the two lists.
     sky reads as sunrise at a glance: the top of the gate's frame went from a teal grey to a peach
     grey (mean of the top 120 rows from 115, 114, 103 to 135, 115, 96). The zenith stays teal.
 - `moon`, moonlit night. Navy sky with stars and no sun, blue haze and pale blue valley mist, the
-  surfaces darker and cooler, the frame grade at 0.62 exposure leaning blue with the blacks lifted
-  to navy (lift 0.018, so eaves keep some detail). Glows skip the grade and are 2.6 times as bright.
+  frame grade at 0.62 exposure leaning blue with the blacks lifted to navy (lift 0.018, so eaves keep
+  some detail). Glows skip the grade and are 2.6 times as bright. Lantern light keeps its amber (the
+  warm keep). Retuned on 2026-11-17 for the night re-bake: see "The night re-bake" below.
 - `ink`, ink-wash mist. Paper white sky and haze, the haze about 2.2 times as thick and the valley
   mist seven times, colour taken down to a third except strong reds, soft light at the lit stop.
   Surface exposure 1.38 (white paving went paper white at 1.44).
@@ -300,6 +301,113 @@ every lever a look sets is in exactly one of the two lists.
   - The Low tier shows no paving joints at the forge, with any look: even today's dusk on Low has
     none (the joints on High come from the live light's paving bevel and the detail map). So the
     paving on Low is off the clip but still reads as a plain pale floor.
+
+### The night re-bake (2026-11-17)
+
+The abode and the summit were baked again under their own light: a cool afterglow at the abode, the
+moon at the summit, and lanterns that light what is round them
+([`../scene/night-r61.md`](../scene/night-r61.md)). The moon look had been tuned to turn a warm sunset
+bake into night, and that also took the colour out of the new lantern light: it read pink or beige at
+the abode, and the pavilion at the summit stayed a dark blue block. Its new numbers:
+
+| Lever | Was | Now | Why |
+|---|---|---|---|
+| frame `grade.warmKeep` (new) | 0 | 1 | lantern light keeps its colour and brightness |
+| frame `grade.warmBlue` (new) | 1 | 0.5 | salmon light (lantern plus the cool key) reads amber |
+| sect `grade.exposure` | 0.95 | 1.2 | the bake is darker at night; the warm pools read |
+| sect `grade.contrast` | 1.12 | 0.85 | the dim edges of the pools and the summit's rock lift |
+| sect `grade.highlightTint` | `#cbe0ff` | `#ffffff` | the frame grade does the cooling; this greyed the amber |
+| sect `grade.saturation` | 0.72 | 1.0 | same |
+| sect `grade.greenTame` | today's 0.45 | 0.1 | grass stays green, not olive, under the blue |
+| sect `grade.shoulder` | today's 0.74 | 0.45 | the brightest pool (the moon gate) stays under the glow line |
+| live `sunGain`, `keyGain`, `ambientGain`, `saturation` | 1.25, 1.1, 0.9, 0.85 | 1, 1, 1, 1 | the live light adds what the bake had |
+| lux `shafts.gain`, `shafts.dim`, `shafts.shade` | 1.2, 1.0, today's 0.32 | 0, 0, 0 | shafts march along the sunset sun |
+| atmos `cloudShadow.strength` | 0.1 | 0 | so does the cloud shade |
+| frame `nightBake` (new) | 0 | 1 | the two night-baked stops show their own light (below) |
+
+The frame grade's other numbers (exposure, balance, split tone, saturation, lift, glows) are as they
+were, so the summit's sky, stars and moon do not change.
+
+**The warm keep.** Two new frame grade levers, `warmKeep` and `warmBlue`
+(`client/src/lib/sect/looks.ts`, in the frame group's last vec4: no new uniform and no new shader
+variant, though the frame grade's shader gains one small function). Where
+the frame's own colour reads as warm light, that share of the pixel skips the night grade, as a glow
+does. Warm means red leads blue by half of red or more (all from 0.7), with a hue from red to orange
+(`(g - b) / (r - b)` up to 0.65, none from 0.95). The thresholds are fixed in `glsl.ts` `WARM`,
+measured on the abode: its ochre-stained grey rock leads by 0.35 to 0.45 and stays graded, its stair
+wall, deck and gate lead by 0.75 to 0.9. Grass, bamboo, grey stone and the sky are graded as before.
+`warmBlue` cuts the kept light's blue, on salmon to amber only (hue 0 to 0.15 and up), so pink
+blossom and lacquer red keep theirs. Every other look and today's dusk have `warmKeep` 0. Gated with
+the rest of the frame grade, so the abode and the formation use the moon's values at their amount.
+
+**The two stops seen by day (the pull).** The new chunks are on screen long before their stops: far
+off on High from the mission (619) on, and on every tier once they are loaded (their `need` ranges
+start at 751 for the abode and 979 for the summit). Seen
+under a gold or day sky beside chunks still baked at sunset, they read as cool grey or dark slate, and
+the summit's sunlit side is the side its moon leaves dark (frames 880 and 1160 were the worst). So
+while the sky is day or sunset the page pulls their atlas texels back toward the old sunset bake
+(`client/src/lib/sect/night-bake.ts`, applied in `materials.ts` before the surfaces' grade): each
+texel times `exp(base + sunset * sat(n . sun) + own * sat(n . key) + up * n.y + green * g)`, per
+channel. `n` is the flat face's normal from the screen derivatives (the chunks carry no normals),
+with slopes under about 32 degrees counted as level so a lawn's big faces do not show as facets;
+`g` is how far the texel leans green. The numbers were fitted per chunk against the old sunset
+atlases (texel by texel in display levels, with the live normal maps): the abode needs one gain
+(1.67, 1.18, 0.77: its afterglow came from the sunset's side), the summit all the terms. Mean error
+in display levels went from 21, 9, 8 to 15, 8, 6 at the abode and from 61, 43, 24 to 43, 30, 18 at
+the summit. Glow surfaces, vertex-coloured pieces and the trees are left alone.
+
+How far it pulls is the frame lever `nightBake` (0 by day and at sunset, 1 under the moon look,
+`materials.ts` `SECT_PULL` reads 1 minus it). The journey switches it over a short stretch instead of
+blending it (`journey.ts` `EDGE`, `[0.15, 0.28]` of the moon's share): the pull is whole up to frame
+1156, gone by 1191, and the formation, the abode and the summit look exactly as tuned. At no pull
+the shader skips it (a uniform test), so the night holds are untouched.
+
+**Checked** on 1600 x 900 captures, High unless named, against the site before the bake (amber: R over
+B of 1.6 or more, R from 40 to 239, so lantern bodies and near-black are not counted):
+
+| Stop | Pixels changed from before | Amber before, after | Mean brightness before, after |
+|---|---|---|---|
+| abode 1380 | 67% | 0.4%, 5.9% (Mid 7.3%) | 83.6, 79.8 |
+| summit 1647 | 12% (12% at 400 px wide) | 0.0%, 1.55% (Mid 1.7%) | 67.1, 63.2 |
+| formation 1208 | 28% (25% at 400 px wide) | 5.5%, 8.9% | 110.9, 108.0 |
+
+The formation's own plaza moves little. Most of that 28% is the abode's cliff behind it, which went
+from sunset sandstone to cool grey. Against the new bake with the page untouched the frame moves 12%
+(amber 3.4% to 8.9%, mean 107.4 to 108.0): that part is the retuned moon look at its 30% share.
+
+- Frames up to the scroll (1103) do move against the site before, and the bake is the cause, not the
+  page code: against the new bake with the page untouched they move 0.0%, so an earlier note here
+  that said "unchanged" was wrong. Share of pixels moved by more than 12 levels at 400 px wide, new
+  bake without the pull, then with it: 93 and 352 0.1% (noise) both; 619 0.3%, 0.2%; 720 4.0%,
+  3.6%; 840 2.7%, 2.1%; 880 4.1%, 3.6%; 920 1.7%, 1.5%; 974 0.9%, 1.0%; 1040 2.0%, 1.8%; 1103
+  1.1%, 0.8%; 1160 8.2%, 7.0%. The share barely drops because the pull cannot move baked shadows;
+  the colour comes back. The summit's cone at 1160, mean colour: 182, 160, 153 before; 114, 111,
+  125 without the pull (dark slate); 171, 152, 146 with it. The spires left of it: 117, 108, 107;
+  87, 84, 89; 102, 96, 98. The summit's lawn behind the scroll at 1103: 103, 108, 80; 85, 86, 73;
+  92, 93, 75. On Low, 880 does not move at all (far places are the backdrop's stand-ins there);
+  1160 moves 8.1% on Low and 7.5% on Mid.
+- Frame 1290 moved 29% against the site before (the abode from above: cool cliff, amber deck) and
+  4% against the new bake with the page untouched. The pull does not touch 1200 and later: 1208, 1290, 1380 and 1647 match
+  the captures from before it at 0.0% (400 px wide).
+- The summit's sky and moon: no pixel moved more than 12 levels.
+- Glows: at the abode, pixels that change when the glow path is switched off went from 895 to about
+  270 (the lantern bodies and the cave screen's rim). No pool blooms. Lantern bodies glow as before.
+- The live light: High against `live=0` differs in 1.2% of the abode's pixels (the live bumps, mean
+  79.8 against 78.7) and 0.4% of the summit's, with no ring where the live area ends. With the old
+  gains the abode differed in 7.6%.
+- The formation (30% moon) is a little warmer: its plaza, pillars and lawn keep some of the sunset bake's
+  warmth.
+- Tests: `looks.test.ts` (amber stays amber, grey stone goes cool, the sky is untouched),
+  `look-gpu.test.ts` (the shader reads the levers as the TypeScript does), `night-light.test.ts` (the
+  two night stops carry their baked light, the other nine the scene's sun), `night-bake.test.ts` (the
+  pull: which materials, its direction against `meta.json` and the live index, none at 0, lawns
+  without facets), `journey.test.ts` (`nightBake` is 0 up to 1140, 1 from 1200, and fades between),
+  `materials.test.ts` (where the pull sits in the shader and who gets it).
+- The pull's limits: it stands in for the sunset light and does not copy it. Cast shadows stay as
+  the night bake has them, the summit's lawns and the spires west of its cone stay a little darker
+  than before, and the abode's hill reads warm with a darker shaded side. In the fade (1156 to 1191)
+  the two stops show their night light while the sky is still lavender: at 1180 the cone is a dark
+  shape against the moon and the abode's cliff is cool grey, as at the formation.
 
 ### The clock (preview only)
 
@@ -333,12 +441,20 @@ other ten stops are copies of journey3's.
 - What a look cannot change without a new bake: where the light comes from. Shadows and lit faces
   are baked for a sun 7 degrees up in the west, so the moon is lit from the sun's side and no look
   can lengthen, turn or soften a baked shadow. The live light can change how strong the sun and the
-  sky light are, not their colour; colour comes from the grades.
-- So the wet rock right of the abode's waterfall keeps a warm peach sheen in the blue hour. The
-  sun's colour reaches the live shader as a uniform (`uSectLiveSunE`), but the same uniform also
-  rebuilds the bake's own light for the detail ratio (`sectLiveBaked`), and that ratio multiplies
-  the live colour. A tint on the uniform cancels itself out. Making it work needs a separate
-  per-channel uniform for the bake's lamps in the live shader, a shader change, so it is not done.
+  sky light are, not their colour; colour comes from the grades. Since 2026-11-17 the abode and the
+  summit are the exception: they were baked under their own night light
+  ([`../scene/night-r61.md`](../scene/night-r61.md)).
+- The wet rock right of the abode's waterfall used to keep a warm peach sheen in the blue hour (the
+  live sun's colour cannot be tinted by a look). The abode's live sun is now the cool afterglow it was
+  baked under, so the sheen is cool.
+- Still on the sunset at the two night stops (none plainly visible at the holds): the tree cards' rim
+  light and the grass's back light take the scene's sun direction, the grass and the waterfall
+  sheet's glint take the sunset colour fixed at load, and the wet rock's glint keeps a warm colour.
+  Switching the rim, the grass back light and the waterfall's glint off at the holds moved under
+  0.05% of the pixels (the wet rock's glint cannot be reached from the page to test). The trees
+  still carry the sunset bake (not re-baked).
+- The warm keep cannot tell lantern light from a warm surface: lacquer red and pink blossom keep
+  their colour at night, and at the formation the sunset bake's warm stone keeps some of its warmth.
 - The shafts' air density follows the haze per stop but not each look's near haze
   (`haze.densityScale`), so the shafts are a little weaker in thick-haze looks than a forced look
   shows them.

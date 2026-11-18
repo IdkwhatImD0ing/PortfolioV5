@@ -202,11 +202,14 @@ describe("journey: blending the looks", () => {
     expect(p.frame.stars).toBe(0);
   });
 
-  it("rolls the day's highlights off sooner (the marble paving) and leaves the other looks' shoulder at today's", () => {
+  it("rolls the day's highlights off sooner (the marble paving) and leaves the gold look's shoulder at today's", () => {
     expect(journeyPatch(TABLE, journeyWeights(516)).sect["grade.shoulder"]).toBe(LOOKS.day.patch.sect?.["grade.shoulder"]);
     expect(LOOKS.day.patch.sect?.["grade.shoulder"]).toBeLessThan(SECT_LOOK.grade.shoulder);
     expect(journeyPatch(TABLE, journeyWeights(93)).sect["grade.shoulder"]).toBe(SECT_LOOK.grade.shoulder);
-    expect(journeyPatch(TABLE, journeyWeights(1647)).sect["grade.shoulder"]).toBe(SECT_LOOK.grade.shoulder);
+    // The night rolls off sooner too (since the night re-bake): a lantern's brightest pool stays
+    // under the frame grade's glow line.
+    expect(journeyPatch(TABLE, journeyWeights(1647)).sect["grade.shoulder"]).toBe(LOOKS.moon.patch.sect?.["grade.shoulder"]);
+    expect(LOOKS.moon.patch.sect?.["grade.shoulder"]).toBeLessThan(SECT_LOOK.grade.shoulder);
   });
 
   it("blends numbers linearly and colours in linear light", () => {
@@ -243,6 +246,33 @@ describe("journey: blending the looks", () => {
       expect(g.amount, `${f}`).toBeLessThan(0.01);
       for (const c of [bright, marble]) frameGradeLinear(c, g).forEach((v, i) => expect(Math.abs(v - c[i]), `${f} ${c}`).toBeLessThan(0.01 * Math.max(c[i], 1)));
     }
+  });
+
+  it("shows the night-baked stops' own light only from the formation on, after a short fade (night-bake.ts)", () => {
+    const night = (f: number) => journeyLevers(TABLE, "frame", journeyWeights(f)).nightBake as number;
+    expect(FRAME_LOOK.nightBake).toBe(0);
+    expect(LOOKS.moon.patch.frame?.nightBake).toBe(1);
+    // Day and sunset, up to the scroll: pulled all the way toward the sunset bake.
+    for (const f of [0, 93, 352, 619, 772, 880, 974, 1103, 1140]) expect(night(f), `${f}`).toBe(0);
+    // The formation and everything after it: the bake as it is, so those holds keep their tuning.
+    for (const f of [1200, 1208, 1290, 1380, 1514, 1647, 1800]) expect(night(f), `${f}`).toBe(1);
+    // In between it only grows, and fades over a few dozen frames, not one.
+    expect(night(1160)).toBeGreaterThan(0);
+    expect(night(1160)).toBeLessThan(0.15);
+    let last = 0;
+    let moving = 0;
+    for (let f = 1103; f <= 1208; f++) {
+      const v = night(f);
+      expect(v, `${f}`).toBeGreaterThanOrEqual(last - 1e-12);
+      expect(v - last, `${f}`).toBeLessThan(0.06);
+      if (v > 0.001 && v < 0.999) moving++;
+      last = v;
+    }
+    expect(moving).toBeGreaterThan(25);
+    // journeyApply's per-frame path gives the same value.
+    const into = structuredClone(BASES) as unknown as Record<LookTarget, object>;
+    journeyApply(TABLE, journeyWeights(1170), into);
+    expect((into.frame as typeof FRAME_LOOK).nightBake).toBe(night(1170));
   });
 
   it("brings the stars out late: the moon's share cubed, a fifth at the abode's blue hour", () => {

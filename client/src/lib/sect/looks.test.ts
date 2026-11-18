@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hexToLinear } from "./glsl";
+import { glslFloat, hexToLinear } from "./glsl";
 import { LIVE_LOOK } from "./live";
 import { gradeLinear, SECT_LOOK } from "./look";
 import {
@@ -15,6 +15,8 @@ import {
   readLever,
   redWeight,
   starsGlsl,
+  warmKept,
+  warmWeight,
   withLevers,
   writeLevers,
   type FrameGrade,
@@ -224,6 +226,54 @@ describe("looks: the frame grade", () => {
     const lit = frameGradeLinear(lantern, g);
     expect(lit[0] / lit[2]).toBeCloseTo(lantern[0] / lantern[2], 6);
     expect(lit[0]).toBeGreaterThan(lantern[0]);
+  });
+
+  it("moon: lantern light on stone stays amber and grey stone goes cool (the night re-bake)", () => {
+    const g = grade("moon");
+    const rb = (c: Vec3) => c[0] / Math.max(c[2], 1e-6);
+    // An amber texel as the abode's bake holds its lantern light: amber after the grade, and as bright.
+    const amber: Vec3 = [0.6, 0.33, 0.12];
+    const lit = frameGradeLinear(amber, g);
+    expect(rb(lit)).toBeGreaterThan(1.6);
+    expect(lit[0]).toBeGreaterThan(lit[1]);
+    expect(lit[1]).toBeGreaterThan(lit[2]);
+    expect(luma(lit)).toBeGreaterThan(luma(amber) * 0.9);
+    // Under the lantern and the cool key at once the abode's stair wall is salmon (red leads blue by
+    // three quarters, hue 0.17): it comes out amber, not pink.
+    const salmon: Vec3 = [0.3, 0.111, 0.072];
+    const wall = frameGradeLinear(salmon, g);
+    expect(rb(wall)).toBeGreaterThan(rb(salmon));
+    expect(wall[1]).toBeGreaterThan(wall[2] * 1.4);
+    // Without the warm keep the same grade turns amber beige: the lever is what keeps it.
+    expect(rb(frameGradeLinear(amber, { ...g, warmKeep: 0 }))).toBeLessThan(1.6);
+    // Grey stone, the bake's ochre-stained rock and grass are graded blue as before.
+    for (const c of [[0.3, 0.3, 0.3], [0.08, 0.08, 0.08], [0.3, 0.27, 0.2], [0.1, 0.16, 0.04]] as Vec3[]) {
+      expect(warmWeight(c), `${c}`).toBe(0);
+      const out = frameGradeLinear(c, g);
+      expect(out[2], `${c}`).toBeGreaterThan(out[0]);
+      out.forEach((v, i) => expect(v, `${c}`).toBeCloseTo(frameGradeLinear(c, { ...g, warmKeep: 0 })[i], 9));
+    }
+    // Pink blossom and lacquer red keep their blue (only amber's is cut).
+    expect(warmKept([0.6, 0.12, 0.22], 0.5)).toEqual([0.6, 0.12, 0.22]);
+    expect(warmKept([0.5, 0.05, 0.05], 0.5)[2]).toBeCloseTo(0.05, 9);
+    expect(warmKept(amber, 0.5)[2]).toBeCloseTo(0.06, 9);
+    // The night sky is not touched.
+    const sky: Vec3 = [0.004, 0.006, 0.03];
+    frameGradeLinear(sky, g).forEach((v, i) => expect(v).toBeCloseTo(frameGradeLinear(sky, { ...g, warmKeep: 0 })[i], 12));
+    // Lantern bodies still glow as before: the glow skips the grade whatever the warm keep.
+    const lantern: Vec3 = [3, 1.2, 0.3];
+    frameGradeLinear(lantern, g).forEach((v, i) => expect(v).toBeCloseTo(lantern[i] * g.glowGain, 6));
+  });
+
+  it("only the moon keeps warm light: the other looks and today's dusk grade it as before", () => {
+    expect(FRAME_LOOK.grade.warmKeep).toBe(0);
+    expect(FRAME_LOOK.grade.warmBlue).toBe(1);
+    for (const id of ["gold", "day", "ink"] as const) expect(grade(id).warmKeep, id).toBe(0);
+    expect(grade("moon").warmKeep).toBeGreaterThan(0);
+    // And the GLSL carries the numbers.
+    const s = frameGradeGlsl(grade("moon"));
+    expect(s).toContain("vec4 sectFrameWarm( vec3 c, float keep, float blue )");
+    expect(s).toContain(`sectFrameWarm( x0, ${glslFloat(grade("moon").warmKeep)}, ${glslFloat(grade("moon").warmBlue)} )`);
   });
 
   it("day: no stars, the sun in the sky, a blue sky paler at the horizon, greens kept", () => {

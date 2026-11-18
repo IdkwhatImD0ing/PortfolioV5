@@ -151,6 +151,12 @@ Colour: atlases and vertex colours are display-referred sRGB (AgX Punchy + grade
 them unlit with no tone mapping. Lighting for the bake = the scene's sun + sky, the sky warmed, plus a crisp
 warm key from the sun's side, 27 degrees up (BAKE_LIGHT; round 57, docs/scene/light-r57.md). Until round 56 it
 was a soft fill instead (BAKE_LIGHT_R56), which lit flat ground more than the sun did and cast no shadow.
+
+Night (round 61): --light night (the summit) or --light twilight (the abode) bakes a stop under light that fits its
+hour (night_scene, numbers in sect/bake_light.py): the sun lamp re-aimed to the moon's side or the afterglow, the warm
+key off, a graded night sky, lanterns lighting what is round them. One light per run, so each stop is its own run:
+
+    ... sect_chase.blend --python bake_web.py -- bakefull --profile full --live --chunks summit --light night
 """
 import argparse
 import collections
@@ -172,6 +178,7 @@ if ROOT not in sys.path:
 
 from sect import export_web as EW  # noqa: E402
 from sect import bake_rules as BR  # noqa: E402
+from sect import bake_light as BL  # noqa: E402
 from sect import relief as RF  # noqa: E402
 
 OUT_WEB = EW.OUT_WEB
@@ -311,10 +318,15 @@ ATLAS_EVEN = 0.9               # full: after packing, an atlas whose density (te
 # ground gets an eighth of it. The key is what lights lawns and plazas and gives them shadows with an edge.
 # BAKE_LIGHT_R56 is what every bake used until then (variant C of out/web/bake/calib): the sky x1.4 and a fill 110
 # degrees across, which lit the ground more than the sun did and cast no shadow. --light overrides one run.
+# Round 61: the night keys (sect/bake_light.py NIGHT_DEFAULTS; night=0 leaves a day bake exactly as before) and the
+# presets --light night / twilight (bake_light.LIGHT_PRESETS) for the summit and the abode (night_scene).
 BAKE_LIGHT = dict(world_strength=1.0, world_tint=(1.25, 1.0, 0.78), fill_energy=2.4, fill_elev_deg=27.0,
-                  fill_angle_deg=6.0, fill_color=(1.0, 0.72, 0.5))
+                  fill_angle_deg=6.0, fill_color=(1.0, 0.72, 0.5), **BL.NIGHT_DEFAULTS)
+LIGHT_PRESETS = BL.LIGHT_PRESETS   # --light night / twilight (set_bake_light expands a part with no '=')
 BAKE_LIGHT_R56 = dict(world_strength=1.4, world_tint=(1.25, 1.0, 0.78), fill_energy=1.6, fill_elev_deg=32.0,
                       fill_angle_deg=110.0, fill_color=(1.0, 0.72, 0.5))
+POST_EXPOSURE = 1.2            # the post step's view exposure (--exposure) and saturation (--sat) defaults; preview_r59.py
+POST_SAT = 1.15                # --bake-light grades its stills with the same
 PROFILE = "proto"              # use_profile("full") switches paths and holds to the whole path (see the FULL section)
 
 
@@ -2169,27 +2181,280 @@ def setup_cycles(sc, samples, quality="dev"):
 
 def set_bake_light(spec):
     """--light 'fill_energy=0.5,world_strength=1.0,world_tint=1.1/1.0/0.9': one run's own BAKE_LIGHT values, for look
-    tests (the shipped bakes use the defaults). Numbers, or three numbers joined by '/' for the colour keys. The
-    chunk's bake meta records the light it was baked with."""
+    tests (the shipped bakes use the defaults). Numbers, or three numbers joined by '/' for the colour keys. A comma
+    part with no '=' names a preset (bake_light.LIGHT_PRESETS: night, twilight), applied where it stands, so
+    'night,lamp_boost=50' is the night preset with a bigger lamp boost. The chunk's bake meta records the light it was
+    baked with."""
     if not spec:
         return
-    for part in spec.split(","):
-        k, _, v = part.partition("=")
-        k = k.strip()
-        if k not in BAKE_LIGHT:
-            raise SystemExit("--light: unknown key %r (have %s)" % (k, ", ".join(sorted(BAKE_LIGHT))))
-        if isinstance(BAKE_LIGHT[k], tuple):
-            val = tuple(float(x) for x in v.split("/"))
-            if len(val) != len(BAKE_LIGHT[k]):
-                raise SystemExit("--light: %s takes %d numbers joined by '/'" % (k, len(BAKE_LIGHT[k])))
-        else:
-            val = float(v)
-        BAKE_LIGHT[k] = val
+    try:
+        new = BL.parse_light_spec(spec, BAKE_LIGHT)
+        BL.check_light(new)
+    except ValueError as e:
+        raise SystemExit(str(e))
+    BAKE_LIGHT.update(new)                 # in place: bake_trees and preview_r59 read this same dict
     log("light override %r -> %s" % (spec, json.dumps(BAKE_LIGHT)))
 
 
+NIGHT_SKY = "bake.night.sky"       # node name: a world night_scene already turned to night this session
+NIGHT_BOOST = "bake.night.boost"   # node name: a material whose lamps night_scene already boosted
+
+
+def _feed(links, sock, x):
+    """Link socket ``x`` into ``sock``, or set ``sock``'s value to ``x``."""
+    if isinstance(x, bpy.types.NodeSocket):
+        links.new(x, sock)
+    else:
+        sock.default_value = x
+
+
+def _night_sun(L):
+    """look.sun re-aimed (in memory) to the night key. Returns its direction toward the lamp (Blender axes)."""
+    from sect.lib import look as LK
+    sun = bpy.data.objects.get("look.sun")
+    if sun is None or sun.type != "LIGHT" or sun.data is None or sun.data.type != "SUN":
+        raise SystemExit("BAKE night: no SUN lamp 'look.sun' in this file (is it out/sect_chase.blend?)")
+    ad = sun.animation_data
+    if ad is not None and (ad.action is not None or len(ad.drivers)):
+        raise SystemExit("BAKE night: look.sun is animated (an action or drivers): a frame change would undo the re-aim")
+    if len(sun.constraints):
+        raise SystemExit("BAKE night: look.sun has constraints %s: its matrix would not follow the re-aim"
+                         % [c.name for c in sun.constraints])
+    if sun.data.users > 1:
+        log("night note: look.sun's light data has %d users: re-aiming a copy" % sun.data.users)
+        sun.data = sun.data.copy()
+    dad = sun.data.animation_data
+    if dad is not None and (dad.action is not None or len(dad.drivers)):
+        raise SystemExit("BAKE night: look.sun's light data is animated (an action or drivers): the render would use "
+                         "the keyed energy and colour, not the key's")
+    v = LK.dir_from_az_el(L["key_az_deg"], L["key_elev_deg"])
+    pv = BL.dir_from_az_el(L["key_az_deg"], L["key_elev_deg"])
+    if max(abs(a - b) for a, b in zip(v, pv)) > 1e-5:
+        raise SystemExit("BAKE night: look.dir_from_az_el %s and bake_light.dir_from_az_el %s disagree" % (
+            tuple(v), pv))
+    M = v.to_track_quat("Z", "Y").to_matrix().to_4x4()
+    M.translation = v * 500.0              # where look.add_sun puts it (a sun lamp's place does not matter)
+    sun.matrix_world = M
+    sun.data.energy = L["key_energy"]
+    sun.data.color = L["key_color"]
+    sun.data.angle = math.radians(L["key_angle_deg"])
+    bpy.context.view_layer.update()
+    sdir = sun.matrix_world.to_3x3().col[2].normalized()
+    if (sdir - v).length > 1e-4:
+        raise SystemExit("BAKE night: look.sun points %s after the re-aim, not %s" % (tuple(sdir), tuple(v)))
+    return sdir
+
+
+def _night_sky(sc, L):
+    """The world Background's colour fed by the graded night sky (bake_light.sky_colour, node for node). Returns how
+    many nodes it made (0: this session's world already has it)."""
+    from sect.lib import look as LK
+    w = sc.world
+    if w is None or w.node_tree is None:
+        raise SystemExit("BAKE night: the scene has no world node tree")
+    nt = w.node_tree
+    if nt.nodes.get(NIGHT_SKY) is not None:
+        return 0
+    N, Lk = nt.nodes, nt.links
+    n0 = len(N)
+    bgs = [n for n in N if n.bl_idname == "ShaderNodeBackground"]
+    if len(bgs) != 1 or not bgs[0].outputs[0].is_linked:
+        raise SystemExit("BAKE night: the world has %d Background nodes (want one, linked to the output)" % len(bgs))
+    bg = bgs[0]
+    # the first Texture Coordinate node, as bake_trees.Rig rotates it: the sky and its lobe turn with a tree's sun
+    tc = next((n for n in N if n.bl_idname == "ShaderNodeTexCoord"), None) or N.new("ShaderNodeTexCoord")
+    d, _ = LK._vmath(N, Lk, "NORMALIZE", tc.outputs["Generated"], loc=(-1200, -900))
+    sep = N.new("ShaderNodeSeparateXYZ")
+    Lk.new(d, sep.inputs[0])
+    z = sep.outputs["Z"]
+    g = LK._math(N, Lk, "POWER", LK._math(N, Lk, "MAXIMUM", z, 0.0), float(L["sky_grad_pow"]))
+    above = N.new("ShaderNodeMix")
+    above.data_type = "RGBA"
+    _feed(Lk, above.inputs[0], g)
+    above.inputs[6].default_value = tuple(L["sky_horizon"]) + (1.0,)
+    above.inputs[7].default_value = tuple(L["sky_zenith"]) + (1.0,)
+    below = N.new("ShaderNodeMapRange")
+    below.interpolation_type = "SMOOTHSTEP"
+    below.clamp = True
+    below.inputs["From Min"].default_value = 0.0
+    below.inputs["From Max"].default_value = -BL.SKY_BELOW_BLEND
+    Lk.new(z, below.inputs["Value"])
+    b = below.outputs["Result"]
+    base = N.new("ShaderNodeMix")
+    base.data_type = "RGBA"
+    Lk.new(b, base.inputs[0])
+    Lk.new(above.outputs[2], base.inputs[6])
+    base.inputs[7].default_value = tuple(h * L["sky_below"] for h in L["sky_horizon"]) + (1.0,)
+    lv = BL.dir_from_az_el(L["sky_lobe_az_deg"], L["sky_lobe_elev_deg"])
+    _, cosang = LK._vmath(N, Lk, "DOT_PRODUCT", d, lv)
+    lobe = LK._math(N, Lk, "POWER", LK._math(N, Lk, "MAXIMUM", cosang, 0.0), float(L["sky_lobe_pow"]))
+    under = LK._math(N, Lk, "MULTIPLY_ADD", b, -(1.0 - float(L["sky_below"])))   # 1 - b * (1 - sky_below)
+    under.node.inputs[2].default_value = 1.0
+    amt = LK._math(N, Lk, "MULTIPLY", LK._math(N, Lk, "MULTIPLY", lobe, under), float(L["sky_lobe"]))
+    lobe_c, _ = LK._vmath(N, Lk, "SCALE", tuple(L["sky_lobe_color"]), scale=amt)
+    col, _ = LK._vmath(N, Lk, "ADD", base.outputs[2], lobe_c)
+    col.node.name = NIGHT_SKY
+    Lk.new(col, bg.inputs["Color"])        # replaces the film's sky (sun disc, haze colour, cloud floor)
+    return len(N) - n0
+
+
+def _emission_sampling(m):
+    """Cycles samples ``m`` as a light from both sides (the light tree finds the boosted lamps). False when this
+    Blender has no such setting."""
+    for owner in (getattr(m, "cycles", None), m):
+        if owner is not None and hasattr(owner, "emission_sampling"):
+            owner.emission_sampling = "FRONT_BACK"
+            return True
+    return False
+
+
+def _night_boost(m, F, L):
+    """Multiply every emission strength of material ``m`` by bake_light.boost_factor (F = this class's boost).
+    Returns how many strengths it multiplied (-1: already done this session)."""
+    from sect.lib import look as LK
+    nt = m.node_tree
+    if nt is None:
+        return 0
+    if nt.nodes.get(NIGHT_BOOST) is not None:
+        return -1
+    targets = []
+    for n in nt.nodes:
+        if n.bl_idname == "ShaderNodeEmission":
+            targets.append(n.inputs["Strength"])
+        elif n.bl_idname == "ShaderNodeBsdfPrincipled":
+            s = n.inputs.get("Emission Strength")
+            if s is not None and (s.is_linked or s.default_value > 0.0):
+                targets.append(s)
+    if not targets:
+        return 0
+    N, Lk = nt.nodes, nt.links
+    lp = N.new("ShaderNodeLightPath")
+    cam, ray = lp.outputs.get("Is Camera Ray"), lp.outputs.get("Ray Length")
+    if cam is None or ray is None:
+        raise SystemExit("BAKE night: Light Path has no 'Is Camera Ray' / 'Ray Length' output (has %s)"
+                         % [o.name for o in lp.outputs])
+    not_cam = LK._math(N, Lk, "SUBTRACT", 1.0, cam)
+    near = N.new("ShaderNodeMapRange")
+    near.interpolation_type = "SMOOTHSTEP"
+    near.clamp = True
+    near.inputs["From Min"].default_value = float(L["boost_near"])
+    near.inputs["From Max"].default_value = float(L["boost_far"])
+    near.inputs["To Min"].default_value = 0.0
+    near.inputs["To Max"].default_value = 1.0
+    Lk.new(ray, near.inputs["Value"])
+    # the raw object property (missing reads 0): materials.Graph.obj_prop reads a missing one as 1, which would pass.
+    # bake_web.rewrite_material turns this OBJECT attribute into the joined bake mesh's per-vertex 'o_glow'
+    at = N.new("ShaderNodeAttribute")
+    at.attribute_type = "OBJECT"
+    at.attribute_name = "glow"
+    has = LK._math(N, Lk, "GREATER_THAN", at.outputs["Fac"], 0.0)
+    w = LK._math(N, Lk, "MULTIPLY", LK._math(N, Lk, "MULTIPLY", not_cam, near.outputs["Result"]), has)
+    k = LK._math(N, Lk, "MULTIPLY_ADD", w, float(F) - 1.0)         # 1 + (F - 1) * w
+    k.node.inputs[2].default_value = 1.0
+    k.node.name = NIGHT_BOOST
+    for s in targets:
+        mul = N.new("ShaderNodeMath")
+        mul.operation = "MULTIPLY"
+        if s.is_linked:
+            Lk.new(s.links[0].from_socket, mul.inputs[0])
+        else:
+            mul.inputs[0].default_value = s.default_value
+        Lk.new(k, mul.inputs[1])
+        Lk.new(mul.outputs[0], s)
+    if not _emission_sampling(m):
+        raise SystemExit("BAKE night: no emission sampling setting on %s (material.cycles.emission_sampling)" % m.name)
+    return len(targets)
+
+
+def night_scene(sc):
+    """BAKE_LIGHT night=1 (round 61): the scene lit for the abode's blue hour or the summit's night, in memory only.
+    Nothing may save the .blend after this. A day light (night=0) returns at once and changes nothing. Called by the
+    chunk bake and the tree bake (main, before any material is copied for the bake) and by preview_r59.py
+    --bake-light; bake_lighting runs after it.
+    - look.sun is re-aimed to key_az_deg / key_elev_deg (look.py's compass) with key_energy, key_color and
+      key_angle_deg; bake_lighting gives the warm key 'bake.fill' energy 0. Everything that reads look.sun's matrix
+      afterwards (bake_lighting, the live index, bake_trees' ray casts and rig) sees the re-aimed lamp.
+    - The world Background's colour comes from a graded night sky (bake_light.sky_colour) instead of the film's sky;
+      world_strength and world_tint still apply (bake_lighting).
+    - Lamps light what is round them: every emission strength of the materials bake_light.lamp_class names is
+      multiplied by bake_light.boost_factor (lamp_boost or lantern_boost), and those materials are sampled as lights.
+    Idempotent within a session (marker nodes NIGHT_SKY, NIGHT_BOOST). Logs one 'BAKE night:' line; returns a summary."""
+    L = BAKE_LIGHT
+    if not L.get("night"):
+        return None
+    try:
+        BL.check_light(L)
+    except ValueError as e:
+        raise SystemExit(str(e))
+    sdir = _night_sun(L)
+    nsky = _night_sky(sc, L)
+    boost = dict(lamp=[0, 0, []], lantern=[0, 0, []])
+    again = 0
+    for m in bpy.data.materials:
+        cls = BL.lamp_class(m.name)
+        if cls is None:
+            continue
+        n = _night_boost(m, L["lamp_boost"] if cls == "lamp" else L["lantern_boost"], L)
+        if n < 0:
+            again += 1
+        elif n > 0:
+            boost[cls][0] += 1
+            boost[cls][1] += n
+            boost[cls][2].append(m.name)
+        else:
+            boost[cls][2].append(m.name + "(no emission)")
+    # pieces (mesh objects, prototypes included) that use a boosted material, and how many carry glow > 0: only those
+    # light more (boost_factor's glow gate; a missing property reads 0)
+    boosted = {n for v in boost.values() for n in v[2] if not n.endswith("(no emission)")}
+    pieces = dict(lamp=[0, 0], lantern=[0, 0])
+    for ob in bpy.data.objects:
+        if ob.type != "MESH":
+            continue
+        for c in {BL.lamp_class(s.material.name) for s in ob.material_slots
+                  if s.material is not None and s.material.name in boosted} - {None}:
+            pieces[c][1] += 1
+            g = ob.get("glow")
+            if isinstance(g, (int, float)) and g > 0.0:
+                pieces[c][0] += 1
+    tree = getattr(getattr(sc, "cycles", None), "use_light_tree", None)
+    if tree is False:
+        sc.cycles.use_light_tree = True
+    t3 = BL.three_axes(sdir)
+    info = dict(key_dir_blender=[round(x, 5) for x in sdir], key_dir_three=[round(x, 5) for x in t3],
+                key_energy=L["key_energy"], key_color=list(L["key_color"]), key_angle_deg=L["key_angle_deg"],
+                sky=dict(zenith=list(L["sky_zenith"]), horizon=list(L["sky_horizon"]), below=L["sky_below"],
+                         grad_pow=L["sky_grad_pow"], lobe=L["sky_lobe"], lobe_color=list(L["sky_lobe_color"]),
+                         lobe_az_deg=L["sky_lobe_az_deg"], lobe_elev_deg=L["sky_lobe_elev_deg"],
+                         lobe_pow=L["sky_lobe_pow"], nodes=nsky),
+                boost={k: dict(materials=v[0], emission_nodes=v[1], names=v[2], pieces_glow=pieces[k][0],
+                               pieces=pieces[k][1]) for k, v in boost.items()},
+                already=again)
+    log("night: key az %.1f el %.1f -> dir blender (%.5f, %.5f, %.5f) three.js (%.5f, %.5f, %.5f), energy %.3g, "
+        "colour %s, angle %.3g deg; warm key off; sky zenith %s horizon %s below %.3g grad_pow %.3g, lobe %.3g "
+        "colour %s toward az %.1f el %.1f pow %.3g (%s); world strength %.3g tint %s; boost lamp x%.3g on %d "
+        "materials / %d emission nodes (%d of %d pieces carry glow), lantern x%.3g on %d materials / %d emission "
+        "nodes (%d of %d pieces carry glow); near %.2f far %.2f m; %d already boosted; light tree %s" % (
+            L["key_az_deg"], L["key_elev_deg"], sdir[0], sdir[1], sdir[2], t3[0], t3[1], t3[2], L["key_energy"],
+            "/".join("%.3g" % c for c in L["key_color"]), L["key_angle_deg"],
+            "/".join("%.3g" % c for c in L["sky_zenith"]), "/".join("%.3g" % c for c in L["sky_horizon"]),
+            L["sky_below"], L["sky_grad_pow"], L["sky_lobe"], "/".join("%.3g" % c for c in L["sky_lobe_color"]),
+            L["sky_lobe_az_deg"], L["sky_lobe_elev_deg"], L["sky_lobe_pow"],
+            ("%d nodes" % nsky) if nsky else "already set", L["world_strength"],
+            "/".join("%.3g" % c for c in L["world_tint"]), L["lamp_boost"], boost["lamp"][0], boost["lamp"][1],
+            pieces["lamp"][0], pieces["lamp"][1], L["lantern_boost"], boost["lantern"][0], boost["lantern"][1],
+            pieces["lantern"][0], pieces["lantern"][1], L["boost_near"], L["boost_far"], again,
+            "turned on" if tree is False else ("on" if tree else "n/a")))
+    log("night materials:", json.dumps({k: v[2] for k, v in boost.items()}))
+    if tuple(L["world_tint"]) != (1.0, 1.0, 1.0):
+        log("night WARN world_tint %s still multiplies the night sky (the presets set 1/1/1)" % (L["world_tint"],))
+    if not boost["lamp"][1] and not boost["lantern"][1] and (L["lamp_boost"] != 1.0 or L["lantern_boost"] != 1.0):
+        log("night WARN no lamp or lantern emission found to boost")
+    return info
+
+
 def bake_lighting(sc):
-    """The sky warmed + a warm key sun from the sun's side (see BAKE_LIGHT)."""
+    """The sky warmed + a warm key sun from the sun's side (see BAKE_LIGHT). With night=1 (night_scene) the key's
+    energy is 0."""
     L = BAKE_LIGHT
     nt = sc.world.node_tree
     bg = next(n for n in nt.nodes if n.bl_idname == "ShaderNodeBackground")
@@ -2207,7 +2472,7 @@ def bake_lighting(sc):
     e = math.radians(L["fill_elev_deg"])
     v = Vector((math.cos(az) * math.cos(e), math.sin(az) * math.cos(e), math.sin(e)))
     fd = bpy.data.lights.new("bake.fill", "SUN")
-    fd.energy = L["fill_energy"]
+    fd.energy = 0.0 if L.get("night") else L["fill_energy"]
     fd.angle = math.radians(L["fill_angle_deg"])
     fd.color = L["fill_color"]
     fo = bpy.data.objects.new("bake.fill", fd)
@@ -4712,7 +4977,8 @@ def bake_chunk(F, cid, a):
                tris_blender=meta["tris"]["atlas"] + meta["tris"]["vc"], tris_vc=meta["tris"]["vc"],
                vc_small=vc_info, missing_hotspots=missing_hot, hidden=len(hid), occluders=len(occ_objs),
                dedupe=F.get("check", {}).get("dedupe", {}).get(cid, {}), rock_floor=rock_info,
-               units_today=units_today, relief=relief_info)
+               units_today=units_today, relief=relief_info,
+               light=dict(BAKE_LIGHT))         # (round 61) each chunk's own light: a run may bake one stop at night
     if not a.no_post:
         t1 = time.time()
         try:
@@ -4807,18 +5073,21 @@ def write_live_maps(cid, atlases, albedo, ambient, normals, a):
     def three(v):
         return [round(float(v[0]), 5), round(float(v[2]), 5), round(float(-v[1]), 5)]
 
+    # the lamps as they were baked: a night bake's sun is look.sun re-aimed by night_scene (the key's direction,
+    # strength, colour and angle), and its warm key had energy 0 (bake_lighting). A day bake writes what it always did
     sun = bpy.data.objects["look.sun"]
     sdir = sun.matrix_world.to_3x3().col[2].normalized()
     az = math.atan2(sdir.y, sdir.x)
     e = math.radians(BAKE_LIGHT["fill_elev_deg"])
     kdir = Vector((math.cos(az) * math.cos(e), math.sin(az) * math.cos(e), math.sin(e)))
+    key_strength = 0.0 if BAKE_LIGHT.get("night") else float(BAKE_LIGHT["fill_energy"])
     dump(os.path.join(out, "index.json"), dict(
         version=1, chunk=cid, ambientScale=LIVE_AMBIENT_SCALE, atlases=files,
         light=dict(
             sun=dict(dir=three(sdir), color=[round(float(c), 4) for c in sun.data.color],
                      strength=round(float(sun.data.energy), 4), angleDeg=round(math.degrees(sun.data.angle), 3)),
             key=dict(dir=three(kdir), color=[round(float(c), 4) for c in BAKE_LIGHT["fill_color"]],
-                     strength=float(BAKE_LIGHT["fill_energy"]), angleDeg=float(BAKE_LIGHT["fill_angle_deg"])),
+                     strength=key_strength, angleDeg=float(BAKE_LIGHT["fill_angle_deg"])),
             worldStrength=float(BAKE_LIGHT["world_strength"])),
         post=dict(exposureStops=float(a.exposure), saturation=float(a.sat), view="AgX", look="AgX - Punchy"),
         quality=a.quality, samples=int(a.samples)))
@@ -5024,6 +5293,10 @@ def cmd_bakefull(a):
     for c in want:
         if c not in order:
             raise SystemExit("unknown chunk %r (one of %s)" % (c, ", ".join(order)))
+    if BAKE_LIGHT.get("night") and not a.out_dir and (not a.chunks or "backdrop" in want):
+        # (round 61) one light per run: without --chunks a night light would re-bake every stop and the backdrop
+        raise SystemExit("bakefull: a night light bakes only the stops it is for: give --chunks <chunk> (not the "
+                         "backdrop, which every stop shares), e.g. --chunks summit --light night")
     F = full_ctx(want)
     log("setup", F["t_setup"], "s; chunks", want)
     done = []
@@ -5934,11 +6207,13 @@ def main():
     ap.add_argument("--atlas-tris", type=int, default=0, help="proto: 1M for both areas; full: per chunk (700k)")
     ap.add_argument("--vc-tris", type=int, default=220_000)
     ap.add_argument("--max-atlases", type=float, default=3.0, help="texel budget in 4096^2 atlases")
-    ap.add_argument("--exposure", type=float, default=1.2)
-    ap.add_argument("--light", default="", help="look tests: BAKE_LIGHT overrides, e.g. fill_energy=0.5,world_strength=1.0")
+    ap.add_argument("--exposure", type=float, default=POST_EXPOSURE)
+    ap.add_argument("--light", default="",
+                    help="BAKE_LIGHT overrides, e.g. fill_energy=0.5,world_strength=1.0; a part with no '=' names a "
+                         "preset (night: the summit, twilight: the abode), e.g. night,lamp_boost=40")
     ap.add_argument("--live", action="store_true",
                     help="full bakefull: also bake an ambient atlas (sun and key off) and write out/web/full/live/<chunk>")
-    ap.add_argument("--sat", type=float, default=1.15)
+    ap.add_argument("--sat", type=float, default=POST_SAT)
     ap.add_argument("--skip-atlas", action="store_true")
     ap.add_argument("--glb-dir", default="")
     ap.add_argument("--glbs", default="gate.glb,mirror.glb,backdrop.glb,trees.glb")
@@ -5971,6 +6246,8 @@ def main():
     a.vc_samples = a.vc_samples or Q["vc_samples"][PROFILE]
     log_bake_quality(a)
     set_bake_light(a.light)
+    if {"bake", "bakefull", "trees"} & set(a.command.split(",")):
+        night_scene(bpy.context.scene)     # a day light returns at once; before any material is copied for the bake
     a.atlas_tris = a.atlas_tris or (FULL_ATLAS_TRIS if full else 1_000_000)
     a.out = EW.fix_path(a.out)
     a.glb_dir = EW.fix_path(a.glb_dir) if a.glb_dir else RAW
@@ -5999,6 +6276,10 @@ def main():
         t0 = time.time()
         if cmd == "trees":
             from sect import bake_trees
+            if bake_trees.BW is not sys.modules[__name__]:
+                # this file runs as __main__, and bake_trees imported its own copy (sect.bake_web): give it this
+                # run's --light (night_scene already ran on the scene; the copy finds its marker nodes)
+                bake_trees.BW.BAKE_LIGHT.update(BAKE_LIGHT)
             bake_trees.cmd_trees(a)
         elif full and cmd in ("post", "water", "verify"):
             globals()["cmd_%s_full" % cmd](a)

@@ -37,6 +37,14 @@ compare those two (both copies carry the same name, so the per-object tint match
 tint). --relief-only <regex> limits it to matching objects; KEY=value arguments override relief_rules / relief
 constants for a tuning pass. Writes out/tmp/r59/renders/r59_<tag>_<shot>.png (under out/: rblender copies it back to
 the PC).
+
+--bake-light SPEC (round 61): the stills show the light the bake will hold. 'day' is today's bake_web.BAKE_LIGHT; any
+other SPEC is a bake_web --light spec (a preset like 'night' or 'twilight', key=value parts, or both:
+'night,lamp_boost=40'). The scene is set up as the bake sets it (bake_web.set_bake_light, night_scene, hide_for_bake,
+bake_lighting; the bake's bounces and indirect clamp) and the stills are graded as the bake's post grades its atlases
+(AgX, AgX - Punchy, exposure bake_web.POST_EXPOSURE, the look.py grade, saturation POST_SAT; no bloom, no vignette).
+A still still shows glossy light, which the bake leaves out. The abode's hold is abode_1380, the summit's summit_1647
+(the page stands 8 frames back there).
 """
 import argparse
 import json
@@ -123,6 +131,9 @@ def args():
                          "the objects the bake relieves, as they are / relieved (sect/relief.py)")
     ap.add_argument("--relief-only", default="", help="--relief off|on: only the objects whose name matches this too")
     ap.add_argument("--no-flat", action="store_true", help="do not flag the floating rocks rock_flat in memory")
+    ap.add_argument("--bake-light", default="",
+                    help="light and grade the stills as the bake would: 'day' (today's BAKE_LIGHT) or a bake_web --light "
+                         "spec, e.g. night, twilight, night,lamp_boost=40")
     a, rest = ap.parse_known_args(argv)
     bad = [x for x in rest if "=" not in x or x.startswith("-")]
     if bad:
@@ -165,6 +176,73 @@ def setup_cycles(sc, samples):
     sc.render.image_settings.file_format = "PNG"
     sc.render.film_transparent = False
     log("cycles device", device, [d.name for d in prefs.devices if d.use], "samples", samples)
+
+
+def bake_view(sc):
+    """The bake's post grade on the stills (bake_web.post_scene for an atlas): AgX, AgX - Punchy, exposure
+    POST_EXPOSURE, the look.py CDL grade and highlight / shadow saturation, then saturation POST_SAT. Replaces the
+    film's compositor (bloom, vignette) in memory."""
+    from sect.lib import look as LK
+    LOOK = LK.LOOK
+    vs = sc.view_settings
+    vs.view_transform = LOOK["view_transform"]
+    vs.look = LOOK["look"]
+    vs.exposure = BW.POST_EXPOSURE
+    vs.gamma = 1.0
+    sc.display_settings.display_device = "sRGB"
+    ng = bpy.data.node_groups.new("preview.bake_grade", "CompositorNodeTree")
+    ng.interface.new_socket(name="Image", in_out="OUTPUT", socket_type="NodeSocketColor")
+    N, Lk = ng.nodes, ng.links
+    rl = N.new("CompositorNodeRLayers")
+    rl.scene = sc
+    grade = N.new("CompositorNodeColorBalance")
+    LK._inp(grade, "Type").default_value = "Offset/Power/Slope (ASC-CDL)"
+    grade.inputs["Factor"].default_value = 1.0
+    sl, of, pw = LOOK["grade_slope"], LOOK["grade_offset"], LOOK["grade_power"]
+    for sock in grade.inputs:
+        if sock.identifier == "Color Slope":
+            sock.default_value = (sl[0], sl[1], sl[2], 1.0)
+        elif sock.identifier == "Color Offset":
+            sock.default_value = (of[0], of[1], of[2], 1.0)
+        elif sock.identifier == "Color Power":
+            sock.default_value = (pw[0], pw[1], pw[2], 1.0)
+    Lk.new(rl.outputs["Image"], grade.inputs["Image"])
+    cc = N.new("CompositorNodeColorCorrection")
+    for sock in cc.inputs:
+        if sock.identifier == "Highlights Saturation":
+            sock.default_value = LOOK["grade_highlight_saturation"]
+        elif sock.identifier == "Shadows Saturation":
+            sock.default_value = LOOK["grade_shadow_saturation"]
+    Lk.new(grade.outputs["Image"], cc.inputs["Image"])
+    hs = N.new("CompositorNodeHueSat")
+    hs.inputs["Saturation"].default_value = BW.POST_SAT
+    Lk.new(cc.outputs["Image"], hs.inputs["Image"])
+    go = N.new("NodeGroupOutput")
+    Lk.new(hs.outputs["Image"], go.inputs["Image"])
+    sc.compositing_node_group = ng
+    sc.render.use_compositing = True
+    log("bake view: %s, %s, exposure %.2f, grade + saturation %.2f (no bloom, no vignette)" % (
+        vs.view_transform, vs.look, vs.exposure, BW.POST_SAT))
+
+
+def bake_light_setup(sc, spec):
+    """--bake-light: the scene lit as the bake lights it ('day': today's BAKE_LIGHT; else a bake_web --light spec),
+    with the bake's bounces and indirect clamp, graded as the bake's post grades (bake_view). In memory only."""
+    if spec != "day":
+        BW.set_bake_light(spec)
+    info = BW.night_scene(sc)
+    n = BW.hide_for_bake(sc)
+    BW.bake_lighting(sc)
+    B = BW.BAKE_BOUNCES
+    sc.cycles.max_bounces = B["max"]
+    sc.cycles.diffuse_bounces = B["diffuse"]
+    sc.cycles.glossy_bounces = B["glossy"]
+    sc.cycles.transmission_bounces = B["transmission"]
+    sc.cycles.transparent_max_bounces = B["transparent"]
+    sc.cycles.sample_clamp_indirect = BW.BAKE_CLAMP_INDIRECT
+    bake_view(sc)
+    log("bake light %r: night %s, %d more objects hidden as the bake hides them; bounces %s, clamp %.1f; light %s" % (
+        spec, "on" if info else "off", n, B, BW.BAKE_CLAMP_INDIRECT, json.dumps(BW.BAKE_LIGHT)))
 
 
 def hide_volumes(sc):
@@ -480,6 +558,8 @@ def main():
     log("volume objects hidden", len(hidden))
     if not a.no_flat:
         log("floating rocks flagged %s in memory:" % BW.ROCK_FLAT_PROP, flag_flat_rocks())
+    if a.bake_light:
+        bake_light_setup(sc, a.bake_light)
     relief = apply_relief(sc, a.relief, a.relief_only, a.overrides)
     tpath = os.path.join(a.out, "targets.json")
     targets = {}

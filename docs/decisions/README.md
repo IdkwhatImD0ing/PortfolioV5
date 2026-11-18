@@ -1231,6 +1231,43 @@ summit's track is the one wanted at every frame past the terrace.
 
 **See.** `holdPresence` and `pastLastHold` in `client/src/lib/sect/scroll-map.ts`.
 
+### 2026-11-16 · A page-only lantern light test, built and then replaced by the night bake
+
+**Decided.** The test is gone. Behind a switch, the page added warm pools of light round the lanterns at the
+night stops, worked out in the post pass. It was shown to the owner. It read at the abode (about 5 percent of the
+frame) and not at the summit (one lantern in view). He asked to take it further. The night bake of 2026-11-17
+replaced it, and the test code and its doc were removed.
+
+**See.** [`../scene/night-r61.md`](../scene/night-r61.md), "What the page-only test taught".
+
+### 2026-11-17 · The abode and the summit baked at night, and the night grade keeps lantern light amber
+
+**Decided.** The abode and the summit are baked under their own light instead of the film's sunset: a soft cool
+afterglow from the west at the abode (blue hour), the moon's key from the moon's side at the summit, a graded
+night sky, and boosted lanterns that light what is round them. The summit gets ten new lanterns (a ring of eight at
+the pavilion's column heads, a stone pair behind it). Each stop's live index carries the light it was baked under.
+On the page, the moon look keeps lantern light amber against the blue: a new warm keep in the frame grade lets
+warm pixels skip the night grade, the surfaces keep their colour, the live gains match the bake, and sun shafts
+and cloud shade are off at night. Seen from far off by day and at sunset, the two new chunks are pulled back
+toward the old sunset bake (a gain per face, fitted on the old atlases), and the pull fades out before the
+formation. The trees and the other nine stops are unchanged.
+
+**Why.** The last two stops were night frames lit by sunset light, and their lanterns lit almost nothing. The
+owner approved re-baking them. With the bake done, the old night grade turned the new lantern light pink or beige
+and left the summit's pavilion a dark block.
+
+**Checked.** Two box sessions, 1.89 dollars. Captures at 1600 x 900 against the site before: at the abode 5.9
+percent of the frame is amber (it was 0.4), at the summit 1.55 percent (it was 0); the summit's sky and moon do
+not move. At the formation 28 percent of the frame moves: its own plaza is a little warmer, and the abode's
+cliff behind it goes from sunset sandstone to cool grey, which reads as dusk. Frames before the scroll do move, from the bake, where the two
+chunks show far off: without the pull 0.3 to 8.2 percent of pixels at 400 px wide (worst at 1160, where the
+summit's cone went dark slate), with it 0.2 to 7.0 percent and the colour back to sunset-warm (the cone's mean
+171, 152, 146 against 182, 160, 153 before). The pull cannot move baked shadows. High with and without live
+light match at both stops with no ring. Unit tests for the warm keep, the pull and the live light the two stops
+carry; typecheck and lint pass.
+
+**See.** [`../scene/night-r61.md`](../scene/night-r61.md) and [`../sect/lux.md`](../sect/lux.md) ("The night re-bake").
+
 ---
 
 ## Longer write-ups
@@ -1260,4 +1297,6 @@ summit's track is the one wanted at every frame past the terrace.
 | 2026-11-15 | Far places in full: what a far place has, when it first shows, the ladder's order, the cost stop by stop, what was checked | [`../sect/background-fill.md`](../sect/background-fill.md) |
 | 2026-11-15 | Trunks under far crowns: why crowns floated, the ribbon, its thickness and colour, when it is drawn, what was checked | [`../sect/veg-shells.md`](../sect/veg-shells.md) |
 | 2026-11-15 | Ice-Fire Island's steam rises: why it stood still, the two-copy loop, the first try that broke into balls, what was checked | [`2026-10-24-icefire-steam-and-element-flags.md`](2026-10-24-icefire-steam-and-element-flags.md) |
+| 2026-11-16 | A page-only lantern light test, replaced by the night bake and removed: what it showed | [`../scene/night-r61.md`](../scene/night-r61.md) |
+| 2026-11-17 | Round 61, the abode and the summit baked at night: the bake scripts, the two lights, the summit's lanterns, the run and its cost, how to run it again | [`../scene/night-r61.md`](../scene/night-r61.md) |
 | 2026-11-09 | Round 55: the gate seen square on, and prop moves at four stops (designed and scripted, not baked yet) | [`../scene/placement-r55.md`](../scene/placement-r55.md) |
