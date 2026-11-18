@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { AREA_IDS } from "./areas";
 import {
   CROSSFADE_SECONDS,
+  ENTER_LEAD_SECONDS,
+  ENTRY_FADE_SECONDS,
   MASTER_GAIN,
   MUSIC_KEYS,
   MUTE_KEY,
@@ -13,9 +15,11 @@ import {
   equalPowerFade,
   fadeDone,
   fadeGainAt,
+  fadeInFull,
   fadePoints,
   keepPlan,
   loadPlan,
+  loadingTrackOn,
   loopBounds,
   loopPosition,
   masterTarget,
@@ -24,6 +28,7 @@ import {
   musicSpans,
   parseMusicManifest,
   readMuted,
+  sameTrackFile,
   stepKey,
   stepSwitcher,
   travelDirection,
@@ -32,6 +37,7 @@ import {
   writeMuted,
   type AreaSpan,
   type MusicKey,
+  type MusicTrack,
   type Switcher,
 } from "./music";
 import type { TalismanState } from "./talisman";
@@ -345,6 +351,93 @@ describe("equal-power crossfade", () => {
     expect(pts[7].v).toBeCloseTo(Math.SQRT1_2, 6);
     expect(fadePoints({ from: 0.3, to: 0.3, t0: 2, duration: 0 })).toEqual([{ t: 2, v: 0.3 }]);
     expect(fadePoints(equalPowerFade(Math.SQRT1_2, 0, 0)).length).toBe(8);
+  });
+});
+
+describe("how long a track takes to come in", () => {
+  const seconds = (from: number, other: number) => equalPowerFade(from, 1, 0, fadeInFull(from, other)).duration;
+
+  it("out of silence it is the short entry", () => {
+    expect(fadeInFull(0, 0)).toBe(ENTRY_FADE_SECONDS);
+    expect(seconds(0, 0)).toBeCloseTo(ENTRY_FADE_SECONDS);
+  });
+
+  it("across a track at full level it is the whole crossfade", () => {
+    expect(fadeInFull(0, 1)).toBeCloseTo(CROSSFADE_SECONDS);
+    expect(seconds(0, 1)).toBeCloseTo(CROSSFADE_SECONDS);
+  });
+
+  it("a reversal half way still ends with the track it crosses", () => {
+    // Both at the half-power point: each has half the crossfade left, as before.
+    expect(seconds(Math.SQRT1_2, Math.SQRT1_2)).toBeCloseTo(CROSSFADE_SECONDS / 2);
+    expect(equalPowerFade(Math.SQRT1_2, 0, 0).duration).toBeCloseTo(seconds(Math.SQRT1_2, Math.SQRT1_2));
+  });
+
+  it("across a track that had barely started it is the entry, not the whole crossfade", () => {
+    // The loading track 0.1 s into its own entry when Enter's place takes over.
+    const barely = fadeGainAt(equalPowerFade(0, 1, 0, ENTRY_FADE_SECONDS), 0.1);
+    expect(fadeInFull(0, barely)).toBe(ENTRY_FADE_SECONDS);
+  });
+
+  it("is never longer than the crossfade nor shorter than the entry, and a track already full has nothing to do", () => {
+    for (const from of [0, 0.2, 0.5, 0.9]) {
+      for (const other of [0, 0.1, 0.5, 1]) {
+        const full = fadeInFull(from, other);
+        expect(full).toBeGreaterThanOrEqual(ENTRY_FADE_SECONDS);
+        expect(full).toBeLessThanOrEqual(CROSSFADE_SECONDS);
+      }
+    }
+    expect(seconds(1, 1)).toBe(0);
+  });
+});
+
+describe("the loading screen's track and a press on Enter", () => {
+  it("plays while the loading screen is up and nobody has pressed Enter", () => {
+    expect(loadingTrackOn(true, null, 5)).toBe(true);
+    expect(loadingTrackOn(false, null, 5)).toBe(false);
+  });
+
+  it("is over from the press, a moment before the screen goes", () => {
+    expect(loadingTrackOn(true, 5, 5)).toBe(false);
+    expect(loadingTrackOn(true, 5, 5 + ENTER_LEAD_SECONDS - 0.01)).toBe(false);
+    expect(loadingTrackOn(false, 5, 5.2)).toBe(false);
+  });
+
+  it("comes back when the press never became a click", () => {
+    expect(loadingTrackOn(true, 5, 5 + ENTER_LEAD_SECONDS)).toBe(true);
+    // A clock that stepped back does not hold the loading track off.
+    expect(loadingTrackOn(true, 5, 4)).toBe(true);
+  });
+});
+
+describe("sameTrackFile", () => {
+  const track: MusicTrack = {
+    title: "t",
+    artist: "a",
+    show: "s",
+    language: null,
+    hasLyrics: false,
+    revision: "20261108-1",
+    duration: 87,
+    loopStart: 0.3,
+    loopEnd: 86.7,
+    bpm: null,
+    lufs: -17,
+    bytes: 1742444,
+  };
+
+  it("holds for the same revision, size and length, whatever else differs", () => {
+    expect(sameTrackFile(track, { ...track })).toBe(true);
+    expect(sameTrackFile(track, { ...track, title: "renamed", loopStart: 0 })).toBe(true);
+    expect(sameTrackFile(undefined, undefined)).toBe(true);
+  });
+
+  it("fails for a new revision, another size or length, or a track that came or went", () => {
+    expect(sameTrackFile(track, { ...track, revision: "20261201-1" })).toBe(false);
+    expect(sameTrackFile(track, { ...track, bytes: 1742445 })).toBe(false);
+    expect(sameTrackFile(track, { ...track, duration: 88 })).toBe(false);
+    expect(sameTrackFile(track, undefined)).toBe(false);
+    expect(sameTrackFile(undefined, track)).toBe(false);
   });
 });
 

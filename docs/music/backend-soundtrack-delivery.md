@@ -40,11 +40,57 @@ The browser's Web Audio engine still decodes a complete track before playback. T
 existing sample-accurate loop points, position restoration and equal-power crossfades. Range support
 makes the endpoint standards-compliant and leaves room for a future media-element player.
 
+## When the flight loads a track
+
+Since 2026-11-17 the first tracks load before the visitor's first press, so that press plays at once.
+Before, nothing downloaded until the press, and the first note came 0.8 to 1.5 seconds later on a
+fast desktop.
+
+- The track list is asked for when the page opens.
+- With sound on (the default), the loading screen's track downloads as soon as the list is here.
+  The opening place's track follows once the scene has loaded.
+- Both are decoded before any press. The playing `AudioContext` may only be made inside a press, so
+  an `OfflineAudioContext` at the files' sample rate does the decoding until then. It never plays
+  anything.
+- Nothing loads ahead for a visitor who muted, in a tab that is not in view, or in the page view.
+- While the scene itself is downloading only one track loads, so the scene keeps the line.
+- After the first press it is as before: the current track and the next one along the flight, one
+  download at a time.
+- A press on Enter goes straight to the opening place's song. The loading screen's song does not
+  start for a moment first.
+- A track that comes in out of silence fades in over 0.8 seconds. One that replaces a playing track
+  still crossfades over 2.5 seconds.
+
+## What the browser keeps
+
+The backend sleeps when nobody has called it for about 15 minutes. On 2026-11-17 its first answer
+after a sleep took 16.1 seconds. So the page keeps what it needs to play without it:
+
+- The track list from the last visit, in `localStorage` under `sect.music.manifest`.
+- Every track it has downloaded, in Cache Storage under `sect-music-v1`. An entry is named by the
+  track's key, revision and size. All twelve tracks come to about 49 MB.
+
+On the next visit the kept list is used at once, and the backend's list replaces it when it arrives.
+A kept track plays with no request to the backend. A track whose revision, size or length changed in
+the new list is downloaded again, and kept tracks the list no longer names are deleted. A browser
+without Cache Storage, or with storage blocked, downloads every track as before.
+
+Lyrics are not kept: they come from the backend each time. The `/music` page does not use the kept
+tracks. A first-time visitor who arrives while the backend sleeps still waits for it.
+
+To check it without sound, open the flight with `?debug=1` on a profile that has not muted, and do
+not click, tap or press a key: nothing can play before a press. `window.__sectMusic.state()` lists
+the decoded tracks under `buffers` while `context` is still `"none"`. Set
+`localStorage["sect.music.muted"] = "1"` when done.
+
 ## Deterrence boundary
 
 Private storage, opaque object names and short-lived capabilities remove permanent static asset URLs
 and discourage hotlinking. They are not DRM: a browser must receive the audio and lyric data it
 plays or renders, so a determined visitor can capture it.
+
+The kept tracks are the same bytes the page was sent, in a store only this site can read. They do
+sit on the visitor's disk, and DevTools can list them. The HTTP responses are still `no-store`.
 
 ## Configuration
 

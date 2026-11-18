@@ -101,6 +101,16 @@ export function parseMusicManifest(raw: unknown): MusicManifest | null {
   return n > 0 ? { version: 2, tracks } : null;
 }
 
+/**
+ * Two list entries name the same file, so a track loaded for one serves the other. The list kept
+ * from the last visit (music-cache.ts) gives way to the backend's when it arrives; a track whose
+ * entry changed between the two is loaded again.
+ */
+export function sameTrackFile(a: MusicTrack | undefined, b: MusicTrack | undefined): boolean {
+  if (!a || !b) return a === b;
+  return a.revision === b.revision && a.bytes === b.bytes && a.duration === b.duration;
+}
+
 /** Shortest loop worth looping; anything shorter loops the whole buffer. */
 const MIN_LOOP_SECONDS = 1;
 
@@ -172,6 +182,22 @@ export function wantedTrack(loading: boolean, frame: number | null, spans: reado
   if (loading) return "loading";
   if (frame === null || !Number.isFinite(frame)) return null;
   return areaAtFrame(spans, frame);
+}
+
+/**
+ * A press on "Enter" ends the loading screen, but the screen itself goes a moment later (the click,
+ * then React). For this long after the press the loading screen's track counts as over, so the
+ * press starts the place's own song and not a breath of the loading one. A press that never became
+ * a click (dragged off the button) wears off.
+ */
+export const ENTER_LEAD_SECONDS = 1;
+
+/** The loading screen's track is still the one to play (times in seconds). */
+export function loadingTrackOn(loading: boolean, enterPressedAt: number | null, now: number): boolean {
+  if (!loading) return false;
+  if (enterPressedAt === null) return true;
+  const since = now - enterPressedAt;
+  return since < 0 || since >= ENTER_LEAD_SECONDS;
 }
 
 // --- when it changes (hysteresis) --------------------------------------------------------------
@@ -249,6 +275,26 @@ export function fadeGainAt(f: Fade, t: number): number {
 
 export function fadeDone(f: Fade, t: number): boolean {
   return t >= f.t0 + f.duration;
+}
+
+/**
+ * A track coming in out of silence: the first one after the visitor's first press, or the one that
+ * comes back after a mute, a video or the page view. With nothing to cross against, the full
+ * crossfade only reads as a late start. The master's own rise out of silence (masterTimeConstant)
+ * keeps the entry soft.
+ */
+export const ENTRY_FADE_SECONDS = 0.8;
+
+/**
+ * The `full` time for a fade-in (equalPowerFade's last argument): the track reaches full level as
+ * the loudest other one, fading out along the same curve, reaches silence. Across a track at full
+ * level that is the whole crossfade, and the two stay complementary. Out of silence, or across a
+ * track that had barely started, it is the entry time and no shorter.
+ */
+export function fadeInFull(from: number, loudestOther: number, full = CROSSFADE_SECONDS, entry = ENTRY_FADE_SECONDS): number {
+  const toGo = Math.PI / 2 - angleOf(from);
+  if (!(toGo > 1e-6)) return full;
+  return Math.min(full, Math.max(entry, (full * angleOf(loudestOther)) / toGo));
 }
 
 /**

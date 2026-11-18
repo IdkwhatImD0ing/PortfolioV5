@@ -9,6 +9,11 @@
  *   first click, tap or key (browsers allow sound only after one; a wheel does not count), Enter on
  *   the loading screen included. The sound toggle or the loading screen's prompt (SoundPrompt) mutes
  *   it, and the choice is remembered (localStorage "sect.music.muted").
+ * - That first press plays at once: the loading screen's track loads as soon as the track list is
+ *   here, and the opening place's once the scene has loaded, both before any press (not for a
+ *   visitor who muted). A press on "Enter" goes straight to the place's song.
+ * - The track list and the tracks heard are kept for the next visit (lib/sect/music-cache.ts), so a
+ *   returning visitor's music does not wait for the backend to wake.
  * - The volume slider beside the toggle sets the level (lib/sect/volume.ts, remembered as
  *   "sect.music.volume"); the ducking and silences below take their share of it.
  * - A fast scroll through several areas plays none of the ones in between (the hysteresis); a jump
@@ -16,8 +21,8 @@
  * - Lower under a voice call (lower still while the agent speaks: the talisman's state), silent
  *   while a YouTube demo plays (content/video-watch.ts), resting in the page view, suspended while
  *   the tab is hidden.
- * - Downloads only the current track and the next one along the flight; frees decoded tracks far
- *   from the camera (fewer on phones).
+ * - Downloads only the current track and the next one along the flight (only the current one while
+ *   the scene itself is downloading); frees decoded tracks far from the camera (fewer on phones).
  * - No backend manifest (or no Web Audio): no music and no toggle, and nothing logged.
  *
  * ?debug=1: window.__sect.music.state() (also window.__sectMusic) describes what plays.
@@ -30,6 +35,7 @@ import {
   createSwitcher,
   keepPlan,
   loadPlan,
+  loadingTrackOn,
   musicBudget,
   musicSpans,
   parseMusicManifest,
@@ -44,6 +50,13 @@ import {
   type Switcher,
 } from "@/lib/sect/music";
 import { fetchMusicBytes, fetchMusicManifest, fetchTrackLyrics, resolveMusicApiBase } from "@/lib/sect/music-api";
+import {
+  cachedMusicBytes,
+  openAudioCache,
+  pruneCachedAudio,
+  readSavedManifest,
+  writeSavedManifest,
+} from "@/lib/sect/music-cache";
 import type { MusicKey } from "@/lib/sect/music";
 import type { SongLyrics } from "@/lib/sect/lyrics";
 import { readVolume, writeVolume } from "@/lib/sect/volume";
@@ -84,10 +97,38 @@ function newContext(Ctor: typeof AudioContext): AudioContext {
   return new Ctor();
 }
 
+/**
+ * Decodes tracks before the first gesture (the context above may only be made inside one). An
+ * offline context never plays anything; its rate is the files', so what it decodes is what the
+ * playing context would have.
+ */
+function newDecoder(): BaseAudioContext | null {
+  const w = window as unknown as {
+    OfflineAudioContext?: typeof OfflineAudioContext;
+    webkitOfflineAudioContext?: typeof OfflineAudioContext;
+  };
+  const Ctor = w.OfflineAudioContext ?? w.webkitOfflineAudioContext;
+  if (!Ctor) return null;
+  try {
+    return new Ctor(2, 1, MUSIC_SAMPLE_RATE);
+  } catch {
+    return null;
+  }
+}
+
+function cacheStorage(): CacheStorage | null {
+  try {
+    return window.caches ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function SectMusic({
   store,
   areas,
   loading,
+  sceneLoading,
   away,
   lyricsHidden,
   debug,
@@ -99,6 +140,8 @@ export function SectMusic({
   areas: readonly AreaSpan[] | null;
   /** The loading screen is up. */
   loading: boolean;
+  /** The scene itself is still downloading (the loading screen's bar is moving). */
+  sceneLoading: boolean;
   /** The page view (or an error) covers the flight. */
   away: boolean;
   /** Readers, the map, travel ink and errors cover the soundtrack panel. */
@@ -113,18 +156,30 @@ export function SectMusic({
   const [apiBase, setApiBase] = useState<string | null>(null);
   const onEngineRef = useRef(onEngine);
   onEngineRef.current = onEngine;
-  const live = useRef({ store, areas, loading });
-  live.current = { store, areas, loading };
+  const live = useRef({ store, areas, loading, sceneLoading });
+  live.current = { store, areas, loading, sceneLoading };
   const switcher = useRef<Switcher>(createSwitcher());
+  /** When "Enter" was last pressed (performance.now() seconds): see loadingTrackOn. */
+  const enterAt = useRef<number | null>(null);
+  /** The track choice below, for the press on "Enter" to run it before the music starts. */
+  const choose = useRef<() => void>(() => {});
 
   // The engine, and the track list (no list, no music).
   useEffect(() => {
     const Ctor = audioContextClass();
     const basePromise = resolveMusicApiBase();
+    const cachePromise = openAudioCache(cacheStorage());
     const e = new MusicEngine(
       {
         createContext: () => (Ctor ? newContext(Ctor) : null),
-        fetchBytes: async (key, signal) => fetchMusicBytes(await basePromise, key, signal),
+        createDecoder: newDecoder,
+        fetchBytes: async (key, signal, track) =>
+          cachedMusicBytes({
+            cache: await cachePromise,
+            key,
+            track,
+            download: async () => fetchMusicBytes(await basePromise, key, signal),
+          }),
         saveMuted: (m) => writeMuted(localStore(), m),
         saveVolume: (v) => writeVolume(localStore(), v),
       },
@@ -134,14 +189,24 @@ export function SectMusic({
     onEngineRef.current?.(e);
     const ac = new AbortController();
     if (Ctor) {
+      // The list kept from the last visit first: the backend's can take seconds (it sleeps when
+      // idle) and replaces this one when it arrives.
+      const kept = readSavedManifest(localStore());
+      if (kept) e.setManifest(kept);
       basePromise
         .then((base) => {
           if (!ac.signal.aborted) setApiBase(base);
           return fetchMusicManifest(base, ac.signal);
         })
-        .then((j: unknown) => e.setManifest(parseMusicManifest(j)))
+        .then((j: unknown) => {
+          if (ac.signal.aborted) return;
+          const m = parseMusicManifest(j);
+          e.setManifest(m);
+          writeSavedManifest(localStore(), m);
+          void cachePromise.then((cache) => pruneCachedAudio(cache, m));
+        })
         .catch(() => {
-          // No list yet (or a broken one): the page stays silent.
+          // No list from the backend: the kept one stays if there is one, else the page is silent.
         });
     }
     return () => {
@@ -168,6 +233,12 @@ export function SectMusic({
       if (ev.target instanceof Element && ev.target.closest("[data-sect-sound]")) return;
       const ua = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
       if (ua && !ua.isActive) return;
+      // A press on "Enter" (it has the attribute only once it can be pressed): the loading screen's
+      // track is over, so the track is chosen again before the music starts.
+      if (ev.target instanceof Element && ev.target.closest("[data-sect-enter]")) {
+        enterAt.current = performance.now() / 1000;
+        choose.current();
+      }
       engine.gesture();
     };
     for (const t of GESTURES) window.addEventListener(t, on, { capture: true, passive: true });
@@ -231,7 +302,10 @@ export function SectMusic({
     let dir: Direction = 1;
     let lastFrame: number | null = null;
     const tick = () => {
-      const { store: s, areas: a, loading: l } = live.current;
+      const { store: s, areas: a, loading: veil, sceneLoading: busy } = live.current;
+      const nowS = performance.now() / 1000;
+      if (!veil) enterAt.current = null;
+      const l = loadingTrackOn(veil, enterAt.current, nowS);
       const spans = musicSpans(a, s?.camera.holds ?? []);
       // A jump plays its destination's track, not the places it sweeps past.
       const frame = s ? (s.flight ? s.flight.toFrame : s.frame) : null;
@@ -240,16 +314,21 @@ export function SectMusic({
       const want = wantedTrack(l, frame, spans);
       // A place without a track of its own keeps whatever plays.
       const target = want !== null && engine.has(want) ? want : null;
-      switcher.current = stepSwitcher(switcher.current, target, performance.now() / 1000, s ? !isMoving(s) : true);
+      switcher.current = stepSwitcher(switcher.current, target, nowS, s ? !isMoving(s) : true);
       const cur = switcher.current.current;
       const opening = s ? areaAtFrame(spans, s.frame) : null;
-      // While the scene loads, only the loading track downloads (the scene needs the bandwidth).
-      const load = loadPlan(cur, dir, opening).slice(0, l ? 1 : 2);
+      // While the scene downloads, only the loading track does (the scene needs the bandwidth).
+      // Once it has, the opening place's track loads behind the loading screen, ready for "Enter".
+      const load = loadPlan(cur, dir, opening).slice(0, busy ? 1 : 2);
       engine.setPlan(cur, load, keepPlan(cur, dir, opening, budget));
     };
+    choose.current = tick;
     tick();
     const id = window.setInterval(tick, TICK_MS);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      choose.current = () => {};
+    };
   }, [engine]);
 
   // ?debug=1: window.__sect.music (scene.tsx replaces window.__sect now and then, so it is re-added).
