@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MASTER_GAIN, VOICE_DUCK, VOLUME_TIME_CONSTANT, parseMusicManifest, type MusicKey } from "@/lib/sect/music";
+import {
+  CROSSFADE_SECONDS,
+  ENTRY_FADE_SECONDS,
+  MASTER_GAIN,
+  VOICE_DUCK,
+  VOLUME_TIME_CONSTANT,
+  parseMusicManifest,
+  type MusicKey,
+  type MusicManifest,
+  type MusicTrack,
+} from "@/lib/sect/music";
 import { MusicEngine } from "./music-engine";
 
 // --- a small fake of the Web Audio API ------------------------------------------------------------------
@@ -128,9 +138,20 @@ const MANIFEST = parseMusicManifest({
   ),
 })!;
 
+/** The same list with one track's file replaced (a new revision). */
+function withRevision(key: MusicKey, revision: string): MusicManifest {
+  const tracks: MusicManifest["tracks"] = { ...MANIFEST.tracks };
+  tracks[key] = { ...MANIFEST.tracks[key]!, revision };
+  return { version: 2, tracks };
+}
+
 interface Rig {
   engine: MusicEngine;
   ctx: FakeContext | null;
+  /** Decodes made by the stand-in (before the first gesture). */
+  early: string[];
+  /** The list entry each download was asked with. */
+  tracks: MusicTrack[];
   fetched: string[];
   saved: boolean[];
   /** The volume shares saved, in order. */
@@ -140,10 +161,13 @@ interface Rig {
   aborted: string[];
 }
 
-function rig(opts: { muted?: boolean; noAudio?: boolean; volume?: number } = {}): Rig {
+/** `ahead`: the browser can decode before the first gesture (deps.createDecoder), as real ones can. */
+function rig(opts: { muted?: boolean; noAudio?: boolean; volume?: number; ahead?: boolean } = {}): Rig {
   const r: Rig = {
     engine: null as unknown as MusicEngine,
     ctx: null,
+    early: [],
+    tracks: [],
     fetched: [],
     saved: [],
     savedVolume: [],
@@ -157,8 +181,21 @@ function rig(opts: { muted?: boolean; noAudio?: boolean; volume?: number } = {})
         r.ctx = new FakeContext();
         return r.ctx as unknown as AudioContext;
       },
-      fetchBytes: (key, signal) => {
+      createDecoder: opts.ahead
+        ? () =>
+            ({
+              decodeAudioData(bytes: ArrayBuffer, ok?: (b: unknown) => void) {
+                const key = new TextDecoder().decode(bytes);
+                r.early.push(key);
+                const buffer = { duration: 160, key };
+                ok?.(buffer);
+                return Promise.resolve(buffer);
+              },
+            }) as unknown as BaseAudioContext
+        : undefined,
+      fetchBytes: (key, signal, track) => {
         r.fetched.push(key);
+        r.tracks.push(track);
         signal.addEventListener("abort", () => r.aborted.push(key));
         if (r.missing.has(key)) return Promise.reject(new Error("404"));
         return Promise.resolve(new TextEncoder().encode(key).buffer as ArrayBuffer);
@@ -210,6 +247,131 @@ describe("MusicEngine", () => {
     expect(s.context).toBe("running");
     expect(s.voices).toMatchObject([{ key: "gate", fadingTo: 1 }]);
     expect(s.history).toEqual([{ from: null, to: "gate", at: 0 }]);
+  });
+
+  it("loads ahead of the first gesture, so that gesture plays at once", async () => {
+    const r = rig({ ahead: true });
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "loading", ["loading", "gate"]);
+    // One at a time, the current track first, each asked for with its list entry.
+    expect(r.fetched).toEqual(["loading"]);
+    expect(r.tracks[0]).toBe(MANIFEST.tracks.loading);
+    await settle();
+    expect(r.fetched).toEqual(["loading", "gate"]);
+    expect(r.early).toEqual(["loading", "gate"]);
+    // Still no context and no sound: only the bytes are ready.
+    expect(r.ctx).toBeNull();
+    expect(r.engine.snapshot().on).toBe(false);
+    expect(r.engine.state().buffers).toEqual(["loading", "gate"]);
+
+    r.engine.gesture();
+    // No wait for a download: the track is playing as the gesture returns.
+    expect(r.ctx!.playing("loading")).toHaveLength(1);
+    expect(r.fetched).toEqual(["loading", "gate"]);
+  });
+
+  it("loads nothing ahead for a visitor who muted, a tab not in view or the page view", async () => {
+    const muted = rig({ ahead: true, muted: true });
+    muted.engine.setManifest(MANIFEST);
+    plan(muted.engine, "loading");
+    await settle();
+    expect(muted.fetched).toEqual([]);
+
+    const hidden = rig({ ahead: true });
+    hidden.engine.setHidden(true);
+    hidden.engine.setManifest(MANIFEST);
+    plan(hidden.engine, "loading");
+    await settle();
+    expect(hidden.fetched).toEqual([]);
+    // Shown: it loads now.
+    hidden.engine.setHidden(false);
+    expect(hidden.fetched).toEqual(["loading"]);
+
+    const away = rig({ ahead: true });
+    away.engine.setAway(true);
+    away.engine.setManifest(MANIFEST);
+    plan(away.engine, "loading");
+    await settle();
+    expect(away.fetched).toEqual([]);
+  });
+
+  it("a gesture during a download ahead decodes with the playing context", async () => {
+    const r = rig({ ahead: true });
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "gate");
+    expect(r.fetched).toEqual(["gate"]);
+    r.engine.gesture();
+    await settle();
+    expect(r.early).toEqual([]);
+    expect(r.fetched).toEqual(["gate"]);
+    expect(r.ctx!.playing("gate")).toHaveLength(1);
+  });
+
+  it("comes in out of silence over the short entry, and across a playing track over the whole crossfade", async () => {
+    const r = rig({ ahead: true });
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "gate", ["gate", "mirror"]);
+    await settle();
+    r.engine.gesture();
+    const gate = r.ctx!.gains[1].gain;
+    expect(gate.aim).toBe(1);
+    expect(gate.events.at(-1)!.t).toBeCloseTo(ENTRY_FADE_SECONDS);
+
+    r.ctx!.currentTime = 10;
+    plan(r.engine, "mirror", ["mirror"], ["mirror", "gate"]);
+    const mirror = r.ctx!.gains[2].gain;
+    expect(mirror.aim).toBe(1);
+    expect(mirror.events.at(-1)!.t).toBeCloseTo(10 + CROSSFADE_SECONDS);
+    expect(gate.events.at(-1)!.t).toBeCloseTo(10 + CROSSFADE_SECONDS);
+  });
+
+  it("a press on Enter as the first gesture plays the place's song, not a breath of the loading one", async () => {
+    const r = rig({ ahead: true });
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "loading", ["loading", "gate"]);
+    await settle();
+    // music.tsx chooses the track again before the gesture reaches the engine.
+    plan(r.engine, "gate", ["gate", "mirror"], ["gate", "mirror"]);
+    r.engine.gesture();
+    expect(r.ctx!.playing("gate")).toHaveLength(1);
+    expect(r.ctx!.playing("loading")).toHaveLength(0);
+    expect(r.ctx!.gains[1].gain.events.at(-1)!.t).toBeCloseTo(ENTRY_FADE_SECONDS);
+  });
+
+  it("a newer track list drops what was loaded for a track whose file changed", async () => {
+    const r = rig({ ahead: true });
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "loading", ["loading", "gate"]);
+    await settle();
+    expect(r.engine.state().buffers).toEqual(["loading", "gate"]);
+    // The same list again changes nothing.
+    r.engine.setManifest({ ...MANIFEST });
+    expect(r.fetched).toEqual(["loading", "gate"]);
+
+    const next = withRevision("gate", "fedcba9876543210");
+    r.engine.setManifest(next);
+    expect(r.engine.state().buffers).toEqual(["loading"]);
+    expect(r.fetched).toEqual(["loading", "gate", "gate"]);
+    expect(r.tracks.at(-1)).toBe(next.tracks.gate);
+    await settle();
+    expect(r.engine.state().buffers).toEqual(["loading", "gate"]);
+  });
+
+  it("a newer track list cancels a download of the old file and retries one that had failed", async () => {
+    const r = rig({ ahead: true });
+    r.missing.add("gate");
+    r.engine.setManifest(MANIFEST);
+    plan(r.engine, "gate");
+    await settle();
+    expect(r.engine.state().failed).toEqual(["gate"]);
+    r.missing.clear();
+    r.engine.setManifest(withRevision("gate", "fedcba9876543210"));
+    expect(r.engine.state().failed).toEqual([]);
+    expect(r.fetched).toEqual(["gate", "gate"]);
+    // Still downloading when the list changes again: that download is dropped for a new one.
+    r.engine.setManifest(withRevision("gate", "0000000000000000"));
+    expect(r.aborted).toEqual(["gate"]);
+    expect(r.fetched).toEqual(["gate", "gate", "gate"]);
   });
 
   it("crossfades to a new track and stops the old one once it is silent", async () => {

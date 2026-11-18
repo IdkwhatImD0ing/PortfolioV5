@@ -1268,6 +1268,44 @@ carry; typecheck and lint pass.
 
 **See.** [`../scene/night-r61.md`](../scene/night-r61.md) and [`../sect/lux.md`](../sect/lux.md) ("The night re-bake").
 
+### 2026-11-17 · The music is ready before the first click, and kept between visits
+
+**Decided.** Three changes to the flight's music, all in the page. The backend is untouched.
+
+- With sound on, the loading screen's track downloads as soon as the track list is here, and the opening
+  place's track once the scene has loaded. Both are decoded before the visitor has pressed anything, so the first
+  press plays at once. Nothing loads ahead for a visitor who muted, in a tab that is not in view, or in the page
+  view.
+- A track that comes in out of silence fades in over 0.8 seconds. It used to take the full 2.5 second crossfade
+  with nothing to cross against. A press on Enter goes straight to the opening place's song.
+- The browser keeps the track list and every track it has downloaded. On the next visit the list is there at
+  once and a kept track plays with no request to the backend.
+
+**Why.** The owner: "Why does music take so long to load before it starts playing?" Measured the same day: the
+backend had gone to sleep and took 16.1 seconds to answer its first request. Until it answered the page had no
+track list, so the sound button was hidden and a press started nothing. With the backend awake a track still took
+0.8 to 1.5 seconds on a fast desktop, because nothing downloaded until the first press, and the fade-in came on
+top of that.
+
+**Cost.** A visitor with sound on who never presses anything now downloads the loading track (1.7 MB) and one
+place's track (1.4 MB at the gate). The kept tracks take disk space: about 49 MB if every place was visited. They
+are the same bytes the page was already sent, now in a store that DevTools can list, so this gives up part of the
+no-copy deterrence. The owner approved keeping songs between visits.
+
+**Checked** in a browser against a local stand-in for the backend, with no sound and no press on the page. First
+visit: the loading track was downloaded and decoded right after the list arrived, and the gate's once the scene had
+loaded, with no audio context made. Second visit with the stand-in switched off: the sound button showed, the
+list had its twelve tracks and the loading track was decoded again, with no track request sent. The owner
+then pressed Enter on the local build and confirmed the music starts right away.
+
+**Not done.** A first-time visitor who arrives while the backend sleeps still waits for it. Keeping one instance
+awake fixes that for about 7 dollars a month (`KEEP_WARM=1` in `server/deploy.sh`). Lyrics still come from the
+backend every time, and the `/music` page does not use the kept tracks.
+
+**See.** "When the flight loads a track" and "What the browser keeps" in
+[`../music/backend-soundtrack-delivery.md`](../music/backend-soundtrack-delivery.md);
+`client/src/lib/sect/music-cache.ts`.
+
 ---
 
 ## Longer write-ups

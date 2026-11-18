@@ -6,18 +6,24 @@
  * call, silence under a YouTube demo).
  *
  * Nothing here throws: without Web Audio, without a backend manifest, or when a file fails, the page simply
- * has no music. Nothing is downloaded until the visitor's first gesture with sound on, and then only
- * the current track and the next one along the flight.
+ * has no music. Only the current track and the next one along the flight are downloaded.
+ *
+ * With sound on (the default) those load ahead of the visitor's first press, decoded by a stand-in
+ * (deps.createDecoder: the playing context may only be made inside a gesture), so the press plays at
+ * once and does not start a download. Never for a visitor who muted, a tab not in view or the
+ * page view.
  */
 import {
   equalPowerFade,
   fadeDone,
   fadeGainAt,
+  fadeInFull,
   fadePoints,
   loopBounds,
   loopPosition,
   masterTarget,
   masterTimeConstant,
+  sameTrackFile,
   VOLUME_TIME_CONSTANT,
   type Fade,
   type MusicKey,
@@ -41,8 +47,13 @@ export interface MusicUi {
 export interface MusicDeps {
   /** Makes the AudioContext (called inside a gesture), or null without Web Audio. */
   createContext: () => AudioContext | null;
-  /** Downloads a track's bytes. */
-  fetchBytes: (key: MusicKey, signal: AbortSignal) => Promise<ArrayBuffer>;
+  /**
+   * Makes something that can decode a track before the first gesture (an OfflineAudioContext), or
+   * null when the browser has none. Without it nothing loads until the gesture.
+   */
+  createDecoder?: () => BaseAudioContext | null;
+  /** A track's bytes: downloaded, or the copy kept from an earlier visit (lib/sect/music-cache.ts). */
+  fetchBytes: (key: MusicKey, signal: AbortSignal, track: MusicTrack) => Promise<ArrayBuffer>;
   /** Saves the mute choice. */
   saveMuted: (muted: boolean) => void;
   /** Saves the volume slider's share. */
@@ -85,6 +96,8 @@ const HISTORY = 20;
 export class MusicEngine {
   private readonly deps: MusicDeps;
   private ctx: AudioContext | null = null;
+  /** The decoder for before the first gesture: not asked for yet (undefined), or the browser has none (null). */
+  private standIn: BaseAudioContext | null | undefined;
   private master: GainNode | null = null;
   private masterAim = -1;
   private manifest: MusicManifest | null = null;
@@ -178,7 +191,21 @@ export class MusicEngine {
 
   setManifest(m: MusicManifest | null): void {
     if (this.disposed) return;
+    const old = this.manifest;
     this.manifest = m;
+    // A newer list (the one kept from the last visit gives way to the backend's): what was loaded
+    // or given up on for a track whose file changed is dropped, and that track loads again. One
+    // that is playing plays on to its next stop.
+    if (old) {
+      const changed = (k: MusicKey) => !sameTrackFile(old.tracks[k], m?.tracks[k]);
+      for (const k of [...this.buffers.keys()]) if (changed(k)) this.buffers.delete(k);
+      for (const k of [...this.failed]) if (changed(k)) this.failed.delete(k);
+      for (const [k, ac] of [...this.pending]) {
+        if (!changed(k)) continue;
+        ac.abort();
+        this.pending.delete(k);
+      }
+    }
     // A gesture before the list arrived: the context can start now (the page has been activated).
     if (m && this.gestured && !this.muted) this.ensureContext();
     this.apply();
@@ -319,9 +346,37 @@ export class MusicEngine {
     return this.ctx !== null && this.gestured && !this.muted && !this.away && !this.video && !this.hidden && this.manifest !== null;
   }
 
+  /**
+   * Downloads may run. Never while muted (nothing would play). Before the visitor's first gesture
+   * only with the flight in view: a tab opened in the background, or the page view, downloads no
+   * music.
+   */
+  private mayLoad(): boolean {
+    if (!this.supported || this.muted) return false;
+    return this.gestured || (!this.hidden && !this.away);
+  }
+
+  /** What decodes a download: the playing context once there is one, before that the stand-in. */
+  private decoder(): BaseAudioContext | null {
+    if (this.ctx) return this.ctx;
+    if (this.standIn === undefined) {
+      try {
+        this.standIn = this.deps.createDecoder?.() ?? null;
+      } catch {
+        this.standIn = null;
+      }
+    }
+    return this.standIn;
+  }
+
   private apply(): void {
-    const ctx = this.ctx;
-    if (this.disposed || !ctx || !this.master) return;
+    if (this.disposed) return;
+    if (this.ctx && this.master) this.applySound(this.ctx, this.master);
+    this.applyLoads();
+  }
+
+  /** The context's state, the master level and the crossfade. */
+  private applySound(ctx: AudioContext, master: GainNode): void {
     const now = ctx.currentTime;
     const live = this.live();
 
@@ -355,7 +410,7 @@ export class MusicEngine {
       ? masterTarget({ muted: this.muted, volume: this.volume, voice: this.voice, video: this.video, away: this.away })
       : 0;
     if (aim !== this.masterAim) {
-      const p = this.master.gain;
+      const p = master.gain;
       const from = this.masterAim < 0 ? 0 : this.masterAim;
       const tc = this.hidden ? QUICK_FADE_TC : this.volumeMoved ? VOLUME_TIME_CONSTANT : masterTimeConstant(from, aim);
       try {
@@ -372,14 +427,23 @@ export class MusicEngine {
       let v = this.voices.get(this.wanted);
       if (!v) v = this.startVoice(this.wanted, now) ?? undefined;
       if (v) {
-        this.fadeVoice(v, 1, now);
+        if (v.fade.to !== 1) {
+          // In as the loudest other track goes out: the whole crossfade across one at full level,
+          // the short entry out of silence (fadeInFull).
+          let loudest = 0;
+          for (const o of this.voices.values()) if (o !== v) loudest = Math.max(loudest, fadeGainAt(o.fade, now));
+          this.fadeVoice(v, 1, now, fadeInFull(fadeGainAt(v.fade, now), loudest));
+        }
         for (const o of this.voices.values()) if (o !== v) this.fadeVoice(o, 0, now);
       }
     }
 
     // Fade-outs that are over: stop them.
     for (const v of [...this.voices.values()]) if (v.fade.to === 0 && fadeDone(v.fade, now)) this.stopVoice(v, now);
+  }
 
+  /** What is kept, what is cancelled and what downloads next. Runs before the first gesture too. */
+  private applyLoads(): void {
     // Memory: buffers nobody wants any more.
     const keep = new Set<MusicKey>([...this.keepKeys, ...this.voices.keys()]);
     if (this.wanted) keep.add(this.wanted);
@@ -395,8 +459,8 @@ export class MusicEngine {
       }
     }
 
-    // Downloads: one at a time, the current track first. Not while muted (nothing would play).
-    if (this.gestured && !this.muted && this.pending.size === 0) {
+    // Downloads: one at a time, the current track first.
+    if (this.mayLoad() && this.pending.size === 0) {
       const next = this.loadKeys.find((k) => !this.buffers.has(k) && !this.failed.has(k) && this.manifest?.tracks[k]);
       if (next) this.load(next);
     }
@@ -434,10 +498,11 @@ export class MusicEngine {
     }
   }
 
-  private fadeVoice(v: Voice, to: number, now: number): void {
+  /** `full`: the time a whole fade (silence to full level) would take; the crossfade's when not given. */
+  private fadeVoice(v: Voice, to: number, now: number, full?: number): void {
     if (v.fade.to === to) return;
     const from = fadeGainAt(v.fade, now);
-    const f = equalPowerFade(from, to, now);
+    const f = equalPowerFade(from, to, now, full);
     const p = v.gain.gain;
     try {
       p.cancelScheduledValues(now);
@@ -476,16 +541,17 @@ export class MusicEngine {
 
   private load(key: MusicKey): void {
     const track = this.manifest?.tracks[key];
-    const ctx = this.ctx;
-    if (!track || !ctx) return;
+    const decoder = this.decoder();
+    if (!track || !decoder) return;
     const ac = new AbortController();
     this.pending.set(key, ac);
     const done = () => {
       if (this.pending.get(key) === ac) this.pending.delete(key);
     };
     this.deps
-      .fetchBytes(key, ac.signal)
-      .then((bytes) => decode(ctx, bytes))
+      .fetchBytes(key, ac.signal, track)
+      // By the playing context if a gesture made one during the download.
+      .then((bytes) => decode(this.ctx ?? decoder, bytes))
       .then((buffer) => {
         done();
         if (this.disposed || ac.signal.aborted) return;
@@ -617,7 +683,7 @@ export class MusicEngine {
 }
 
 /** decodeAudioData, promise or callback style (older Safari has only the callbacks). */
-function decode(ctx: AudioContext, bytes: ArrayBuffer): Promise<AudioBuffer> {
+function decode(ctx: BaseAudioContext, bytes: ArrayBuffer): Promise<AudioBuffer> {
   return new Promise<AudioBuffer>((resolve, reject) => {
     try {
       const p = ctx.decodeAudioData(bytes, resolve, reject) as Promise<AudioBuffer> | undefined;

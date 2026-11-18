@@ -2560,6 +2560,7 @@ export default function SectExperience() {
           store={store}
           areas={data?.meta.areas ?? null}
           loading={phase === "data" || phase === "assets" || phase === "loaded"}
+          sceneLoading={phase === "data" || phase === "assets"}
           away={fallback !== null || phase === "error"}
           lyricsHidden={
             phase === "error" || reader !== null || fallback !== null || mapOpen || travel !== null
