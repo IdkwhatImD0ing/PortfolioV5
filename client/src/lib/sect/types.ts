@@ -116,6 +116,8 @@ export interface Waterfall {
   corners: [Vec3, Vec3, Vec3, Vec3] | null;
   /** Where the water lands (world space), when exported. */
   foot: Vec3 | null;
+  /** The centre of the sheet's top row (world space), when exported. */
+  lip?: Vec3 | null;
   /** Relative fall speed (Blender's obj['flow']). */
   flow: number;
   /** Chunk the waterfall belongs to (its geometry streams with it), or null (global). */

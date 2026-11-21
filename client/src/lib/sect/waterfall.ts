@@ -149,6 +149,12 @@ export const SHEET = {
    */
   farFrom: 130,
   farTo: 260,
+  /**
+   * A pour's lip (lib/sect/pour.ts, vertices with aPour = 1): how much of what is behind it the deep
+   * water over the edge hides, and the metres below the crest over which its sides go from whole to ragged.
+   */
+  pourOpacity: 0.92,
+  pourWhole: [0.4, 1.6],
   /** The glassy lip's tint and the sun's glow through the water (sRGB hex). */
   glass: "#7c9ca3",
   glow: "#ffcf9a",

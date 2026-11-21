@@ -196,7 +196,7 @@ describe("parseMeta", () => {
   it("reads waterfall corners and light beams", () => {
     const m = parseMeta({
       waterfalls: [
-        { name: "a", corners: [[0, 1, 0], [1, 1, 0], [1, 0, 0], [0, 0, 0]], foot: [0.5, 0, 0], flow: 1.25 },
+        { name: "a", corners: [[0, 1, 0], [1, 1, 0], [1, 0, 0], [0, 0, 0]], foot: [0.5, 0, 0], lip: [0.5, 1.5, 0], flow: 1.25 },
         { name: "b", corners: [[0, 1, 0]] },
       ],
       beams: [
@@ -208,8 +208,10 @@ describe("parseMeta", () => {
     });
     expect(m.waterfalls[0].corners).toHaveLength(4);
     expect(m.waterfalls[0].foot).toEqual([0.5, 0, 0]);
+    expect(m.waterfalls[0].lip).toEqual([0.5, 1.5, 0]);
     expect(m.waterfalls[0].flow).toBe(1.25);
     expect(m.waterfalls[1].corners).toBeNull();
+    expect(m.waterfalls[1].lip).toBeNull();
     expect(m.beams.map((b) => b.name)).toEqual(["pillar", "link"]);
     expect(m.beams[1].color).toBe("#9ff3ff");
   });

@@ -23,6 +23,7 @@ import {
   type IUniform,
   LinearFilter,
   type Material,
+  Matrix4,
   Mesh,
   type MeshBasicMaterial,
   NoColorSpace,
@@ -44,11 +45,12 @@ import { detailWanted, rockFarOctaves } from "@/lib/sect/detail";
 import { FORMATION_DOME, formationShafts, formationTier, isFormationLinkBeam, type FormationTierName } from "@/lib/sect/formation";
 import { applyLook, lookFogConstants, SECT_LOOK } from "@/lib/sect/look";
 import { fetchUrl, parseCameraData, parseClouds, parseFlyerPath, parseManifest, parseMeta, resolveAsset } from "@/lib/sect/parse";
+import { fromPour, inPour, pourMiddle, pourStream, poursFor, toPour, warpPour, type PourSpec } from "@/lib/sect/pour";
 import { combinedProgress, isGzip, meshoptWorkerCount, type Tier } from "@/lib/sect/runtime";
 import type { DetailState } from "@/lib/sect/settle";
 import type { CameraData, ChunkInfo, CloudPuff, FlyerPath, SectManifest, SectMeta, Vec3, Waterfall } from "@/lib/sect/types";
 import { discFromBox, discFromTriangles, dominantFlatLevel, flatLevelBounds, groundedFalls, mistSpots, quadFromCorners, type WaterSurface } from "@/lib/sect/water";
-import { fxAssetUrl, SHEET, sheetFallAttribute, WET, wetFalls } from "@/lib/sect/waterfall";
+import { connectedPieces, fxAssetUrl, SHEET, sheetFallAttribute, WET, wetFalls } from "@/lib/sect/waterfall";
 import {
   bakedDetail,
   createBeamMaterial,
@@ -1046,6 +1048,86 @@ function loadStrandTexture(sheet: ShaderMaterial, url: string): void {
 }
 
 /**
+ * Reshapes the top of the falls that leave their cliff through a notch (lib/sect/pour.ts: the
+ * abode's): the baked sheets' vertices near the lip rise to the water level in the notch, step back
+ * to the cliff's edge and narrow to the notch, and a strip of water fills the notch behind them.
+ * `falls` are the set's own (meta.json). A merged water mesh holds every sheet of an area, so each
+ * connected piece is looked at on its own: a piece whose top rows are at a pour's lip is one of its
+ * layers, narrowed about its own middle and flagged (`aPour` = 1: the shader's deep lip). Moved
+ * positions become floats (the GLB's are quantised to the baked sheet's box, which the lifted top
+ * leaves). Returns the notch water to add to the set, or null when no sheet of a pour is among
+ * `roots`. Before prepareWaterSheets; once per geometry.
+ */
+function applyPours(roots: readonly Object3D[], sheet: Material, falls: readonly Waterfall[]): Group | null {
+  const pours = poursFor(falls);
+  if (pours.length === 0) return null;
+  const moved = new Set<PourSpec>();
+  const v = new Vector3();
+  const inv = new Matrix4();
+  for (const r of roots) {
+    r.updateMatrixWorld(true);
+    r.traverse((o) => {
+      const mesh = o as Mesh;
+      if (!mesh.isMesh || mesh.material !== sheet || mesh.geometry.userData.sectPour) return;
+      const g = mesh.geometry;
+      const pos = g.getAttribute("position");
+      if (!pos) return;
+      g.userData.sectPour = true;
+      const n = pos.count;
+      const world = worldPositions(mesh);
+      const pieces = connectedPieces(n, g.index ? g.index.array : null);
+      let out: Float32Array | null = null;
+      const flag = new Float32Array(n);
+      inv.copy(mesh.matrixWorld).invert();
+      for (const { spec, frame } of pours) {
+        for (const ids of pieces) {
+          const local = ids.map((i) => toPour(frame, world, i * 3));
+          const middle = pourMiddle(spec, local.map((l) => l[0]), local.map((l) => l[2]));
+          if (middle === null) continue;
+          for (let k = 0; k < ids.length; k++) {
+            const i = ids[k];
+            flag[i] = 1;
+            if (!inPour(spec, local[k])) continue;
+            if (!out) {
+              out = new Float32Array(n * 3);
+              for (let q = 0; q < n; q++) out.set([pos.getX(q), pos.getY(q), pos.getZ(q)], q * 3);
+            }
+            const w = fromPour(frame, warpPour(spec, local[k], middle));
+            v.set(w[0], w[1], w[2]).applyMatrix4(inv);
+            out.set([v.x, v.y, v.z], i * 3);
+            moved.add(spec);
+          }
+        }
+      }
+      if (!out) return;
+      g.setAttribute("position", new BufferAttribute(out, 3));
+      g.setAttribute("aPour", new BufferAttribute(flag, 1));
+      g.computeBoundingBox();
+      g.computeBoundingSphere();
+    });
+  }
+  const group = new Group();
+  group.name = "sect.pours";
+  for (const { spec, frame } of pours) {
+    if (!moved.has(spec)) continue;
+    const s = pourStream(spec, frame);
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(s.positions, 3));
+    geo.setAttribute("uv", new BufferAttribute(s.uvs, 2));
+    geo.setAttribute("color", new BufferAttribute(s.colors, 3));
+    geo.setAttribute("aFall", new BufferAttribute(s.fall, 4));
+    geo.setAttribute("aPour", new BufferAttribute(new Float32Array(s.positions.length / 3), 1));
+    geo.setIndex(new BufferAttribute(s.index, 1));
+    const m = new Mesh(geo, sheet);
+    // Before the sheets (renderOrder 2): the falling water draws over the water behind its crest.
+    m.renderOrder = 1.5;
+    m.name = `${spec.sheet}.pour`;
+    group.add(m);
+  }
+  return group.children.length > 0 ? group : null;
+}
+
+/**
  * Gives every mesh drawn with the sheet material its `aFall` attribute (lib/sect/waterfall.ts
  * sheetFallAttribute: metres across and below the lip, measured per sheet in world space; Blender's
  * UV1 when the GLB has one). Streams are told by their node (extras.water = "stream") or name. Once
@@ -1056,10 +1138,14 @@ function prepareWaterSheets(roots: readonly Object3D[], sheet: Material): void {
     r.updateMatrixWorld(true);
     r.traverse((o) => {
       const mesh = o as Mesh;
-      if (!mesh.isMesh || mesh.material !== sheet || mesh.geometry.getAttribute("aFall")) return;
+      if (!mesh.isMesh || mesh.material !== sheet) return;
       const g = mesh.geometry;
       const uv = g.getAttribute("uv");
       if (!uv) return;
+      // Every sheet carries the pour flag (applyPours sets it on a pour's layers): a missing attribute
+      // would read whatever another program last left at its slot.
+      if (!g.getAttribute("aPour")) g.setAttribute("aPour", new BufferAttribute(new Float32Array(uv.count), 1));
+      if (g.getAttribute("aFall")) return;
       const uvs = new Float32Array(uv.count * 2);
       for (let i = 0; i < uv.count; i++) {
         uvs[i * 2] = uv.getX(i);
@@ -1259,10 +1345,14 @@ export async function loadSet(
   // so do the two waits below: a cancelled load never comes back as a set.
   const prepared = await prepareSetScenes(ctx, id, scenes, { signal: opts.signal, calm: opts.calm });
   const waterfallMeshes = prepared.reduce((a, r) => a + r.waterfallMeshes, 0);
+  const mine = data.meta.waterfalls.filter((w) => (w.chunk ?? "global") === id);
   if (waterfallMeshes === 0) {
-    const mine = data.meta.waterfalls.filter((w) => (w.chunk ?? "global") === id);
     const quads = waterfallQuads(mine, ctx.sheetMaterial);
     if (quads) scenes.push(quads);
+  } else {
+    // Only the water GLBs' sheets have the rows to bend: the stand-in quads keep their four corners.
+    const pours = applyPours(scenes, ctx.sheetMaterial, mine);
+    if (pours) scenes.push(pours);
   }
   prepareWaterSheets(scenes, ctx.sheetMaterial);
   const hotspotMeshes = new Map<string, Mesh[]>();

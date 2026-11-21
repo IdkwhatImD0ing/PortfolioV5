@@ -345,6 +345,7 @@ export function parseMeta(raw: unknown): SectMeta {
         nearestM: num(w.nearestM, Infinity),
         corners: corners4(w.corners),
         foot: Array.isArray(w.foot) ? vec3(w.foot, [0, 0, 0]) : null,
+        lip: Array.isArray(w.lip) ? vec3(w.lip, [0, 0, 0]) : null,
         flow: num(w.flow, 1),
         chunk: optStr(w.chunk),
       }))

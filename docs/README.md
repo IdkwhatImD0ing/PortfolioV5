@@ -39,6 +39,7 @@ listed under "Kept beside the code".
 - [`scene/night-r61.md`](scene/night-r61.md): Why were the abode and the summit baked again at night, what changed in the bake scripts, the two lights, the summit's new lanterns, how it ran and what it cost, how to run it again, and its limits?
 - [`sect/veg-shells.md`](sect/veg-shells.md): How are far trees drawn (crowns built in code and lit live), where does their data come from, and when does a tree use its baked card? And how do far crowns get their trunks?
 - [`sect/far-rock.md`](sect/far-rock.md): Why did far spires look like smooth tubes, and how do the far peaks and the areas' stand-ins get a rock surface now?
+- [`sect/waterfall-pour.md`](sect/waterfall-pour.md): Why did the top of the abode's waterfall look rough (6 m of water starting on bare rock under an empty notch), and how does the page reshape it into a pour out of the notch without a bake?
 - [`sect/surfaces.md`](sect/surfaces.md): Why do plazas, walls, lawns and cliffs look worn now, which numbers set it, and what is left for a Blender round?
 - [`sect/live-gate.md`](sect/live-gate.md): How are the stops lit live (the maps from the bake, the shadow maps, Blender's colour table, the bake's bounced light and far shadows), how was it checked against the bake, and how is a stop baked for it?
 - [`scene/jin-yong-references.md`](scene/jin-yong-references.md): Which Jin Yong references could hide in the sect, and are they true to the novels?
