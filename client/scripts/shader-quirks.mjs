@@ -22,26 +22,17 @@ const angle = arg("angle", "");
 const exe = arg("exe", "");
 const channel = arg("channel", "");
 
-// The frame grade's tone curve as the page had it (lib/sect/glsl.ts lookFrameGradeGlsl), and with
-// its bases kept off zero. u: (0, 1, k, p). v: (1.3, 0.99999994, 1.0000001, 0.5).
+// The frame grade's tone curve as the page has it (lib/sect/glsl.ts lookFrameGradeGlsl): a channel
+// at 1 or over lands on pow( 0.0, k ) in it. u: (0, 1, k, p). v: (1.3, 0.99999994, 1.0000001, 0.5).
 const CURVE = `
 float curve( float v, float p, float k ) {
   float x = clamp( v, 0.0, 1.0 );
   return x < p ? p * pow( x / p, k ) : 1.0 - ( 1.0 - p ) * pow( ( 1.0 - x ) / ( 1.0 - p ), k );
 }
-float curveFloored( float v, float p, float k ) {
-  float x = clamp( v, 0.0, 1.0 );
-  return x < p ? p * pow( max( x / p, 1e-6 ), k ) : 1.0 - ( 1.0 - p ) * pow( max( ( 1.0 - x ) / ( 1.0 - p ), 1e-6 ), k );
-}
 float gradeChannel( float c, float p, float k ) {
   float cv = pow( min( c, 1.0 ), 0.45454545 );
   float cc = pow( curve( cv, p, k ), 2.2 );
   return mix( cc, c, step( 1.0, c ) );
-}
-float gradeChannelFixed( float c, float p, float k ) {
-  float cv = pow( clamp( c, 1e-6, 1.0 ), 0.45454545 );
-  float cc = pow( curveFloored( cv, p, k ), 2.2 );
-  return c >= 1.0 ? c : cc;
 }
 `;
 
@@ -56,14 +47,10 @@ const TESTS = [
   ["pow( ( 1 - 1 ) / ( 1 - p ), k )", "pow( ( 1.0 - u.y ) / ( 1.0 - u.w ), u.z )", "0"],
   ["the curve at 1", "curve( u.y, u.w, u.z )", "1"],
   ["the curve at pow( min( 1.3, 1 ), 0.4545 )", "curve( pow( min( v.x, 1.0 ), 0.45454545 ), u.w, u.z )", "1"],
-  ["the grade of a channel at 1.3 (as it was)", "gradeChannel( v.x, u.w, u.z )", "1.3"],
-  ["the grade of a channel at 1.0 (as it was)", "gradeChannel( u.y, u.w, u.z )", "1"],
-  ["the grade of a channel at 0.5 (as it was)", "gradeChannel( v.w, u.w, u.z )", "a number near 0.5"],
-  ["the grade of a channel at 0 (as it was)", "gradeChannel( u.x, u.w, u.z )", "0"],
-  ["the grade of a channel at 1.3 (fixed)", "gradeChannelFixed( v.x, u.w, u.z )", "1.3"],
-  ["the grade of a channel at 1.0 (fixed)", "gradeChannelFixed( u.y, u.w, u.z )", "1"],
-  ["the grade of a channel at 0.5 (fixed)", "gradeChannelFixed( v.w, u.w, u.z )", "the same number near 0.5"],
-  ["the grade of a channel at 0 (fixed)", "gradeChannelFixed( u.x, u.w, u.z )", "0"],
+  ["the grade of a channel at 1.3", "gradeChannel( v.x, u.w, u.z )", "1.3"],
+  ["the grade of a channel at 1.0", "gradeChannel( u.y, u.w, u.z )", "1"],
+  ["the grade of a channel at 0.5", "gradeChannel( v.w, u.w, u.z )", "a number near 0.5"],
+  ["the grade of a channel at 0", "gradeChannel( u.x, u.w, u.z )", "0"],
   ["mix( NaN, 1.3, 1.0 )", "mix( sqrt( u.x - 1.0 ), v.x, u.y )", "NaN by the book"],
   ["pow( -0.0000001, 4.0 )", "pow( u.x - 1e-7, 4.0 )", "undefined in GLSL"],
   ["pow( -0.0000001, k ), k a uniform", "pow( u.x - 1e-7, u.z )", "undefined in GLSL"],

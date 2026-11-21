@@ -404,7 +404,7 @@ vec3 sectEnvSky( vec3 d, float blur ) {
   vec3 sunH = normalize( vec3( uSectEnvSunDir.x, 0.0, uSectEnvSunDir.z ) );
   vec3 dh = normalize( vec3( d.x, 0.0, d.z ) + vec3( 1e-5, 0.0, 0.0 ) );
   // Held to 0..1 (lib/sect/glsl.ts POW_BASE_NOTE): straight away from the sun the dot rounds to just
-  // under -1, and pow of the negative base below is not a number on a Mac.
+  // under -1, and pow has no set answer for the negative base that would follow.
   float sunSide = clamp( dot( dh, sunH ) * 0.5 + 0.5, 0.0, 1.0 );
   vec3 grad = mix( uSectEnvHorizon, uSectEnvMid, smoothstep( 0.03, 0.22, h ) );
   grad = mix( grad, uSectEnvZenith, smoothstep( 0.18, 0.75, h ) );

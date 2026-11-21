@@ -28,9 +28,12 @@ it comes and goes.
 The owner's screenshot carries the other signs of that state: jagged edges on the stairs (no MSAA,
 three-quarter render scale) and no trees on the far cliff top.
 
+That the MacBook showed this same thing is the likely reading, not a proven one: nobody has a
+picture from it. What is proven is that nothing else is wrong there (the next sections).
+
 ### How it was found
 
-Two days went to a wrong theory first (the next section). The screenshot settled it:
+Two days went to a wrong theory first. The screenshot settled it:
 
 1. Its black shapes are crisp. The first theory predicts blocks spread over a third of the frame.
 2. Its place was found by turning the view at each stop: the mirror terrace, turned right.
@@ -65,49 +68,95 @@ shows the void.
   the GPU, the ladder's own judgement is the next thing to look at. `?debug=1` shows the quality
   line.
 
-## The first theory: a Mac's pow
+## What a Mac draws: nothing wrong
+
+GitHub's Mac runner (Apple silicon, Metal) drew all eleven stops of the live site and of this
+branch, in Chrome on High and Medium and in WebKit, Safari's engine, at the page's own pick
+(Medium at 1.5x).
+
+- **The scene's raw numbers.** Not one NaN or Inf pixel in the HDR frame, in either browser, on
+  the live site or the branch.
+- **The canvas.** Read back right after each frame: no pixel with a crushed channel beyond a few
+  red lanterns, the same few Chrome shows.
+- **Against the PC.** The Mac's pictures differ from the PC's by what two runs on one machine
+  differ by, apart from places still loading on the slower runner.
+
+### The screenshot that lied
+
+WebKit's screenshots of those same frames showed cyan, yellow and red patches in the brightest
+mist: up to 108,000 pixels of a frame, at five stops, on the live site. It looked like the owner's
+Mac bug for an hour.
+
+It is not on the canvas. At the edge of a patch the channel reads 253, 254, 255 and then 0, 1, 2,
+up to 18: it ran past 255 and wrapped. A GPU clamps what it writes to the screen and cannot do
+that. The wrap happens when headless WebKit converts colour spaces on the way to the file. The
+count of cyan pixels in the screenshot matches the count of pixels whose red is exactly 255 on the
+canvas.
+
+So the probe now reads the canvas itself as well (`readCanvas`), and a screenshot from WebKit
+with patches at full brightness means nothing until the canvas agrees.
+
+One more thing WebKit said on every view: "meshopt workers did not answer; decoding on the main
+thread". The page falls back and loads, but slower. Not checked in real Safari.
+
+## The first theory: pow of a base under zero
 
 Before the screenshot the only fact was "a Mac shows it and the PC does not", so the search was for
-what a Mac's graphics path does differently. One real difference came out of it, and its guards
-stay in. It is not what the owner saw, and it has not been seen on a Mac.
+what a Mac's graphics path does differently. The theory: GLSL leaves `pow( x, y )` undefined for x
+below zero, Windows multiplies small whole exponents out and so hides a base of -0.0000001, and a
+Mac's Metal gives NaN ("not a number").
 
-The page's shaders are GLSL. The browser translates them: on Windows to D3D11, on a Mac to Metal,
-in Chrome and Safari alike. `pow( x, y )` has no defined answer for x below zero. On Windows the
-translator writes `pow( x, 2.0 )` and other small whole exponents as multiplications, so a base of
--0.0000001 does no harm. On a Mac pow is `exp2( y * log2( x ) )`, and a negative base gives NaN
-("not a number"). A base goes a hair under zero where `1.0 - dot( a, b )` is taken of two unit
-vectors that line up: the dot rounds to 1.0000001.
+**The Mac half of that is wrong.** `client/scripts/shader-quirks.mjs` asks a browser what it makes
+of such expressions, each compiled alone with its numbers as uniforms. On Windows (D3D11), and on
+the Mac in Chrome and in WebKit, the answers are the same:
 
-What one NaN pixel does, measured on the PC by forcing NaN onto the far tree crowns at the arena:
-103,024 NaN pixels (7 percent of the frame) left 1,187,672 of 1,265,920 pixels black (94 percent).
-A NaN pixel is black, cloud drawn over it stays black, and bloom's mip chain spreads it into a
-block.
+| expression | all three |
+|---|---|
+| `pow( -0.0000001, 4.0 )` | 1e-28 (multiplied out) |
+| `pow( -0.0000001, k )`, k a uniform | NaN |
+| `pow( 0, k )`, `pow( 0, 4.0 )`, `pow( 0, 0.4545 )` | 0 |
+| `pow( 1, 0.4545 )` | exactly 1 |
+
+Two answers do differ, and matter to anyone leaning on them: `clamp( NaN, 0, 1 )` is 1 on Windows
+and 0 on the Mac, and `max( NaN, 0 )` is NaN on Windows and 0 on the Mac.
+
+What stays true, on every machine:
+
+- A negative base with an exponent that is not a small whole constant (1.5, a uniform) is NaN. A
+  base goes a hair under zero where `1.0 - dot( a, b )` is taken of two unit vectors that line up.
+- One NaN pixel does great damage. Measured on the PC by forcing NaN onto the far tree crowns at
+  the arena: 103,024 NaN pixels (7 percent of the frame) left 1,187,672 of 1,265,920 pixels black
+  (94 percent). The pixel is black, cloud drawn over it stays black, and bloom's mip chain spreads
+  it into a block.
+- No frame has been seen to hold one.
 
 A five-reviewer audit of the shader code, each finding challenged by a second reviewer, left 12 of
-21 findings standing as plausible and none proven. The likeliest: the reflections' sky
-(`sectEnvSky` in `materials.ts`), where `pow( sunSide, 4.0 )` goes under zero for a reflection
-straight away from the sun.
+21 findings standing as plausible and none proven. Its guards stay in as cheap insurance against
+the second point:
 
-The guards:
-
-1. Every such pow has a floor: the two skies' `sunSide`, the crowns' `facing`, the wet rock's
-   Fresnel, the hover highlight, the grade's lift, the finish's toe, the contact shade's tint, the
-   sparks' and embers' life. The reflections' sky holds the ray's height to 1 before `asin`.
+1. Every pow whose base could round under zero has a floor: the two skies' `sunSide`, the crowns'
+   `facing` (exponent 1.5), the wet rock's Fresnel, the hover highlight, the grade's lift, the
+   finish's toe, the contact shade's tint, the sparks' and embers' life (exponents 1.3 to 1.6).
+   The reflections' sky holds the ray's height to 1 before `asin`.
 2. The fog chunk swaps a colour that is not a number for the haze's colour (`fogChunks` in
    `glsl.ts`), before the multisample resolve and before bloom.
 3. Bloom's threshold drops a texel that is not a number (`glowPrefilter` in `post/atmos.ts`).
 4. The hue clip caps its input under the half-float buffer's largest number, and the finish's
    sharpening ignores a neighbour that is not a number.
 
-The test for "not a number" reads the float's bits (`nonFiniteGlsl` in `glsl.ts`): Metal builds
-shaders with fast maths, which may drop `x != x` or `isnan( x )`. `POW_BASE_NOTE` in `glsl.ts` holds
-the reason in the code, and `nan-guards.test.ts` fails if a guard goes missing.
+The test for "not a number" reads the float's bits (`nonFiniteGlsl` in `glsl.ts`). `POW_BASE_NOTE`
+in `glsl.ts` holds the reason in the code, and `nan-guards.test.ts` fails if a guard goes missing.
 
 On the PC the guards change nothing: before against after at all eleven stops, High and Medium, the
 pixels that differ by more than 40 levels are 0.3 to 4.2 percent, and two runs of the same build
 differ by 0.3 to 3.4 percent (flags, fire, the forge's orbiting artifacts).
 
-## The render probe
+A change to the frame grade's tone curve was also tried against the WebKit patches, before the
+canvas was read. It changed nothing and was taken back out.
+
+## The tools
+
+### The render probe
 
 `client/scripts/render-probe.mjs` opens the sect at given camera frames in one browser and saves,
 for each view:
@@ -115,6 +164,7 @@ for each view:
 - a screenshot;
 - the HDR frame read back as floats: how many pixels are NaN or Inf (and where the first 40 are),
   negative, exactly zero, or carry an alpha over 1;
+- the canvas read back as bytes: pixels with a crushed channel, pixels at 255;
 - what the page says about itself: the GPU, the quality line, the places held, far triangles;
 - console errors and failed requests.
 
@@ -143,17 +193,33 @@ near black in one and not in the other, pixels much darker, and a diff picture o
 node scripts/render-compare.mjs --a pc --alabel pc-high --b mac --blabel live-chrome-high --out diff
 ```
 
-What the probe taught about itself: views along the flight at the stops are not enough. This bug
-needed a turned view and a quality state the page only reaches when frames run long. Check both.
+### The shader quirks
+
+`client/scripts/shader-quirks.mjs` prints what a browser's graphics path makes of the expressions
+in the table above and a dozen more. Seconds, no site needed.
+
+```bash
+node scripts/shader-quirks.mjs --engine webkit
+node scripts/shader-quirks.mjs --exe <chrome> --angle metal
+```
 
 ### On a Mac nobody owns
 
-`.github/workflows/mac-render-probe.yml` runs the probe on one of GitHub's Mac machines (Apple
-silicon, Metal): the live site in one job, this branch built on the runner in another (its baked
-files borrowed from the live site). It uploads the screenshots and counts. Start it by hand from
-the Actions tab, or push to the branch named in the file. The repo is public, so the Mac minutes
-are free.
+`.github/workflows/mac-render-probe.yml` runs both on one of GitHub's Mac machines: the live site
+in one job, this branch built on the runner in another (its baked files borrowed from the live
+site). It uploads the screenshots and counts. Start it by hand from the Actions tab. (While this
+bug was hunted it also ran on every push to the branch: three runs, about fifteen minutes each.)
+The repo is public, so the Mac minutes are free.
 
 The runner's GPU is a virtual one over real Apple hardware. It runs Metal and Apple's shader
-compiler, which is where the pow difference lives, but it is not the owner's MacBook, and its
-frame times say nothing about a real one's ladder.
+compiler, but it is not the owner's MacBook, and its frame times say nothing about a real one's
+ladder.
+
+## What this taught
+
+- Ask for a screenshot before anything else. An hour with it did what two days without it did not.
+- Look for what is missing as well as what is drawn wrong.
+- Views along the flight at the stops, at full quality, are not enough. This bug needed a turned
+  view and a quality state the page only reaches when frames run long.
+- "Only on a Mac" was a clue about speed, not about shaders.
+- A screenshot is the browser's account of the canvas. Read the canvas.

@@ -763,8 +763,7 @@ export function frameGradeGlsl(g: FrameGrade): string {
   return /* glsl */ `
 float sectFrameCurve( float v, float p, float k ) {
   float x = clamp( v, 0.0, 1.0 );
-  // The bases are kept off 0 (glsl.ts POW_BASE_NOTE): a channel at 1 or over lands on pow( 0.0, k ) here.
-  return x < p ? p * pow( max( x / p, 1e-6 ), k ) : 1.0 - ( 1.0 - p ) * pow( max( ( 1.0 - x ) / ( 1.0 - p ), 1e-6 ), k );
+  return x < p ? p * pow( x / p, k ) : 1.0 - ( 1.0 - p ) * pow( ( 1.0 - x ) / ( 1.0 - p ), k );
 }
 ${warmKeepGlsl("sectFrameWarm")}
 vec3 sectFrameGrade( vec3 c0 ) {
@@ -774,19 +773,17 @@ vec3 sectFrameGrade( vec3 c0 ) {
   vec3 c = x0 * ${f(g.exposure)} * ${glslVec3(unitTint(g.balance))};
   // The curve on each channel (a channel over 1 keeps its value): like film, the mids gain colour
   // and the lights go toward white instead of toward a hotter hue.
-  vec3 cv = pow( clamp( c, 1e-6, 1.0 ), vec3( 0.45454545 ) );
+  vec3 cv = pow( min( c, 1.0 ), vec3( 0.45454545 ) );
   float p = ${f(Math.min(Math.max(g.pivot, 0.05), 0.95))};
   float k = ${f(g.contrast)};
   vec3 cc = pow( vec3( sectFrameCurve( cv.r, p, k ), sectFrameCurve( cv.g, p, k ), sectFrameCurve( cv.b, p, k ) ), vec3( 2.2 ) );
-  // Picked, not mixed: mix( cc, c, 1.0 ) still multiplies cc by 0, and 0 times a number that is not
-  // one is not one either. In Safari's engine that took the channel (docs/sect/render-probe.md).
-  c = vec3( c.r >= 1.0 ? c.r : cc.r, c.g >= 1.0 ? c.g : cc.g, c.b >= 1.0 ? c.b : cc.b );
+  c = mix( cc, c, step( vec3( 1.0 ), c ) );
   // The split tone and the lift, by display luminance.
-  float v2 = pow( clamp( dot( c, luma ), 1e-6, 1.0 ), 0.45454545 );
+  float v2 = pow( min( dot( c, luma ), 1.0 ), 0.45454545 );
   float ws = 1.0 - smoothstep( ${f(g.splitPivot - g.splitWidth)}, ${f(g.splitPivot + Math.max(g.splitWidth, 1e-3))}, v2 );
   c *= mix( vec3( 1.0 ), ${glslVec3(unitTint(g.shadowTint))}, ${f(g.shadowAmount)} * ws )
     * mix( vec3( 1.0 ), ${glslVec3(unitTint(g.highlightTint))}, ${f(g.highlightAmount)} * ( 1.0 - ws ) );
-  c += ${glslVec3(hexToLinear(g.liftColor))} * ( ${f(g.lift)} * pow( max( 1.0 - v2, 1e-6 ), 4.0 ) );
+  c += ${glslVec3(hexToLinear(g.liftColor))} * ( ${f(g.lift)} * pow( max( 1.0 - v2, 0.0 ), 4.0 ) );
   float red = smoothstep( 0.45, 0.7, ( c.r - max( c.g, c.b ) ) / max( c.r, 1e-4 ) );
   float sat = mix( ${f(g.saturation)}, ${f(g.redSaturation)}, red );
   float lc = dot( c, luma );
