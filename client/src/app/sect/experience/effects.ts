@@ -54,7 +54,9 @@ import { SunShaftsEffect } from "./post/shafts";
 
 const HUE_CLIP_FRAGMENT = /* glsl */ `
 void mainImage( const in vec4 inputColor, const in vec2 uv, out vec4 outputColor ) {
-  vec3 c = max( inputColor.rgb, 0.0 );
+  // Capped under the half-float buffer's largest number: past it a channel is Inf, and Inf / Inf
+  // below is not a number (a black pixel where the brightest one should be).
+  vec3 c = clamp( inputColor.rgb, 0.0, 60000.0 );
   float m = max( max( c.r, c.g ), c.b );
   vec3 kept = c / max( m, 1.0 );
   outputColor = vec4( mix( kept, vec3( 1.0 ), smoothstep( 1.8, 9.0, m ) * 0.55 ), inputColor.a );

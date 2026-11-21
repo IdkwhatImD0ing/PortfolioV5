@@ -1015,15 +1015,13 @@ describe("the ?veg= switch and the tier", () => {
     expect(parseVegParam("#veg=1")).toBeNull();
   });
 
-  it("draws shells on High, cards elsewhere, unless the link says otherwise; never with the cards off", () => {
+  it("draws shells on High, cards elsewhere, unless the link says otherwise", () => {
     expect(vegShellsOn(tierQuality("high", 1), null)).toBe(true);
     expect(vegShellsOn(tierQuality("mid", 1), null)).toBe(false);
     expect(vegShellsOn(tierQuality("low", 1), null)).toBe(false);
     expect(vegShellsOn(tierQuality("high", 1), "off")).toBe(false);
     expect(vegShellsOn(tierQuality("low", 1), "on")).toBe(true);
     expect(vegShellsOn(tierQuality("mid", 1), "on")).toBe(true);
-    expect(vegShellsOn({ ...tierQuality("high", 1), noCards: true }, null)).toBe(false);
-    expect(vegShellsOn({ ...tierQuality("high", 1), noCards: true }, "on")).toBe(false);
     expect(vegShellsOn({ ...tierQuality("high", 1), vegShells: undefined }, null)).toBe(false);
   });
 });
@@ -1091,7 +1089,8 @@ describe("the shell shaders", () => {
 
   it("erode a ragged silhouette from object-space noise, never screen space", () => {
     const E = L.erosion;
-    expect(fs).toContain("float facing = abs( dot( Ns, V ) );");
+    // Held to 1, so the rim glow's pow never gets a base under 0 (glsl.ts POW_BASE_NOTE).
+    expect(fs).toContain("float facing = min( abs( dot( Ns, V ) ), 1.0 );");
     expect(fs).toContain("vec3 qe = vVegLocal / vVegEdgeM;");
     expect(fs).toContain("float en = sectVegNoise( qe ) * 0.65 + sectVegNoise( qe * 2.31 + vec3( 7.7, 3.1, 5.3 ) ) * 0.35;");
     expect(fs).toContain(`float thr = smoothstep( ${glslFloat(E.from)}, 1.0, 1.0 - facing ) * ${glslFloat(E.max)};`);

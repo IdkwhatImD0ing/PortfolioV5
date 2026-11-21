@@ -218,7 +218,6 @@ describe("Safari's Apple GPU", () => {
 /** What changed between two ladder levels (one step), for the ladder tests. */
 function stepName(a: Quality, b: Quality, dpr: number): string {
   if (a.maxFps !== b.maxFps) return "fps";
-  if (Boolean(a.noCards) !== Boolean(b.noCards)) return "no cards";
   if (Boolean(a.standIns) !== Boolean(b.standIns)) return "stand-ins";
   if (Boolean(a.liveLight) !== Boolean(b.liveLight)) return "live";
   if (Boolean(a.vegShells) !== Boolean(b.vegShells)) return "shells";
@@ -291,22 +290,22 @@ describe("quality ladder", () => {
     expect(effectiveDpr(tierQuality("low", 3, { coarse: true }), 3)).toBe(1.5);
   });
 
-  it("a phone at the bottom of the ladder still has steps left: the render scale, stand-ins, tree cards, the render rate", () => {
+  it("a phone at the bottom of the ladder still has steps left: the render scale, stand-ins, the render rate", () => {
     let q = tierQuality("low", 3, { coarse: true });
     const steps: string[] = [];
     for (let i = 0; i < 10; i++) {
       const n = degradeQuality(q, 3);
       if (!n) break;
       steps.push(
-        n.maxFps !== q.maxFps ? "fps" : n.standIns !== q.standIns ? "stand-ins" : n.noCards !== q.noCards ? "no cards" : n.maxDpr < 1 ? "scale" : "dpr",
+        n.maxFps !== q.maxFps ? "fps" : n.standIns !== q.standIns ? "stand-ins" : n.maxDpr < 1 ? "scale" : "dpr",
       );
       q = n;
     }
-    expect(steps).toEqual(["dpr", "dpr", "scale", "stand-ins", "no cards", "fps"]);
-    expect(q).toMatchObject({ maxFps: CAPPED_FPS, standIns: true, noCards: true });
+    expect(steps).toEqual(["dpr", "dpr", "scale", "stand-ins", "fps"]);
+    expect(q).toMatchObject({ maxFps: CAPPED_FPS, standIns: true });
     expect(effectiveDpr(q, 3)).toBe(RENDER_SCALE_MIN);
     expect(degradeQuality({ ...tierQuality("low"), maxDpr: RENDER_SCALE_MIN }, 1)).toMatchObject({ standIns: true, maxFps: 0 });
-    expect(degradeQuality({ ...tierQuality("low"), maxDpr: RENDER_SCALE_MIN, standIns: true, noCards: true }, 1)).toMatchObject({
+    expect(degradeQuality({ ...tierQuality("low"), maxDpr: RENDER_SCALE_MIN, standIns: true }, 1)).toMatchObject({
       maxFps: CAPPED_FPS,
     });
   });
@@ -320,7 +319,7 @@ describe("quality ladder", () => {
       steps.push(stepName(q, n, 2));
       q = n;
     }
-    expect(steps).toEqual(["dpr", "dpr", "live", "shells", "msaa", "bloom", "scale", "stand-ins", "no cards", "fps"]);
+    expect(steps).toEqual(["dpr", "dpr", "live", "shells", "msaa", "bloom", "scale", "stand-ins", "fps"]);
     expect(q.post).toBe(true);
     expect(degradeQuality(q, 2)).toBeNull();
   });
@@ -334,7 +333,7 @@ describe("quality ladder", () => {
   });
 
   it("puts no render-rate cap on a screen that already runs at 30 Hz", () => {
-    const bottom = { ...tierQuality("mid"), bloom: false, maxDpr: RENDER_SCALE_MIN, standIns: true, noCards: true };
+    const bottom = { ...tierQuality("mid"), bloom: false, maxDpr: RENDER_SCALE_MIN, standIns: true };
     expect(degradeQuality(bottom, 1, { cadenceMs: 33.3 })).toBeNull();
     expect(degradeQuality(bottom, 1, { cadenceMs: 16.7 })).toMatchObject({ maxFps: CAPPED_FPS });
     // Not known yet: the cap may apply.
@@ -355,7 +354,6 @@ describe("quality ladder", () => {
       maxDpr: RENDER_SCALE_MIN,
       maxFps: CAPPED_FPS,
       standIns: true,
-      noCards: true,
       vegShells: false,
       liveLight: false,
     };
@@ -367,8 +365,8 @@ describe("quality ladder", () => {
       seen.push(stepName(q, n, 2));
       q = n;
     }
-    expect(seen).toEqual(["fps", "no cards", "stand-ins", "scale", "bloom", "msaa", "shells", "live", "dpr", "dpr"]);
-    expect(q).toMatchObject({ msaa: top.msaa, bloom: true, maxFps: 0, standIns: false, noCards: false, vegShells: true, liveLight: true, maxDpr: 1.5 });
+    expect(seen).toEqual(["fps", "stand-ins", "scale", "bloom", "msaa", "shells", "live", "dpr", "dpr"]);
+    expect(q).toMatchObject({ msaa: top.msaa, bloom: true, maxFps: 0, standIns: false, vegShells: true, liveLight: true, maxDpr: 1.5 });
     // Each climb undoes one step down: the climb is the way down, reversed.
     let d: Quality | null = top;
     const down: string[] = [];
@@ -385,7 +383,6 @@ describe("quality ladder", () => {
     expect(climbCost({ ...top, maxDpr: 1 }, top, 2)).toBeCloseTo(1.5625, 6);
     expect(climbCost({ ...top, maxDpr: RENDER_SCALE_MIN }, top, 2)).toBeCloseTo(16 / 9, 6);
     expect(climbCost({ ...top, maxFps: CAPPED_FPS, maxDpr: 1 }, top, 2)).toBe(1);
-    expect(climbCost({ ...top, noCards: true }, top, 2)).toBe(FEATURE_CLIMB_COST);
     expect(climbCost({ ...top, standIns: true }, top, 2)).toBe(FEATURE_CLIMB_COST);
     expect(climbCost({ ...top, bloom: false, msaa: 0, maxDpr: 1 }, top, 2)).toBe(FEATURE_CLIMB_COST);
     expect(climbCost(top, top, 2)).toBeNull();
@@ -399,8 +396,7 @@ describe("quality ladder", () => {
     expect(upgradeQuality({ ...top, msaa: 2 }, top, 1)).toMatchObject({ msaa: 4 });
     expect(climbRebuildsPipeline(noMsaa, top, 1)).toBe(true);
     expect(climbRebuildsPipeline({ ...top, bloom: false, msaa: 0 }, top, 1)).toBe(true);
-    // Tree cards, stand-ins and resolution switch without a rebuild.
-    expect(climbRebuildsPipeline({ ...noMsaa, noCards: true }, top, 1)).toBe(false);
+    // Stand-ins and resolution switch without a rebuild.
     expect(climbRebuildsPipeline({ ...noMsaa, standIns: true }, top, 1)).toBe(false);
     expect(climbRebuildsPipeline({ ...tierQuality("high", 2), maxDpr: 1 }, tierQuality("high", 2), 2)).toBe(false);
     expect(climbRebuildsPipeline(top, top, 1)).toBe(false);
@@ -408,13 +404,13 @@ describe("quality ladder", () => {
 
   it("a tier that never had bloom or MSAA climbs back without them (Low on a phone)", () => {
     const top = tierQuality("low", 3, { coarse: true });
-    let q: Quality | null = { ...top, maxDpr: RENDER_SCALE_MIN, standIns: true, noCards: true, maxFps: CAPPED_FPS };
+    let q: Quality | null = { ...top, maxDpr: RENDER_SCALE_MIN, standIns: true, maxFps: CAPPED_FPS };
     let last = q;
     while (q) {
       last = q;
       q = upgradeQuality(q, top, 3);
     }
-    expect(last).toMatchObject({ msaa: 0, bloom: false, standIns: false, noCards: false, maxFps: 0 });
+    expect(last).toMatchObject({ msaa: 0, bloom: false, standIns: false, maxFps: 0 });
     expect(effectiveDpr(last, 3)).toBe(1.5);
   });
 

@@ -26,7 +26,7 @@ import {
   type TextureDataType,
   type WebGLRenderer,
 } from "three";
-import { fogLibrary, glslFloat, type FogConstants } from "@/lib/sect/glsl";
+import { fogLibrary, glslFloat, nonFiniteGlsl, type FogConstants } from "@/lib/sect/glsl";
 import { ATMOS } from "@/lib/sect/post";
 import { SECT_LOOK_GPU } from "../materials";
 import { primePrograms, programsReady } from "../program-prime";
@@ -324,13 +324,17 @@ export const LUMINANCE_LINE = "float l=luminance(texel.rgb);";
  * Bloom's threshold reads luminance mixed toward the brightest channel (ATMOS.bloom.chroma), so a
  * saturated glow (a lit window, a red rune) blooms like a white one of the same strength. Returns
  * false when the library's shader no longer has the line (the bloom then stays as it was).
+ *
+ * It also drops a texel that is not a number before the threshold (lib/sect/glsl.ts POW_BASE_NOTE):
+ * the library multiplies the texel by its mask, and NaN times 0 is NaN, so one such pixel went down
+ * the mip chain and came back as a black block a third of the frame wide.
  */
 export function glowPrefilter(bloom: BloomEffect, chroma: number = ATMOS.bloom.chroma): boolean {
   const m = bloom.luminanceMaterial;
   if (!m.fragmentShader.includes(LUMINANCE_LINE)) return false;
   m.fragmentShader = m.fragmentShader.replace(
     LUMINANCE_LINE,
-    `float l=mix(luminance(texel.rgb),max(max(texel.r,texel.g),texel.b),${glslFloat(chroma)});`,
+    `if(${nonFiniteGlsl("texel", 4)})texel=vec4(0.0);float l=mix(luminance(texel.rgb),max(max(texel.r,texel.g),texel.b),${glslFloat(chroma)});`,
   );
   m.needsUpdate = true;
   return true;

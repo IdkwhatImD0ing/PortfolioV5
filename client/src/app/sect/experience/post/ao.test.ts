@@ -60,7 +60,7 @@ describe("ContactShadeEffect shader", () => {
     expect(fs).toContain("vec3 b = - 4.7951 * alb + 0.6417;");
     expect(fs).toContain("vec3 c = 2.7552 * alb + 0.6903;");
     expect(fs).toContain("max( vec3( vis ), ( ( vis * a + b ) * vis + c ) * vis )");
-    expect(fs).toContain("pow( 1.0 - k * ( 1.0 - min( mb, vec3( 1.0 ) ) ), AO_TINT )");
+    expect(fs).toContain("pow( max( 1.0 - k * ( 1.0 - min( mb, vec3( 1.0 ) ) ), 0.0 ), AO_TINT )");
     expect(fs).toContain("if ( uAoDebug > 0.5 )");
     e.dispose();
   });

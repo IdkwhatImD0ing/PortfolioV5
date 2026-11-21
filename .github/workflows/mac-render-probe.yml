@@ -1,0 +1,188 @@
+name: Mac render probe
+
+# Draws the sect on one of GitHub's Mac machines (Apple GPU, Metal) and keeps a screenshot of each
+# stop and a count of broken pixels, to compare with a Windows PC. For Mac-only picture bugs nobody
+# at a PC can see. docs/sect/render-probe.md says how to read what it uploads.
+#
+# Two jobs, side by side:
+# - "live site": the site as it is deployed (the before).
+# - "this branch": this branch's client, built and opened on the runner (the after). The baked scene
+#   files are Git LFS pointers here, so the probe borrows those from the live site (read-only, no
+#   LFS bandwidth).
+# Nothing else leaves the runner: the probe blocks the backend, Pusher, analytics and every other host.
+#
+# Manual, plus pushes to a branch that is chasing a Mac-only bug.
+
+on:
+  workflow_dispatch:
+    inputs:
+      frames:
+        description: "Camera frames, comma-separated (empty: the eleven stops)"
+        required: false
+        default: ""
+      site:
+        description: "The live site (also where the branch build borrows its baked files)"
+        required: false
+        default: "https://art3m1s.me"
+  push:
+    branches:
+      - "claude/dark-spots-background-clouds-67dc89"
+    paths:
+      - "client/src/**"
+      - "client/scripts/render-probe.mjs"
+      - ".github/workflows/mac-render-probe.yml"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SITE: ${{ inputs.site || 'https://art3m1s.me' }}
+  FRAMES: ${{ inputs.frames }}
+  # Four stops for the runs that switch one feature off: gate, arena, formation, summit.
+  FEW: "93,516,1208,1647"
+  OUT: ${{ github.workspace }}/render-probe-out
+  PLAYWRIGHT_CORE: ${{ github.workspace }}/.probe/node_modules/playwright-core
+  CHROME: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+
+jobs:
+  live:
+    name: Live site on macOS
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: The machine
+        run: |
+          sw_vers
+          sysctl -n machdep.cpu.brand_string hw.ncpu hw.memsize
+          system_profiler SPDisplaysDataType || true
+          "$CHROME" --version || true
+
+      - name: Install the probe's browser driver
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p .probe
+          npm install --prefix .probe --no-audit --no-fund playwright-core@1.62.0
+          node .probe/node_modules/playwright-core/cli.js install webkit
+
+      # Each run is one browser at one quality. A run that fails must not stop the others.
+      - name: Chrome on Metal, High (an Apple-silicon Mac in Chrome)
+        if: always()
+        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra far=0 --label live-chrome-high --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
+
+      - name: Chrome on Metal, High with far places in full (a 10-core Mac in Chrome)
+        if: always()
+        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra far=1 --label live-chrome-high-far --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
+
+      - name: Chrome on Metal, Medium
+        if: always()
+        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier mid --label live-chrome-mid --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
+
+      - name: WebKit (Safari's engine), the page's own pick, 2x screen
+        if: always()
+        run: node scripts/render-probe.mjs --base "$SITE" --engine webkit --dsf 2 --label live-webkit-auto --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
+
+      # Which feature draws it: the same four stops with one thing off at a time.
+      - name: Chrome High without the lux passes (contact shade, sun shafts, finish)
+        if: always()
+        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra "far=0&lux=0" --label live-chrome-high-nolux --frames "$FEW" --out "$OUT" || true
+
+      - name: Chrome High without the crown shells
+        if: always()
+        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra "far=0&veg=0" --label live-chrome-high-noveg --frames "$FEW" --out "$OUT" || true
+
+      - name: Chrome High without live light
+        if: always()
+        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra "far=0&live=0" --label live-chrome-high-nolive --frames "$FEW" --out "$OUT" || true
+
+      - name: Chrome High, the sun shafts alone
+        if: always()
+        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra "far=0&lux=shafts" --label live-chrome-high-shafts --frames "$FEW" --out "$OUT" || true
+
+      - name: Upload the pictures and counts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-probe-mac-live
+          path: ${{ github.workspace }}/render-probe-out
+          if-no-files-found: warn
+          retention-days: 14
+
+  branch:
+    name: This branch on macOS
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: client/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Start the site
+        run: |
+          nohup pnpm start --port 3000 > "$RUNNER_TEMP/site.log" 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000/ && exit 0
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/site.log"
+          exit 1
+
+      - name: Install the probe's browser driver
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p .probe
+          npm install --prefix .probe --no-audit --no-fund playwright-core@1.62.0
+          node .probe/node_modules/playwright-core/cli.js install webkit
+
+      - name: Chrome on Metal, High
+        if: always()
+        run: node scripts/render-probe.mjs --base http://localhost:3000 --assets "$SITE" --exe "$CHROME" --angle metal --tier high --extra far=0 --label branch-chrome-high --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
+
+      - name: Chrome on Metal, High with far places in full
+        if: always()
+        run: node scripts/render-probe.mjs --base http://localhost:3000 --assets "$SITE" --exe "$CHROME" --angle metal --tier high --extra far=1 --label branch-chrome-high-far --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
+
+      - name: Chrome on Metal, Medium
+        if: always()
+        run: node scripts/render-probe.mjs --base http://localhost:3000 --assets "$SITE" --exe "$CHROME" --angle metal --tier mid --label branch-chrome-mid --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
+
+      - name: WebKit (Safari's engine), the page's own pick, 2x screen
+        if: always()
+        run: node scripts/render-probe.mjs --base http://localhost:3000 --assets "$SITE" --engine webkit --dsf 2 --label branch-webkit-auto --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
+
+      - name: Upload the pictures and counts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-probe-mac-branch
+          path: ${{ github.workspace }}/render-probe-out
+          if-no-files-found: warn
+          retention-days: 14

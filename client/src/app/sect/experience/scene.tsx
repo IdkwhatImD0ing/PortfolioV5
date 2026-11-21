@@ -887,7 +887,6 @@ function World({
   streamer,
   post,
   standIns = false,
-  noCards = false,
   farFull = false,
   onGlobalReady,
 }: {
@@ -902,8 +901,6 @@ function World({
    * camera is in is drawn; the others stay loaded, and the backdrop's proxies show in their place.
    */
   standIns?: boolean;
-  /** The ladder's tree-card step (Quality.noCards): the sets' tree cards are not drawn. */
-  noCards?: boolean;
   /** Far places in full (Quality.farFull): ready chunks outside their range are shown too (LoadedSet.far). */
   farFull?: boolean;
   onGlobalReady: () => void;
@@ -919,20 +916,6 @@ function World({
   const seen = useRef(new WeakSet<LoadedSet>());
   /** The draw rule's view of the frame, rewritten each frame. */
   const farFrame = useRef<FarFrame>({ frame: 0, only: null, farFull: false, calm: false });
-  // Tree cards off (or back) on every set, a set loaded later included. Their programs stay compiled
-  // (the warm-up compiles hidden materials too), so they come back without a stall.
-  useEffect(() => {
-    let changed = false;
-    for (const s of [global, ...chunks]) {
-      if (!s) continue;
-      for (const m of s.cardMaterials) {
-        if (m.visible !== noCards) continue;
-        m.visible = !noCards;
-        changed = true;
-      }
-    }
-    if (changed) wake(store, 200);
-  }, [global, chunks, noCards, store]);
   /** Stand-in for the composer's buffer while shaders compile (see warm below); made on first use. */
   const warmTarget = useRef<WebGLRenderTarget | null>(null);
   useEffect(() => {
@@ -1947,7 +1930,7 @@ function Reflections({ sets, quality, ctx, store, debug }: { sets: LoadedSet[]; 
       if ((w.__sectReflect as { reflections?: unknown } | undefined)?.reflections === r) delete w.__sectReflect;
     };
   }, [tier, debug, gl, store]);
-  const qualityKey = `${tier}|${quality.noCards ? "nc" : ""}|${quality.standIns ? "si" : ""}|${quality.lowTextures ? "lt" : ""}`;
+  const qualityKey = `${tier}|${quality.standIns ? "si" : ""}|${quality.lowTextures ? "lt" : ""}`;
   // The whole frame's GPU time (debug "frame" mode): from before anything draws to after the composer.
   useFrame(() => {
     const t = probe.current.timer;
@@ -1966,7 +1949,7 @@ function Reflections({ sets, quality, ctx, store, debug }: { sets: LoadedSet[]; 
       now: performance.now(),
       dt: delta * 1000,
       quality: qualityKey,
-      lean: quality.standIns === true || quality.noCards === true,
+      lean: quality.standIns === true,
       snap: store.inked,
     });
     store.report.reflection = st?.settling ?? false;
@@ -2690,7 +2673,7 @@ function SectCanvas(props: SectCanvasProps) {
   const climbScale = ceiling ? climbCost(quality, ceiling, screenDpr) : null;
   const climbAtRest = ceiling ? climbRebuildsPipeline(quality, ceiling, screenDpr) : false;
   useEffect(() => {
-    store.qualityLabel = `${quality.post ? "post" : "plain"} · msaa ${quality.msaa} · bloom ${quality.bloom ? "on" : "off"} · ${quality.lowTextures ? "2k" : "4k"} textures${quality.liveLight ? " · live" : ""}${quality.vegShells ? " · shells" : ""}${quality.standIns ? " · stand-ins" : ""}${quality.noCards ? " · no cards" : ""}${quality.maxFps > 0 ? ` · ${quality.maxFps} fps cap` : ""}${quality.farFull ? " · far" : ""}`;
+    store.qualityLabel = `${quality.post ? "post" : "plain"} · msaa ${quality.msaa} · bloom ${quality.bloom ? "on" : "off"} · ${quality.lowTextures ? "2k" : "4k"} textures${quality.liveLight ? " · live" : ""}${quality.vegShells ? " · shells" : ""}${quality.standIns ? " · stand-ins" : ""}${quality.maxFps > 0 ? ` · ${quality.maxFps} fps cap` : ""}${quality.farFull ? " · far" : ""}`;
     wake(store, 600);
   }, [quality, store]);
 
@@ -2742,7 +2725,6 @@ function SectCanvas(props: SectCanvasProps) {
         streamer={streamer}
         post={quality.post}
         standIns={quality.standIns}
-        noCards={quality.noCards}
         farFull={quality.farFull === true}
         onGlobalReady={onGlobalReady}
       />

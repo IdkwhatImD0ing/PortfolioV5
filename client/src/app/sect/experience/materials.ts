@@ -391,7 +391,8 @@ uniform vec3 uSectEnvSunColor;
 uniform vec3 uSectEnvGround;
 uniform vec3 uSectEnvMountains;
 vec3 sectEnvSky( vec3 d, float blur ) {
-  float h = max( d.y, 0.0 );
+  // Held to 1: a reflected ray's y can round to just over 1, and asin of that is not a number.
+  float h = clamp( d.y, 0.0, 1.0 );
   float az = atan( d.z, d.x );
   vec3 col;
   if ( uSectSkyOn > 0.5 ) {
@@ -402,7 +403,9 @@ vec3 sectEnvSky( vec3 d, float blur ) {
   }
   vec3 sunH = normalize( vec3( uSectEnvSunDir.x, 0.0, uSectEnvSunDir.z ) );
   vec3 dh = normalize( vec3( d.x, 0.0, d.z ) + vec3( 1e-5, 0.0, 0.0 ) );
-  float sunSide = dot( dh, sunH ) * 0.5 + 0.5;
+  // Held to 0..1 (lib/sect/glsl.ts POW_BASE_NOTE): straight away from the sun the dot rounds to just
+  // under -1, and pow of the negative base below is not a number on a Mac.
+  float sunSide = clamp( dot( dh, sunH ) * 0.5 + 0.5, 0.0, 1.0 );
   vec3 grad = mix( uSectEnvHorizon, uSectEnvMid, smoothstep( 0.03, 0.22, h ) );
   grad = mix( grad, uSectEnvZenith, smoothstep( 0.18, 0.75, h ) );
   grad = mix( grad, uSectEnvSunHorizon, pow( sunSide, 4.0 ) * ( 1.0 - smoothstep( 0.0, 0.45, h ) ) );
@@ -1185,7 +1188,8 @@ export function patchMaterial(mat: Material, opts: PatchOptions): void {
           "  if ( uSectHighlight > 0.001 ) {",
           "    vec3 sectFn = normalize( cross( dFdx( vSectWorld ), dFdy( vSectWorld ) ) );",
           "    vec3 sectV = normalize( cameraPosition - vSectWorld );",
-          "    float sectFr = pow( 1.0 - abs( dot( sectFn, sectV ) ), 2.0 );",
+          // min: seen square on, the dot of the two unit vectors rounds to just over 1 (glsl.ts POW_BASE_NOTE).
+          "    float sectFr = pow( 1.0 - min( abs( dot( sectFn, sectV ) ), 1.0 ), 2.0 );",
           "    gl_FragColor.rgb = mix( gl_FragColor.rgb, gl_FragColor.rgb * 0.88 + uSectHover * 0.22, uSectHighlight * 0.6 );",
           "    gl_FragColor.rgb += uSectHover * sectFr * uSectHighlight * 1.6;",
           "  }",
@@ -1562,7 +1566,8 @@ void main() {
   float h = clamp( d.y, 0.0, 1.0 );
   vec3 sunH = normalize( vec3( SECT_SUN_DIR.x, 0.0, SECT_SUN_DIR.z ) );
   vec3 dh = normalize( vec3( d.x, 0.0, d.z ) + vec3( 1e-5, 0.0, 0.0 ) );
-  float sunSide = dot( dh, sunH ) * 0.5 + 0.5;
+  // Held to 0..1, as in sectEnvSky (lib/sect/glsl.ts POW_BASE_NOTE).
+  float sunSide = clamp( dot( dh, sunH ) * 0.5 + 0.5, 0.0, 1.0 );
   vec3 grad = mix( uLookHorizon, uLookMid, smoothstep( 0.03, 0.22, h ) );
   grad = mix( grad, uLookZenith, smoothstep( 0.18, 0.75, h ) );
   grad = mix( grad, uLookSun, pow( sunSide, 4.0 ) * ( 1.0 - smoothstep( 0.0, 0.45, h ) ) );
@@ -2676,7 +2681,9 @@ void main() {
   if ( vLook.z >= 0.0 ) {
     // lib/sect/idle.ts wave( t, period, i, n ) for station phase i / n.
     float w = fract( uTime / ${glslFloat(F.wave.period)} - vLook.z );
-    float lit = w < ${glslFloat(F.wave.width)} ? pow( sin( 3.14159265 * w / ${glslFloat(F.wave.width)} ), 2.0 ) : 0.0;
+    // Squared by hand, not pow: at the end of the wave the sine can come out a hair under 0 (glsl.ts POW_BASE_NOTE).
+    float litS = sin( 3.14159265 * w / ${glslFloat(F.wave.width)} );
+    float lit = w < ${glslFloat(F.wave.width)} ? litS * litS : 0.0;
     a *= vLook.w + ( 1.0 - vLook.w ) * lit * uMotion;
   }
   a *= sectSoftFade( vViewZ, vShape.w );

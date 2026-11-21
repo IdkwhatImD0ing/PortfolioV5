@@ -268,7 +268,7 @@ describe("FrameLadder", () => {
 });
 
 /** Every field the ladder can change. The optional flags read absent as false. */
-const LADDER_FIELDS = ["maxDpr", "msaa", "bloom", "post", "lowTextures", "maxFps", "standIns", "noCards", "vegShells", "liveLight", "farFull"] as const;
+const LADDER_FIELDS = ["maxDpr", "msaa", "bloom", "post", "lowTextures", "maxFps", "standIns", "vegShells", "liveLight", "farFull"] as const;
 
 const STEP_NAMES: Record<Exclude<(typeof LADDER_FIELDS)[number], "maxDpr">, string> = {
   msaa: "msaa",
@@ -277,7 +277,6 @@ const STEP_NAMES: Record<Exclude<(typeof LADDER_FIELDS)[number], "maxDpr">, stri
   lowTextures: "textures",
   maxFps: "fps",
   standIns: "stand-ins",
-  noCards: "no cards",
   vegShells: "shells",
   liveLight: "live",
   farFull: "far",
@@ -333,10 +332,10 @@ describe("the quality ladder: live light and the crown shells", () => {
   it("a High the page picked loses resolution, then live light, then the shells, then the rest, in order", () => {
     // A 2x screen: High at 1.5x with 2x MSAA.
     const sharp = walkDown(tierQuality("high", 2), 2);
-    expect(sharp.steps).toEqual(["dpr", "dpr", "live", "shells", "msaa", "bloom", "scale", "stand-ins", "no cards", "fps"]);
+    expect(sharp.steps).toEqual(["dpr", "dpr", "live", "shells", "msaa", "bloom", "scale", "stand-ins", "fps"]);
     // A 1x screen: no resolution to give, so live light goes first; 4x MSAA comes off in two steps.
     const plain = walkDown(tierQuality("high", 1), 1);
-    expect(plain.steps).toEqual(["live", "shells", "msaa", "msaa", "bloom", "scale", "stand-ins", "no cards", "fps"]);
+    expect(plain.steps).toEqual(["live", "shells", "msaa", "msaa", "bloom", "scale", "stand-ins", "fps"]);
     // Each new step changes only its own flag; resolution is already at 1x when live light goes.
     const [, , atOne, liveOff, shellsOff] = sharp.states;
     expect(effectiveDpr(atOne, 2)).toBe(1);
@@ -352,7 +351,6 @@ describe("the quality ladder: live light and the crown shells", () => {
         bloom: false,
         maxDpr: RENDER_SCALE_MIN,
         standIns: true,
-        noCards: true,
         maxFps: CAPPED_FPS,
         post: true,
         lowTextures: false,
@@ -374,13 +372,32 @@ describe("the quality ladder: live light and the crown shells", () => {
     expect(degradeQuality(atOne, 2, { keepLook: true })).toEqual({ ...atOne, maxDpr: RENDER_SCALE_MIN });
   });
 
+  it("no step ever takes the trees: every tier's walk to the bottom leaves the tree cards drawn", () => {
+    // Until 2026-11-20 a step after the stand-ins stopped drawing the tree cards. Every far forest
+    // went, and the ground under them, which the bake leaves nearly black, showed as black holes in
+    // the mist (docs/sect/render-probe.md).
+    const tops = [
+      [tierQuality("high", 2, { holdsAll: true }), 2],
+      [tierQuality("high", 1), 1],
+      [tierQuality("mid", 2, { appleGpu: true }), 2],
+      [tierQuality("mid", 1), 1],
+      [tierQuality("low", 3, { coarse: true }), 3],
+    ] as const;
+    for (const [top, dpr] of tops) {
+      const w = walkDown(top, dpr);
+      expect(w.steps.at(-2)).toBe("stand-ins");
+      expect(w.steps.at(-1)).toBe("fps");
+      for (const q of w.states) expect(Object.keys(q)).not.toContain("noCards");
+    }
+  });
+
   it("Medium and Low never had them, so their walks down and back are as before", () => {
     const cases = [
-      { name: "desktop Medium", top: tierQuality("mid", 1), dpr: 1, down: ["bloom", "scale", "stand-ins", "no cards", "fps"] },
-      { name: "touch Medium", top: tierQuality("mid", 2, { coarse: true }), dpr: 2, down: ["dpr", "dpr", "bloom", "scale", "stand-ins", "no cards", "fps"] },
-      { name: "Safari Medium", top: tierQuality("mid", 2, { appleGpu: true }), dpr: 2, down: ["dpr", "dpr", "bloom", "scale", "stand-ins", "no cards", "fps"] },
-      { name: "desktop Low", top: tierQuality("low", 1), dpr: 1, down: ["scale", "stand-ins", "no cards", "fps"] },
-      { name: "phone Low", top: tierQuality("low", 3, { coarse: true }), dpr: 3, down: ["dpr", "dpr", "scale", "stand-ins", "no cards", "fps"] },
+      { name: "desktop Medium", top: tierQuality("mid", 1), dpr: 1, down: ["bloom", "scale", "stand-ins", "fps"] },
+      { name: "touch Medium", top: tierQuality("mid", 2, { coarse: true }), dpr: 2, down: ["dpr", "dpr", "bloom", "scale", "stand-ins", "fps"] },
+      { name: "Safari Medium", top: tierQuality("mid", 2, { appleGpu: true }), dpr: 2, down: ["dpr", "dpr", "bloom", "scale", "stand-ins", "fps"] },
+      { name: "desktop Low", top: tierQuality("low", 1), dpr: 1, down: ["scale", "stand-ins", "fps"] },
+      { name: "phone Low", top: tierQuality("low", 3, { coarse: true }), dpr: 3, down: ["dpr", "dpr", "scale", "stand-ins", "fps"] },
     ];
     for (const { name, top, dpr, down } of cases) {
       expect(top, name).toMatchObject({ liveLight: false, vegShells: false });
@@ -396,12 +413,12 @@ describe("the quality ladder: live light and the crown shells", () => {
     const top = tierQuality("high", 2);
     const down = walkDown(top, 2);
     const up = walkUp(down.end, top, 2);
-    expect(up.steps).toEqual(["fps", "no cards", "stand-ins", "scale", "bloom", "msaa", "shells", "live", "dpr", "dpr"]);
+    expect(up.steps).toEqual(["fps", "stand-ins", "scale", "bloom", "msaa", "shells", "live", "dpr", "dpr"]);
     expect(up.steps).toEqual([...down.steps].reverse());
     // 4x MSAA on a 1x screen: both MSAA steps come back before the shells.
     const top1 = tierQuality("high", 1);
     const up1 = walkUp(walkDown(top1, 1).end, top1, 1);
-    expect(up1.steps).toEqual(["fps", "no cards", "stand-ins", "scale", "bloom", "msaa", "msaa", "shells", "live"]);
+    expect(up1.steps).toEqual(["fps", "stand-ins", "scale", "bloom", "msaa", "msaa", "shells", "live"]);
     // Only when the tier's own quality has them.
     const mid = tierQuality("mid", 1);
     expect(upgradeQuality({ ...mid, liveLight: false, vegShells: false }, mid, 1)).toBeNull();
@@ -423,8 +440,8 @@ describe("the quality ladder: live light and the crown shells", () => {
       [tierQuality("high", 2), 2],
     ] as const) {
       const end = walkUp(walkDown(top, dpr).end, top, dpr).end;
-      // standIns and noCards come back as false rather than absent: the same thing.
-      expect(end).toEqual({ ...top, standIns: false, noCards: false });
+      // standIns comes back as false rather than absent: the same thing.
+      expect(end).toEqual({ ...top, standIns: false });
     }
     // Under 1.5x the screen cannot show the tier's 1.5x cap, so the climb stops at the screen's own
     // ratio: the same pixels, everything else exactly as before.
@@ -432,7 +449,7 @@ describe("the quality ladder: live light and the crown shells", () => {
       const top = tierQuality("high", dpr);
       const end = walkUp(walkDown(top, dpr).end, top, dpr).end;
       expect(effectiveDpr(end, dpr)).toBe(effectiveDpr(top, dpr));
-      expect({ ...end, maxDpr: 0 }).toEqual({ ...top, maxDpr: 0, standIns: false, noCards: false });
+      expect({ ...end, maxDpr: 0 }).toEqual({ ...top, maxDpr: 0, standIns: false });
     }
   });
 });
@@ -568,7 +585,7 @@ describe("the quality ladder: far places in full", () => {
       expect(w.steps.slice(1), `${dpr}x`).toEqual(plain.steps);
       expect(w.states.slice(1), `${dpr}x`).toEqual(plain.states);
     }
-    expect(walkDown(tierQuality("high", 2, { holdsAll: true }), 2).steps).toEqual(["far", "dpr", "dpr", "live", "shells", "msaa", "bloom", "scale", "stand-ins", "no cards", "fps"]);
+    expect(walkDown(tierQuality("high", 2, { holdsAll: true }), 2).steps).toEqual(["far", "dpr", "dpr", "live", "shells", "msaa", "bloom", "scale", "stand-ins", "fps"]);
   });
 
   it("goes first for a tier the visitor picked too, which then loses only resolution as before", () => {
@@ -593,7 +610,7 @@ describe("the quality ladder: far places in full", () => {
       expect(up.steps, `${dpr}x`).not.toContain("far");
       for (const q of up.states) expect(q.farFull, `${dpr}x`).toBe(false);
       // Everything else is the tier's own again.
-      expect({ ...up.end, maxDpr: 0 }, `${dpr}x`).toEqual({ ...top, maxDpr: 0, farFull: false, standIns: false, noCards: false });
+      expect({ ...up.end, maxDpr: 0 }, `${dpr}x`).toEqual({ ...top, maxDpr: 0, farFull: false, standIns: false });
       // Right after the step: nothing to climb, so the ladder neither probes nor rebuilds for it.
       const after = { ...top, farFull: false };
       expect(upgradeQuality(after, top, dpr), `${dpr}x`).toBeNull();

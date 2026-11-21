@@ -734,7 +734,8 @@ vec3 sectWetRock( vec3 col, vec3 p ) {
   float l = dot( col, vec3( 0.2126, 0.7152, 0.0722 ) );
   vec3 wet = max( mix( vec3( l ), col, ${glslFloat(1 + WET.saturate)} ), 0.0 ) * ${glslFloat(WET.dark)};
   float spec = pow( max( dot( reflect( - v, n ), uWetSun ), 0.0 ), 24.0 );
-  float fres = pow( 1.0 - max( dot( n, v ), 0.0 ), 5.0 );
+  // clamp, not max: where the facet faces the camera the dot rounds to just over 1 (glsl.ts POW_BASE_NOTE).
+  float fres = pow( 1.0 - clamp( dot( n, v ), 0.0, 1.0 ), 5.0 );
   wet += uWetSheen * ( ${glslFloat(WET.sheen)} * ( 0.35 + 0.65 * drip ) * ( spec * 0.8 + fres * 0.2 ) + ${glslFloat(WET.gloss)} );
   return mix( col, wet, w );
 }

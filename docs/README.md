@@ -21,6 +21,7 @@ listed under "Kept beside the code".
 - [`sect/smooth-flight.md`](sect/smooth-flight.md): What made the flight stutter on the real visitor path, how is smoothness measured (the visitor flight on a production build), and what do the GPU queue, banded uploads, the Enter wait and the worker decode do?
 - [`sect/background-fill.md`](sect/background-fill.md): What does it cost to hold every place, and to draw every place? Who gets the background loading after Enter, how does it stay out of the way, and why did a far pillar lose its rock? And what does a far place drawn in full have, what does it cost stop by stop, and when does the quality ladder take it off (`?far=0` to compare)?
 - [`sect/music-volume-slider.md`](sect/music-volume-slider.md): When does the music volume slider show, and when does it hide?
+- [`sect/render-probe.md`](sect/render-probe.md): Why were there black holes in the mist (the quality ladder stopped drawing the trees), what else was guarded on the way (a Mac's pow), and how do I look at the page on a machine I cannot sit at, turned and at any quality step (the render probe, the compare script, the Mac job)?
 - [`content/profile-content.md`](content/profile-content.md): Which career, education and hackathon facts are confirmed, and how must they be worded?
 - [`content/project-modal.md`](content/project-modal.md): Where do project cards and the forge reader get their data, and when may a project show an award?
 

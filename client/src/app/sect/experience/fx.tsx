@@ -429,7 +429,7 @@ void main() {
     float flicker = 0.85 + 0.1 * sin( uTime * 7.3 + vPhase ) + 0.06 * sin( uTime * 13.1 + 1.7 + vPhase * 2.3 );
     col = uCore * exp( - q * q * 4.5 ) * 1.25 * flicker * uGlow;
   } else {
-    float a = ( 1.0 - smoothstep( 0.2, 1.0, q ) ) * pow( 1.0 - vLife, 1.4 );
+    float a = ( 1.0 - smoothstep( 0.2, 1.0, q ) ) * pow( max( 1.0 - vLife, 0.0 ), 1.4 );
     col = mix( uHot, uCore, vLife ) * a * 3.0;
   }
   // Linear light, added unencoded (as the moon's halo, materials.ts createGlowMaterial): straight
@@ -609,7 +609,7 @@ ${SCREEN_GRADE_PARS}
 void main() {
   float q = length( vUv );
   if ( q > 1.0 ) discard;
-  float a = exp( - q * q * 3.0 ) * smoothstep( 0.0, 0.12, vLife ) * pow( 1.0 - vLife, 1.6 ) * 0.32;
+  float a = exp( - q * q * 3.0 ) * smoothstep( 0.0, 0.12, vLife ) * pow( max( 1.0 - vLife, 0.0 ), 1.6 ) * 0.32;
   gl_FragColor = vec4( uColor, a );
 ${SCREEN_GRADE_GLSL}
   #include <colorspace_fragment>

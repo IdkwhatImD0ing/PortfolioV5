@@ -233,7 +233,8 @@ void mainImage( const in vec4 inputColor, const in vec2 uv, const in float depth
   vec3 b = - 4.7951 * alb + 0.6417;
   vec3 c = 2.7552 * alb + 0.6903;
   vec3 mb = max( vec3( vis ), ( ( vis * a + b ) * vis + c ) * vis );
-  vec3 m = pow( 1.0 - k * ( 1.0 - min( mb, vec3( 1.0 ) ) ), AO_TINT );
+  // max: k is under 1 at today's strength, and a look that raised it past 1 must not hand pow a negative base.
+  vec3 m = pow( max( 1.0 - k * ( 1.0 - min( mb, vec3( 1.0 ) ) ), 0.0 ), AO_TINT );
   outputColor = vec4( inputColor.rgb * m, inputColor.a );
 }
 `;
