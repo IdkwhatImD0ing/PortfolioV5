@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { fogChunks, fogConstantsFromMeta, nonFiniteGlsl, POW_BASE_NOTE } from "./glsl";
+import { fogChunks, fogConstantsFromMeta, lookFrameGradeGlsl, nonFiniteGlsl, POW_BASE_NOTE } from "./glsl";
+import { FRAME_LOOK, frameGradeGlsl } from "./looks";
 import { parseMeta } from "./parse";
 
 /**
@@ -62,5 +63,21 @@ describe(POW_BASE_NOTE, () => {
     }
     expect(src("lib/sect/veg.ts")).toContain("float facing = min( abs( dot( Ns, V ) ), 1.0 );");
     expect(src("lib/sect/waterfall.ts")).toContain("pow( 1.0 - clamp( dot( n, v ), 0.0, 1.0 ), 5.0 )");
+  });
+
+  it("the frame grade keeps every pow base off 0 and picks the over-range channel instead of mixing it", () => {
+    // In Safari's engine a channel at 1 or over came out of the grade not a number: bright cloud lost
+    // that channel (cyan, yellow and red patches, black where all three went). Chrome on the same
+    // Mac and Windows drew it right, so nothing here would show these lines going back.
+    const texts = [lookFrameGradeGlsl("sectLookGrade", "uSectLook", 10), frameGradeGlsl(FRAME_LOOK.grade)];
+    for (const fs of texts) {
+      expect(fs).toContain("pow( max( x / p, 1e-6 ), k )");
+      expect(fs).toContain("pow( max( ( 1.0 - x ) / ( 1.0 - p ), 1e-6 ), k )");
+      expect(fs).toContain("pow( clamp( c, 1e-6, 1.0 ), vec3( 0.45454545 ) )");
+      expect(fs).toContain("pow( clamp( dot( c, luma ), 1e-6, 1.0 ), 0.45454545 )");
+      expect(fs).toContain("pow( max( 1.0 - v2, 1e-6 ), 4.0 )");
+      expect(fs).toContain("c = vec3( c.r >= 1.0 ? c.r : cc.r, c.g >= 1.0 ? c.g : cc.g, c.b >= 1.0 ? c.b : cc.b );");
+      expect(fs).not.toContain("step( vec3( 1.0 ), c )");
+    }
   });
 });

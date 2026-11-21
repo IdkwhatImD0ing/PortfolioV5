@@ -8,7 +8,8 @@ name: Mac render probe
 # - "live site": the site as it is deployed (the before).
 # - "this branch": this branch's client, built and opened on the runner (the after). The baked scene
 #   files are Git LFS pointers here, so the probe borrows those from the live site (read-only, no
-#   LFS bandwidth).
+#   LFS bandwidth). It also asks each browser what it makes of a few shader expressions
+#   (scripts/shader-quirks.mjs).
 # Nothing else leaves the runner: the probe blocks the backend, Pusher, analytics and every other host.
 #
 # Manual, plus pushes to a branch that is chasing a Mac-only bug.
@@ -30,14 +31,13 @@ on:
     paths:
       - "client/src/**"
       - "client/scripts/render-probe.mjs"
+      - "client/scripts/shader-quirks.mjs"
       - ".github/workflows/mac-render-probe.yml"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   SITE: ${{ inputs.site || 'https://art3m1s.me' }}
   FRAMES: ${{ inputs.frames }}
-  # Four stops for the runs that switch one feature off: gate, arena, formation, summit.
-  FEW: "93,516,1208,1647"
   OUT: ${{ github.workspace }}/render-probe-out
   PLAYWRIGHT_CORE: ${{ github.workspace }}/.probe/node_modules/playwright-core
   CHROME: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
@@ -46,7 +46,7 @@ jobs:
   live:
     name: Live site on macOS
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: client
@@ -74,38 +74,17 @@ jobs:
           node .probe/node_modules/playwright-core/cli.js install webkit
 
       # Each run is one browser at one quality. A run that fails must not stop the others.
-      - name: Chrome on Metal, High (an Apple-silicon Mac in Chrome)
-        if: always()
-        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra far=0 --label live-chrome-high --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
-
-      - name: Chrome on Metal, High with far places in full (a 10-core Mac in Chrome)
-        if: always()
-        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra far=1 --label live-chrome-high-far --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
-
-      - name: Chrome on Metal, Medium
-        if: always()
-        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier mid --label live-chrome-mid --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
-
       - name: WebKit (Safari's engine), the page's own pick, 2x screen
         if: always()
         run: node scripts/render-probe.mjs --base "$SITE" --engine webkit --dsf 2 --label live-webkit-auto --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
 
-      # Which feature draws it: the same four stops with one thing off at a time.
-      - name: Chrome High without the lux passes (contact shade, sun shafts, finish)
+      - name: Chrome on Metal, High (an Apple-silicon Mac in Chrome)
         if: always()
-        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra "far=0&lux=0" --label live-chrome-high-nolux --frames "$FEW" --out "$OUT" || true
+        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra far=0 --label live-chrome-high --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
 
-      - name: Chrome High without the crown shells
+      - name: Chrome on Metal, Medium
         if: always()
-        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra "far=0&veg=0" --label live-chrome-high-noveg --frames "$FEW" --out "$OUT" || true
-
-      - name: Chrome High without live light
-        if: always()
-        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra "far=0&live=0" --label live-chrome-high-nolive --frames "$FEW" --out "$OUT" || true
-
-      - name: Chrome High, the sun shafts alone
-        if: always()
-        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier high --extra "far=0&lux=shafts" --label live-chrome-high-shafts --frames "$FEW" --out "$OUT" || true
+        run: node scripts/render-probe.mjs --base "$SITE" --exe "$CHROME" --angle metal --tier mid --label live-chrome-mid --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
 
       - name: Upload the pictures and counts
         if: always()
@@ -119,7 +98,7 @@ jobs:
   branch:
     name: This branch on macOS
     runs-on: macos-15
-    timeout-minutes: 60
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: client
@@ -139,6 +118,26 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: client/pnpm-lock.yaml
 
+      - name: Install the probe's browser driver
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p .probe
+          npm install --prefix .probe --no-audit --no-fund playwright-core@1.62.0
+          node .probe/node_modules/playwright-core/cli.js install webkit
+
+      # What each browser makes of the shader expressions GLSL leaves open (seconds, no site needed).
+      - name: Shader quirks, WebKit
+        if: always()
+        run: |
+          mkdir -p "$OUT"
+          node scripts/shader-quirks.mjs --engine webkit | tee "$OUT/shader-quirks-webkit.txt" || true
+
+      - name: Shader quirks, Chrome on Metal
+        if: always()
+        run: |
+          mkdir -p "$OUT"
+          node scripts/shader-quirks.mjs --exe "$CHROME" --angle metal | tee "$OUT/shader-quirks-chrome.txt" || true
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -155,28 +154,17 @@ jobs:
           cat "$RUNNER_TEMP/site.log"
           exit 1
 
-      - name: Install the probe's browser driver
-        working-directory: ${{ github.workspace }}
-        run: |
-          mkdir -p .probe
-          npm install --prefix .probe --no-audit --no-fund playwright-core@1.62.0
-          node .probe/node_modules/playwright-core/cli.js install webkit
+      - name: WebKit (Safari's engine), the page's own pick, 2x screen
+        if: always()
+        run: node scripts/render-probe.mjs --base http://localhost:3000 --assets "$SITE" --engine webkit --dsf 2 --label branch-webkit-auto --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
 
       - name: Chrome on Metal, High
         if: always()
         run: node scripts/render-probe.mjs --base http://localhost:3000 --assets "$SITE" --exe "$CHROME" --angle metal --tier high --extra far=0 --label branch-chrome-high --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
 
-      - name: Chrome on Metal, High with far places in full
-        if: always()
-        run: node scripts/render-probe.mjs --base http://localhost:3000 --assets "$SITE" --exe "$CHROME" --angle metal --tier high --extra far=1 --label branch-chrome-high-far --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
-
       - name: Chrome on Metal, Medium
         if: always()
         run: node scripts/render-probe.mjs --base http://localhost:3000 --assets "$SITE" --exe "$CHROME" --angle metal --tier mid --label branch-chrome-mid --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
-
-      - name: WebKit (Safari's engine), the page's own pick, 2x screen
-        if: always()
-        run: node scripts/render-probe.mjs --base http://localhost:3000 --assets "$SITE" --engine webkit --dsf 2 --label branch-webkit-auto --out "$OUT" ${FRAMES:+--frames "$FRAMES"} || true
 
       - name: Upload the pictures and counts
         if: always()

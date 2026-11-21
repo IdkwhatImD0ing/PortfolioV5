@@ -397,7 +397,8 @@ export function lookFrameGradeGlsl(name: string, array: string, base: number): s
   return /* glsl */ `
 float ${name}Curve( float v, float p, float k ) {
   float x = clamp( v, 0.0, 1.0 );
-  return x < p ? p * pow( x / p, k ) : 1.0 - ( 1.0 - p ) * pow( ( 1.0 - x ) / ( 1.0 - p ), k );
+  // The bases are kept off 0 (POW_BASE_NOTE): a channel at 1 or over lands on pow( 0.0, k ) here.
+  return x < p ? p * pow( max( x / p, 1e-6 ), k ) : 1.0 - ( 1.0 - p ) * pow( max( ( 1.0 - x ) / ( 1.0 - p ), 1e-6 ), k );
 }
 ${warmKeepGlsl(`${name}Warm`)}
 vec3 ${name}( vec3 c0 ) {
@@ -415,15 +416,17 @@ vec3 ${name}( vec3 c0 ) {
   vec3 c = x0 * a.y * bal.rgb;
   // The curve on each channel (a channel over 1 keeps its value): like film, the mids gain colour
   // and the lights go toward white instead of toward a hotter hue.
-  vec3 cv = pow( min( c, 1.0 ), vec3( 0.45454545 ) );
+  vec3 cv = pow( clamp( c, 1e-6, 1.0 ), vec3( 0.45454545 ) );
   vec3 cc = pow( vec3( ${name}Curve( cv.r, a.w, a.z ), ${name}Curve( cv.g, a.w, a.z ), ${name}Curve( cv.b, a.w, a.z ) ), vec3( 2.2 ) );
-  c = mix( cc, c, step( vec3( 1.0 ), c ) );
+  // Picked, not mixed: mix( cc, c, 1.0 ) still multiplies cc by 0, and 0 times a number that is not
+  // one is not one either. In Safari's engine that took the channel (docs/sect/render-probe.md).
+  c = vec3( c.r >= 1.0 ? c.r : cc.r, c.g >= 1.0 ? c.g : cc.g, c.b >= 1.0 ? c.b : cc.b );
   // The split tone and the lift, by display luminance.
-  float v2 = pow( min( dot( c, luma ), 1.0 ), 0.45454545 );
+  float v2 = pow( clamp( dot( c, luma ), 1e-6, 1.0 ), 0.45454545 );
   float ws = 1.0 - smoothstep( sp.x - sp.y, sp.x + sp.y, v2 );
   c *= mix( vec3( 1.0 ), sh.rgb, sh.w * ws ) * mix( vec3( 1.0 ), hi.rgb, hi.w * ( 1.0 - ws ) );
-  // max: v2 is itself a pow and can come out a hair over 1 (POW_BASE_NOTE).
-  c += lift.rgb * ( lift.w * pow( max( 1.0 - v2, 0.0 ), 4.0 ) );
+  // max: v2 is itself a pow and can come out a hair over 1, and the base is kept off 0 (POW_BASE_NOTE).
+  c += lift.rgb * ( lift.w * pow( max( 1.0 - v2, 1e-6 ), 4.0 ) );
   float red = smoothstep( 0.45, 0.7, ( c.r - max( c.g, c.b ) ) / max( c.r, 1e-4 ) );
   float sat = mix( bal.w, sp.z, red );
   float lc = dot( c, luma );
