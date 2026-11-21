@@ -209,6 +209,52 @@ function readBuffers() {
   return list;
 }
 
+/**
+ * In the page: the canvas's own pixels, read with readPixels right after the frame's last draw
+ * (the drawing buffer is only valid until the browser shows it). Counts the pixels where one
+ * channel is near 0 while the others are bright, as `crushed`: a screenshot can show such patches
+ * that the canvas does not have, when the browser converts colour spaces on the way to the file
+ * and lets a channel run past 255 (seen in WebKit on a Mac runner, 2026-11-20). `full` is the
+ * count of channels at 255.
+ */
+function readCanvas() {
+  return new Promise((resolve) => {
+    const s = window.__sect;
+    const gl = s.gl;
+    const ctx = gl.getContext();
+    const orig = gl.render;
+    const done = (v) => {
+      gl.render = orig;
+      resolve(v);
+    };
+    const timer = setTimeout(() => done({ error: "no frame was drawn to the canvas" }), 5000);
+    gl.render = function (...args) {
+      const out = orig.apply(this, args);
+      if (gl.getRenderTarget() !== null) return out;
+      clearTimeout(timer);
+      const w = ctx.drawingBufferWidth;
+      const h = ctx.drawingBufferHeight;
+      const px = new Uint8Array(w * h * 4);
+      ctx.readPixels(0, 0, w, h, ctx.RGBA, ctx.UNSIGNED_BYTE, px);
+      let cyan = 0, magenta = 0, yellow = 0, red = 0, black = 0, full = 0;
+      for (let i = 0; i < px.length; i += 4) {
+        const r = px[i], g = px[i + 1], b = px[i + 2];
+        if (r < 30 && g > 200 && b > 200) cyan++;
+        else if (g < 30 && r > 200 && b > 200) magenta++;
+        else if (b < 30 && r > 200 && g > 200) yellow++;
+        else if (r > 200 && g < 30 && b < 30) red++;
+        if (r < 4 && g < 4 && b < 4) black++;
+        if (r === 255) full++;
+        if (g === 255) full++;
+        if (b === 255) full++;
+      }
+      done({ w, h, crushed: cyan + magenta + yellow + red, cyan, magenta, yellow, red, black, full, readError: ctx.getError() });
+      return out;
+    };
+    s.store.wakeUntil = performance.now() + 3000;
+  });
+}
+
 const results = [];
 let failedInARow = 0;
 for (const frame of frames) {
@@ -249,6 +295,7 @@ for (const frame of frames) {
     }
     r.info = await page.evaluate(readInfo);
     r.buffers = await page.evaluate(readBuffers);
+    r.canvas = await page.evaluate(readCanvas);
     r.shot = `${label}-f${frame}.png`;
     await page.screenshot({ path: path.join(out, r.shot) });
     failedInARow = 0;
@@ -270,6 +317,7 @@ for (const frame of frames) {
       r.error ? `ERROR ${r.error.slice(0, 160)}` : "",
       r.info ? `${r.info.renderer.slice(0, 60)} | ${r.info.quality}` : "",
       b ? `nan ${b.nan} inf ${b.inf} neg ${b.neg} zero ${b.zero} alpha>1 ${b.aHigh} max ${b.max.toFixed(2)}` : "no buffer (no post pass on this tier)",
+      r.canvas ? (r.canvas.error ? `canvas: ${r.canvas.error}` : `canvas crushed ${r.canvas.crushed} black ${r.canvas.black} at-255 ${r.canvas.full}`) : "",
       r.logs.length ? `logs ${r.logs.length}` : "",
     ]
       .filter(Boolean)
