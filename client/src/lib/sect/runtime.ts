@@ -259,8 +259,6 @@ export interface Quality {
    * proxies), though they stay loaded. A ladder step for a tier the page picked (absent: false).
    */
   standIns?: boolean;
-  /** Tree cards (alpha-tested sprites and needle cards) are not drawn. A ladder step, as standIns. */
-  noCards?: boolean;
   /**
    * Far trees are drawn as lit crown shells (lib/sect/veg.ts) in place of the baked cards: High
    * only (absent: false). A ladder step for a tier the page picked, right after live light: off,
@@ -358,8 +356,14 @@ export interface DegradeOptions {
  * One step down the quality ladder: the far areas back to their stand-ins first (farFull), then
  * resolution (to 1x), then live light off (liveLight), then the crown shells off (vegShells), then
  * MSAA, then bloom, then the render scale (RENDER_SCALE_MIN), then the other areas as their
- * stand-ins (standIns), then the tree cards off (noCards), then the render rate (30 fps while
- * moving). Returns null at the bottom. The far areas go first: drawn in full they cost the most
+ * stand-ins (standIns), then the render rate (30 fps while moving). Returns null at the bottom.
+ *
+ * The trees are never a step. Until 2026-11-20 one came after the stand-ins that stopped drawing
+ * the tree cards: it saved about a fifth of the triangles left by then and a tenth of the draw
+ * calls, took every far forest with it, and bared the ground under them, which the bake leaves
+ * nearly black. The owner saw it as black holes in the mist (docs/sect/render-probe.md).
+ *
+ * The far areas go first: drawn in full they cost the most
  * (at the gate 550 to 1,077 draw calls, 8.9 M to 22 M triangles), and without them the page draws
  * what it drew before they came. Live light and the shells go before MSAA: live light costs the
  * most after them, and without both, High draws what Medium draws (the bake, the baked cards)
@@ -379,15 +383,14 @@ export function degradeQuality(q: Quality, devicePixelRatio: number, opts: Degra
   if (d > RENDER_SCALE_MIN) return { ...q, maxDpr: RENDER_SCALE_MIN };
   if (opts.keepLook) return null;
   if (!q.standIns) return { ...q, standIns: true };
-  if (!q.noCards) return { ...q, noCards: true };
   if ((q.maxFps === 0 || q.maxFps > CAPPED_FPS) && !capIsMoot(CAPPED_FPS, opts.cadenceMs ?? null)) return { ...q, maxFps: CAPPED_FPS };
   return null;
 }
 
 /**
  * One step back up toward the tier's own quality (`top`) once frames have room again, in the
- * reverse order of the steps down: the render-rate cap off, the tree cards back, the other areas
- * back, the render scale back to 1x, bloom, MSAA (to 2 samples, then the tier's own), the crown
+ * reverse order of the steps down: the render-rate cap off, the other areas back, the render
+ * scale back to 1x, bloom, MSAA (to 2 samples, then the tier's own), the crown
  * shells, live light, and last the resolution above 1x, 0.25 at a time. A feature comes back only
  * when `top` has it. Null when there is nothing to climb.
  *
@@ -397,7 +400,6 @@ export function degradeQuality(q: Quality, devicePixelRatio: number, opts: Degra
  */
 export function upgradeQuality(q: Quality, top: Quality, devicePixelRatio: number): Quality | null {
   if (q.maxFps > 0 && q.maxFps !== top.maxFps) return { ...q, maxFps: top.maxFps };
-  if (q.noCards && !top.noCards) return { ...q, noCards: false };
   if (q.standIns && !top.standIns) return { ...q, standIns: false };
   const d = effectiveDpr(q, devicePixelRatio);
   const t = effectiveDpr(top, devicePixelRatio);
@@ -411,8 +413,8 @@ export function upgradeQuality(q: Quality, top: Quality, devicePixelRatio: numbe
 }
 
 /**
- * The cost the ladder assumes for a climb that adds work rather than pixels (tree cards, the other
- * areas, bloom, MSAA, the crown shells, live light): the frame must be predicted to fit with this
+ * The cost the ladder assumes for a climb that adds work rather than pixels (the other areas,
+ * bloom, MSAA, the crown shells, live light): the frame must be predicted to fit with this
  * much more. The margin is the ladder's hysteresis there (a step comes back only with clear room,
  * not at the edge where it was dropped); a climb that still drops frames is undone and blocked for
  * a while (FrameLadder).

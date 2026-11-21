@@ -13,7 +13,7 @@
  */
 import { BlendFunction, Effect, EffectAttribute } from "postprocessing";
 import { Uniform, Vector3 } from "three";
-import { glslFloat } from "@/lib/sect/glsl";
+import { glslFloat, nonFiniteGlsl } from "@/lib/sect/glsl";
 import { LUX } from "@/lib/sect/lux";
 
 const FINISH_FRAGMENT = /* glsl */ `
@@ -41,13 +41,17 @@ void mainImage( const in vec4 inputColor, const in vec2 uv, out vec4 outputColor
     float edge = dot( raw - around * 0.25, luma );
     // Only in range: a glow's edge is bloom's business.
     float inRange = 1.0 - smoothstep( 0.9, 1.3, dot( raw, luma ) );
-    c += clamp( edge * uFinish.y, - FINISH_SHARPEN_MAX, FINISH_SHARPEN_MAX ) * inRange;
+    // A neighbour that is not a number must not take this pixel with it (lib/sect/glsl.ts POW_BASE_NOTE).
+    float sharp = edge * uFinish.y;
+    if ( ${nonFiniteGlsl("sharp", 1)} ) sharp = 0.0;
+    c += clamp( sharp, - FINISH_SHARPEN_MAX, FINISH_SHARPEN_MAX ) * inRange;
     c = max( c, 0.0 );
   }
   float l = dot( c, luma );
   if ( l < 1.0 ) {
     float v = pow( max( l, 0.0 ), 0.4545 );
-    float v2 = v * ( 1.0 - uFinish.x * pow( 1.0 - v, FINISH_TOE_POWER ) );
+    // max: v is a pow and can come out a hair over 1 just under l = 1 (lib/sect/glsl.ts POW_BASE_NOTE).
+    float v2 = v * ( 1.0 - uFinish.x * pow( max( 1.0 - v, 0.0 ), FINISH_TOE_POWER ) );
     float l2 = pow( v2, 2.2 );
     c *= l2 / max( l, 1e-5 );
     c = mix( vec3( l2 ), c, FINISH_SATURATION );

@@ -510,7 +510,7 @@ void main() {
     r = 0.04 + 0.035 * b;
   }
   // Bright at once, then cooling from yellow-white to a dull red as it dies.
-  float glow = smoothstep( 0.0, 0.06, life ) * pow( 1.0 - life, 1.3 );
+  float glow = smoothstep( 0.0, 0.06, life ) * pow( max( 1.0 - life, 0.0 ), 1.3 );
   vec4 mv = viewMatrix * vec4( p, 1.0 );
   // A spark under about 1.6 pixels draws at that size with the same light (dimmer per pixel).
   float px = 2.0 * max( - mv.z, 0.1 ) / ( projectionMatrix[ 1 ][ 1 ] * uViewH );

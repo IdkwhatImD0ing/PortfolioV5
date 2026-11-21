@@ -908,10 +908,9 @@ export function parseVegParam(search: string): VegSwitch {
 
 /**
  * Shells at a quality: the tier's own (Quality.vegShells, High only) unless ?veg= forces them on or
- * off. Never while the ladder has the tree cards off (noCards): the shells stand in for the cards.
+ * off.
  */
 export function vegShellsOn(q: Quality, sw: VegSwitch): boolean {
-  if (q.noCards) return false;
   if (sw !== null) return sw === "on";
   return q.vegShells === true;
 }
@@ -1265,7 +1264,9 @@ ${vegTurnGlsl()}
 void main() {
   vec3 V = normalize( cameraPosition - vVegWorld );
   vec3 Ns = normalize( vVegShellN );
-  float facing = abs( dot( Ns, V ) );
+  // Held to 1: where the crown faces the camera the dot of the two unit vectors rounds to just over
+  // 1, and the rim glow's pow( 1.0 - facing, .. ) below is then not a number (glsl.ts POW_BASE_NOTE).
+  float facing = min( abs( dot( Ns, V ) ), 1.0 );
   // A pixel's size on the crown along its shorter side: it stays small at the rim, where the surface is seen edge
   // on. Taken before the cut below, so every pixel of a quad still has its neighbours for the derivatives.
   float pxIso = max( min( length( dFdx( vVegLocal ) ), length( dFdy( vVegLocal ) ) ), 1e-5 );

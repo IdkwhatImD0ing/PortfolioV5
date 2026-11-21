@@ -25,11 +25,15 @@ describe("FinishEffect shader", () => {
     const fs = e.getFragmentShader();
     const toe = fs.indexOf("if ( l < 1.0 ) {");
     expect(toe).toBeGreaterThan(0);
-    expect(fs.indexOf("v * ( 1.0 - uFinish.x * pow( 1.0 - v, FINISH_TOE_POWER ) )")).toBeGreaterThan(toe);
+    // The toe's base is held at 0: v is itself a pow and can come out a hair over 1 (lib/sect/glsl.ts POW_BASE_NOTE).
+    expect(fs.indexOf("v * ( 1.0 - uFinish.x * pow( max( 1.0 - v, 0.0 ), FINISH_TOE_POWER ) )")).toBeGreaterThan(toe);
     expect(fs.indexOf("if ( uFinish.z > 0.0 ) {")).toBeGreaterThan(toe);
     // Sharpening stays out of glows (bloom's business) and is capped.
     expect(fs).toContain("1.0 - smoothstep( 0.9, 1.3, dot( raw, luma ) )");
-    expect(fs).toContain("clamp( edge * uFinish.y, - FINISH_SHARPEN_MAX, FINISH_SHARPEN_MAX )");
+    expect(fs).toContain("float sharp = edge * uFinish.y;");
+    expect(fs).toContain("clamp( sharp, - FINISH_SHARPEN_MAX, FINISH_SHARPEN_MAX )");
+    // A neighbour that is not a number leaves this pixel alone.
+    expect(fs).toContain("if ( ( ( floatBitsToUint( sharp ) & 0x7f800000u ) == 0x7f800000u ) ) sharp = 0.0;");
     e.dispose();
   });
 

@@ -43,6 +43,9 @@ describe("bloom", () => {
     const fs = bloom.luminanceMaterial.fragmentShader;
     expect(fs).not.toContain(LUMINANCE_LINE);
     expect(fs).toContain("float l=mix(luminance(texel.rgb),max(max(texel.r,texel.g),texel.b),0.6");
+    // A texel that is not a number is dropped before the threshold: the library multiplies the texel by
+    // its mask, NaN times 0 is NaN, and the mip chain spread one such pixel over a third of the frame.
+    expect(fs).toContain("if(any( equal( floatBitsToUint( texel ) & uvec4( 0x7f800000u ), uvec4( 0x7f800000u ) ) ))texel=vec4(0.0);float l=mix(");
     // A second call finds no line to swap: never a double mix.
     expect(glowPrefilter(bloom)).toBe(false);
     bloom.dispose();

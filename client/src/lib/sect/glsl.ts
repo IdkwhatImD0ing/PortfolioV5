@@ -39,6 +39,38 @@ export function glslVec3(v: Vec3): string {
   return `vec3( ${glslFloat(v[0])}, ${glslFloat(v[1])}, ${glslFloat(v[2])} )`;
 }
 
+/**
+ * Why every pow in these shaders gets a base that cannot go below zero, and why two places test
+ * for a colour that is not a number (docs/sect/render-probe.md has the story, 2026-11-20).
+ *
+ * GLSL leaves pow( x, y ) undefined for x < 0. What the browsers make of it, measured with
+ * scripts/shader-quirks.mjs on Windows (D3D11) and on a Mac (Metal, in Chrome and in WebKit), the
+ * same on all three: with a small whole exponent written in the shader (2.0, 4.0, 5.0) the
+ * translator multiplies it out and a base of -0.0000001 does no harm; with any other exponent
+ * (1.5, a uniform) the answer is NaN, however small the base. The usual way under zero is
+ * 1.0 - dot( a, b ) for two unit vectors: where they line up the dot rounds to 1.0000001.
+ *
+ * One NaN pixel in the half-float frame is black, cloud drawn over it stays black (NaN times
+ * anything is NaN), and bloom's mip chain spreads it into a block: with NaN forced onto 7 percent
+ * of a frame's pixels, 94 percent of the screen went black. No frame has been seen to hold one.
+ * So that none does: a base is held with max, min or clamp where it is made, the fog chunk swaps a
+ * colour that is not a number for the haze's (fogChunks), and bloom's threshold drops such a texel
+ * (post/atmos.ts glowPrefilter).
+ */
+export const POW_BASE_NOTE = "a pow's base is held at or above 0, and a colour that is not a number never reaches bloom";
+
+/**
+ * GLSL: an expression that is true when `v` (a float, vec3 or vec4 expression) holds a NaN or an
+ * Inf. It reads the bits (all ones in the exponent), which a compiler cannot fold away: one set to
+ * fast maths may assume there are no NaNs and drop x != x or isnan( x ). Needs GLSL ES 3.00 (every
+ * three.js shader on WebGL 2 is).
+ */
+export function nonFiniteGlsl(v: string, components: 1 | 3 | 4): string {
+  if (components === 1) return `( ( floatBitsToUint( ${v} ) & 0x7f800000u ) == 0x7f800000u )`;
+  const t = `uvec${components}`;
+  return `any( equal( floatBitsToUint( ${v} ) & ${t}( 0x7f800000u ), ${t}( 0x7f800000u ) ) )`;
+}
+
 export interface FogConstants {
   density: number;
   baseY: number;
@@ -392,7 +424,8 @@ vec3 ${name}( vec3 c0 ) {
   float v2 = pow( min( dot( c, luma ), 1.0 ), 0.45454545 );
   float ws = 1.0 - smoothstep( sp.x - sp.y, sp.x + sp.y, v2 );
   c *= mix( vec3( 1.0 ), sh.rgb, sh.w * ws ) * mix( vec3( 1.0 ), hi.rgb, hi.w * ( 1.0 - ws ) );
-  c += lift.rgb * ( lift.w * pow( 1.0 - v2, 4.0 ) );
+  // max: v2 is itself a pow and can come out a hair over 1 (POW_BASE_NOTE).
+  c += lift.rgb * ( lift.w * pow( max( 1.0 - v2, 0.0 ), 4.0 ) );
   float red = smoothstep( 0.45, 0.7, ( c.r - max( c.g, c.b ) ) / max( c.r, 1e-4 ) );
   float sat = mix( bal.w, sp.z, red );
   float lc = dot( c, luma );
@@ -654,6 +687,9 @@ ${FOG_FUNCTIONS}
   #endif
   sectC = mix( sectC, SECT_CLOUD_FOG, 1.0 - exp( - sectCloudDepth( cameraPosition.y, sectRd.y, sectT ) ) );
   sectC = sectAerial( sectC, sectBase, sectRd, sectHazeDepth( cameraPosition.y, sectRd.y, sectT ) );
+  // A colour that is not a number would be a black pixel no cloud can cover, and bloom would spread
+  // it into a block (POW_BASE_NOTE): it takes the haze's colour, the least wrong one there is.
+  if ( ${nonFiniteGlsl("sectC", 3)} ) sectC = sectBase;
   // Straight to the screen (the Low tier) the look's frame grade goes on here, before the clip, as
   // the post pass grades the frame on High and Mid (none at amount 0: today's dusk).
   gl_FragColor.rgb = sectEncoded ? sectDitherEncoded( sectSrgbEncode( sectScreenClip( sectLookGrade( sectC ) ) ), gl_FragCoord.xy ) : sectC;

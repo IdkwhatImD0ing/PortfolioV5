@@ -783,7 +783,7 @@ vec3 sectFrameGrade( vec3 c0 ) {
   float ws = 1.0 - smoothstep( ${f(g.splitPivot - g.splitWidth)}, ${f(g.splitPivot + Math.max(g.splitWidth, 1e-3))}, v2 );
   c *= mix( vec3( 1.0 ), ${glslVec3(unitTint(g.shadowTint))}, ${f(g.shadowAmount)} * ws )
     * mix( vec3( 1.0 ), ${glslVec3(unitTint(g.highlightTint))}, ${f(g.highlightAmount)} * ( 1.0 - ws ) );
-  c += ${glslVec3(hexToLinear(g.liftColor))} * ( ${f(g.lift)} * pow( 1.0 - v2, 4.0 ) );
+  c += ${glslVec3(hexToLinear(g.liftColor))} * ( ${f(g.lift)} * pow( max( 1.0 - v2, 0.0 ), 4.0 ) );
   float red = smoothstep( 0.45, 0.7, ( c.r - max( c.g, c.b ) ) / max( c.r, 1e-4 ) );
   float sat = mix( ${f(g.saturation)}, ${f(g.redSaturation)}, red );
   float lc = dot( c, luma );
