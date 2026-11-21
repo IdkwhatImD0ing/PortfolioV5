@@ -14,6 +14,7 @@
  * - haze deepens per stop, with a clear zone round the camera (`haze`; lib/sect/glsl.ts applies it);
  * - sunlit rock is paler and greyer, with dark water streaks (`rock`);
  * - far lawns read as canopy (`ground`);
+ * - the ground the bake left unlit under the forests reads as undergrowth in shade (`floor`, 2026-11-20);
  * - mist puffs lie flatter and stretch along the wind, so they read as layers (`mist`).
  *
  * "The range" is everything farther than an area's footprint + `areas.pad` metres from its anchor
@@ -138,6 +139,20 @@ export const RANGE_LOOK = {
     lumpM: 7,
     lump: [0.7, 1.25] as const,
   },
+  /**
+   * The forest floor (2026-11-20). The bake leaves the ground under the range's forests unlit, because
+   * the trees stand over it: its texels are under 0.002 (linear luminance), where a lawn in a hall's
+   * or a tree's shadow is 0.01 to 0.04. Where the trees are cards that stand apart (Medium, Low, and
+   * High once the ladder has taken the crown shells off) it showed as near-black gaps between the
+   * crowns. So a range ground texel under `dark[0]` (none of it from `dark[1]`) becomes undergrowth
+   * in shade before the grade: `color`'s hue at luminance `value` (linear). The grade and the
+   * ground's layers then treat it like any shaded lawn. Ground only (dark rock is another class),
+   * and on the range only: the stops keep their bake. `value` 0.05 puts the floor at the middle of
+   * the crowns around it on screen; 0.02 hardly moved it (the grade's contrast) and 0.08 read as a
+   * lawn under the trees. The grass's roots there take the same texel (floorLift). See
+   * docs/sect/forest-floor.md.
+   */
+  floor: { dark: [0.002, 0.006] as const, color: "#4d6b35", value: 0.05 },
   /**
    * Mist as layers (the page's copy of clouds.json; the Blender file is unchanged): each puff's height
    * x `flat`, its extent along the wind (`wind`, three x and z) x `stretch` and across it x `across`
@@ -377,8 +392,13 @@ export function packRangeAreas(areas: readonly RangeArea[], look: RangeLook = RA
 
 /** 1 on the range, 0 within an area's footprint + pad, smooth over `fade` metres. Mirrors sectRangeW. */
 export function rangeWeight(p: Vec3, areas: readonly RangeArea[], look: RangeLook = RANGE_LOOK): number {
+  return packedRangeWeight(p, packRangeAreas(areas, look), look);
+}
+
+/** rangeWeight over areas already packed (packRangeAreas). */
+function packedRangeWeight(p: Vec3, packed: readonly (readonly [number, number, number, number])[], look: RangeLook): number {
   let w = 1;
-  for (const [x, y, z, r] of packRangeAreas(areas, look)) {
+  for (const [x, y, z, r] of packed) {
     if (r <= 0) continue;
     w = Math.min(w, smoothstep(r, r + look.areas.fade, Math.hypot(p[0] - x, p[1] - y, p[2] - z)));
   }
@@ -499,6 +519,40 @@ export function groundRangeLinear(t: Vec3, w: number, dist: number, look: RangeL
   const g = look.ground.tame;
   const k = w * smoothstep(g.near, g.far, dist);
   return gradeLinearWith(t, grade, grade.greenTame + (g.tame - grade.greenTame) * k, unitTint(grade.shadowTint), grade.splitShadow ?? grade.split);
+}
+
+/** The forest floor's texel (linear, before the grade): floor.color's hue at luminance floor.value. */
+export function floorTexel(look: RangeLook = RANGE_LOOK): Vec3 {
+  return unitTint(look.floor.color).map((v) => v * look.floor.value) as Vec3;
+}
+
+/** How unlit a ground texel `t` (linear, before the grade) is: 1 under floor.dark[0], 0 from floor.dark[1]. */
+export function floorWeight(t: Vec3, look: RangeLook = RANGE_LOOK): number {
+  return 1 - smoothstep(look.floor.dark[0], look.floor.dark[1], luma(t));
+}
+
+/**
+ * A ground texel `t` with the forest floor in, at range weight w: the first of groundGradeStatements'
+ * twin. `amount` is the page's switch (uSectFloor.a: 1, or 0 with ?floor=0).
+ */
+export function floorLinear(t: Vec3, w: number, amount = 1, look: RangeLook = RANGE_LOOK): Vec3 {
+  return mixv(t, floorTexel(look), floorWeight(t, look) * w * amount);
+}
+
+/**
+ * The forest floor for what stands on the ground (the grass's roots, grass.ts liftRootSteps): the
+ * texel the ground's shader draws at world point `p` from the baked texel `t`, and the luminance
+ * `under` which a texel can change at all. The areas are packed once.
+ */
+export function floorLift(areas: readonly RangeArea[], look: RangeLook = RANGE_LOOK): { under: number; lift: (t: Vec3, p: Vec3) => Vec3 } {
+  const packed = packRangeAreas(areas, look);
+  return { under: look.floor.dark[1], lift: (t, p) => floorLinear(t, packedRangeWeight(p, packed, look), 1, look) };
+}
+
+/** `?floor=` on the page's URL: "0" / "off" leaves the forest floor as the bake has it (a before and after on one build). */
+export function parseFloorParam(search: string): boolean {
+  const m = /[?&]floor=([a-z0-9]+)/.exec(search);
+  return !(m && (m[1] === "0" || m[1] === "off"));
 }
 
 /**
@@ -660,6 +714,9 @@ float sectRangeW( vec3 p ) {
   }
   return w;
 }
+// The forest floor's texel (linear) and how much of it is in (RANGE_LOOK.floor; 0 with ?floor=0).
+// Only the ground's grade reads it.
+uniform vec4 uSectFloor;
 // 1 under anything built (stairs, bridges, piers, terraces), 0 elsewhere and outside the grid: the
 // built mask (RANGE_LOOK.built), its box as (x0, z0, 1 / width, 1 / depth) in metres.
 uniform sampler2D tSectBuilt;
@@ -752,12 +809,16 @@ export function rockGradeStatements(look: RangeLook = RANGE_LOOK): string {
 }
 
 /**
- * The GLSL statement ground runs in place of `vec3 sectGraded = sectGrade( sectTexel );` (needs
- * sectRw, vSectWorld, look.ts sectGradeWith): groundRangeLinear's twin.
+ * The GLSL statements ground runs in place of `vec3 sectGraded = sectGrade( sectTexel );` (needs
+ * sectRw, vSectWorld, look.ts sectGradeWith, rangeGlsl's uSectFloor): first the forest floor on the
+ * texel (floorLinear's twin), then the grade (groundRangeLinear's twin).
  */
 export function groundGradeStatements(look: RangeLook = RANGE_LOOK): string {
   const g = look.ground.tame;
+  const f = look.floor;
   return [
+    // The forest floor: ground the bake left unlit under the trees (RANGE_LOOK.floor), before the grade.
+    `  sectTexel = mix( sectTexel, uSectFloor.rgb, ( 1.0 - smoothstep( ${glslFloat(f.dark[0])}, ${glslFloat(f.dark[1])}, dot( sectTexel, vec3( 0.2126, 0.7152, 0.0722 ) ) ) ) * sectRw * uSectFloor.a );`,
     `  float sectGt = sectRw * smoothstep( ${glslFloat(g.near)}, ${glslFloat(g.far)}, length( vSectWorld - cameraPosition ) );`,
     `  vec3 sectGraded = sectGradeWith( sectTexel, mix( SECT_GRADE_TAME, ${glslFloat(g.tame)}, sectGt ), ${BASE_TINT} );`,
   ].join("\n");

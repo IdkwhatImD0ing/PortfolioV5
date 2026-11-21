@@ -72,6 +72,7 @@ import {
   grassRootGlsl,
   grassTier,
   grassWindGlsl,
+  liftRootSteps,
   mergeInstances,
   RANK_STEP,
   ROOT,
@@ -89,11 +90,12 @@ import {
 import { fringeInstances, grassEdgeSteps, rimClumps } from "@/lib/sect/grass-edge";
 import { GRASS_SLICE } from "@/lib/sect/gpu-queue";
 import { gradeGlsl, SECT_LOOK } from "@/lib/sect/look";
+import { floorLift } from "@/lib/sect/range-look";
 import type { Quality } from "@/lib/sect/runtime";
 import type { SectMeta } from "@/lib/sect/types";
 import { dominantFlatLevel } from "@/lib/sect/water";
 import type { LoadedSet, WorldContext } from "./assets";
-import { enableFogEncodeOnce, getGroundNoiseTexture, SECT_LOOK_GPU } from "./materials";
+import { enableFogEncodeOnce, forestFloorOn, getGroundNoiseTexture, SECT_LOOK_GPU } from "./materials";
 import { sceneView, wake, type SectStore } from "./store";
 
 const f = glslFloat;
@@ -776,6 +778,8 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
       warmTarget: null as WebGLRenderTarget | null,
       /** The grass program has been compiled ahead of its first draw. */
       warmed: false,
+      /** The forest floor's lift at a root (the ground's own, at the page's areas). */
+      floor: floorLift(meta.areas),
     };
   }, [ctx, meta]);
 
@@ -861,6 +865,8 @@ export function Grass({ chunks, ctx, meta, store, quality, debug }: GrassProps) 
       }
       const texels = await readRoots(gl, all, soups.atlases, ok, clock);
       if (!texels) return;
+      // Roots on the forest floor take the texel the ground is drawn with there (range-look.ts RANGE_LOOK.floor).
+      if (forestFloorOn() && (await sliced("floor", liftRootSteps(all, texels, kit.floor), ok, clock, slice)) === null) return;
       const rooted = await sliced("roots", rootSteps(all, texels), ok, clock, slice);
       if (!rooted) return;
       const cells = await sliced("cells", cellSteps(rooted), ok, clock, slice);
