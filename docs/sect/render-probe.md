@@ -61,9 +61,8 @@ shows the void.
 
 ### What is left
 
-- The ground under the forests is still nearly black. With the baked cards (Medium, and High once
-  the ladder has taken the shells off) it shows as dark gaps between tree clumps where the trees
-  stand apart. A bake round, or a tint on that ground in the page, would close it.
+- ~~The ground under the forests is still nearly black.~~ Done the same day, in the page: that
+  ground is now drawn as undergrowth in shade. See [`forest-floor.md`](forest-floor.md).
 - Why the PC went down the ladder that day was not measured. If it happens with nothing else using
   the GPU, the ladder's own judgement is the next thing to look at. `?debug=1` shows the quality
   line.

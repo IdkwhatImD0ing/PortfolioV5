@@ -73,6 +73,7 @@ import { hoverNote, loreByArea } from "@/lib/sect/lore";
 import { flightSeconds, navKeyIntent, navKeyTarget, nearestHold, panelSide } from "@/lib/sect/nav";
 import { downloadFraction, PORTRAIT_TURN_SECONDS, portraitTurn, posterMatches, type FileProgress } from "@/lib/sect/opening";
 import { resolveAsset } from "@/lib/sect/parse";
+import { parseFloorParam } from "@/lib/sect/range-look";
 import {
   AUTO_FRAME_BUDGET_MS,
   CHOICE_FRAME_BUDGET_MS,
@@ -137,7 +138,7 @@ import {
 import { InkTravel, type TravelRequest } from "./ink-travel";
 import { LoreCard, useLoreCard } from "./lore-card";
 import type { MapViewProps } from "./map-view";
-import { installAreas, installFog } from "./materials";
+import { installAreas, installFog, setForestFloor } from "./materials";
 import { SectMusic } from "./music";
 import type { MusicEngine } from "./music-engine";
 import {
@@ -607,6 +608,7 @@ export default function SectExperience() {
         installFog(lookFogConstants(d.meta));
         // The stops' footprints, which the range look leaves alone (lib/sect/range-look.ts).
         installAreas(d.meta.areas);
+        setForestFloor(parseFloorParam(window.location.search));
         const map = buildScrollMap(d.camera.startFrame, d.camera.frameEnd, d.camera.holds, FLIGHT_SCROLL);
         const deepHold = deep ? map.holds.find((h) => h.id === deep.target.area) : undefined;
         // Loaded again for a new tier: back where the visitor was (a ?frame=N view still held, too).

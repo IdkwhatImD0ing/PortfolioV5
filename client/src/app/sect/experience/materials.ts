@@ -81,6 +81,7 @@ import { clumpField, groundNoise, tilingNoise } from "@/lib/sect/noise";
 import {
   CARD_RANGE_MARGIN,
   createBuiltGrid,
+  floorTexel,
   foliageGlsl,
   foliageGradeStatements,
   groundGradeStatements,
@@ -157,7 +158,19 @@ export const SECT_AREAS = {
   uSectAreas: { value: packRangeAreas([]).map((a) => new Vector4(...a)) },
   tSectBuilt: { value: builtTexture(createBuiltGrid([])) },
   uSectBuiltBox: { value: new Vector4(0, 0, 0, 0) },
+  // The forest floor's texel and its switch (range-look.ts RANGE_LOOK.floor, setForestFloor).
+  uSectFloor: { value: new Vector4(...floorTexel(), 1) },
 };
+
+/** Turns the forest floor's lift on or off (?floor=0: the ground under the forests as the bake has it). */
+export function setForestFloor(on: boolean): void {
+  SECT_AREAS.uSectFloor.value.w = on ? 1 : 0;
+}
+
+/** True while the forest floor's lift is on: the grass gives its roots there the same texel (grass.tsx). */
+export function forestFloorOn(): boolean {
+  return SECT_AREAS.uSectFloor.value.w > 0;
+}
 
 let builtGrid: BuiltGrid = createBuiltGrid([]);
 
