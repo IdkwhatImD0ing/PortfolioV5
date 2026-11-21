@@ -959,6 +959,45 @@ export interface RootedGrass {
 }
 
 /**
+ * What the ground's shader does to an unlit texel (range-look.ts RANGE_LOOK.floor, floorLift): a
+ * texel under `under` (linear luminance) at a world point may be drawn as another.
+ */
+export interface RootLift {
+  under: number;
+  lift: (texel: [number, number, number], pos: [number, number, number]) => readonly number[];
+}
+
+/**
+ * Roots on ground the page lifts take the lifted texel, in place, before rootSteps: the ground
+ * under the range's forests bakes unlit and is drawn as undergrowth, and a tuft that kept the
+ * bake's near black stood on it as a black speck (the rim clumps at a cliff's foot). An open root
+ * (not covered) darker than `floor.under` gets `floor.lift`'s texel and that texel's greenness.
+ * Yields every few thousand instances; returns how many roots changed.
+ */
+export function* liftRootSteps(inst: GrassInstances, texels: Uint8Array, floor: RootLift): Generator<void, number> {
+  const enc = (v: number) => Math.round(Math.sqrt(clamp01(v)) * 255);
+  let n = 0;
+  for (let i = 0; i < inst.count; i++) {
+    if ((i & 4095) === 4095) yield;
+    const o = i * 4;
+    if (texels[o + 3] < ROOT.alpha0 / 2) continue;
+    const r = (texels[o] / 255) ** 2;
+    const g = (texels[o + 1] / 255) ** 2;
+    const b = (texels[o + 2] / 255) ** 2;
+    if (0.2126 * r + 0.7152 * g + 0.0722 * b >= floor.under) continue;
+    const c = floor.lift([r, g, b], [inst.pos[i * 3], inst.pos[i * 3 + 1], inst.pos[i * 3 + 2]]);
+    const e = [enc(c[0]), enc(c[1]), enc(c[2])];
+    if (e[0] === texels[o] && e[1] === texels[o + 1] && e[2] === texels[o + 2]) continue;
+    texels[o] = e[0];
+    texels[o + 1] = e[1];
+    texels[o + 2] = e[2];
+    texels[o + 3] = Math.round(ROOT.alpha0 + rootGreen(c[0], c[1], c[2]) * (255 - ROOT.alpha0));
+    n++;
+  }
+  return n;
+}
+
+/**
  * Keeps the instances whose root is open ground, with their texel. A tuft (or flower tuft) on soil
  * keeps soilKeep of its chance: its rank is divided by its keep share (rank < density x keep is
  * rank / keep < density), and one that could never show at the densest ring goes. The fringe and

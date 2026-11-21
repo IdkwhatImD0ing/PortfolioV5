@@ -1306,6 +1306,32 @@ backend every time, and the `/music` page does not use the kept tracks.
 [`../music/backend-soundtrack-delivery.md`](../music/backend-soundtrack-delivery.md);
 `client/src/lib/sect/music-cache.ts`.
 
+### 2026-11-20 · The ground under the far forests is drawn as undergrowth, not black
+
+**Decided.** The page lifts the forest floor itself, with no new bake. A ground texel the bake left unlit (under
+0.002 of full brightness) is drawn as dark green undergrowth in shade. Only ground, only away from the stops, on
+every tier. Grass tufts rooted on that ground take the same colour. `?floor=0` shows the page without it.
+
+**Why.** The owner saw black holes in the mist on 2026-11-20. The cause was a quality step that stopped drawing
+the far trees, and that step was removed the same day. What was left: the ground under those trees is black in
+the bake, because the trees stand over it, and it showed as dark gaps wherever the trees are baked cards that
+stand apart (Medium, Low, and High once the page has stepped its quality down).
+
+**Why in the page and not in a bake.** The unlit ground is easy to pick out: it is at least five times darker
+than any shadow on a lawn. One line in the ground's shader closes the gaps today, and a bake costs a rented box
+and a new 300 MB of files for the same picture. A bake could still add what the page cannot: sun flecks and
+tree shadows on that floor.
+
+**How bright.** As bright as the middle of the tree crowns around it. Darker than that the gaps stayed, lighter
+it read as a lawn under the trees.
+
+**Checked** on a production build, the lift off against on: four turned views on Medium and at the bottom of
+the quality ladder, the eleven stops on High, and every stop turned left and right with the changed pixels
+marked. The change lands between the crowns and nowhere else.
+
+**See.** [`../sect/forest-floor.md`](../sect/forest-floor.md); `RANGE_LOOK.floor` in
+`client/src/lib/sect/range-look.ts`.
+
 ---
 
 ## Longer write-ups
@@ -1338,4 +1364,5 @@ backend every time, and the `/music` page does not use the kept tracks.
 | 2026-11-16 | A page-only lantern light test, replaced by the night bake and removed: what it showed | [`../scene/night-r61.md`](../scene/night-r61.md) |
 | 2026-11-17 | Round 61, the abode and the summit baked at night: the bake scripts, the two lights, the summit's lanterns, the run and its cost, how to run it again | [`../scene/night-r61.md`](../scene/night-r61.md) |
 | 2026-11-20 | Black holes in the mist: the quality ladder's tree-card step took every far forest and bared ground the bake leaves black; the step is gone. Also what a Mac really draws (nothing wrong), the screenshot that lied, the first theory and its guards, and the tools: the render probe, the shader quirks, the Mac job | [`../sect/render-probe.md`](../sect/render-probe.md) |
+| 2026-11-20 | The forest floor: which mesh the black ground is, why it is black, the lift in the ground's shader, how its brightness was picked, the grass roots, what was checked | [`../sect/forest-floor.md`](../sect/forest-floor.md) |
 | 2026-11-09 | Round 55: the gate seen square on, and prop moves at four stops (designed and scripted, not baked yet) | [`../scene/placement-r55.md`](../scene/placement-r55.md) |

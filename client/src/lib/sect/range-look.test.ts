@@ -10,6 +10,10 @@ import {
   capSaturation,
   createBuiltGrid,
   flattenPuff,
+  floorLift,
+  floorLinear,
+  floorTexel,
+  floorWeight,
   foliageGlsl,
   foliageGradeParams,
   foliageGradeStatements,
@@ -24,6 +28,7 @@ import {
   markBuiltTriangles,
   mossGate,
   packRangeAreas,
+  parseFloorParam,
   RANGE_LOOK,
   RANGE_MAX_AREAS,
   rangeGlsl,
@@ -311,6 +316,65 @@ describe("range rock and lawns", () => {
     expect(rs.indexOf("sectGradeWith(")).toBeLessThan(rs.indexOf("sectRockRange("));
     expect(groundGradeStatements()).toContain("length( vSectWorld - cameraPosition )");
     for (const s of [r, rs, groundGradeStatements()]) expect(s).not.toMatch(/NaN|undefined|Infinity/);
+  });
+
+  it("turns the unlit ground under the range's forests into undergrowth in shade", () => {
+    const f = RANGE_LOOK.floor;
+    // What the bake leaves under the trees (sRGB 1/255, about 0.0003 linear), and exact black.
+    for (const unlit of [hexToLinear("#010101"), [0, 0, 0] as Vec3]) {
+      expect(floorWeight(unlit)).toBe(1);
+      floorLinear(unlit, 1).forEach((v, i) => expect(v).toBeCloseTo(floorTexel()[i], 12));
+    }
+    const floor = floorTexel();
+    expect(luma(floor)).toBeCloseTo(f.value, 12);
+    // Green: green leads red, red leads blue.
+    expect(floor[1]).toBeGreaterThan(floor[0]);
+    expect(floor[0]).toBeGreaterThan(floor[2]);
+    // Graded as a far range lawn it is still dark (in shade) and no longer near black.
+    const graded = groundRangeLinear(floorLinear([0, 0, 0], 1), 1, 500);
+    expect(luma(graded)).toBeGreaterThan(8 * luma(groundRangeLinear(hexToLinear("#010101"), 1, 500)));
+    expect(luma(graded)).toBeLessThan(0.08);
+    expect(screenHsv(graded)[2]).toBeGreaterThan(0.2);
+  });
+
+  it("leaves lawns in shadow, the stops and a switched-off floor as the bake has them", () => {
+    const f = RANGE_LOOK.floor;
+    // A lawn in a hall's or a tree's shadow bakes at 0.01 to 0.04, well over the floor's upper bound.
+    expect(f.dark[1]).toBeLessThan(0.01);
+    expect(f.dark[0]).toBeLessThan(f.dark[1]);
+    for (const l of [0.01, 0.02, 0.04, 0.2]) {
+      const lawn = unitTint("#6a7a3a").map((v) => v * l) as Vec3;
+      expect(floorWeight(lawn)).toBe(0);
+      expect(floorLinear(lawn, 1)).toEqual(lawn);
+    }
+    // Never darker than the bake: between the bounds the texel moves toward the floor, which is lighter.
+    const between = [0.003, 0.004, 0.005].map((l) => unitTint("#6a7a3a").map((v) => v * l) as Vec3);
+    for (const t of between) expect(luma(floorLinear(t, 1))).toBeGreaterThan(luma(t));
+    const unlit: Vec3 = [0.0003, 0.0003, 0.0003];
+    expect(floorLinear(unlit, 0)).toEqual(unlit);
+    expect(floorLinear(unlit, 1, 0)).toEqual(unlit);
+    floorLinear(unlit, 0.5).forEach((v, i) => expect(v).toBeCloseTo((unlit[i] + floorTexel()[i]) / 2, 12));
+    // What stands on the ground (the grass's roots) asks for the same texel at its own place.
+    const lift = floorLift(AREAS);
+    expect(lift.under).toBe(f.dark[1]);
+    expect(lift.lift(unlit, [0, 40, 0])).toEqual(unlit);
+    lift.lift(unlit, [900, 40, 900]).forEach((v, i) => expect(v).toBeCloseTo(floorTexel()[i], 12));
+  });
+
+  it("reads ?floor= and emits the floor's GLSL before the ground's grade", () => {
+    expect(parseFloorParam("")).toBe(true);
+    expect(parseFloorParam("?tier=mid&frame=205")).toBe(true);
+    expect(parseFloorParam("?floor=1")).toBe(true);
+    expect(parseFloorParam("?floor=0")).toBe(false);
+    expect(parseFloorParam("?debug=1&floor=off&tier=mid")).toBe(false);
+    expect(count(rangeGlsl(), "uniform vec4 uSectFloor;")).toBe(1);
+    const g = groundGradeStatements();
+    const f = RANGE_LOOK.floor;
+    expect(g).toContain(`smoothstep( ${glslFloat(f.dark[0])}, ${glslFloat(f.dark[1])}, dot( sectTexel, vec3( 0.2126, 0.7152, 0.0722 ) ) )`);
+    expect(g).toContain("* sectRw * uSectFloor.a );");
+    expect(g.indexOf("uSectFloor.rgb")).toBeLessThan(g.indexOf("sectGradeWith("));
+    // Rock and foliage never read it: dark rock and the crowns' own shade stay as they are.
+    for (const s of [rockGradeStatements(), foliageGradeStatements()]) expect(s).not.toContain("uSectFloor");
   });
 
   it("gradeLinearWith with the grade's own numbers is the grade", () => {
