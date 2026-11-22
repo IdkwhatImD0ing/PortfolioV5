@@ -37,6 +37,7 @@ import { LIVE_CLASSES, liveApplyGlsl, liveAtlasOf, liveSheenGlsl, liveSurfaceNor
 import { SECT_LOOK } from "@/lib/sect/look";
 import { SUNSET_PULL, SUNSET_PULL_APPLY, sunsetPullData } from "@/lib/sect/night-bake";
 import { parseMeta } from "@/lib/sect/parse";
+import { floorTexel } from "@/lib/sect/range-look";
 import {
   STEAM_BRANCH,
   STEAM_HIDE_STATEMENT,
@@ -96,6 +97,7 @@ import {
   SECT_WET,
   sectSurfaceOf,
   setCardAlphaMode,
+  setForestFloor,
   setMaterialLive,
   setSheetStrands,
   surfaceGlsl,
@@ -1166,6 +1168,35 @@ describe("the range look (lib/sect/range-look.ts)", () => {
     const hs = compile(hall);
     expect(hs.uniforms.uSectAreas).toBeUndefined();
     expect(hs.fragmentShader).toContain("vec3 sectGraded = sectGrade( sectTexel );");
+  });
+
+  it("lifts the forest floor on ground only, on every tier, behind one shared switch", () => {
+    // Low has no detail layers (prepareBakedMaterial with no detail uniforms): the lift is in the grade, so it is there too.
+    const lawn = baked("baked.mirror_A0.detail.ground", { detail: "ground" });
+    prepareBakedMaterial(lawn);
+    const ls = compile(lawn);
+    expect(ls.uniforms.uSectFloor).toBe(SECT_AREAS.uSectFloor);
+    const fs = ls.fragmentShader;
+    const lift = fs.indexOf("sectTexel = mix( sectTexel, uSectFloor.rgb,");
+    expect(lift).toBeGreaterThan(fs.indexOf("float sectRw = sectRangeW( vSectWorld );"));
+    expect(lift).toBeLessThan(fs.indexOf("vec3 sectGraded = sectGradeWith("));
+    // Rock (cliff shade) and halls (building shadow) never run it.
+    const rock = baked("baked.mirror_A0.detail.rock", { detail: "rock" });
+    prepareBakedMaterial(rock);
+    expect(compile(rock).fragmentShader).not.toContain("uSectFloor.rgb");
+    const hall = baked("baked.mirror_A0");
+    prepareBakedMaterial(hall);
+    expect(compile(hall).fragmentShader).not.toContain("uSectFloor");
+    // The texel is the look's, and ?floor=0 takes all of it out without a new program.
+    const u = SECT_AREAS.uSectFloor.value;
+    floorTexel().forEach((v, i) => expect(u.getComponent(i)).toBeCloseTo(v, 6));
+    expect(u.w).toBe(1);
+    const key = lawn.customProgramCacheKey();
+    setForestFloor(false);
+    expect(u.w).toBe(0);
+    expect(lawn.customProgramCacheKey()).toBe(key);
+    setForestFloor(true);
+    expect(u.w).toBe(1);
   });
 });
 

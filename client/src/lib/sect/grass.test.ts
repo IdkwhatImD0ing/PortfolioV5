@@ -13,6 +13,7 @@ import {
   heightFade,
   KIND,
   leanByte,
+  liftRootSteps,
   mergeInstances,
   nearestCam,
   nearSheet,
@@ -34,6 +35,7 @@ import {
   type GrassInstances,
   type GroundSoup,
 } from "./grass";
+import { floorLift } from "./range-look";
 import { tierQuality } from "./runtime";
 
 const high = GRASS.tiers.high;
@@ -435,6 +437,39 @@ describe("the bake at the roots", () => {
     expect(f1.count).toBe(1);
     expect(f1.a[0]).toBe(0);
     expect(rootInstances(fringe, Uint8Array.from(rootTexel(soilC, black, soilC))).count).toBe(0);
+  });
+
+  it("gives roots on the forest floor the texel the ground is drawn with there", () => {
+    // Four rim clumps: on the unlit floor far from any stop, the same at a stop, on a lawn in shadow, and covered.
+    const dim = [0.004, 0.004, 0.003];
+    const shade = [0.012, 0.018, 0.008];
+    const inst: GrassInstances = {
+      count: 4,
+      pos: Float32Array.from([500, 10, 500, 0, 40, 0, 500, 10, 510, 500, 10, 520]),
+      uv: new Uint16Array(8),
+      a: Uint8Array.from([0, 1, 100, KIND.fringe, 0, 2, 100, KIND.fringe, 0, 3, 100, KIND.fringe, 0, 4, 100, KIND.fringe]),
+      b: new Uint8Array(16),
+      atlas: new Uint8Array(4),
+    };
+    const texels = Uint8Array.from([...rootTexel(dim, dim, dim), ...rootTexel(dim, dim, dim), ...rootTexel(shade, shade, shade), ...rootTexel(dim, black, dim)]);
+    const before = texels.slice();
+    expect(before[3]).toBeGreaterThan(0);
+    const floor = floorLift([{ anchor: [0, 40, 0], footprint: 40 }]);
+    const steps = liftRootSteps(inst, texels, floor);
+    let r = steps.next();
+    while (!r.done) r = steps.next();
+    // Only the first changed: lighter, green, and with a lawn's greenness (no straw tips).
+    expect(r.value).toBe(1);
+    const lin = (o: number) => [0, 1, 2].map((k) => (texels[o + k] / 255) ** 2);
+    const lifted = lin(0);
+    const want = floor.lift([(before[0] / 255) ** 2, (before[1] / 255) ** 2, (before[2] / 255) ** 2], [500, 10, 500]);
+    lifted.forEach((v, k) => expect(v).toBeCloseTo(want[k], 2));
+    expect(lifted[1]).toBeGreaterThan(5 * dim[1]);
+    expect(lifted[1]).toBeGreaterThan(lifted[0]);
+    expect(texels[3]).toBe(255);
+    // At the stop (range weight 0), on the lit lawn and under a path: as read.
+    expect([...texels.slice(4)]).toEqual([...before.slice(4)]);
+    expect(rootInstances(inst, texels).count).toBe(3);
   });
 });
 
