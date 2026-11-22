@@ -1,6 +1,8 @@
 # The top of the abode's waterfall
 
-Added 2026-11-20. Page only: no bake, no new file.
+Added 2026-11-20. Page only: no bake, no new file. On 2026-11-22 the notch itself was rebuilt in the
+scene and baked (round 62), and the pour's numbers were fitted again: see "The notch itself" below. The
+numbers in "What was wrong" and "What changed" are the ones of the old V-shaped notch.
 
 ## What the owner saw
 
@@ -87,6 +89,31 @@ Two tries on the way. A wide thinning with soft threads read as a blur. A narrow
 crisp threads still had a clean edge at full size. What worked was a wide thinning, real
 see-through water in it, and wider sheets.
 
+## The notch itself (2026-11-22)
+
+The owner, on the softer sides: "I mean like the sides of the mountain above the waterfall". He had
+meant the rock, not the water. The notch's left side was a flat dark slab from the stop, and its
+right side one straight edge. Round 62 rebuilt the notch in the scene as a cleft that turns as it
+goes back and ends in a rock step, and baked the abode again:
+[`../scene/notch-r62.md`](../scene/notch-r62.md).
+
+The new notch has a level lip 5 m wide where the V had a point. So the pour's numbers changed.
+Measured on the new bake, in the same frame as the table above:
+
+| What | Old notch | New notch |
+|---|---|---|
+| The notch's floor at the cliff's edge | 0.6 m up | 0.3 to 0.4 m up |
+| The notch's width at the water's level | 3 m at 2.2 m up | 5.1 m at 0.9 m up |
+| The water level (`level`) | 2.2 m | 0.9 m |
+| The crest's share of the baked width (`neck`) | 0.5 (2.9 m) | 0.86 (5.05 m) |
+| The notch's centre line (`centre`) | 0.08 m left | 0.76 m left |
+| The strip of water in the notch | 6 m wide, straight, 8.5 m long | 5.3 m wide, 3.3 m long, turning 0.37 m left per metre back |
+
+The strip is new in one way: its middle follows the notch (`stream.bend`, `stream.bendFrom`,
+`streamMiddle`). It is as wide as the water at the cliff's edge and no wider. The cliff's face
+falls back on the left there, so a wider strip stood out in front of the rock as a ledge of water
+with no fall under it.
+
 ## Cost
 
 One extra draw of 112 triangles, one more number per water vertex, and one more texture read per
@@ -108,8 +135,8 @@ sheet or drops its lip, which would switch the pour off without a word.
 
 ## What is left
 
-- **The dark wall beside the crest.** It is the notch's left side, in shadow in the night bake. It
-  is flat and dark next to the lit rock. Only a bake changes it.
+- **The dark wall beside the crest** is gone since round 62 (see above). A dark pocket about 1 m
+  wide is left at the lip's left: the left shoulder's shadow.
 - **The numbers are read off this bake.** They ride on the fall's own lip and corners, so moving
   the area keeps them. A new cliff shape needs them measured again (the table above says what).
 - **The stand-in quads keep four corners.** A set with no water file draws each fall as one quad

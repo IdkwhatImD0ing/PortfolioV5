@@ -2,9 +2,12 @@
  * Pours for /sect: the top of a waterfall that leaves its cliff through a notch (pure maths, no
  * three.js; docs/sect/waterfall-pour.md has the pictures and the measurements).
  *
- * The abode's fall is baked as three flat sheets as wide as the fall (6 m) whose top row hangs level
- * with the lowest point of a V-shaped notch in the cliff top. A V has no width at its point, so
- * 3 m of water on either side began on bare rock face along a ruled line, under an empty notch.
+ * The abode's fall is baked as three flat sheets as wide as the fall (6 m) whose top row hangs half
+ * a metre in front of the cliff, level with the floor of the notch in its top. Left as baked, the
+ * water begins in the air in front of the rock, wider than the notch's lip, under an empty notch.
+ * (Until scene round 62 the notch was a V with no width at its point, and 3 m of water on either
+ * side began on bare rock face along a ruled line. Since then it is a cleft with a level lip that
+ * turns as it goes back: docs/scene/notch-r62.md.)
  *
  * A pour reshapes that top when the water loads (no bake, no new file):
  *
@@ -18,9 +21,8 @@
  *   water toward its sides into threads and spray (materials.ts, the sheet shader's `aPour`), and
  *   the extra width is where that thin water goes. The baked sheets were dense white to a torn
  *   edge, which from the stop read as a ribbon cut out of the rock.
- * - A water surface fills the notch behind the crest (pourStream): level for a few metres, then
- *   sinking to the notch's floor further back, where its walls close over it. It is what a view
- *   from above sees in the notch.
+ * - A water surface fills the notch behind the crest (pourStream), following the notch where it
+ *   turns, back to where the rock closes over it. It is what a view from above sees in the notch.
  * - The moved vertices are flagged (the sheet shader's `aPour`): over the edge the water is deep,
  *   so its glassy lip hides the notch behind it and starts on a clean line, the water's level.
  *
@@ -71,6 +73,13 @@ export interface PourSpec {
     floor: number;
     /** Rows along it (it bends where it sinks). */
     rows: number;
+    /**
+     * A notch that turns as it goes back: behind `bendFrom` (o) the strip's middle moves across by
+     * `bend` metres for every metre further back (negative: toward -a). 0 for a notch that runs
+     * straight back.
+     */
+    bend: number;
+    bendFrom: number;
     /** The sheets' seed and flow in the vertex colour (r, g). */
     seed: number;
     flow: number;
@@ -78,28 +87,36 @@ export interface PourSpec {
 }
 
 /**
- * The abode's fall. Read off the baked cliff (2026-11-20, abode.glb of bake round 61) in the pour's
- * frame: the notch's floor is at h 0.6 at the cliff's edge (o -1.0 to -0.55), 0.1 to 0.4 from 2 to
- * 8 m behind it and sinks behind that (the ridge's back); the notch is open, seen from the front,
- * from a -1.5 to 1.3 at h 2.0 and from -1.7 to 1.6 at h 2.4; the cliff's face under it stands at
- * o -0.55. The baked sheets' top rows are at h 0.49 to 0.56, from a -2.93 to 2.94 (core).
+ * The abode's fall. Read off the baked cliff (2026-11-22, abode.glb of scene round 62: the notch
+ * is a cleft that turns left as it goes back and ends in a head) in the pour's frame. The cliff's
+ * edge stands at o -0.6 (o -0.9 at a -3.5: the face falls back to the left). The cleft's floor is
+ * at h 0.3 to 0.4 at the edge and 0.0 to 0.2 behind it. At the water's level, h 0.9, the rock stands
+ * at a -3.3 and a 1.8 at the edge (5.1 m of water) and at a -4.1 and a 1.7 two metres behind it: the
+ * water's middle moves 0.37 m to the left for each metre back. The head rises through h 0.9
+ * between o -2.5 (on the left) and o -3.3. The baked sheets' top rows are at h 0.49 to 0.56, from
+ * a -2.93 to 2.94 (core).
+ *
+ * The strip in the notch is as wide as the water at the edge and no wider: the cliff's face falls
+ * back on the left, so a wider strip would stand out in front of the rock there, a ledge of water
+ * with no fall under it. Further back it leaves a quarter of a metre of floor bare at each side,
+ * which only a view from above could see.
  */
 export const POURS: readonly PourSpec[] = [
   {
     sheet: "abode.waterfall.sheet",
     top: 0.55,
     crestOut: -0.1,
-    level: 2.2,
+    level: 0.9,
     liftOver: 6,
     back: 0.65,
     backOver: 2,
-    centre: -0.08,
-    neck: 0.5,
+    centre: -0.76,
+    neck: 0.86,
     fanOver: 14,
     widen: 1.2,
     // To the pool: the baked sheets spread to about 4.7 m either side there and land up to 6.5 m out.
     reach: { across: 8, behind: 2, front: 10 },
-    stream: { width: 6, from: -8.5, levelFrom: -3.5, floor: 0.3, rows: 14, seed: 0.37, flow: 0.5 },
+    stream: { width: 5.3, from: -3.3, levelFrom: -3.2, floor: 0.9, rows: 8, bend: -0.37, bendFrom: -0.9, seed: 0.37, flow: 0.5 },
   },
 ];
 
@@ -202,6 +219,11 @@ export function pourCrest(s: PourSpec): { out: number; level: number } {
   return { out: s.crestOut - s.back, level: s.level };
 }
 
+/** The middle across (a) of the water in the notch at `o` metres out of the cliff: it follows a notch that turns. */
+export function streamMiddle(s: PourSpec, o: number): number {
+  return s.centre + s.stream.bend * Math.max(s.stream.bendFrom - o, 0);
+}
+
 export interface PourStream {
   /** World xyz per vertex. */
   positions: Float32Array;
@@ -217,9 +239,10 @@ export interface PourStream {
 /**
  * The water in the notch behind the crest: a strip along the notch from `stream.from` to the crest,
  * level with the crest from `levelFrom` on and sinking to the notch's floor before that (so the
- * notch's walls close over its start: it wells up out of the rock). Drawn by the sheet shader as a
- * stream that flows to the crest. Its share of the length stops short of the shader's foot fade
- * (waterfall.ts SHEET.footFade): the water does not thin out where it goes over the edge.
+ * notch's walls close over its start: it wells up out of the rock). Its middle follows a notch that
+ * turns (streamMiddle). Drawn by the sheet shader as a stream that flows to the crest. Its share of
+ * the length stops short of the shader's foot fade (waterfall.ts SHEET.footFade): the water does not
+ * thin out where it goes over the edge.
  */
 export function pourStream(s: PourSpec, f: PourFrame): PourStream {
   const st = s.stream;
@@ -232,18 +255,19 @@ export function pourStream(s: PourSpec, f: PourFrame): PourStream {
   const colors = new Float32Array(n * 3);
   const fall = new Float32Array(n * 4);
   let along = 0;
-  let prev: [number, number] | null = null;
+  let prev: [number, number, number] | null = null;
   const lengths: number[] = [];
   for (let j = 0; j <= rows; j++) {
     const o = st.from + ((crest.out - st.from) * j) / rows;
     const h = st.floor + (crest.level - st.floor) * smoothstep(st.from, st.levelFrom, o);
-    if (prev) along += Math.hypot(o - prev[0], h - prev[1]);
-    prev = [o, h];
+    const middle = streamMiddle(s, o);
+    if (prev) along += Math.hypot(o - prev[0], h - prev[1], middle - prev[2]);
+    prev = [o, h, middle];
     lengths.push(along);
     for (let i = 0; i <= cols; i++) {
       const k = j * (cols + 1) + i;
       const u = i / cols;
-      const p = fromPour(f, [s.centre + (u - 0.5) * st.width, o, h]);
+      const p = fromPour(f, [middle + (u - 0.5) * st.width, o, h]);
       positions.set(p, k * 3);
       uvs.set([u, j / rows], k * 2);
       colors.set([st.seed, st.flow, 0], k * 3);

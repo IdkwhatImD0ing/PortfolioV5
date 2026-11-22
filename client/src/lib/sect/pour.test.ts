@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseMeta } from "./parse";
-import { fromPour, inPour, pourCrest, pourFrame, pourMiddle, POURS, poursFor, pourStream, pourWidth, toPour, warpPour, type PourSpec } from "./pour";
+import { fromPour, inPour, pourCrest, pourFrame, pourMiddle, POURS, poursFor, pourStream, pourWidth, streamMiddle, toPour, warpPour, type PourSpec } from "./pour";
 import type { Vec3, Waterfall } from "./types";
 import { SHEET } from "./waterfall";
 
@@ -113,9 +113,11 @@ describe("where a pour moves the baked sheets", () => {
     const half = pourWidth(spec, spec.fanOver / 2);
     expect(half).toBeGreaterThan((spec.neck + spec.widen) / 2);
     // Wider than baked (room for the thin sides), and the crest still fits the notch: the abode's
-    // notch is about 3 m wide at the water's level and the widest baked sheet 5.9 m.
+    // notch is 5.1 m wide at the water's level and the widest baked sheet 5.9 m.
     expect(spec.widen).toBeGreaterThanOrEqual(1);
-    expect(spec.neck * 5.9).toBeLessThan(3.6);
+    expect(spec.neck * 5.9).toBeLessThan(5.2);
+    // The water in the notch is no wider than that either (its ends would stand out of the rock).
+    expect(spec.stream.width).toBeLessThan(5.5);
   });
 
   it("gathers a fall's layers on the notch's centre line at the crest and lets them back to their places below", () => {
@@ -158,10 +160,36 @@ describe("the water in the notch", () => {
       if (l[1] >= spec.stream.levelFrom + eps) expect(l[2]).toBeCloseTo(crest.level, 4);
       expect(l[2]).toBeGreaterThanOrEqual(spec.stream.floor - eps);
       expect(l[2]).toBeLessThanOrEqual(crest.level + eps);
-      expect(Math.abs(l[0] - spec.centre)).toBeLessThanOrEqual(spec.stream.width / 2 + eps);
+      expect(Math.abs(l[0] - streamMiddle(spec, l[1]))).toBeLessThanOrEqual(spec.stream.width / 2 + eps);
     }
     // It starts at the floor.
     expect(local.find((l) => Math.abs(l[1] - spec.stream.from) < eps)![2]).toBeCloseTo(spec.stream.floor, 4);
+  });
+
+  it("follows a notch that turns: its middle moves across behind the bend's start, and is the pour's at the crest", () => {
+    const crest = pourCrest(spec);
+    expect(streamMiddle(spec, crest.out)).toBeCloseTo(spec.centre, 9);
+    const bent: PourSpec = { ...spec, stream: { ...spec.stream, bend: -0.7, bendFrom: -1 } };
+    expect(streamMiddle(bent, -0.5)).toBeCloseTo(bent.centre, 9);
+    expect(streamMiddle(bent, -1)).toBeCloseTo(bent.centre, 9);
+    expect(streamMiddle(bent, -3)).toBeCloseTo(bent.centre - 1.4, 9);
+    const b = pourStream(bent, f);
+    const rows = bent.stream.rows + 1;
+    const cols = b.positions.length / 3 / rows;
+    let lastAlong = -1;
+    for (let j = 0; j < rows; j++) {
+      const row = Array.from({ length: cols }, (_, i) => toPour(f, b.positions, (j * cols + i) * 3));
+      const mid = (row[0][0] + row[cols - 1][0]) / 2;
+      expect(mid).toBeCloseTo(streamMiddle(bent, row[0][1]), 4);
+      // As wide as the straight one, and its metres along the flow still grow toward the crest.
+      expect(row[cols - 1][0] - row[0][0]).toBeCloseTo(bent.stream.width, 4);
+      const along = b.fall[j * cols * 4 + 1];
+      expect(along).toBeGreaterThan(lastAlong);
+      lastAlong = along;
+    }
+    // The turn makes the way to the crest longer than straight back.
+    const straight = pourStream({ ...bent, stream: { ...bent.stream, bend: 0 } }, f);
+    expect(b.fall[(rows - 1) * cols * 4 + 1]).toBeGreaterThan(straight.fall[(rows - 1) * cols * 4 + 1]);
   });
 
   it("is a stream to the sheet shader that flows to the crest and does not thin out there", () => {
@@ -174,7 +202,8 @@ describe("the water in the notch", () => {
       // z < 0 marks a stream; -(1 + its share of the length), short of the shader's foot fade.
       expect(z).toBeLessThanOrEqual(-1);
       expect(-z - 1).toBeLessThan(1 - SHEET.footFade);
-      expect(w).toBe(spec.stream.width);
+      // A 32-bit float: 5.3 is not one.
+      expect(w).toBeCloseTo(spec.stream.width, 5);
       expect(Math.abs(x)).toBeLessThanOrEqual(spec.stream.width / 2 + 1e-6);
       // Metres along the flow grow toward the crest (rows run from the start to the crest).
       if (i % 5 === 0) {
