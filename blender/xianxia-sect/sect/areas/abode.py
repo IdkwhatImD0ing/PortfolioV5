@@ -141,14 +141,175 @@ def _yb(x):
     return CLIFF_C + math.sqrt(CLIFF_R * CLIFF_R - x * x)
 
 
-def _top(x):
-    """Height of the cliff's front edge."""
+# Round 62: the waterfall's notch as a turned cleft (docs/scene/notch-r62.md). The notch was a Gaussian dip in the
+# front edge (11 m deep, sigma 4 m; NOTCH_R62 = False keeps it) that ran straight back through the cliff top, so its
+# two sides were plain ramps of the cliff's coarse top rows. The flight sees the notch from 23 to 29 degrees right of
+# straight in front (frames 1380 to 1404: the camera stands at +x), and the light comes from the front left. So the
+# left side, which faced +x, was in view and in shadow all the way back: one flat dark slab, however it was stepped.
+#
+# The cleft's floor is level at the lip from dx -2.254 to +1.729 (the cliff's columns; the page's water needs 3.2 m).
+# Each side climbs out of it: depth = 11 - sum h * S(a, a + w, |dx|) over that side's risers (a, h), each w =
+# NOTCH_W[side] wide. The left side is one long slope (11 m over 7 m: at 4.8 m it threw a shadow 6 m tall into the
+# mouth, which the page's night grade turned into a black crack beside the water). The right side is four risers
+# one column wide with level benches between, whose positions wander by up to NOTCH_WANDER[0] m and whose levels by
+# up to NOTCH_WANDER[1] m going back (smooth noise of y, faded in over NOTCH_WANDER[2] m from the front edge; the
+# first riser only outward, the last only inward), with a bump of up to NOTCH_BUMP[0] m along each bench. Past each
+# side's last riser the old Gaussian's tail stays, so the cleft meets the old cliff, and nothing changes past |dx|
+# NOTCH_STRIP.
+#
+# The cleft turns (NOTCH_BEND). Going back from the front edge its centre line moves left, NOTCH_BEND[0] m over the
+# stretch NOTCH_BEND[1]..[2] m behind the edge: one cliff column (0.797 m) per top row (1.167 m), 34 degrees, past
+# the camera's 29. The whole left slope moves with it, so it faces back and right: away from every view of the flight,
+# from the right, the front and the left alike. What shows on the left is the front face's own edge, sloping down to
+# the lip. The right side moves the same way, so it turns toward the front and the light.
+#
+# A slope that crosses the cliff's grid moves one column per top row, and Blender splits every quad from its first
+# corner to its third: along that diagonal the turned slope was a row of teeth, each with a face toward +x (the first
+# stood at the front edge as a thin fin with a dark side). cliff_split starts those quads one corner later, so each is
+# split along the slope's own line.
+#
+# The cleft has a head (NOTCH_HEAD). A channel that went on straight behind the bend would show its left wall again
+# through the mouth, and one that went on turning would pass under the pine abode.dense_top_pine.007 (8 m left of the
+# fall, 9 m behind the chute plane). So the cleft ends: its depth climbs back out in two steps (m behind the front
+# edge, share of the depth), each over NOTCH_HEAD_RUN m (one top row) and the second starting inside the first, ragged
+# across by NOTCH_HEAD_WANDER m: the floor is level for the first two top rows (2.3 m) and the head is whole by 4.6 m,
+# short of the pine. Behind the head what is left is a saddle at most NOTCH_SADDLE m deep (the old Gaussian where that
+# is shallower, so the strip's ends still meet the old cliff).
+#
+# Tried first and dropped: rock towers beside a straight notch (thin ones read as posts, a large one as a stub), a
+# straight stepped cleft with boulders on its benches (the left wall stayed one dark blade), a sheer turned wall (its
+# top stood up as a thin spike), a deeper turned cleft with a knob left under the pine (the knob's side was a new dark
+# blade), and a left side that turned faster than the right (no change: what was still dark was a cast shadow).
+NOTCH_R62 = True
+NOTCH_W = {-1: 7.0, 1: 0.8}            # how far across a riser climbs (m): the left side is one long slope
+NOTCH_RISERS = {-1: ((2.3, 11.0),),                                     # left side (dx < 0): (a, h)
+                1: ((1.8, 3.4), (3.4, 4.0), (5.0, 2.4), (6.6, 1.2))}    # right side (dx >= 0)
+NOTCH_WANDER = (0.9, 0.6, 1.7, 0.09)   # riser position (m), bench level (m), fade-in from the front edge (m), cycles/m
+NOTCH_BUMP = (1.0, (3.0, 5.0), 0.9)    # height (m), wavelength range along the depth (m), fade before the strip's end
+NOTCH_STRIP = {-1: 13.0, 1: 7.5}       # |dx| past which the cleft changes nothing
+NOTCH_SEED = 620
+NOTCH_BEND = (3.55, 0.0, 5.2)          # m the centre line moves left, between these m behind the front edge
+NOTCH_SPLIT = 1.25                     # a quad is turned when its first-to-third diagonal is this much the longer
+NOTCH_SPLIT_DX = 13.5                  # ... among the top rows' quads within this of FALL_X
+NOTCH_HEAD = ((2.3, 0.45), (3.0, 0.55))   # the head's steps: (m behind the front edge, share of the depth it climbs)
+NOTCH_HEAD_RUN = 1.15
+NOTCH_HEAD_WANDER = 0.4
+NOTCH_SADDLE = 1.2
+
+
+def _bump_wave(side, b):
+    """(wavelength m, phase rad) of bench ``b``'s bump on ``side``."""
+    r = U.rng(NOTCH_SEED, "bump", side, b)
+    lo, hi = NOTCH_BUMP[1]
+    return lo + (hi - lo) * r.random(), 2.0 * math.pi * r.random()
+
+
+def _notch_shift(back):
+    """m the cleft's centre line stands left of FALL_X, ``back`` m behind the front edge."""
+    full, b0, b1 = NOTCH_BEND
+    if back <= b0 or full <= 0.0:
+        return 0.0
+    return full * min(1.0, (back - b0) / (b1 - b0))
+
+
+def _notch_head(x, back):
+    """Share of the cleft's depth that is left ``back`` m behind the front edge at x: 1 in the mouth, 0 behind the
+    head."""
+    if back <= 0.0 or not NOTCH_HEAD:
+        return 1.0
+    n = max(-1.0, min(1.0, 1.6 * U.noise3(Vector((x * 0.45, 3.3, 0.0)), seed=NOTCH_SEED + 7)))
+    b = back + NOTCH_HEAD_WANDER * n * _smooth(0.0, 2.0, back)
+    left = 1.0
+    for at, share in NOTCH_HEAD:
+        left -= share * _smooth(at, at + NOTCH_HEAD_RUN, b)
+    return max(0.0, left)
+
+
+def _notch_parts(x, back=0.0, y=0.0):
+    """The round-62 cleft at x, ``back`` m behind the front edge at plan y (the top rows; 0 on the front edge and the
+    face): (core depth: 11 on the floor, 0 past the last riser; the rest of the depth: the old Gaussian's tail past the
+    last riser and the saddle behind the head; the bump added to the benches)."""
+    dx = x - FALL_X
+    dxe = dx + _notch_shift(back)        # across the cleft, from its own centre line
+    side = -1 if dxe < 0 else 1
+    risers = NOTCH_RISERS[side]
+    wide = NOTCH_W[side]
+    k = _smooth(0.0, NOTCH_WANDER[2], back) if back > 0.0 else 0.0
+    kw = 0.0 if side < 0 else k                  # the left slope runs straight: its line is what hides it
+    ad = abs(dxe)
+    core, prev, level, last = 0.0, 0.0, 0.0, len(risers) - 1
+    first_a, s_last, bench = None, 0.0, 0
+    for i, (a, h) in enumerate(risers):
+        level += h
+        lv, aa = level, a
+        if k > 0.0:
+            n1 = max(-1.0, min(1.0, 1.6 * U.noise3(Vector((0.37 + i, y * NOTCH_WANDER[3], 1.3 * side)),
+                                                   seed=NOTCH_SEED + 10 * side + i)))
+            aa = a + kw * NOTCH_WANDER[0] * (max(0.0, n1) if i == 0 else min(0.0, n1) if i == last else n1)
+            if i < last:                 # the last bench is the cliff top round the notch: its level stays
+                n2 = max(-1.0, min(1.0, 1.6 * U.noise3(Vector((2.1 + i, y * NOTCH_WANDER[3], -0.7 * side)),
+                                                       seed=NOTCH_SEED + 50 + 10 * side + i)))
+                lv = level + k * NOTCH_WANDER[1] * n2
+        s = _smooth(aa, aa + wide, ad)
+        core += (lv - prev) * (1.0 - s)          # exactly 0 past the last riser
+        prev = lv
+        if i == 0:
+            first_a = aa
+        if i == last:
+            s_last = s
+        if ad > aa + 0.5 * wide:
+            bench = i + 1
+    gauss = 11.0 * math.exp(-(dx / 4.0) ** 2)
+    end = NOTCH_STRIP[side]
+    tail = gauss * s_last
+    head = _notch_head(x, back)
+    if head < 1.0:
+        core *= head
+        tail = tail * head + (1.0 - head) * min(gauss, NOTCH_SADDLE)
+    bump = 0.0
+    if k > 0.0 and bench > 0 and side > 0:
+        w = _smooth(first_a, first_a + wide, ad) * (1.0 - _smooth(end - NOTCH_BUMP[2], end - 0.1, abs(dx)))
+        if w > 0.0:
+            lam, ph = _bump_wave(side, bench)
+            bump = NOTCH_BUMP[0] * 0.5 * (1.0 + math.sin(2.0 * math.pi * back / lam + ph)) * k * w
+    return core, tail, bump
+
+
+def _notch_depth(x, back=0.0, y=0.0):
+    """How far the notch lowers the front edge at x (before the shoulder fade): the old Gaussian (NOTCH_R62 False), or
+    the round-62 cleft's core depth plus the Gaussian's tail past the last riser (_top scales the core)."""
+    dx = x - FALL_X
+    if not NOTCH_R62:
+        return 11.0 * math.exp(-(dx / 4.0) ** 2)
+    core, tail, _bump = _notch_parts(x, back, y)
+    return core + tail
+
+
+def _top_base(x):
+    """Height of the cliff's front edge without the notch, and the shoulder fade (1 inside |x| 31)."""
     h = 58.0 + 6.0 * math.exp(-((x + 14.0) / 12.0) ** 2) + 3.0 * math.exp(-((x - 30.0) / 6.0) ** 2)
     h += 3.0 * U.fbm(Vector((x * 0.07, 2.3, 0.0)), octaves=3, seed=5)
     h += 7.0 * (abs(U.noise3(Vector((x * 0.09, 5.1, 0.0)), seed=12)) - 0.3)   # crags and pinnacles
     shoulder = 1.0 - _smooth(31.0, CLIFF_X, abs(x))
-    h = 4.0 + (h - 4.0) * shoulder
-    h -= 11.0 * math.exp(-((x - FALL_X) / 4.0) ** 2) * shoulder   # notch for the waterfall
+    return 4.0 + (h - 4.0) * shoulder, shoulder
+
+
+# The front edge's height without the notch carries its own noise (up to ~0.9 m across the 3 m floor), so with
+# NOTCH_R62 the notch depth is scaled by (base - lip) / 11: the floor (depth 11) sits exactly at the lip, the cliff top
+# past the last riser (depth 0) is unchanged, and each bench keeps its height over the lip within a few percent.
+_NOTCH_LIP = _top_base(FALL_X)[0] - 11.0
+
+
+def _top(x, back=0.0, y=0.0):
+    """Height of the cliff's front edge (``back`` > 0: of the top rows that far behind it, at plan y; only the
+    round-62 notch changes with it)."""
+    h, shoulder = _top_base(x)
+    if NOTCH_R62:
+        core, tail, bump = _notch_parts(x, back, y)        # stepped cleft for the waterfall
+        h -= (core * (h - _NOTCH_LIP) / 11.0 + tail) * shoulder
+        h += bump * shoulder
+    else:
+        h -= _notch_depth(x) * shoulder   # notch for the waterfall
     return h
 
 
@@ -256,7 +417,7 @@ def _top_point(x, s):
     yb = min(_yb(x) + CLIFF_DEPTH, math.sqrt(max(0.0, 50.0 ** 2 - x * x)))
     yb = max(yb, yt + 8.0)
     y = yt + s * (yb - 5.0 - yt)
-    z = top + 2.0 * math.sin(math.pi * s) - 9.0 * s * s
+    z = (_top(x, y - yt, y) if NOTCH_R62 else top) + 2.0 * math.sin(math.pi * s) - 9.0 * s * s
     z += 2.5 * U.noise3(Vector((x * 0.08, y * 0.08, 0.5)), seed=9)
     return Vector((x, y, z))
 
@@ -282,7 +443,8 @@ def _cliff_verts():
         for j in range(1, NT + 1):
             s = j / NT
             y = yt + s * (yb - 5.0 - yt)
-            z = top + 2.0 * math.sin(math.pi * s) - 9.0 * s * s
+            # round 62: the notch's risers and benches wander going back (NOTCH_WANDER)
+            z = (_top(x, y - yt, y) if NOTCH_R62 else top) + 2.0 * math.sin(math.pi * s) - 9.0 * s * s
             z += 2.5 * U.noise3(Vector((x * 0.08, y * 0.08, 0.5)), seed=9)
             verts.append(Vector((x, y, z)))
         zb = verts[-1].z
@@ -290,6 +452,116 @@ def _cliff_verts():
             s = j / NB
             verts.append(Vector((x, yb, zb + (Z_BOT - zb) * s)))
     return verts
+
+
+def _cliff_quad_at(i, j):
+    """Whether the cliff's quad between columns i, i + 1 and profile vertices j, j + 1 is one round 62 may turn
+    (_cliff_quad): a quad of the top rows within NOTCH_SPLIT_DX of the fall."""
+    if not (NZ <= j < NZ + NT):
+        return False
+    x0 = -CLIFF_X + 2.0 * CLIFF_X * i / NX
+    x1 = -CLIFF_X + 2.0 * CLIFF_X * (i + 1) / NX
+    return abs(x0 - FALL_X) <= NOTCH_SPLIT_DX and abs(x1 - FALL_X) <= NOTCH_SPLIT_DX
+
+
+def _cliff_quad_turn(p0, p1, p2, p3):
+    """Whether a quad with these corners, in its face's order, should start one corner later: Blender splits a quad
+    from its first corner to its third, and this one's other diagonal is NOTCH_SPLIT times shorter (a wall that
+    crosses the grid: see NOTCH_SPLIT)."""
+    return (Vector(p0) - Vector(p2)).length > NOTCH_SPLIT * (Vector(p1) - Vector(p3)).length
+
+
+def cliff_split(me):
+    """Round 62, on the cliff's mesh: every quad of the top rows by the cleft (_cliff_quad_at) whose first-to-third
+    diagonal is NOTCH_SPLIT times the longer starts one corner later (_cliff_quad_turn), so Blender splits it along
+    the shorter one. Blender splits a folded quad the other way on its own: a quad it then still splits along the
+    longer diagonal goes back to where it started. Same vertices, edges and faces: only where each of those faces
+    starts. _cliff runs it on a fresh cliff and sect/patch_r62_notch.py on a finished file's. Returns (quads looked
+    at, turned now, an md5 of their corner order, quads Blender still splits along the longer diagonal)."""
+    import hashlib
+    import numpy as np
+    ncol = NZ + 1 + NT + NB
+    npoly, nloop, nv = len(me.polygons), len(me.loops), len(me.vertices)
+    ls = np.empty(npoly, np.int64)
+    lt = np.empty(npoly, np.int64)
+    me.polygons.foreach_get("loop_start", ls)
+    me.polygons.foreach_get("loop_total", lt)
+    lv = np.empty(nloop, np.int64)
+    le = np.empty(nloop, np.int64)
+    me.loops.foreach_get("vertex_index", lv)
+    me.loops.foreach_get("edge_index", le)
+    co = np.empty(nv * 3)
+    me.vertices.foreach_get("co", co)
+    P = co.reshape(nv, 3)
+    last = (NX + 1) * ncol              # the grid's vertices come first; the two end-cap centres after them
+    quads = []
+    for p in np.nonzero(lt == 4)[0]:
+        vs = lv[int(ls[p]):int(ls[p]) + 4]
+        m = int(vs.min())
+        if int(vs.max()) >= last or set(int(v) for v in vs) != {m, m + 1, m + ncol, m + ncol + 1}:
+            continue
+        if _cliff_quad_at(m // ncol, m % ncol):
+            quads.append(int(p))
+
+    def turn(p):
+        s = int(ls[p])
+        lv[s:s + 4] = np.roll(lv[s:s + 4], -1)
+        le[s:s + 4] = np.roll(le[s:s + 4], -1)
+
+    def write():
+        me.loops.foreach_set("vertex_index", lv)
+        me.loops.foreach_set("edge_index", le)
+        me.update()
+        if me.validate(verbose=False):
+            raise RuntimeError("abode.cliff_split: turning the cleft's quads left the cliff mesh invalid")
+        me.loops.foreach_get("vertex_index", lv)
+        me.loops.foreach_get("edge_index", le)
+
+    def long_split():
+        """The quads Blender splits along the longer diagonal (the one its two triangles share)."""
+        me.calc_loop_triangles()
+        nt = len(me.loop_triangles)
+        tv = np.empty(nt * 3, np.int64)
+        tp = np.empty(nt, np.int64)
+        me.loop_triangles.foreach_get("vertices", tv)
+        me.loop_triangles.foreach_get("polygon_index", tp)
+        tv = tv.reshape(nt, 3)
+        by = {}
+        for k in np.nonzero(np.isin(tp, quads))[0]:
+            by.setdefault(int(tp[k]), []).append(set(int(v) for v in tv[k]))
+        out = []
+        for p, tris in by.items():
+            if len(tris) != 2:
+                continue
+            diag = tris[0] & tris[1]
+            rest = (tris[0] | tris[1]) - diag
+            if len(diag) != 2 or len(rest) != 2:
+                continue
+            a, b = (P[v] for v in diag)
+            c, d = (P[v] for v in rest)
+            if np.linalg.norm(a - b) > NOTCH_SPLIT * np.linalg.norm(c - d):
+                out.append(p)
+        return out
+
+    before = set(long_split())
+    todo = [p for p in quads if _cliff_quad_turn(*(P[int(v)] for v in lv[int(ls[p]):int(ls[p]) + 4]))]
+    todo = [p for p in todo if p in before]          # a quad Blender already splits the short way stays as it is
+    for p in todo:
+        turn(p)
+    if todo:
+        write()
+    still = long_split()
+    back = [p for p in still if p in todo]           # Blender flipped these the other way: put them back
+    for p in back:
+        for _ in range(3):
+            turn(p)
+    if back:
+        write()
+        still = long_split()
+    h = hashlib.md5()
+    for p in quads:
+        h.update(lv[int(ls[p]):int(ls[p]) + 4].tobytes())
+    return len(quads), len(todo) - len(back), h.hexdigest(), len(still)
 
 
 def _cliff(coll, root):
@@ -330,6 +602,8 @@ def _cliff(coll, root):
             f.normal_flip()
     bm.to_mesh(me)
     bm.free()
+    if NOTCH_R62:
+        cliff_split(me)                 # the turned wall of the fall's cleft, split along its own line
     U.auto_smooth(ob, math.radians(50))
     return ob
 

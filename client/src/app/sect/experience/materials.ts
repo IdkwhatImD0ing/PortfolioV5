@@ -2008,9 +2008,11 @@ export function createWaterfallSheetMaterial(
     vertexShader: /* glsl */ `
 #include <fog_pars_vertex>
 attribute vec4 aFall;
+attribute float aPour;
 varying vec2 vUv;
 varying vec3 vSeed;
 varying vec4 vFall;
+varying float vPour;
 varying vec3 vView;
 void main() {
   vUv = uv;
@@ -2020,6 +2022,7 @@ void main() {
     vSeed = vec3( 0.0, 0.5, 0.0 );
   #endif
   vFall = aFall;
+  vPour = aPour;
   vec4 wp = modelMatrix * vec4( position, 1.0 );
   vView = wp.xyz - cameraPosition;
   vec4 mvPosition = viewMatrix * wp;
@@ -2043,6 +2046,7 @@ uniform sampler2D tStrands;
 varying vec2 vUv;
 varying vec3 vSeed;
 varying vec4 vFall;
+varying float vPour;
 varying vec3 vView;
 ${fallGlsl()}
 void main() {
@@ -2094,6 +2098,10 @@ void main() {
   // The glassy lip is clear water too: see-through, with smooth ridges that catch the light.
   float ridge = smoothstep( 0.45, 0.85, nB );
   float a = mix( uOpacity * ( mix( 0.22, 0.32, aer ) + 0.68 * max( white, streak * 0.8 ) ), 0.34 + 0.3 * ridge, lip );
+  // A pour (lib/sect/pour.ts: water leaving a notch): over the edge it is deep, so its lip hides the
+  // notch and the water behind it, thinning to the usual see-through water as it falls.
+  float deep = vPour * lip * ( 1.0 - stream );
+  a = mix( a, max( a, ${f(SHEET.pourOpacity)} ), deep );
   float tear = smoothstep( ${f(SHEET.breakup)}, 1.0, q ) * ( 0.5 + 0.15 * curtain );
   a *= mix( 0.12, 1.0, smoothstep( tear - 0.08, tear + 0.08, nA * 0.55 + st * 0.45 ) );
   // Ragged, stranded sides: the edge (metres from the nearest side at the lip's scale) is pushed in
@@ -2101,12 +2109,34 @@ void main() {
   float e = min( vUv.x, 1.0 - vUv.x ) * W;
   float band = clamp( 0.16 * W, 0.4, 3.5 ) * ( 1.0 + 0.8 * q );
   float side = smoothstep( 0.0, band * 0.7, e + ( ( ste - 0.45 ) * 1.2 + ( nAe - 0.5 ) * 1.4 ) * band );
+  // A pour is seen from close by, where a torn outline reads as a white ribbon cut out of the rock.
+  // Its water thins toward its sides instead: whole in the middle, then separate threads that get
+  // fewer and fainter, then a little spray. across is 0 at a side and 1 in the middle; the water
+  // thins over the outer reach of each half (little of it at the crest, where the notch's walls
+  // hold the water together). Long threads (noise stretched down the fall) and the strands decide
+  // where water is left: the threshold falls from above the noise at the side to under it inside.
+  float thread = texture2D( tNoise, vec2( x / ${f(SHEET.pourThreadM)} + seed * 1.7, tau * ${f(SHEET.pourThreadRate)} - fract( uTime * ${f(SHEET.pourThreadRate)} ) ) ).r;
+  float fallen = smoothstep( 0.3, ${f(SHEET.pourThinOver)}, below );
+  // The line where the threads start wanders in and out down the fall (the clumps, metres long).
+  float across = clamp( 2.0 * e / W + ( nAe - 0.5 ) * ${f(SHEET.pourWander)} * fallen, 0.0, 1.0 );
+  float reach = mix( ${f(SHEET.pourThin[0])}, ${f(SHEET.pourThin[1])}, fallen );
+  float thin = smoothstep( 0.0, reach, across );
+  float cut = mix( ${f(SHEET.pourCut[0])}, ${f(SHEET.pourCut[1])}, thin );
+  float threads = smoothstep( cut - ${f(SHEET.pourEdge)}, cut + ${f(SHEET.pourEdge)}, thread * 0.6 + ste * 0.4 ) * mix( ${f(SHEET.pourFaint)}, 1.0, thin ) * smoothstep( 0.0, 0.04, 2.0 * e / W );
+  float pour = vPour * ( 1.0 - stream );
+  side = mix( side, threads, pour );
   // A crisp lip (0.4 m), its line a little uneven; the water reaches the pool. A stream fades out at
   // its foot (its lower end) only: its smallest metres along the flow may be on a crest mid-strip.
-  float head = stream > 0.5 ? 1.0 : smoothstep( 0.0, 0.4, below + ( nB - 0.5 ) * 0.25 );
+  // A pour starts on a clean line (the water's level in its notch).
+  float head = stream > 0.5 ? 1.0 : smoothstep( 0.0, mix( 0.4, 0.05, vPour ), below + ( nB - 0.5 ) * 0.25 * ( 1.0 - vPour ) );
   float ends = head * ( 1.0 - smoothstep( ${f(1 - SHEET.footFade)}, 1.0, p ) );
   float shape = side * ends * mix( 1.0, 0.72, curtain ) * mix( 1.0, 0.35, veil );
   a *= shape;
+  // Fine spray hangs beside a pour's falling water: a faint white haze over its thin sides, none at
+  // the crest (the water has not broken yet) and none at the very edge.
+  float haze = pour * ${f(SHEET.pourHaze)} * aer * ( 1.0 - thin ) * smoothstep( 0.0, 0.3, across ) * ends * ( 1.0 - veil );
+  white = max( white, step( a, haze ) * step( 0.001, haze ) );
+  a = max( a, haze );
   vec3 col = mix( mix( uGlass, uColor, 0.55 ), uFoam, white );
   col = mix( col, uGlass * ( 0.75 + 0.6 * ridge ), lip * ( 1.0 - veil ) );
   // The lip's bright bend and shimmer, sparkles in the white water, and the glow toward the sun.

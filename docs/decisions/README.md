@@ -1331,6 +1331,33 @@ marked. The change lands between the crowns and nowhere else.
 
 **See.** [`../sect/forest-floor.md`](../sect/forest-floor.md); `RANGE_LOOK.floor` in
 `client/src/lib/sect/range-look.ts`.
+### 2026-11-22 · The notch above the abode's waterfall turns, and the abode is baked again
+
+**Decided.** The notch the abode's waterfall comes out of is rebuilt in the scene (round 62). It was a V cut
+straight back through the cliff top. It is now a cleft that turns left as it goes back (one grid column per row,
+34 degrees), with one long gentle slope on its left, four steps on its right, a level lip 4 m wide, and a stepped
+head 2.3 to 4.6 m behind the lip. The abode is baked again under its round 61 light. The page's water is fitted
+to the new lip: half a metre of water over it, a crest 5 m wide, and the strip of water in the notch follows the
+turn. No object was added or moved. The trees and the other ten stops are unchanged.
+
+**Why.** The owner said the sides of the mountain above the waterfall looked abrupt. The flight sees the notch
+from 23 to 29 degrees to its right, and the abode's light comes from the front left. So the notch's left side was
+in view and in shadow for its whole length: a flat dark slab beside the water. Towers, steps and boulders did not
+change that, because anything that faces right there is dark. A side that turns away by more than 29 degrees is
+hidden from the whole flight, and a low shoulder lets the light into the mouth.
+
+**Checked.** Six shapes were judged on box stills before the bake that stayed (a round of patch and stills takes
+under a minute). The patch checks the lip, the channel, the pines' footing and the camera's distance, and run
+twice it says nothing changed. The page at 1600 x 900 from six views on High, Medium and Low, before and after:
+the slab is gone from every view, the stop's own view (which does not show the top of the fall) is unchanged, and
+there are no page or shader errors. 2,775 unit tests, the type check and the lint pass. Two box sessions, 1.64
+dollars.
+
+**Not done.** The cliff top is still a coarse grid. A dark pocket a metre wide stays at the lip's left (the
+shoulder's shadow). No water runs down the head.
+
+**See.** [`../scene/notch-r62.md`](../scene/notch-r62.md) and "The notch itself" in
+[`../sect/waterfall-pour.md`](../sect/waterfall-pour.md).
 
 ---
 
@@ -1364,5 +1391,7 @@ marked. The change lands between the crowns and nowhere else.
 | 2026-11-16 | A page-only lantern light test, replaced by the night bake and removed: what it showed | [`../scene/night-r61.md`](../scene/night-r61.md) |
 | 2026-11-17 | Round 61, the abode and the summit baked at night: the bake scripts, the two lights, the summit's lanterns, the run and its cost, how to run it again | [`../scene/night-r61.md`](../scene/night-r61.md) |
 | 2026-11-20 | Black holes in the mist: the quality ladder's tree-card step took every far forest and bared ground the bake leaves black; the step is gone. Also what a Mac really draws (nothing wrong), the screenshot that lied, the first theory and its guards, and the tools: the render probe, the shader quirks, the Mac job | [`../sect/render-probe.md`](../sect/render-probe.md) |
+| 2026-11-20 | The top of the abode's waterfall: why 6 m of water began on bare rock under an empty notch, the pour that lifts it into the notch, narrows it and fans it out, the water in the notch, the deep lip, what a bake would still have to fix. Then its sides (2026-11-21): the water thins into threads and spray toward them, and the sheets are a fifth wider to hold that | [`../sect/waterfall-pour.md`](../sect/waterfall-pour.md) |
 | 2026-11-20 | The forest floor: which mesh the black ground is, why it is black, the lift in the ground's shader, how its brightness was picked, the grass roots, what was checked | [`../sect/forest-floor.md`](../sect/forest-floor.md) |
+| 2026-11-22 | Round 62, the notch above the abode's waterfall: why its left side was a dark slab (where the flight stands and where the light comes from), six tries, the turned cleft, the patch, the run and its cost, how to run it again, the pack's trap in a fresh worktree | [`../scene/notch-r62.md`](../scene/notch-r62.md) |
 | 2026-11-09 | Round 55: the gate seen square on, and prop moves at four stops (designed and scripted, not baked yet) | [`../scene/placement-r55.md`](../scene/placement-r55.md) |

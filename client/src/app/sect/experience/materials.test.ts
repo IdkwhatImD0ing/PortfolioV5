@@ -418,6 +418,14 @@ describe("waterfall sheet material", () => {
   it("reads the fall attribute, rides the water down with gravity, and uses only real chunks", () => {
     const mat = createWaterfallSheetMaterial({ value: 0 }, undefined, { sunDir: new Vector3(0, 0.1, -1) });
     expect(mat.vertexShader).toContain("attribute vec4 aFall;");
+    // A pour's flag (lib/sect/pour.ts): a deep lip that hides the notch behind it, whole sides and a
+    // clean top line where the water goes over the edge. Streams never take it.
+    expect(mat.vertexShader).toContain("attribute float aPour;");
+    expect(mat.fragmentShader).toContain("float deep = vPour * lip * ( 1.0 - stream );");
+    expect(mat.fragmentShader).toContain("side = mix( side, threads, pour );");
+    // No name is declared twice in main (a second "float soft" once cost the page its water).
+    const declared = [...mat.fragmentShader.slice(mat.fragmentShader.lastIndexOf("void main()")).matchAll(/^\s*(?:float|vec[234])\s+(\w+)\s*=/gm)].map((m) => m[1]);
+    expect(declared.filter((n, i) => declared.indexOf(n) !== i)).toEqual([]);
     expect(mat.fragmentShader).toContain("float tau = mix( sectFallSeconds( below )");
     expect(mat.fragmentShader).toContain("texture2D( tStrands");
     expect(mat.fragmentShader.indexOf("#include <colorspace_fragment>")).toBeLessThan(mat.fragmentShader.indexOf("#include <fog_fragment>"));
