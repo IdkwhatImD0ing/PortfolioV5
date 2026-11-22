@@ -150,11 +150,26 @@ export const SHEET = {
   farFrom: 130,
   farTo: 260,
   /**
-   * A pour's lip (lib/sect/pour.ts, vertices with aPour = 1): how much of what is behind it the deep
-   * water over the edge hides, and the metres below the crest over which its sides go from whole to ragged.
+   * A pour (lib/sect/pour.ts, vertices with aPour = 1). Its lip: how much of what is behind it the
+   * deep water over the edge hides. Its sides: the water thins toward them over a share of each half
+   * width (pourThin: at the crest, and from pourThinOver metres below it), into threads (noise
+   * pourThreadM metres across per tile, moving at pourThreadRate tiles a second, so a thread is tens
+   * of metres long). pourCut is the threshold the threads must pass, at the side and in the middle
+   * (the noise sits between about 0.25 and 0.75), over +- pourEdge (smaller: crisper threads).
+   * pourWander is how far the line where the threads start moves in and out down the fall (share of
+   * the half width). pourFaint is how much of its opacity the water keeps at the very side.
+   * pourHaze is the spray's opacity beside the water.
    */
   pourOpacity: 0.92,
-  pourWhole: [0.4, 1.6],
+  pourThin: [0.3, 0.75],
+  pourThinOver: 5,
+  pourThreadM: 0.5,
+  pourThreadRate: 0.22,
+  pourCut: [0.86, -0.2],
+  pourEdge: 0.12,
+  pourWander: 0.35,
+  pourFaint: 0.4,
+  pourHaze: 0.12,
   /** The glassy lip's tint and the sun's glow through the water (sRGB hex). */
   glass: "#7c9ca3",
   glow: "#ffcf9a",

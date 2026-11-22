@@ -14,6 +14,10 @@
  * - The sheets narrow toward the notch's centre line: `neck` of their width at the crest, the full
  *   width `fanOver` metres further down (most of it early: falling water spreads fast, then slows).
  *   The streaks keep their baked metres across, so they spread out of the notch with the water.
+ * - The full width is `widen` times the baked one, down to the pool: the shader thins a pour's
+ *   water toward its sides into threads and spray (materials.ts, the sheet shader's `aPour`), and
+ *   the extra width is where that thin water goes. The baked sheets were dense white to a torn
+ *   edge, which from the stop read as a ribbon cut out of the rock.
  * - A water surface fills the notch behind the crest (pourStream): level for a few metres, then
  *   sinking to the notch's floor further back, where its walls close over it. It is what a view
  *   from above sees in the notch.
@@ -46,8 +50,14 @@ export interface PourSpec {
   centre: number;
   /** Share of the baked width the sheets keep at the crest. */
   neck: number;
-  /** Metres below the crest at which the sheets are back to their baked width. */
+  /** Metres below the crest at which the sheets have reached their full width. */
   fanOver: number;
+  /**
+   * The sheets' full width, as a share of the baked one, all the way down to the pool. The shader
+   * thins a pour's water toward its sides (threads, then spray), which at the baked width would
+   * leave a narrow core: the extra width is where the thin water goes.
+   */
+  widen: number;
   /** The baked sheets lie within this of the origin: metres across (either side), behind and in front of the lip. */
   reach: { across: number; behind: number; front: number };
   /** The water in the notch behind the crest. */
@@ -84,9 +94,11 @@ export const POURS: readonly PourSpec[] = [
     back: 0.65,
     backOver: 2,
     centre: -0.08,
-    neck: 0.58,
+    neck: 0.5,
     fanOver: 14,
-    reach: { across: 5, behind: 2, front: 8 },
+    widen: 1.2,
+    // To the pool: the baked sheets spread to about 4.7 m either side there and land up to 6.5 m out.
+    reach: { across: 8, behind: 2, front: 10 },
     stream: { width: 6, from: -8.5, levelFrom: -3.5, floor: 0.3, rows: 14, seed: 0.37, flow: 0.5 },
   },
 ];
@@ -134,16 +146,15 @@ function smoothstep(a: number, b: number, x: number): number {
   return t * t * (3 - 2 * t);
 }
 
-/** Whether a point (pour frame) is one the warp moves: on the baked sheets, down to where they are full width again. */
+/** Whether a point (pour frame) is one the warp moves: on the baked sheets, from their top to the pool. */
 export function inPour(s: PourSpec, l: Vec3): boolean {
-  const down = Math.max(s.liftOver, s.backOver, s.fanOver) + 1;
-  return Math.abs(l[0]) <= s.reach.across && l[1] >= -s.reach.behind && l[1] <= s.reach.front && l[2] <= s.top + 0.5 && l[2] >= s.top - down;
+  return Math.abs(l[0]) <= s.reach.across && l[1] >= -s.reach.behind && l[1] <= s.reach.front && l[2] <= s.top + 0.5;
 }
 
-/** Share of the baked width the sheets have `below` metres under the crest: `neck` there, 1 from `fanOver` on. */
+/** Share of the baked width the sheets have `below` metres under the crest: `neck` there, `widen` from `fanOver` on. */
 export function pourWidth(s: PourSpec, below: number): number {
   const t = Math.min(Math.max(below / s.fanOver, 0), 1);
-  return s.neck + (1 - s.neck) * (1 - (1 - t) * (1 - t));
+  return s.neck + (s.widen - s.neck) * (1 - (1 - t) * (1 - t));
 }
 
 /**
@@ -152,7 +163,8 @@ export function pourWidth(s: PourSpec, below: number): number {
  * `middle` is the middle of the vertex's own sheet across (pourMiddle): the layers of a fall are
  * baked a little to one side of each other, and at the crest each narrows about the notch's centre
  * line, sliding back to its own place as it widens. Heights keep their order (a row never passes
- * the one above it), and a point below the lift, the step back and the fan does not move.
+ * the one above it). Below the lift, the step back and the fan a point keeps its height and its
+ * distance from the cliff, and only stands `widen` times as far from its sheet's middle.
  */
 export function warpPour(s: PourSpec, l: Vec3, middle: number = s.centre): Vec3 {
   // Metres below the baked top, and below the new crest: the rows near the top rise by the whole
@@ -163,7 +175,7 @@ export function warpPour(s: PourSpec, l: Vec3, middle: number = s.centre): Vec3 
   const o = l[1] - s.back * (1 - smoothstep(0, s.backOver, d));
   const w = pourWidth(s, below);
   // 0 at the crest, 1 at full width.
-  const k = (w - s.neck) / Math.max(1 - s.neck, 1e-6);
+  const k = (w - s.neck) / Math.max(s.widen - s.neck, 1e-6);
   const a = s.centre + (middle - s.centre) * k + (l[0] - middle) * w;
   return [a, o, h];
 }

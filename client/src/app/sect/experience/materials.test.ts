@@ -420,7 +420,10 @@ describe("waterfall sheet material", () => {
     // clean top line where the water goes over the edge. Streams never take it.
     expect(mat.vertexShader).toContain("attribute float aPour;");
     expect(mat.fragmentShader).toContain("float deep = vPour * lip * ( 1.0 - stream );");
-    expect(mat.fragmentShader).toContain("side = max( side, vPour * ( 1.0 - stream )");
+    expect(mat.fragmentShader).toContain("side = mix( side, threads, pour );");
+    // No name is declared twice in main (a second "float soft" once cost the page its water).
+    const declared = [...mat.fragmentShader.slice(mat.fragmentShader.lastIndexOf("void main()")).matchAll(/^\s*(?:float|vec[234])\s+(\w+)\s*=/gm)].map((m) => m[1]);
+    expect(declared.filter((n, i) => declared.indexOf(n) !== i)).toEqual([]);
     expect(mat.fragmentShader).toContain("float tau = mix( sectFallSeconds( below )");
     expect(mat.fragmentShader).toContain("texture2D( tStrands");
     expect(mat.fragmentShader.indexOf("#include <colorspace_fragment>")).toBeLessThan(mat.fragmentShader.indexOf("#include <fog_fragment>"));

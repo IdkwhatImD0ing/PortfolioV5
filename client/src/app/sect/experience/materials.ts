@@ -2096,9 +2096,22 @@ void main() {
   float e = min( vUv.x, 1.0 - vUv.x ) * W;
   float band = clamp( 0.16 * W, 0.4, 3.5 ) * ( 1.0 + 0.8 * q );
   float side = smoothstep( 0.0, band * 0.7, e + ( ( ste - 0.45 ) * 1.2 + ( nAe - 0.5 ) * 1.4 ) * band );
-  // A pour fills its notch from wall to wall where it goes over the edge: whole sides for the first
-  // metre, ragged below.
-  side = max( side, vPour * ( 1.0 - stream ) * ( 1.0 - smoothstep( ${f(SHEET.pourWhole[0])}, ${f(SHEET.pourWhole[1])}, below ) ) );
+  // A pour is seen from close by, where a torn outline reads as a white ribbon cut out of the rock.
+  // Its water thins toward its sides instead: whole in the middle, then separate threads that get
+  // fewer and fainter, then a little spray. across is 0 at a side and 1 in the middle; the water
+  // thins over the outer reach of each half (little of it at the crest, where the notch's walls
+  // hold the water together). Long threads (noise stretched down the fall) and the strands decide
+  // where water is left: the threshold falls from above the noise at the side to under it inside.
+  float thread = texture2D( tNoise, vec2( x / ${f(SHEET.pourThreadM)} + seed * 1.7, tau * ${f(SHEET.pourThreadRate)} - fract( uTime * ${f(SHEET.pourThreadRate)} ) ) ).r;
+  float fallen = smoothstep( 0.3, ${f(SHEET.pourThinOver)}, below );
+  // The line where the threads start wanders in and out down the fall (the clumps, metres long).
+  float across = clamp( 2.0 * e / W + ( nAe - 0.5 ) * ${f(SHEET.pourWander)} * fallen, 0.0, 1.0 );
+  float reach = mix( ${f(SHEET.pourThin[0])}, ${f(SHEET.pourThin[1])}, fallen );
+  float thin = smoothstep( 0.0, reach, across );
+  float cut = mix( ${f(SHEET.pourCut[0])}, ${f(SHEET.pourCut[1])}, thin );
+  float threads = smoothstep( cut - ${f(SHEET.pourEdge)}, cut + ${f(SHEET.pourEdge)}, thread * 0.6 + ste * 0.4 ) * mix( ${f(SHEET.pourFaint)}, 1.0, thin ) * smoothstep( 0.0, 0.04, 2.0 * e / W );
+  float pour = vPour * ( 1.0 - stream );
+  side = mix( side, threads, pour );
   // A crisp lip (0.4 m), its line a little uneven; the water reaches the pool. A stream fades out at
   // its foot (its lower end) only: its smallest metres along the flow may be on a crest mid-strip.
   // A pour starts on a clean line (the water's level in its notch).
@@ -2106,6 +2119,11 @@ void main() {
   float ends = head * ( 1.0 - smoothstep( ${f(1 - SHEET.footFade)}, 1.0, p ) );
   float shape = side * ends * mix( 1.0, 0.72, curtain ) * mix( 1.0, 0.35, veil );
   a *= shape;
+  // Fine spray hangs beside a pour's falling water: a faint white haze over its thin sides, none at
+  // the crest (the water has not broken yet) and none at the very edge.
+  float haze = pour * ${f(SHEET.pourHaze)} * aer * ( 1.0 - thin ) * smoothstep( 0.0, 0.3, across ) * ends * ( 1.0 - veil );
+  white = max( white, step( a, haze ) * step( 0.001, haze ) );
+  a = max( a, haze );
   vec3 col = mix( mix( uGlass, uColor, 0.55 ), uFoam, white );
   col = mix( col, uGlass * ( 0.75 + 0.6 * ridge ), lip * ( 1.0 - veil ) );
   // The lip's bright bend and shimmer, sparkles in the white water, and the glow toward the sun.

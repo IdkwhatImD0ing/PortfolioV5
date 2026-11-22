@@ -69,16 +69,20 @@ describe("where a pour moves the baked sheets", () => {
     expect(pourCrest(spec)).toEqual({ out: spec.crestOut - spec.back, level: spec.level });
   });
 
-  it("leaves the water alone below the lift, the step back and the fan", () => {
+  it("below the lift, the step back and the fan only widens the water about its own middle", () => {
     const deep = Math.max(spec.liftOver, spec.backOver, spec.fanOver);
+    const middle = 0.6;
     for (const d of [deep, deep + 3, deep + 30]) {
       const p: Vec3 = [-2.4, 1.8, spec.top - d];
-      const w = warpPour(spec, p, 0.6);
-      for (let k = 0; k < 3; k++) expect(w[k]).toBeCloseTo(p[k], 9);
+      const w = warpPour(spec, p, middle);
+      // Its height and its distance from the cliff are the baked ones: the foot stays on the pool.
+      expect(w[1]).toBeCloseTo(p[1], 9);
+      expect(w[2]).toBeCloseTo(p[2], 9);
+      expect(w[0] - middle).toBeCloseTo((p[0] - middle) * spec.widen, 9);
     }
-    // And it does not reach for points that are not on the sheets.
+    // It reaches the sheets from their top to the pool, and nothing that is not on them.
     expect(inPour(spec, [0, 0.5, spec.top - 3])).toBe(true);
-    expect(inPour(spec, [0, 0.5, spec.top - deep - 2])).toBe(false);
+    expect(inPour(spec, [0, 4, spec.top - 46])).toBe(true);
     expect(inPour(spec, [spec.reach.across + 1, 0.5, spec.top - 3])).toBe(false);
     expect(inPour(spec, [0, spec.reach.front + 1, spec.top - 3])).toBe(false);
     expect(inPour(spec, [0, 0.5, spec.top + 2])).toBe(false);
@@ -101,13 +105,17 @@ describe("where a pour moves the baked sheets", () => {
     }
   });
 
-  it("is as wide as the neck at the crest and full width from fanOver on, most of it early", () => {
+  it("is as wide as the neck at the crest and at its full width from fanOver on, most of it early", () => {
     expect(pourWidth(spec, 0)).toBeCloseTo(spec.neck, 9);
     expect(pourWidth(spec, -1)).toBeCloseTo(spec.neck, 9);
-    expect(pourWidth(spec, spec.fanOver)).toBeCloseTo(1, 9);
-    expect(pourWidth(spec, spec.fanOver * 3)).toBeCloseTo(1, 9);
+    expect(pourWidth(spec, spec.fanOver)).toBeCloseTo(spec.widen, 9);
+    expect(pourWidth(spec, spec.fanOver * 3)).toBeCloseTo(spec.widen, 9);
     const half = pourWidth(spec, spec.fanOver / 2);
-    expect(half).toBeGreaterThan((spec.neck + 1) / 2);
+    expect(half).toBeGreaterThan((spec.neck + spec.widen) / 2);
+    // Wider than baked (room for the thin sides), and the crest still fits the notch: the abode's
+    // notch is about 3 m wide at the water's level and the widest baked sheet 5.9 m.
+    expect(spec.widen).toBeGreaterThanOrEqual(1);
+    expect(spec.neck * 5.9).toBeLessThan(3.6);
   });
 
   it("gathers a fall's layers on the notch's centre line at the crest and lets them back to their places below", () => {
