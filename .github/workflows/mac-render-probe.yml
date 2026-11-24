@@ -12,6 +12,10 @@ name: Mac render probe
 #   (scripts/shader-quirks.mjs).
 # Nothing else leaves the runner: the probe blocks the backend, Pusher, analytics and every other host.
 #
+# With "sweep" ticked it runs a third thing instead of those two: the live site in every state of
+# the quality ladder, along the flight and with the view turned, one job per browser and pass. A
+# slow Mac does not stay at full quality, and the two jobs above only ever see full quality.
+#
 # Manual only (the Actions tab, or gh workflow run). While a branch is chasing a Mac-only bug, give
 # it a push trigger for that branch and take it out again before the merge.
 
@@ -26,6 +30,11 @@ on:
         description: "The live site (also where the branch build borrows its baked files)"
         required: false
         default: "https://art3m1s.me"
+      sweep:
+        description: "Sweep the live site instead: every quality state, along the flight and turned (about an hour)"
+        type: boolean
+        required: false
+        default: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -36,8 +45,59 @@ env:
   CHROME: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 
 jobs:
+  sweep:
+    name: Sweep on macOS (${{ matrix.browser.name }}, ${{ matrix.pass.name }})
+    if: ${{ inputs.sweep }}
+    runs-on: macos-15
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        browser:
+          # Safari's engine at the page's own pick on a 2x screen, then Chrome on Medium and on High.
+          - { name: webkit, args: "--engine webkit --dsf 2" }
+          - { name: mid, args: "--angle metal --tier mid", chrome: true }
+          - { name: high, args: "--angle metal --tier high --extra far=0", chrome: true }
+        pass:
+          # The flight as a visitor scrolls it (the stops and a frame between each pair), then each
+          # stop with the view turned left and right and a little down.
+          - { name: flight, args: "--frames 40,93,155,217,285,352,434,516,568,619,695,772,873,974,1038,1103,1155,1208,1294,1380,1513,1647 --yaws 0" }
+          - { name: turned, args: "--frames 93,217,352,516,619,772,974,1103,1208,1380,1647 --yaws -50,50 --pitch -8" }
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Install the probe's browser driver
+        working-directory: ${{ github.workspace }}
+        run: |
+          mkdir -p .probe
+          npm install --prefix .probe --no-audit --no-fund playwright-core@1.62.0
+          node .probe/node_modules/playwright-core/cli.js install webkit
+
+      # --ladders: every depth, and the probe skips the ones past a tier's bottom.
+      - name: Sweep
+        run: node scripts/render-probe.mjs --base "$SITE" ${{ matrix.browser.args }} ${{ matrix.browser.chrome && '--exe "$CHROME"' || '' }} ${{ matrix.pass.args }} --ladders 0,1,2,3,4,5,6,7,8,9,10,11,12 --hud 0 --jpeg 85 --label "${{ matrix.browser.name }}-${{ matrix.pass.name }}" --out "$OUT" || true
+
+      - name: Upload the pictures and counts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-sweep-mac-${{ matrix.browser.name }}-${{ matrix.pass.name }}
+          path: ${{ github.workspace }}/render-probe-out
+          if-no-files-found: warn
+          retention-days: 14
+
   live:
     name: Live site on macOS
+    if: ${{ !inputs.sweep }}
     runs-on: macos-15
     timeout-minutes: 45
     defaults:
@@ -90,6 +150,7 @@ jobs:
 
   branch:
     name: This branch on macOS
+    if: ${{ !inputs.sweep }}
     runs-on: macos-15
     timeout-minutes: 45
     defaults:

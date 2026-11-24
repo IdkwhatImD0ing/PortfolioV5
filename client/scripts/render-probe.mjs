@@ -29,6 +29,13 @@
 //   --yaw DEG, --pitch DEG   turn the view from the flight's own (free look; left is positive)
 //   --ladder N          step the quality ladder down N times first (the page's own debug hook,
 //                       window.__sectLadder.down()): what a slow machine ends up drawing
+//   --yaws A,B,C        several turns per frame instead of --yaw, a picture each
+//   --ladders A,B,C     several ladder depths per frame instead of --ladder. The page loads once per
+//                       frame and is stepped down between them; a depth that changes nothing (the
+//                       ladder's bottom was reached) is skipped. "0,1,2,3,4,5,6,7,8,9,10,11,12" is
+//                       every state of any tier
+//   --hud 0             leave the debug panel out of the pictures (what it says is in the JSON)
+//   --jpeg Q            save pictures as JPEG at quality Q instead of PNG (a sweep is hundreds)
 //   --headed            show the window
 import { createRequire } from "node:module";
 import fs from "node:fs";
@@ -64,6 +71,12 @@ const readyMs = Number(arg("ready", "180000"));
 const yaw = Number(arg("yaw", "0"));
 const pitch = Number(arg("pitch", "0"));
 const ladder = Number(arg("ladder", "0"));
+const numbers = (s) => s.split(",").map(Number).filter(Number.isFinite);
+const yawList = arg("yaws", "") ? numbers(arg("yaws", "")) : [yaw];
+const ladderList = (arg("ladders", "") ? numbers(arg("ladders", "")) : [ladder]).sort((a, b) => a - b);
+const many = yawList.length > 1 || ladderList.length > 1;
+const hud = arg("hud", "1") !== "0";
+const jpeg = Number(arg("jpeg", "0"));
 const exe = arg("exe", "");
 const channel = arg("channel", "");
 const headed = process.argv.includes("--headed");
@@ -154,6 +167,8 @@ function readInfo() {
     dpr: window.devicePixelRatio,
     canvas: [ctx.drawingBufferWidth, ctx.drawingBufferHeight],
     quality: document.body.innerText.match(/quality\s+(.+)/)?.[1] ?? "",
+    scale: document.body.innerText.match(/dpr\s+(.+)/)?.[1] ?? "",
+    fps: document.body.innerText.match(/fps\s+(.+)/)?.[1] ?? "",
     maxSamples: ctx.getParameter(ctx.MAX_SAMPLES),
     glError: ctx.getError(),
   };
@@ -216,6 +231,10 @@ function readBuffers() {
  * that the canvas does not have, when the browser converts colour spaces on the way to the file
  * and lets a channel run past 255 (seen in WebKit on a Mac runner, 2026-11-20). `full` is the
  * count of channels at 255.
+ *
+ * `dark` counts the pixels whose brightest channel is under 24, and `grid` is the share of such
+ * pixels in each cell of a 32 by 18 grid, top row first, in hundredths. Two machines' grids for the
+ * same view say where one draws dark and the other does not, without anyone looking at a picture.
  */
 function readCanvas() {
   return new Promise((resolve) => {
@@ -236,19 +255,35 @@ function readCanvas() {
       const h = ctx.drawingBufferHeight;
       const px = new Uint8Array(w * h * 4);
       ctx.readPixels(0, 0, w, h, ctx.RGBA, ctx.UNSIGNED_BYTE, px);
-      let cyan = 0, magenta = 0, yellow = 0, red = 0, black = 0, full = 0;
-      for (let i = 0; i < px.length; i += 4) {
-        const r = px[i], g = px[i + 1], b = px[i + 2];
-        if (r < 30 && g > 200 && b > 200) cyan++;
-        else if (g < 30 && r > 200 && b > 200) magenta++;
-        else if (b < 30 && r > 200 && g > 200) yellow++;
-        else if (r > 200 && g < 30 && b < 30) red++;
-        if (r < 4 && g < 4 && b < 4) black++;
-        if (r === 255) full++;
-        if (g === 255) full++;
-        if (b === 255) full++;
+      const COLS = 32, ROWS = 18;
+      const cellDark = new Uint32Array(COLS * ROWS);
+      const cellAll = new Uint32Array(COLS * ROWS);
+      let cyan = 0, magenta = 0, yellow = 0, red = 0, black = 0, full = 0, dark = 0, sum = 0;
+      for (let y = 0; y < h; y++) {
+        // readPixels starts at the bottom row.
+        const row = Math.min(ROWS - 1, Math.floor(((h - 1 - y) * ROWS) / h)) * COLS;
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          const r = px[i], g = px[i + 1], b = px[i + 2];
+          if (r < 30 && g > 200 && b > 200) cyan++;
+          else if (g < 30 && r > 200 && b > 200) magenta++;
+          else if (b < 30 && r > 200 && g > 200) yellow++;
+          else if (r > 200 && g < 30 && b < 30) red++;
+          if (r < 4 && g < 4 && b < 4) black++;
+          if (r === 255) full++;
+          if (g === 255) full++;
+          if (b === 255) full++;
+          const cell = row + Math.min(COLS - 1, Math.floor((x * COLS) / w));
+          cellAll[cell]++;
+          sum += r + g + b;
+          if (r < 24 && g < 24 && b < 24) {
+            dark++;
+            cellDark[cell]++;
+          }
+        }
       }
-      done({ w, h, crushed: cyan + magenta + yellow + red, cyan, magenta, yellow, red, black, full, readError: ctx.getError() });
+      const grid = Array.from(cellDark, (n, i) => Math.round((100 * n) / Math.max(1, cellAll[i])));
+      done({ w, h, crushed: cyan + magenta + yellow + red, cyan, magenta, yellow, red, black, full, dark, mean: sum / (3 * w * h), cols: COLS, rows: ROWS, grid, readError: ctx.getError() });
       return out;
     };
     s.store.wakeUntil = performance.now() + 3000;
@@ -276,54 +311,95 @@ for (const frame of frames) {
   });
   const query = ["debug=1", "ui=0", tier ? `tier=${tier}` : "", `frame=${frame}`, extra].filter(Boolean).join("&");
   const r = { label, engine, angle, tier, frame, url: `${base}/?${query}` };
+  const say = (v) => {
+    const b = v.buffers?.[0];
+    console.log(
+      [
+        label,
+        many ? `f${frame} L${v.ladder} y${v.yaw}` : `f${frame}`,
+        v.error ? `ERROR ${v.error.slice(0, 160)}` : "",
+        v.info ? `${v.info.renderer.slice(0, 60)} | ${v.info.quality} | dpr ${v.info.scale}` : "",
+        b ? `nan ${b.nan} inf ${b.inf} neg ${b.neg} zero ${b.zero} alpha>1 ${b.aHigh} max ${b.max.toFixed(2)}` : "no buffer (no post pass on this tier)",
+        v.canvas ? (v.canvas.error ? `canvas: ${v.canvas.error}` : `canvas crushed ${v.canvas.crushed} black ${v.canvas.black} dark ${v.canvas.dark} at-255 ${v.canvas.full}`) : "",
+        v.logs?.length ? `logs ${v.logs.length}` : "",
+      ]
+        .filter(Boolean)
+        .join("  "),
+    );
+  };
+  let last = null;
   try {
     await page.goto(r.url, { waitUntil: "domcontentloaded", timeout: 120000 });
     await page.waitForSelector("body[data-sect-ready]", { state: "attached", timeout: readyMs });
     await page.waitForFunction(() => !!window.__sect?.gl, null, { timeout: 60000 });
     await page.evaluate(watchTargets);
     await page.waitForTimeout(waitMs);
-    for (let i = 0; i < ladder; i++) {
-      await page.evaluate(() => window.__sectLadder?.down());
-      await page.waitForTimeout(1500);
-    }
-    if (yaw !== 0 || pitch !== 0 || ladder > 0) {
-      // Twice: the first frames after a turn or a step may still be loading what came into view.
-      for (let i = 0; i < 2; i++) {
-        await page.evaluate(turnView, [yaw, pitch]);
+    if (!hud) await page.addStyleTag({ content: "[data-sect-hud]{opacity:0!important}" });
+    let stepped = 0;
+    let state = "";
+    for (const depth of ladderList) {
+      for (; stepped < depth; stepped++) {
+        await page.evaluate(() => window.__sectLadder?.down());
         await page.waitForTimeout(1500);
       }
+      // The ladder's bottom: a deeper step that changes nothing is the same picture again.
+      const now = await page.evaluate(() => {
+        const t = document.body.innerText;
+        return `${t.match(/quality\s+(.+)/)?.[1] ?? ""} | ${t.match(/dpr\s+(.+)/)?.[1] ?? ""}`;
+      });
+      if (many && depth > ladderList[0] && now === state) continue;
+      state = now;
+      for (const turn of yawList) {
+        const v = { ...r, ladder: depth, yaw: turn, pitch };
+        if (turn !== 0 || pitch !== 0 || depth > 0 || many) {
+          // Twice: the first frames after a turn or a step may still be loading what came into view.
+          for (let i = 0; i < 2; i++) {
+            await page.evaluate(turnView, [turn, pitch]);
+            await page.waitForTimeout(1500);
+          }
+          // An area the turn brought into the window: wait for it, but not for the background fill.
+          await page
+            .waitForFunction(
+              () => {
+                const st = window.__sect.info().stream;
+                if (!st) return true;
+                return !st.resident.some((c) => !c.ready) && !st.loading.some((id) => !st.filling.includes(id));
+              },
+              null,
+              { timeout: 15000 },
+            )
+            .catch(() => {});
+          await page.evaluate(turnView, [turn, pitch]);
+          await page.waitForTimeout(400);
+        }
+        v.info = await page.evaluate(readInfo);
+        v.buffers = await page.evaluate(readBuffers);
+        v.canvas = await page.evaluate(readCanvas);
+        v.shot = `${label}-f${frame}${many ? `-L${depth}-y${turn}` : ""}.${jpeg ? "jpg" : "png"}`;
+        await page.screenshot({ path: path.join(out, v.shot), ...(jpeg ? { type: "jpeg", quality: jpeg } : {}) });
+        results.push(v);
+        last = v;
+        say(v);
+      }
     }
-    r.info = await page.evaluate(readInfo);
-    r.buffers = await page.evaluate(readBuffers);
-    r.canvas = await page.evaluate(readCanvas);
-    r.shot = `${label}-f${frame}.png`;
-    await page.screenshot({ path: path.join(out, r.shot) });
     failedInARow = 0;
   } catch (e) {
     failedInARow++;
-    r.error = String(e).slice(0, 600);
+    const v = { ...r, error: String(e).slice(0, 600) };
     try {
-      r.shot = `${label}-f${frame}-error.png`;
-      await page.screenshot({ path: path.join(out, r.shot) });
+      v.shot = `${label}-f${frame}-error.png`;
+      await page.screenshot({ path: path.join(out, v.shot) });
     } catch {}
+    results.push(v);
+    last = v;
+    say(v);
   }
-  r.logs = logs.slice(0, 40);
-  results.push(r);
-  const b = r.buffers?.[0];
-  console.log(
-    [
-      label,
-      `f${frame}`,
-      r.error ? `ERROR ${r.error.slice(0, 160)}` : "",
-      r.info ? `${r.info.renderer.slice(0, 60)} | ${r.info.quality}` : "",
-      b ? `nan ${b.nan} inf ${b.inf} neg ${b.neg} zero ${b.zero} alpha>1 ${b.aHigh} max ${b.max.toFixed(2)}` : "no buffer (no post pass on this tier)",
-      r.canvas ? (r.canvas.error ? `canvas: ${r.canvas.error}` : `canvas crushed ${r.canvas.crushed} black ${r.canvas.black} at-255 ${r.canvas.full}`) : "",
-      r.logs.length ? `logs ${r.logs.length}` : "",
-    ]
-      .filter(Boolean)
-      .join("  "),
-  );
+  // One page per frame: its console lines go on the frame's last view.
+  if (last) last.logs = logs.slice(0, 40);
+  if (last?.logs.length) console.log(`${label}  f${frame}  logs ${last.logs.length}: ${last.logs[0].slice(0, 160)}`);
   await page.close();
+  // A sweep takes a long time: what is done so far is on disk.
+  fs.writeFileSync(path.join(out, `${label}.json`), JSON.stringify({ label, base, blocked, results }, null, 1));
 }
 await browser.close();
 fs.writeFileSync(path.join(out, `${label}.json`), JSON.stringify({ label, base, blocked, results }, null, 1));
